@@ -4,13 +4,16 @@
 
 - `TOOL_TYPE_STYLUS` draws and captures pressure, tilt, orientation, timestamps, button state, pointer ID, and cancellation.
 - `TOOL_TYPE_ERASER` uses the same brush engine with clear blending.
-- Fingers never paint. Two fingers pan, zoom, and rotate the camera simultaneously.
-- Two-finger tap invokes undo; three-finger tap invokes redo.
+- Finger behavior comes from local `GestureSettings`. Defaults are one-finger drag to navigate, one-finger hold to pick color, two-finger tap to undo, and three-finger tap to redo.
+- One-finger drag can instead smudge the selected paint layer. Smudge snapshots only affected tiles and groups the whole finger gesture into one undo transaction.
+- Two or more fingers continue to pan, zoom, and rotate the camera simultaneously; rotation can be locked.
 - Mouse data has a domain representation but mouse painting is not enabled in this Android milestone.
 
 Stylus has priority. Once a stylus stroke is active, touch cannot navigate or corrupt it. `ACTION_CANCEL` cancels wet ink and drops pending samples. `requestUnbufferedDispatch` and Jetpack motion prediction are used for lower latency.
 
 The camera matrix transforms screen events to document coordinates once at input. Navigation changes the view matrix only and never resamples document pixels.
+
+Color picking samples the current back-to-front layer composite at the held document coordinate and updates the active brush color. A stylus always retains priority and always draws regardless of finger mappings.
 
 ## Brush controls
 

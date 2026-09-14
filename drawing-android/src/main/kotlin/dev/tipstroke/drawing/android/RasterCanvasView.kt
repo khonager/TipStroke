@@ -5,7 +5,7 @@ import android.graphics.*
 import android.view.View
 import dev.tipstroke.core.geometry.CanvasTransform
 
-internal class RasterCanvasView(context: Context, val layerStack: LayerStack) : View(context) {
+internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : View(context) {
     val transformMatrix = Matrix()
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val canvasPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
@@ -39,7 +39,7 @@ internal class RasterCanvasView(context: Context, val layerStack: LayerStack) : 
 
     fun viewToDocumentMatrix() = Matrix().also { transformMatrix.invert(it) }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { if (oldw == 0 || oldh == 0) fitCanvas() }
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { if (w > 0 && h > 0 && (w != oldw || h != oldh)) fitCanvas() }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)

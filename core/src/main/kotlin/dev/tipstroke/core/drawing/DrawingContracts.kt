@@ -45,4 +45,5 @@ class UndoHistory(private val memoryBudgetBytes: Long) {
     fun redo(): Boolean = redo.removeLastOrNull()?.let { it.redo(); undo.addLast(it); true } ?: false
     fun canUndo() = undo.isNotEmpty()
     fun canRedo() = redo.isNotEmpty()
+    fun clear() { undo.clear(); redo.clear(); estimatedBytes = 0 }
 }

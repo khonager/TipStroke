@@ -1,6 +1,8 @@
 package dev.tipstroke.app
 
+import android.app.Activity
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
@@ -24,10 +26,22 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.tipstroke.core.model.*
 import dev.tipstroke.drawing.android.*
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 @Composable
-fun CanvasScreen(initialLayersOpen: Boolean = false) {
+fun CanvasScreen(
+    initialLayersOpen: Boolean = false,
+    documentId: String? = null,
+    documentName: String = "Untitled drawing",
+    canvasWidthPx: Int = 2048,
+    canvasHeightPx: Int = 2048,
+    loadExisting: Boolean = false,
+    library: DrawingLibrary? = null,
+    gestureSettings: GestureSettings = GestureSettings(),
+    onBackToGallery: (() -> Unit)? = null,
+    onSaveActionChanged: (((() -> Unit)?) -> Unit)? = null,
+) {
     val context = LocalContext.current
     var surface by remember { mutableStateOf<DrawingSurface?>(null) }
     var brush by remember { mutableStateOf(BrushPreset.Ink) }
@@ -42,20 +56,73 @@ fun CanvasScreen(initialLayersOpen: Boolean = false) {
     var layers by remember { mutableStateOf<List<LayerSummary>>(emptyList()) }
     var selectedLayerId by remember { mutableStateOf<LayerId?>(null) }
     var layersOpen by remember { mutableStateOf(initialLayersOpen) }
-    var importError by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var ready by remember { mutableStateOf(library == null) }
+    var saving by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
+    var exportOpen by remember { mutableStateOf(false) }
+    var pendingExport by remember { mutableStateOf<ExportRequest?>(null) }
 
     val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            surface?.addImage(uri)?.onFailure { importError = it.message ?: "This image could not be opened." }
+            surface?.addImage(uri)?.onFailure { message = it.message ?: "This image could not be opened." }
             layersOpen = true
         }
     }
 
-    fun sync() { surface?.settings?.apply { this.brush = brush; sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.debug = debug } }
-    LaunchedEffect(brush, erasing, size, opacity, color, debug, surface) { sync() }
+    val exportDestination = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val request = pendingExport
+        val uri = result.data?.data
+        if (result.resultCode == Activity.RESULT_OK && request != null && uri != null) {
+            exporting = true
+            surface?.exportDrawing(uri, request.format, request.quality, request.scale, request.transparent) { outcome ->
+                exporting = false
+                message = outcome.fold({ "Export saved." }, { it.message ?: "Export failed." })
+            }
+        }
+        pendingExport = null
+    }
+
+    fun sync() { surface?.settings?.apply { this.brush = brush; sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.debug = debug; gestures = gestureSettings } }
+    LaunchedEffect(brush, erasing, size, opacity, color, debug, gestureSettings, surface) { sync() }
+    LaunchedEffect(surface, ready, library, documentId) {
+        while (surface != null && ready && library != null && documentId != null) {
+            delay(30_000)
+            if (!saving) {
+                saving = true
+                surface?.saveProject(library, documentId, documentName) { saving = false }
+            }
+        }
+    }
+    val leaveEditor: () -> Unit = {
+        val destination = onBackToGallery
+        if (destination != null && !saving) {
+            if (library != null && documentId != null && ready) {
+                saving = true
+                surface?.saveProject(library, documentId, documentName) { result ->
+                    saving = false
+                    if (result.isSuccess) destination() else message = result.exceptionOrNull()?.message ?: "Save failed."
+                }
+            } else destination()
+        }
+    }
+    val saveWithoutLeaving: () -> Unit = {
+        if (!saving && ready && surface != null && library != null && documentId != null) {
+            saving = true
+            surface?.saveProject(library, documentId, documentName) { result ->
+                saving = false
+                result.exceptionOrNull()?.let { message = it.message ?: "Autosave failed." }
+            }
+        }
+    }
+    SideEffect { onSaveActionChanged?.invoke(saveWithoutLeaving) }
+    DisposableEffect(onSaveActionChanged) {
+        onDispose { onSaveActionChanged?.invoke(null) }
+    }
+    BackHandler(enabled = onBackToGallery != null, onBack = leaveEditor)
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val portrait = maxHeight > maxWidth
@@ -66,7 +133,16 @@ fun CanvasScreen(initialLayersOpen: Boolean = false) {
                 view.diagnosticsListener = { diagnostics = it }
                 view.historyListener = { undo, redo -> canUndo = undo; canRedo = redo }
                 view.layersListener = { updated, selected -> layers = updated; selectedLayerId = selected }
-                view.publishLayers()
+                view.colorPickedListener = { picked -> color = picked }
+                if (library != null && documentId != null) {
+                    if (loadExisting) view.loadProject(library, documentId) { outcome ->
+                        ready = outcome.isSuccess
+                        outcome.exceptionOrNull()?.let { message = it.message ?: "Drawing could not be opened." }
+                    } else {
+                        view.configureBlank(canvasWidthPx, canvasHeightPx)
+                        ready = true
+                    }
+                } else view.publishLayers()
             } },
         )
 
@@ -75,6 +151,8 @@ fun CanvasScreen(initialLayersOpen: Boolean = false) {
             onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
             onReset = { surface?.resetView() }, onDebug = { debug = !debug },
             layersOpen = layersOpen, onLayers = { layersOpen = !layersOpen },
+            onBack = if (onBackToGallery != null) leaveEditor else null,
+            onExport = { if (ready) exportOpen = true },
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
         )
 
@@ -106,7 +184,7 @@ fun CanvasScreen(initialLayersOpen: Boolean = false) {
                 onFitImage = { surface?.fitSelectedImage() },
                 onOriginalImageSize = { surface?.originalSizeSelectedImage() },
                 onAddPaint = { surface?.addPaintLayer() },
-                onImportImage = { importError = null; importImage.launch(arrayOf("image/*")) },
+                onImportImage = { message = null; importImage.launch(arrayOf("image/*")) },
                 onMoveForward = { surface?.moveSelectedLayer(true) },
                 onMoveBackward = { surface?.moveSelectedLayer(false) },
                 onDelete = { surface?.deleteSelectedLayer() },
@@ -115,11 +193,20 @@ fun CanvasScreen(initialLayersOpen: Boolean = false) {
             )
         }
 
-        importError?.let { message ->
+        message?.let { visibleMessage ->
             Snackbar(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
-                action = { TextButton(onClick = { importError = null }) { Text("Dismiss") } },
-            ) { Text(message) }
+                action = { TextButton(onClick = { message = null }) { Text("Dismiss") } },
+            ) { Text(visibleMessage) }
+        }
+
+        if (!ready || saving || exporting) {
+            Surface(Modifier.align(Alignment.TopCenter).padding(top = 66.dp), color = Color(0xE6202125), shape = RoundedCornerShape(12.dp)) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(if (!ready) "Opening drawing…" else if (exporting) "Exporting…" else "Saving…", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 9.dp))
+                }
+            }
         }
 
         Text("${(diagnostics.zoom * 100).roundToInt()}%", color = Color(0xFFD8D9DC), fontSize = 12.sp,
@@ -127,11 +214,25 @@ fun CanvasScreen(initialLayersOpen: Boolean = false) {
 
         if (debug) DebugOverlay(diagnostics, Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 22.dp, bottom = if (portrait) 116.dp else 16.dp))
     }
+
+    if (exportOpen) ExportDrawingDialog(documentName, canvasWidthPx, canvasHeightPx, onDismiss = { exportOpen = false }) { request ->
+        exportOpen = false
+        pendingExport = request
+        exportDestination.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = request.format.mimeType
+            putExtra(Intent.EXTRA_TITLE, request.fileName)
+        })
+    }
 }
 
-@Composable private fun TopBar(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onLayers: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun TopBar(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onLayers: () -> Unit, onBack: (() -> Unit)?, onExport: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().height(54.dp).background(Color(0xE617181B)).border(0.5.dp, Color(0xFF34363A)), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.padding(start = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (onBack != null) {
+                IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Back to gallery" }) { BackIcon() }
+                Spacer(Modifier.width(4.dp))
+            }
             Text("Tip", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF4F4F2))
             Text("Stroke", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFED6A5A))
         }
@@ -140,6 +241,7 @@ fun CanvasScreen(initialLayersOpen: Boolean = false) {
         IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
         TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Fit", fontSize = 13.sp) }
         IconButton(onClick = onLayers, modifier = Modifier.semantics { contentDescription = "Layers" }) { LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White) }
+        TextButton(onClick = onExport) { Text("Export", fontSize = 13.sp) }
         Switch(checked = debug, onCheckedChange = { onDebug() }, modifier = Modifier.scale(.72f).semantics { contentDescription = "Debug overlay" })
         Spacer(Modifier.width(18.dp))
     }
@@ -181,5 +283,6 @@ private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER }
 @Composable private fun RedoIcon() = ArcArrow(true)
 @Composable private fun ArcArrow(mirror: Boolean) { Canvas(Modifier.size(23.dp).graphicsLayer { scaleX = if (mirror) -1f else 1f }) { val path = Path().apply { moveTo(size.width*.85f,size.height*.72f); cubicTo(size.width*.85f,size.height*.3f,size.width*.45f,size.height*.22f,size.width*.24f,size.height*.42f); moveTo(size.width*.24f,size.height*.42f); lineTo(size.width*.28f,size.height*.17f); moveTo(size.width*.24f,size.height*.42f); lineTo(size.width*.48f,size.height*.43f) }; drawPath(path, Color.White, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)) } }
 @Composable private fun LayersIcon(color: Color) { Canvas(Modifier.size(23.dp)) { val stroke = Stroke(1.7.dp.toPx(), join = StrokeJoin.Round); val radius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()); drawRoundRect(color, Offset(2.dp.toPx(), 3.dp.toPx()), androidx.compose.ui.geometry.Size(17.dp.toPx(), 14.dp.toPx()), radius, style = stroke); drawRoundRect(color.copy(alpha = .7f), Offset(5.dp.toPx(), 7.dp.toPx()), androidx.compose.ui.geometry.Size(17.dp.toPx(), 14.dp.toPx()), radius, style = stroke) } }
+@Composable private fun BackIcon() { Canvas(Modifier.size(22.dp)) { val width = 2.dp.toPx(); drawLine(Color.White, Offset(size.width * .78f, size.height * .5f), Offset(size.width * .22f, size.height * .5f), width, StrokeCap.Round); drawLine(Color.White, Offset(size.width * .22f, size.height * .5f), Offset(size.width * .46f, size.height * .24f), width, StrokeCap.Round); drawLine(Color.White, Offset(size.width * .22f, size.height * .5f), Offset(size.width * .46f, size.height * .76f), width, StrokeCap.Round) } }
 
 @Composable private fun DebugOverlay(d: CanvasDiagnostics, modifier: Modifier = Modifier) { Text("${d.fps.roundToInt()} fps  •  ${d.tool.lowercase()}  •  p ${"%.2f".format(d.pressure)}  •  tilt ${"%.2f".format(d.tiltRadians)}\n${d.sampleRateHz.roundToInt()} Hz  •  ${d.allocatedTiles} tiles  •  ${d.dirtyTiles} dirty  •  ${d.undoBytes / 1024} KiB undo", modifier.background(Color(0xE617181B), RoundedCornerShape(10.dp)).padding(10.dp), color = Color(0xFFD8D9DC), fontSize = 11.sp, lineHeight = 16.sp) }

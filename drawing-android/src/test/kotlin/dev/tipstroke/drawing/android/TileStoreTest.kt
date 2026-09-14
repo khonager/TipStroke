@@ -40,6 +40,18 @@ class TileStoreTest {
         assertEquals(0, Color.alpha(result.getPixel(100, 30)))
     }
 
+    @Test fun fingerSmudgeIsGroupedIntoOneUndoStep() {
+        val store = TileStore(512, 512)
+        store.commit(stroke(Point(80f, 80f), Point(120f, 80f), ink))
+        val historyBefore = store.history.estimatedBytes
+        store.beginSmudge()
+        store.smudge(100f, 80f, 150f, 80f, 28f, .8f)
+        store.smudge(150f, 80f, 190f, 90f, 28f, .8f)
+        store.finishSmudge()
+        assertTrue(store.history.estimatedBytes > historyBefore)
+        assertTrue(store.history.undo())
+    }
+
     private fun stroke(a: Point, b: Point, style: StrokeStyle) = CompletedStroke(
         listOf(sample(a, 0), sample(b, 1)), style
     )

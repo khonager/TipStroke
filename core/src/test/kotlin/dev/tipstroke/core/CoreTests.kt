@@ -45,4 +45,12 @@ class CoreTests {
         assertEquals(4032, resized.originalWidthPx)
         assertEquals("asset/original", resized.sourceId)
     }
+
+    @Test fun gestureSettingsHaveProfessionalDrawingDefaults() {
+        val settings = GestureSettings()
+        assertEquals(FingerAction.NAVIGATE, settings.oneFingerDrag)
+        assertEquals(FingerAction.PICK_COLOR, settings.oneFingerHold)
+        assertEquals(FingerAction.UNDO, settings.twoFingerTap)
+        assertEquals(FingerAction.REDO, settings.threeFingerTap)
+    }
 }

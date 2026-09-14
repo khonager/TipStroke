@@ -4,6 +4,16 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.activity.compose.setContent
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import dev.tipstroke.core.model.GestureSettings
+import dev.tipstroke.drawing.android.DrawingLibrary
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -18,13 +28,44 @@ import java.io.FileOutputStream
 @Config(sdk = [35], qualifiers = "w1280dp-h800dp-land-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CanvasScreenshotTest {
-    @Test fun renderLandscapeCanvasForVisualReview() = render(2560, 1600, "tipstroke-landscape.png")
+    @Test fun renderLandscapeCanvasForVisualReview() = render(2560, 1600, "tipstroke-landscape.png") { CanvasScreen(initialLayersOpen = true) }
 
-    @Test fun renderPortraitCanvasForVisualReview() = render(1600, 2560, "tipstroke-portrait.png")
+    @Test fun renderPortraitCanvasForVisualReview() = render(1600, 2560, "tipstroke-portrait.png") { CanvasScreen() }
 
-    private fun render(width: Int, height: Int, fileName: String) {
-        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
-        activity.setContent { TipStrokeTheme { CanvasScreen(initialLayersOpen = true) } }
+    @Test fun renderGalleryForVisualReview() = render(2560, 1600, "tipstroke-gallery.png") { activity ->
+        GalleryScreen(DrawingLibrary(activity), {}, {}, {})
+    }
+
+    @Test fun renderGalleryPortraitForVisualReview() = render(1600, 2560, "tipstroke-gallery-portrait.png") { activity ->
+        GalleryScreen(DrawingLibrary(activity), {}, {}, {})
+    }
+
+    @Test fun renderGalleryPhoneForVisualReview() = render(800, 1280, "tipstroke-gallery-phone.png") { activity ->
+        GalleryScreen(DrawingLibrary(activity), {}, {}, {})
+    }
+
+    @Test fun renderSettingsForVisualReview() = render(2560, 1600, "tipstroke-settings.png") {
+        SettingsScreen(GestureSettings(), {}, {})
+    }
+
+    @Test fun renderSettingsPortraitForVisualReview() = render(1600, 2560, "tipstroke-settings-portrait.png") {
+        SettingsScreen(GestureSettings(), {}, {})
+    }
+
+    @Test fun renderSettingsPhoneForVisualReview() = render(800, 1280, "tipstroke-settings-phone.png") {
+        SettingsScreen(GestureSettings(), {}, {})
+    }
+
+    @Test fun renderExportForVisualReview() = render(2560, 1600, "tipstroke-export.png") {
+        Box(Modifier.fillMaxSize().background(Color(0xFF17181B)), contentAlignment = Alignment.Center) {
+            CanvasScreen()
+            ExportDrawingDialog("Ink details", 2048, 2048, embeddedForScreenshot = true, onDismiss = {}, onExport = {})
+        }
+    }
+
+    private fun render(width: Int, height: Int, fileName: String, content: @Composable (ComponentActivity) -> Unit) {
+        val activity = Robolectric.buildActivity(ScreenshotActivity::class.java).setup().get()
+        activity.setContent { TipStrokeTheme { content(activity) } }
         shadowOf(activity.mainLooper).idle()
         val root = activity.window.decorView
         root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
@@ -38,3 +79,5 @@ class CanvasScreenshotTest {
         check(output.length() > 10_000) { "Screenshot render was unexpectedly empty" }
     }
 }
+
+class ScreenshotActivity : ComponentActivity()

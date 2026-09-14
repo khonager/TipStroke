@@ -2,7 +2,7 @@
 
 An Android-first raster drawing experiment focused on excellent stylus feel and an architecture that can later add vector layers and animation without weakening the Android hot path.
 
-The current milestone opens directly into a 2048×2048 layered canvas. Stylus input draws on the selected paint layer; finger input never paints. Two fingers pan, zoom, and rotate. Two-finger tap undoes and three-finger tap redoes. Image layers retain their original source pixels while scale and opacity remain editable.
+The current milestone is a local drawing library with editable layered canvases. Stylus input draws on the selected paint layer; configurable finger gestures can navigate, smudge, pick color, undo, redo, or do nothing. Image layers retain their original source pixels while scale and opacity remain editable.
 
 ## Build
 
@@ -24,5 +24,13 @@ On NixOS, `nix develop` now provides the JDK without pulling the unfree Android 
 ## Layers and images
 
 Open **Layers** in the top bar. Add paint layers with **+ Paint** or use **+ Image** to choose any raster format Android can decode on the device. Layer order, visibility, and opacity are editable. Imported images use a persisted document URI as the authoritative original and store scale separately, so scaling down and back to 100% does not resample or discard the original pixels. The finite 2048×2048 canvas still clips and composites the displayed result at canvas coordinates.
+
+## Gallery, export, and gestures
+
+TipStroke starts in **Your drawings**. Create a named canvas up to 8192×8192, or reopen a local project with its paint tiles, image sources, transforms, layer ordering, and opacity intact. Projects autosave every 30 seconds, when the app backgrounds, and before returning to the gallery.
+
+Use **Export** in the editor to save PNG, JPEG, or WebP at canvas size, 50%, or 25%. PNG and WebP can preserve a transparent background; JPEG always composites onto white.
+
+Open **Settings** from the gallery to assign one-finger drag/hold and two-/three-finger taps. One-finger actions include canvas navigation, tile-local smudging, and color picking; tap actions include undo, redo, or disabled. Hold delay, smudge strength, and canvas rotation lock are configurable and stored locally.
 
 See [architecture](docs/ARCHITECTURE.md), [input behavior](docs/INPUT.md), and the [reference-device checklist](docs/TESTING.md).

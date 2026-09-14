@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.os.SystemClock
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.*
 import android.widget.FrameLayout
 import androidx.ink.authoring.InProgressStrokeId
@@ -23,7 +25,9 @@ import kotlin.math.*
 class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.util.AttributeSet? = null) : FrameLayout(context, attrs) {
     val settings = CanvasSettings()
     private lateinit var rasterView: RasterCanvasView
-    private val layerStack: LayerStack = LayerStack(context.contentResolver, 2048, 2048) {
+    private var layerStack: LayerStack = createLayerStack(2048, 2048)
+
+    private fun createLayerStack(width: Int, height: Int): LayerStack = LayerStack(context.contentResolver, width, height) {
         if (::rasterView.isInitialized) rasterView.invalidate()
         notifyLayers()
     }
@@ -41,6 +45,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var lastGestureAngle = 0f
     private var gestureMoved = false
     private var gestureDownAt = 0L
+    private val gestureHandler = Handler(Looper.getMainLooper())
+    private var holdRunnable: Runnable? = null
+    private var holdTriggered = false
+    private var singleStart = android.graphics.PointF()
+    private var singleLast = android.graphics.PointF()
+    private var singleLastDocument = android.graphics.PointF()
+    private var smudgeTarget: RasterLayerRuntime? = null
     private var lastSampleAt = 0L
     private var frameCount = 0
     private var fpsWindowAt = SystemClock.elapsedRealtimeNanos()
@@ -48,6 +59,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var diagnosticsListener: ((CanvasDiagnostics) -> Unit)? = null
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId) -> Unit)? = null
+    var colorPickedListener: ((RgbaColor) -> Unit)? = null
 
     init {
         setWillNotDraw(false); setBackgroundColor(Color.rgb(23, 24, 27)); isMotionEventSplittingEnabled = false
@@ -94,6 +106,48 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun moveSelectedLayer(towardFront: Boolean) { layerStack.moveSelected(towardFront); notifyLayers() }
     fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { notifyLayers(); notifyHistory() } }
     fun publishLayers() { notifyLayers(); notifyHistory() }
+    fun configureBlank(widthPx: Int, heightPx: Int) {
+        require(widthPx in 64..8192 && heightPx in 64..8192)
+        layerStack = createLayerStack(widthPx, heightPx)
+        rasterView.layerStack = layerStack
+        rasterView.fitCanvas()
+        publishLayers()
+    }
+
+    fun loadProject(library: DrawingLibrary, id: String, onComplete: (Result<Unit>) -> Unit) {
+        ProjectPersistence.executor.execute {
+            val loaded = ProjectPersistence.load(library.projectDirectory(id))
+            ProjectPersistence.mainHandler.post {
+                val result = loaded.map { project ->
+                    val replacement = createLayerStack(project.widthPx, project.heightPx)
+                    layerStack = replacement
+                    rasterView.layerStack = replacement
+                    replacement.replaceWith(project)
+                    rasterView.fitCanvas()
+                    publishLayers()
+                }
+                onComplete(result)
+            }
+        }
+    }
+
+    fun saveProject(library: DrawingLibrary, id: String, name: String, onComplete: (Result<DrawingSummary>) -> Unit = {}) {
+        val snapshot = layerStack.snapshot()
+        ProjectPersistence.executor.execute {
+            val result = try { ProjectPersistence.save(context.contentResolver, library, id, name, snapshot) }
+            finally { snapshot.recycle() }
+            ProjectPersistence.mainHandler.post { onComplete(result) }
+        }
+    }
+
+    fun exportDrawing(uri: android.net.Uri, format: ExportFormat, quality: Int, scale: Float, transparent: Boolean, onComplete: (Result<Unit>) -> Unit) {
+        val snapshot = layerStack.snapshot()
+        ProjectPersistence.executor.execute {
+            val result = try { ProjectPersistence.export(context.contentResolver, uri, snapshot, format, quality, scale, transparent) }
+            finally { snapshot.recycle() }
+            ProjectPersistence.mainHandler.post { onComplete(result) }
+        }
+    }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         predictor?.record(event)
@@ -148,20 +202,95 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun handleTouchGesture(event: MotionEvent): Boolean {
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+            MotionEvent.ACTION_DOWN -> {
+                gestureDownAt = SystemClock.uptimeMillis()
+                gestureMoved = false
+                holdTriggered = false
+                singleStart = android.graphics.PointF(event.x, event.y)
+                singleLast = android.graphics.PointF(event.x, event.y)
+                singleLastDocument = rasterView.screenToDocument(event.x, event.y)
+                if (settings.gestures.oneFingerDrag == FingerAction.SMUDGE) {
+                    smudgeTarget = layerStack.selectedRaster()?.also { it.tiles.beginSmudge() }
+                }
+                scheduleHold(singleLastDocument)
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                cancelHold()
+                smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null
                 if (event.pointerCount >= 2) beginGesture(event)
             }
-            MotionEvent.ACTION_MOVE -> if (event.pointerCount >= 2) updateGesture(event)
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount >= 2) {
+                updateGesture(event)
+            } else {
+                val distance = hypot(event.x - singleStart.x, event.y - singleStart.y)
+                if (distance > ViewConfiguration.get(context).scaledTouchSlop) { gestureMoved = true; cancelHold() }
+                val document = rasterView.screenToDocument(event.x, event.y)
+                when (settings.gestures.oneFingerDrag) {
+                    FingerAction.NAVIGATE -> if (gestureMoved) {
+                        val old = rasterView.transform
+                        rasterView.updateTransform(old.panX + event.x - singleLast.x, old.panY + event.y - singleLast.y, old.scale, old.rotationDegrees)
+                    }
+                    FingerAction.SMUDGE -> if (gestureMoved) {
+                        smudgeTarget?.tiles?.smudge(
+                            singleLastDocument.x, singleLastDocument.y, document.x, document.y,
+                            settings.sizePx * .7f, settings.gestures.smudgeStrength,
+                        )
+                        rasterView.invalidate()
+                    }
+                    FingerAction.PICK_COLOR -> if (gestureMoved) pickColor(document)
+                    else -> Unit
+                }
+                singleLast = android.graphics.PointF(event.x, event.y)
+                singleLastDocument = document
+            }
             MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP -> {
-                if (gestureStart.size >= 2 && !gestureMoved && SystemClock.uptimeMillis() - gestureDownAt < 260) {
-                    if (gestureStart.size >= 3) redo() else undo()
+                cancelHold()
+                smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null
+                if (gestureStart.size >= 2 && !gestureMoved && SystemClock.uptimeMillis() - gestureDownAt < 300) {
+                    performFingerAction(if (gestureStart.size >= 3) settings.gestures.threeFingerTap else settings.gestures.twoFingerTap, null)
+                } else if (event.actionMasked == MotionEvent.ACTION_UP && gestureMoved && !holdTriggered) {
+                    when (settings.gestures.oneFingerDrag) {
+                        FingerAction.UNDO, FingerAction.REDO -> performFingerAction(settings.gestures.oneFingerDrag, singleLastDocument)
+                        else -> Unit
+                    }
                 }
                 // Consume the tap once; subsequent pointer-up events belong to the same gesture.
                 gestureStart = emptyMap()
+                notifyHistory()
             }
-            MotionEvent.ACTION_CANCEL -> gestureStart = emptyMap()
+            MotionEvent.ACTION_CANCEL -> {
+                cancelHold(); smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null; gestureStart = emptyMap()
+            }
         }
         return true
+    }
+
+    private fun scheduleHold(documentPoint: android.graphics.PointF) {
+        val action = settings.gestures.oneFingerHold
+        if (action == FingerAction.DISABLED) return
+        holdRunnable = Runnable {
+            if (!gestureMoved) {
+                holdTriggered = true
+                performFingerAction(action, documentPoint)
+            }
+        }.also { gestureHandler.postDelayed(it, settings.gestures.holdDelayMillis) }
+    }
+
+    private fun cancelHold() { holdRunnable?.let(gestureHandler::removeCallbacks); holdRunnable = null }
+
+    private fun performFingerAction(action: FingerAction, point: android.graphics.PointF?) {
+        when (action) {
+            FingerAction.UNDO -> undo()
+            FingerAction.REDO -> redo()
+            FingerAction.PICK_COLOR -> point?.let(::pickColor)
+            else -> Unit
+        }
+    }
+
+    private fun pickColor(point: android.graphics.PointF) {
+        val picked = layerStack.colorAt(point.x, point.y)
+        settings.color = picked
+        colorPickedListener?.invoke(picked)
     }
 
     private fun beginGesture(event: MotionEvent) {
@@ -174,7 +303,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val center = centroid(event); val newSpan = span(event); val newAngle = angle(event)
         val dx = center.x - lastGestureCentroid.x; val dy = center.y - lastGestureCentroid.y
         val scaleFactor = if (lastGestureSpan > 0f) newSpan / lastGestureSpan else 1f
-        val angleDelta = normalizedAngle(newAngle - lastGestureAngle)
+        val angleDelta = if (settings.gestures.rotationLocked) 0f else normalizedAngle(newAngle - lastGestureAngle)
         val old = rasterView.transform
         rasterView.updateTransform(old.panX + dx, old.panY + dy, (old.scale * scaleFactor).coerceIn(.08f, 12f), old.rotationDegrees + Math.toDegrees(angleDelta.toDouble()).toFloat())
         liveView.motionEventToViewTransform = Matrix()

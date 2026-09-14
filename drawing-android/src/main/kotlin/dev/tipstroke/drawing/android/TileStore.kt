@@ -20,6 +20,8 @@ class TileStore(
     val history = UndoHistory(historyBudgetBytes)
     var lastDirtyTiles: Set<TileCoordinate> = emptySet(); private set
     val allocatedTileCount get() = tiles.size
+    private var smudgeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
+    private val smudgeTouched = mutableSetOf<TileCoordinate>()
 
     override fun commit(stroke: CompletedStroke): Set<TileCoordinate> {
         val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
@@ -60,6 +62,76 @@ class TileStore(
         tiles.forEach { (coordinate, bitmap) ->
             canvas.drawBitmap(bitmap, (coordinate.x * tileSize).toFloat(), (coordinate.y * tileSize).toFloat(), paint)
         }
+    }
+
+    internal fun snapshotTiles(): Map<TileCoordinate, Bitmap> =
+        tiles.mapValues { (_, bitmap) -> bitmap.copy(Bitmap.Config.ARGB_8888, false) }
+
+    internal fun replaceTiles(replacement: Map<TileCoordinate, Bitmap>) {
+        tiles.values.forEach(Bitmap::recycle)
+        tiles.clear()
+        tiles.putAll(replacement)
+        lastDirtyTiles = replacement.keys
+        history.clear()
+    }
+
+    internal fun colorAt(x: Int, y: Int): Int {
+        if (x !in 0 until canvasWidth || y !in 0 until canvasHeight) return Color.TRANSPARENT
+        val coordinate = TileCoordinate(x / tileSize, y / tileSize)
+        return tiles[coordinate]?.getPixel(x % tileSize, y % tileSize) ?: Color.TRANSPARENT
+    }
+
+    internal fun beginSmudge() {
+        smudgeBefore = mutableMapOf()
+        smudgeTouched.clear()
+    }
+
+    internal fun smudge(fromX: Float, fromY: Float, toX: Float, toY: Float, radius: Float, strength: Float) {
+        val before = smudgeBefore ?: return
+        val safeRadius = radius.coerceIn(4f, 96f)
+        val diameter = (safeRadius * 2f).roundToInt().coerceAtLeast(2)
+        val patch = Bitmap.createBitmap(diameter, diameter, Bitmap.Config.ARGB_8888)
+        val patchCanvas = Canvas(patch)
+        val sourceLeft = fromX - safeRadius
+        val sourceTop = fromY - safeRadius
+        TileGrid.intersecting(
+            dev.tipstroke.core.geometry.Rect(sourceLeft, sourceTop, sourceLeft + diameter, sourceTop + diameter),
+            canvasWidth, canvasHeight, tileSize,
+        ).forEach { coordinate ->
+            tiles[coordinate]?.let { bitmap ->
+                patchCanvas.drawBitmap(bitmap, coordinate.x * tileSize - sourceLeft, coordinate.y * tileSize - sourceTop, null)
+            }
+        }
+        val destination = dev.tipstroke.core.geometry.Rect(toX - safeRadius, toY - safeRadius, toX + safeRadius, toY + safeRadius)
+        val dirty = TileGrid.intersecting(destination, canvasWidth, canvasHeight, tileSize)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { alpha = (strength.coerceIn(.05f, 1f) * 255).roundToInt() }
+        dirty.forEach { coordinate ->
+            if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
+            val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val tileCanvas = Canvas(bitmap)
+            val localX = toX - coordinate.x * tileSize
+            val localY = toY - coordinate.y * tileSize
+            tileCanvas.save()
+            tileCanvas.clipPath(Path().apply { addCircle(localX, localY, safeRadius, Path.Direction.CW) })
+            tileCanvas.drawBitmap(patch, localX - safeRadius, localY - safeRadius, paint)
+            tileCanvas.restore()
+        }
+        patch.recycle()
+        smudgeTouched += dirty
+        lastDirtyTiles = dirty
+    }
+
+    internal fun finishSmudge() {
+        val before = smudgeBefore ?: return
+        smudgeBefore = null
+        if (smudgeTouched.isEmpty()) return
+        smudgeTouched.forEach { coordinate ->
+            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) } }
+        }
+        val after = smudgeTouched.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        history.push(TileSnapshotTransaction(this, before, after))
+        lastDirtyTiles = smudgeTouched.toSet()
+        smudgeTouched.clear()
     }
 
     private fun drawStroke(canvas: Canvas, coordinate: TileCoordinate, stroke: CompletedStroke) {

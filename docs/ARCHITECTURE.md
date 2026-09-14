@@ -8,6 +8,8 @@
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
+The app shell owns three destinations: local gallery, editor, and settings. `DrawingLibrary` and `ProjectPersistence` live in `:drawing-android` because decoding/encoding tiles and imported assets requires Android bitmap/content-resolver types. Gesture choices remain platform-neutral values in `:core` and are persisted by the app with local preferences.
+
 ## Stroke pipeline
 
 ```text
@@ -43,4 +45,4 @@ Image decoding runs on a dedicated background executor. Dimension probing occurs
 
 ## Threading
 
-The native input/wet-ink path runs directly on the UI thread. Current tile commit also runs there for deterministic handoff; the next renderer milestone should prepare tile work off-thread while presenting the commit atomically. Disk serialization must never run on the input thread.
+The native input/wet-ink path runs directly on the UI thread. Current tile commit also runs there for deterministic handoff. Save/export briefly snapshots immutable copies of allocated tiles on the UI thread, then all JSON, image copying, PNG encoding, compositing, and destination I/O runs on a single background project executor. Atomic directory replacement ensures the prior complete revision survives a failed save.

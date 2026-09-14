@@ -11,6 +11,9 @@ import dev.tipstroke.core.model.*
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 internal sealed class CanvasLayerRuntime {
     abstract val id: LayerId
@@ -144,9 +147,84 @@ internal class LayerStack(
         return true
     }
 
+    fun snapshot(): DrawingSnapshot = DrawingSnapshot(
+        canvasWidth, canvasHeight, selectedId,
+        layers.map { layer ->
+            when (layer) {
+                is RasterLayerRuntime -> SavedRasterSnapshot(layer.id, layer.name, layer.visible, layer.opacity, layer.tiles.snapshotTiles())
+                is ImageLayerRuntime -> SavedImageSnapshot(
+                    layer.id, layer.name, layer.visible, layer.opacity, layer.source.uri,
+                    layer.source.width, layer.source.height, layer.transform,
+                )
+            }
+        },
+    )
+
+    fun replaceWith(loaded: LoadedProject) {
+        layers.filterIsInstance<ImageLayerRuntime>().forEach { it.source.close() }
+        layers.clear()
+        loaded.layers.forEach { layer ->
+            layers += when (layer) {
+                is LoadedRaster -> RasterLayerRuntime(
+                    layer.id, layer.name, layer.visible, layer.opacity,
+                    TileStore(loaded.widthPx, loaded.heightPx).apply { replaceTiles(layer.tiles) },
+                )
+                is LoadedImage -> ImageLayerRuntime(
+                    layer.id, layer.name, layer.visible, layer.opacity,
+                    OriginalImageSource(resolver, Uri.fromFile(layer.assetFile), invalidate), layer.transform,
+                )
+            }
+        }
+        selectedId = loaded.selectedId
+        invalidate()
+    }
+
+    fun colorAt(x: Float, y: Float): RgbaColor {
+        var result = android.graphics.Color.WHITE
+        layers.forEach { layer ->
+            if (!layer.visible || layer.opacity <= 0f) return@forEach
+            val source = when (layer) {
+                is RasterLayerRuntime -> layer.tiles.colorAt(x.roundToInt(), y.roundToInt())
+                is ImageLayerRuntime -> {
+                    val bitmap = layer.source.bitmapOrRequest() ?: return@forEach
+                    val radians = Math.toRadians((-layer.transform.rotationDegrees).toDouble())
+                    val dx = x - layer.transform.centerX
+                    val dy = y - layer.transform.centerY
+                    val unrotatedX = (dx * cos(radians) - dy * sin(radians)).toFloat()
+                    val unrotatedY = (dx * sin(radians) + dy * cos(radians)).toFloat()
+                    val imageX = (unrotatedX / layer.transform.scale + layer.source.width / 2f).toInt()
+                    val imageY = (unrotatedY / layer.transform.scale + layer.source.height / 2f).toInt()
+                    if (imageX in 0 until bitmap.width && imageY in 0 until bitmap.height) bitmap.getPixel(imageX, imageY) else android.graphics.Color.TRANSPARENT
+                }
+            }
+            result = sourceOver(source, result, layer.opacity)
+        }
+        return RgbaColor(
+            android.graphics.Color.red(result) / 255f,
+            android.graphics.Color.green(result) / 255f,
+            android.graphics.Color.blue(result) / 255f,
+            android.graphics.Color.alpha(result) / 255f,
+        )
+    }
+
     private fun indexAboveSelected() = (layers.indexOfFirst { it.id == selectedId } + 1).coerceAtMost(layers.size)
     private fun newRaster(name: String) = RasterLayerRuntime(newId(), name, tiles = TileStore(canvasWidth, canvasHeight))
     private fun newId() = LayerId(UUID.randomUUID().toString())
+
+    private fun sourceOver(source: Int, destination: Int, layerOpacity: Float): Int {
+        val sourceAlpha = android.graphics.Color.alpha(source) / 255f * layerOpacity
+        if (sourceAlpha <= 0f) return destination
+        val destinationAlpha = android.graphics.Color.alpha(destination) / 255f
+        val outAlpha = sourceAlpha + destinationAlpha * (1f - sourceAlpha)
+        fun channel(sourceChannel: Int, destinationChannel: Int): Int =
+            ((sourceChannel * sourceAlpha + destinationChannel * destinationAlpha * (1f - sourceAlpha)) / outAlpha).roundToInt().coerceIn(0, 255)
+        return android.graphics.Color.argb(
+            (outAlpha * 255).roundToInt(),
+            channel(android.graphics.Color.red(source), android.graphics.Color.red(destination)),
+            channel(android.graphics.Color.green(source), android.graphics.Color.green(destination)),
+            channel(android.graphics.Color.blue(source), android.graphics.Color.blue(destination)),
+        )
+    }
 }
 
 /** Keeps the original URI as authority and treats decoded bitmaps as disposable render caches. */
