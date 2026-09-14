@@ -1,5 +1,8 @@
 package dev.tipstroke.app
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -13,7 +16,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -24,7 +27,8 @@ import dev.tipstroke.drawing.android.*
 import kotlin.math.roundToInt
 
 @Composable
-fun CanvasScreen() {
+fun CanvasScreen(initialLayersOpen: Boolean = false) {
+    val context = LocalContext.current
     var surface by remember { mutableStateOf<DrawingSurface?>(null) }
     var brush by remember { mutableStateOf(BrushPreset.Ink) }
     var erasing by remember { mutableStateOf(false) }
@@ -35,6 +39,20 @@ fun CanvasScreen() {
     var diagnostics by remember { mutableStateOf(CanvasDiagnostics()) }
     var canUndo by remember { mutableStateOf(false) }
     var canRedo by remember { mutableStateOf(false) }
+    var layers by remember { mutableStateOf<List<LayerSummary>>(emptyList()) }
+    var selectedLayerId by remember { mutableStateOf<LayerId?>(null) }
+    var layersOpen by remember { mutableStateOf(initialLayersOpen) }
+    var importError by remember { mutableStateOf<String?>(null) }
+
+    val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            surface?.addImage(uri)?.onFailure { importError = it.message ?: "This image could not be opened." }
+            layersOpen = true
+        }
+    }
 
     fun sync() { surface?.settings?.apply { this.brush = brush; sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.debug = debug } }
     LaunchedEffect(brush, erasing, size, opacity, color, debug, surface) { sync() }
@@ -47,6 +65,8 @@ fun CanvasScreen() {
                 surface = view
                 view.diagnosticsListener = { diagnostics = it }
                 view.historyListener = { undo, redo -> canUndo = undo; canRedo = redo }
+                view.layersListener = { updated, selected -> layers = updated; selectedLayerId = selected }
+                view.publishLayers()
             } },
         )
 
@@ -54,6 +74,7 @@ fun CanvasScreen() {
             canUndo = canUndo, canRedo = canRedo, debug = debug,
             onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
             onReset = { surface?.resetView() }, onDebug = { debug = !debug },
+            layersOpen = layersOpen, onLayers = { layersOpen = !layersOpen },
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
         )
 
@@ -66,13 +87,40 @@ fun CanvasScreen() {
             horizontal = portrait,
         )
 
-        Controls(
+        TipControls(
             size = size, opacity = opacity, color = color,
             onSize = { size = it }, onOpacity = { opacity = it }, onColor = { color = it },
             horizontal = portrait,
             modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
                 .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
         )
+
+        if (layersOpen) {
+            LayersPanel(
+                layers = layers,
+                selectedId = selectedLayerId,
+                onSelect = { surface?.selectLayer(it) },
+                onToggleVisibility = { surface?.toggleLayerVisibility(it) },
+                onOpacity = { surface?.setSelectedLayerOpacity(it) },
+                onImageScale = { surface?.setSelectedImageScale(it) },
+                onFitImage = { surface?.fitSelectedImage() },
+                onOriginalImageSize = { surface?.originalSizeSelectedImage() },
+                onAddPaint = { surface?.addPaintLayer() },
+                onImportImage = { importError = null; importImage.launch(arrayOf("image/*")) },
+                onMoveForward = { surface?.moveSelectedLayer(true) },
+                onMoveBackward = { surface?.moveSelectedLayer(false) },
+                onDelete = { surface?.deleteSelectedLayer() },
+                modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
+                    .padding(top = 66.dp, bottom = if (portrait) 106.dp else 16.dp, end = if (portrait) 0.dp else 132.dp),
+            )
+        }
+
+        importError?.let { message ->
+            Snackbar(
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
+                action = { TextButton(onClick = { importError = null }) { Text("Dismiss") } },
+            ) { Text(message) }
+        }
 
         Text("${(diagnostics.zoom * 100).roundToInt()}%", color = Color(0xFFD8D9DC), fontSize = 12.sp,
             modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = if (portrait) 116.dp else 16.dp))
@@ -81,7 +129,7 @@ fun CanvasScreen() {
     }
 }
 
-@Composable private fun TopBar(canUndo: Boolean, canRedo: Boolean, debug: Boolean, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun TopBar(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onLayers: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().height(54.dp).background(Color(0xE617181B)).border(0.5.dp, Color(0xFF34363A)), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.padding(start = 24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Tip", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF4F4F2))
@@ -91,6 +139,7 @@ fun CanvasScreen() {
         IconAction("Undo", enabled = canUndo, onClick = onUndo) { UndoIcon() }
         IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
         TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Fit", fontSize = 13.sp) }
+        IconButton(onClick = onLayers, modifier = Modifier.semantics { contentDescription = "Layers" }) { LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White) }
         Switch(checked = debug, onCheckedChange = { onDebug() }, modifier = Modifier.scale(.72f).semantics { contentDescription = "Debug overlay" })
         Spacer(Modifier.width(18.dp))
     }
@@ -127,32 +176,10 @@ private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER }
     }
 }
 
-@Composable private fun Controls(size: Float, opacity: Float, color: RgbaColor, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (RgbaColor) -> Unit, horizontal: Boolean, modifier: Modifier = Modifier) {
-    var paletteOpen by remember { mutableStateOf(false) }
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(58.dp).clip(CircleShape).background(color.toCompose()).border(2.dp, Color.White, CircleShape).clickable { paletteOpen = !paletteOpen }.semantics { contentDescription = "Current color" })
-        if (paletteOpen) {
-            Spacer(Modifier.height(8.dp)); Row(Modifier.background(Color(0xED202125), RoundedCornerShape(18.dp)).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(RgbaColor(.05f,.05f,.06f), RgbaColor(.93f,.42f,.35f), RgbaColor(.2f,.45f,.9f), RgbaColor(.18f,.65f,.48f), RgbaColor(1f,1f,1f)).forEach { option -> Box(Modifier.size(30.dp).clip(CircleShape).background(option.toCompose()).border(if (option == color) 2.dp else 1.dp, Color.White, CircleShape).clickable { onColor(option); paletteOpen = false }) }
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        if (horizontal) Row(Modifier.width(220.dp).background(Color(0xED202125), RoundedCornerShape(18.dp)).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            LabeledSlider("Size", size, 2f..180f, onSize, Modifier.weight(1f)); LabeledSlider("Opacity", opacity, .05f..1f, onOpacity, Modifier.weight(1f))
-        } else Column(Modifier.width(88.dp).background(Color(0xED202125), RoundedCornerShape(22.dp)).padding(vertical = 14.dp, horizontal = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            VerticalSlider("Size", size, 2f..180f, onSize); Spacer(Modifier.height(18.dp)); VerticalSlider("Opacity", opacity, .05f..1f, onOpacity)
-        }
-    }
-}
-
-@Composable private fun LabeledSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValue: (Float) -> Unit, modifier: Modifier = Modifier) { Column(modifier) { Text(label, fontSize = 10.sp, color = Color(0xFFC3C5CA)); Slider(value, onValue, valueRange = range) } }
-@Composable private fun VerticalSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValue: (Float) -> Unit) { Text(label, fontSize = 11.sp, color = Color(0xFFE7E7E5)); Slider(value, onValue, valueRange = range, modifier = Modifier.height(170.dp).width(40.dp).graphicsLayer { rotationZ = -90f }) }
-
 @Composable private fun IconAction(label: String, enabled: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) { IconButton(onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { icon() } }
 @Composable private fun UndoIcon() = ArcArrow(false)
 @Composable private fun RedoIcon() = ArcArrow(true)
 @Composable private fun ArcArrow(mirror: Boolean) { Canvas(Modifier.size(23.dp).graphicsLayer { scaleX = if (mirror) -1f else 1f }) { val path = Path().apply { moveTo(size.width*.85f,size.height*.72f); cubicTo(size.width*.85f,size.height*.3f,size.width*.45f,size.height*.22f,size.width*.24f,size.height*.42f); moveTo(size.width*.24f,size.height*.42f); lineTo(size.width*.28f,size.height*.17f); moveTo(size.width*.24f,size.height*.42f); lineTo(size.width*.48f,size.height*.43f) }; drawPath(path, Color.White, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)) } }
+@Composable private fun LayersIcon(color: Color) { Canvas(Modifier.size(23.dp)) { val stroke = Stroke(1.7.dp.toPx(), join = StrokeJoin.Round); val radius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()); drawRoundRect(color, Offset(2.dp.toPx(), 3.dp.toPx()), androidx.compose.ui.geometry.Size(17.dp.toPx(), 14.dp.toPx()), radius, style = stroke); drawRoundRect(color.copy(alpha = .7f), Offset(5.dp.toPx(), 7.dp.toPx()), androidx.compose.ui.geometry.Size(17.dp.toPx(), 14.dp.toPx()), radius, style = stroke) } }
 
 @Composable private fun DebugOverlay(d: CanvasDiagnostics, modifier: Modifier = Modifier) { Text("${d.fps.roundToInt()} fps  •  ${d.tool.lowercase()}  •  p ${"%.2f".format(d.pressure)}  •  tilt ${"%.2f".format(d.tiltRadians)}\n${d.sampleRateHz.roundToInt()} Hz  •  ${d.allocatedTiles} tiles  •  ${d.dirtyTiles} dirty  •  ${d.undoBytes / 1024} KiB undo", modifier.background(Color(0xE617181B), RoundedCornerShape(10.dp)).padding(10.dp), color = Color(0xFFD8D9DC), fontSize = 11.sp, lineHeight = 16.sp) }
-
-private fun RgbaColor.toCompose() = Color(red, green, blue, alpha)

@@ -30,6 +30,45 @@ data class RasterLayer(
     override val opacity: Float = 1f,
 ) : Layer
 
+data class ImageTransform(
+    val centerX: Float,
+    val centerY: Float,
+    val scale: Float = 1f,
+    val rotationDegrees: Float = 0f,
+) {
+    init { require(scale > 0f) }
+}
+
+/**
+ * A non-destructive placed image. [sourceId] resolves to the original encoded asset in the
+ * project package; transforms never rewrite that source.
+ */
+data class ImageLayer(
+    override val id: LayerId,
+    override val name: String,
+    override val visible: Boolean = true,
+    override val opacity: Float = 1f,
+    val sourceId: String,
+    val originalWidthPx: Int,
+    val originalHeightPx: Int,
+    val transform: ImageTransform,
+) : Layer {
+    init { require(originalWidthPx > 0 && originalHeightPx > 0) }
+}
+
+enum class LayerKind { RASTER, IMAGE }
+
+data class LayerSummary(
+    val id: LayerId,
+    val name: String,
+    val kind: LayerKind,
+    val visible: Boolean,
+    val opacity: Float,
+    val originalWidthPx: Int? = null,
+    val originalHeightPx: Int? = null,
+    val imageScale: Float? = null,
+)
+
 data class Document(
     val id: DocumentId,
     val schemaVersion: Int,

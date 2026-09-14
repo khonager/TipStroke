@@ -12,6 +12,10 @@ Stylus has priority. Once a stylus stroke is active, touch cannot navigate or co
 
 The camera matrix transforms screen events to document coordinates once at input. Navigation changes the view matrix only and never resamples document pixels.
 
+## Brush controls
+
+Brush size and opacity use long drag tracks with persistent numeric readouts. Adjacent minus/plus buttons apply 1 px and 1 percentage-point adjustments for precise tuning without requiring pixel-perfect slider motion.
+
 ## Planned extension points
 
 The captured button state can later map stylus buttons to actions. Gesture routing can later add hold-to-eyedropper, swipe actions, quick menu, fullscreen toggle, and user mappings without adding work to the sample path.

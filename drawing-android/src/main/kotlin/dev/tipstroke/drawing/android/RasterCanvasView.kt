@@ -5,7 +5,7 @@ import android.graphics.*
 import android.view.View
 import dev.tipstroke.core.geometry.CanvasTransform
 
-internal class RasterCanvasView(context: Context, val tileStore: TileStore) : View(context) {
+internal class RasterCanvasView(context: Context, val layerStack: LayerStack) : View(context) {
     val transformMatrix = Matrix()
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val canvasPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
@@ -19,13 +19,13 @@ internal class RasterCanvasView(context: Context, val tileStore: TileStore) : Vi
 
     fun fitCanvas() {
         if (width == 0 || height == 0) return
-        val scale = minOf(width * .76f / tileStore.canvasWidth, height * .83f / tileStore.canvasHeight)
+        val scale = minOf(width * .76f / layerStack.canvasWidth, height * .83f / layerStack.canvasHeight)
         updateTransform(width / 2f, height / 2f, scale, 0f)
     }
 
     private fun rebuildMatrix() {
         transformMatrix.reset()
-        transformMatrix.postTranslate(-tileStore.canvasWidth / 2f, -tileStore.canvasHeight / 2f)
+        transformMatrix.postTranslate(-layerStack.canvasWidth / 2f, -layerStack.canvasHeight / 2f)
         transformMatrix.postScale(transform.scale, transform.scale)
         transformMatrix.postRotate(transform.rotationDegrees)
         transformMatrix.postTranslate(transform.panX, transform.panY)
@@ -44,9 +44,31 @@ internal class RasterCanvasView(context: Context, val tileStore: TileStore) : Vi
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.save(); canvas.concat(transformMatrix)
-        canvas.drawRect(0f, 0f, tileStore.canvasWidth.toFloat(), tileStore.canvasHeight.toFloat(), canvasPaint)
-        tileStore.draw(canvas, bitmapPaint)
-        canvas.drawRect(0f, 0f, tileStore.canvasWidth.toFloat(), tileStore.canvasHeight.toFloat(), borderPaint)
+        canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), canvasPaint)
+        canvas.clipRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
+        layerStack.layers.forEach { layer ->
+            if (!layer.visible || layer.opacity <= 0f) return@forEach
+            bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
+            when (layer) {
+                is RasterLayerRuntime -> layer.tiles.draw(canvas, bitmapPaint)
+                is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { bitmap ->
+                    val displayedWidth = layer.source.width * layer.transform.scale
+                    val displayedHeight = layer.source.height * layer.transform.scale
+                    canvas.save()
+                    canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
+                    val destination = RectF(
+                        layer.transform.centerX - displayedWidth / 2f,
+                        layer.transform.centerY - displayedHeight / 2f,
+                        layer.transform.centerX + displayedWidth / 2f,
+                        layer.transform.centerY + displayedHeight / 2f,
+                    )
+                    canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
+                    canvas.restore()
+                }
+            }
+        }
+        bitmapPaint.alpha = 255
+        canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), borderPaint)
         canvas.restore()
     }
 }

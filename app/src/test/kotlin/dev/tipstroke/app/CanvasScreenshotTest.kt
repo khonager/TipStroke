@@ -3,6 +3,7 @@ package dev.tipstroke.app
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
+import androidx.activity.compose.setContent
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -23,6 +24,7 @@ class CanvasScreenshotTest {
 
     private fun render(width: Int, height: Int, fileName: String) {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        activity.setContent { TipStrokeTheme { CanvasScreen(initialLayersOpen = true) } }
         shadowOf(activity.mainLooper).idle()
         val root = activity.window.decorView
         root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))

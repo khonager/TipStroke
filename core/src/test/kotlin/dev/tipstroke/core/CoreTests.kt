@@ -3,7 +3,7 @@ package dev.tipstroke.core
 import dev.tipstroke.core.drawing.UndoHistory
 import dev.tipstroke.core.drawing.UndoTransaction
 import dev.tipstroke.core.geometry.*
-import dev.tipstroke.core.model.PressureCurve
+import dev.tipstroke.core.model.*
 import kotlin.test.*
 
 class CoreTests {
@@ -33,5 +33,16 @@ class CoreTests {
         history.push(tx(0, 1)); history.push(tx(1, 2))
         assertTrue(history.undo()); assertEquals(1, value)
         assertFalse(history.undo()); assertTrue(history.redo()); assertEquals(2, value)
+    }
+
+    @Test fun imageLayerKeepsOriginalSourceSeparateFromTransform() {
+        val layer = ImageLayer(
+            id = LayerId("image-1"), name = "Reference.png", sourceId = "asset/original",
+            originalWidthPx = 4032, originalHeightPx = 3024,
+            transform = ImageTransform(1024f, 1024f, .25f),
+        )
+        val resized = layer.copy(transform = layer.transform.copy(scale = 1f))
+        assertEquals(4032, resized.originalWidthPx)
+        assertEquals("asset/original", resized.sourceId)
     }
 }

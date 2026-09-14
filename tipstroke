@@ -1,0 +1,36 @@
+#!/usr/bin/env sh
+set -eu
+
+cd "$(dirname "$0")"
+
+case "${1:-help}" in
+  build|apk)
+    ./gradlew assembleDebug
+    printf '\nAPK: app/build/outputs/apk/debug/app-debug.apk\n'
+    ;;
+  install)
+    ./gradlew installDebug
+    ;;
+  test)
+    ./gradlew test
+    ;;
+  check)
+    ./gradlew test lint assembleDebug
+    ;;
+  clean)
+    ./gradlew clean
+    ;;
+  help|--help|-h)
+    printf '%s\n' \
+      'TipStroke developer commands:' \
+      '  ./tipstroke build    Build a debug APK' \
+      '  ./tipstroke install  Build and install on a connected phone/emulator' \
+      '  ./tipstroke test     Run local tests' \
+      '  ./tipstroke check    Test, lint, and build' \
+      '  ./tipstroke clean    Remove generated build output'
+    ;;
+  *)
+    printf 'Unknown command: %s\n' "$1" >&2
+    exit 2
+    ;;
+esac

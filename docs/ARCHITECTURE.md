@@ -2,9 +2,9 @@
 
 ## Boundaries
 
-`:core` is platform-neutral Kotlin. It owns `Document`, `CanvasSpec`, the sealed `Layer` contract, the currently implemented `RasterLayer`, versioned `BrushPreset`, colors, transform/tile math, samples, renderer contracts, and bounded undo history. It contains no Android or Ink types.
+`:core` is platform-neutral Kotlin. It owns `Document`, `CanvasSpec`, the sealed `Layer` contract, `RasterLayer`, non-destructive `ImageLayer` metadata, versioned `BrushPreset`, colors, transform/tile math, samples, renderer contracts, and bounded undo history. It contains no Android or Ink types.
 
-`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, `InProgressStrokesView` renders wet ink, `RasterCanvasView` composites permanent tiles, and `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles.
+`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, `InProgressStrokesView` renders wet ink, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles.
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
@@ -30,6 +30,12 @@ MotionEvent
 ```
 
 The callback invalidates the raster view and removes Ink’s finished stroke in the same UI-thread run loop to avoid a gap or double-opacity frame. Ink `Stroke` objects are not stored as document truth.
+
+## Image layers
+
+An image layer keeps its persisted Android document URI and original pixel dimensions as authoritative source data. Center, scale, rotation, visibility, and opacity are separate metadata. Rendering decodes an immutable software bitmap cache from that original and draws directly into the finite canvas clip; changing scale never writes into the bitmap. Returning to 100% therefore returns to the original source resolution rather than enlarging an already-downsampled intermediate.
+
+Image decoding runs on a dedicated background executor. Dimension probing occurs once at import. The current milestone caches a full decoded bitmap per imported image, so very large or numerous images may still encounter device memory limits; tiled image pyramids are a future optimization and do not require a project-format change.
 
 ## Replaceable seams
 

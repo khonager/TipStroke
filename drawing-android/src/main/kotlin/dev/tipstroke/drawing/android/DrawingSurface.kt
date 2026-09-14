@@ -22,13 +22,18 @@ import kotlin.math.*
 
 class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.util.AttributeSet? = null) : FrameLayout(context, attrs) {
     val settings = CanvasSettings()
-    private val store = TileStore(2048, 2048)
-    private val rasterView = RasterCanvasView(context, store)
+    private lateinit var rasterView: RasterCanvasView
+    private val layerStack: LayerStack = LayerStack(context.contentResolver, 2048, 2048) {
+        if (::rasterView.isInitialized) rasterView.invalidate()
+        notifyLayers()
+    }
     private val liveView = InProgressStrokesView(context)
     private val inkRenderer by lazy { CanvasStrokeRenderer.create(liveView.textureBitmapStore) }
     private var predictor: MotionEventPredictor? = null
     private val pendingSamples = mutableMapOf<Int, MutableList<StrokeSample>>()
-    private val finishedSamples = ArrayDeque<CompletedStroke>()
+    private data class PendingCommit(val stroke: CompletedStroke, val target: RasterLayerRuntime)
+    private val pendingTargets = mutableMapOf<Int, RasterLayerRuntime>()
+    private val finishedSamples = ArrayDeque<PendingCommit>()
     private var activeStylusId: Int? = null
     private var gestureStart = emptyMap<Int, android.graphics.PointF>()
     private var lastGestureCentroid = android.graphics.PointF()
@@ -42,9 +47,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var fps = 0f
     var diagnosticsListener: ((CanvasDiagnostics) -> Unit)? = null
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
+    var layersListener: ((List<LayerSummary>, LayerId) -> Unit)? = null
 
     init {
         setWillNotDraw(false); setBackgroundColor(Color.rgb(23, 24, 27)); isMotionEventSplittingEnabled = false
+        rasterView = RasterCanvasView(context, layerStack)
         addView(rasterView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(liveView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // Robolectric cannot load Ink's Android native library; real devices eagerly warm it.
@@ -52,7 +59,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         liveView.addFinishedStrokesListener(object : InProgressStrokesFinishedListener {
             override fun onStrokesFinished(strokes: Map<InProgressStrokeId, Stroke>) {
                 strokes.forEach { (_, inkStroke) ->
-                    val stroke = finishedSamples.removeFirstOrNull() ?: return@forEach
+                    val pending = finishedSamples.removeFirstOrNull() ?: return@forEach
+                    val stroke = pending.stroke
+                    val store = pending.target.tiles
                     if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine != BrushEngine.AIRBRUSH) {
                         store.commitInk(stroke, inkStroke, inkRenderer)
                     } else {
@@ -71,9 +80,20 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
     }
 
-    fun undo() { if (store.history.undo()) { rasterView.invalidate(); notifyHistory() } }
-    fun redo() { if (store.history.redo()) { rasterView.invalidate(); notifyHistory() } }
+    fun undo() { layerStack.selectedRaster()?.tiles?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory() } } }
+    fun redo() { layerStack.selectedRaster()?.tiles?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory() } } }
     fun resetView() = rasterView.fitCanvas()
+    fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
+    fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
+    fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
+    fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
+    fun toggleLayerVisibility(id: LayerId) { layerStack.toggleVisible(id); notifyLayers() }
+    fun setSelectedImageScale(value: Float) { layerStack.setImageScale(value); notifyLayers() }
+    fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
+    fun originalSizeSelectedImage() { layerStack.originalSizeSelectedImage(); notifyLayers() }
+    fun moveSelectedLayer(towardFront: Boolean) { layerStack.moveSelected(towardFront); notifyLayers() }
+    fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { notifyLayers(); notifyHistory() } }
+    fun publishLayers() { notifyLayers(); notifyHistory() }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         predictor?.record(event)
@@ -88,8 +108,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 if (!isStylus(event, event.actionIndex)) return true
+                val target = layerStack.selectedRaster() ?: return true
                 requestUnbufferedDispatch(event)
                 activeStylusId = pointerId
+                pendingTargets[pointerId] = target
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex))
                 liveView.startStroke(event, pointerId, createInkBrush(), rasterView.viewToDocumentMatrix(), Matrix())
             }
@@ -106,15 +128,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val index = event.findPointerIndex(pointerId)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && event.flags and MotionEvent.FLAG_CANCELED != 0) {
-                    liveView.cancelStroke(event, pointerId); pendingSamples.remove(pointerId); activeStylusId = null
+                    liveView.cancelStroke(event, pointerId); pendingSamples.remove(pointerId); pendingTargets.remove(pointerId); activeStylusId = null
                     return true
                 }
                 if (index >= 0) pendingSamples[pointerId]?.add(sample(event, index))
-                pendingSamples.remove(pointerId)?.let { finishedSamples += CompletedStroke(it, currentStyle(event, index.coerceAtLeast(0))) }
+                val target = pendingTargets.remove(pointerId)
+                pendingSamples.remove(pointerId)?.let { samples ->
+                    if (target != null) finishedSamples += PendingCommit(CompletedStroke(samples, currentStyle(event, index.coerceAtLeast(0))), target)
+                }
                 liveView.finishStroke(event, pointerId); activeStylusId = null
             }
             MotionEvent.ACTION_CANCEL -> {
-                liveView.cancelStroke(event, pointerId); pendingSamples.remove(pointerId); activeStylusId = null
+                liveView.cancelStroke(event, pointerId); pendingSamples.remove(pointerId); pendingTargets.remove(pointerId); activeStylusId = null
             }
         }
         emitDiagnostics(event, event.actionIndex.coerceIn(0, event.pointerCount - 1))
@@ -196,13 +221,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun angle(e: MotionEvent) = atan2(e.getY(1) - e.getY(0), e.getX(1) - e.getX(0))
     private fun normalizedAngle(value: Float): Float { var v = value; while (v > Math.PI) v -= (2 * Math.PI).toFloat(); while (v < -Math.PI) v += (2 * Math.PI).toFloat(); return v }
 
-    private fun notifyHistory() = historyListener?.invoke(store.history.canUndo(), store.history.canRedo())
+    private fun notifyHistory() {
+        val history = layerStack.selectedRaster()?.tiles?.history
+        historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
+    }
+    private fun notifyLayers() {
+        layersListener?.invoke(layerStack.summariesFrontToBack(), layerStack.selectedId)
+    }
     private fun emitDiagnostics(event: MotionEvent, index: Int) {
         val now = SystemClock.elapsedRealtimeNanos(); frameCount++
         if (now - fpsWindowAt > 500_000_000L) { fps = frameCount * 1_000_000_000f / (now - fpsWindowAt); frameCount = 0; fpsWindowAt = now }
         val delta = now - lastSampleAt; lastSampleAt = now
         diagnosticsListener?.invoke(CanvasDiagnostics(fps, event.getPressure(index), event.getAxisValue(MotionEvent.AXIS_TILT, index),
             pointerKind(event.getToolType(index)).name, if (delta > 0) 1_000_000_000f / delta else 0f,
-            rasterView.transform.scale, store.allocatedTileCount, store.lastDirtyTiles.size, store.history.estimatedBytes))
+            rasterView.transform.scale, layerStack.allocatedTiles(), layerStack.lastDirtyTiles(), layerStack.undoBytes()))
     }
 }
