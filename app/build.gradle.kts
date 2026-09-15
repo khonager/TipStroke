@@ -4,6 +4,21 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseKeystoreFile = providers.environmentVariable("TIPSTROKE_KEYSTORE_FILE").orNull
+val releaseKeystorePassword = providers.environmentVariable("TIPSTROKE_KEYSTORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("TIPSTROKE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("TIPSTROKE_KEY_PASSWORD").orNull
+val releaseSigningValues = listOf(
+    releaseKeystoreFile,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+)
+
+if (releaseSigningValues.any { it != null } && releaseSigningValues.any { it == null }) {
+    throw GradleException("Release signing requires all TIPSTROKE_KEY* environment variables")
+}
+
 android {
     namespace = "dev.tipstroke.app"
     compileSdk = 36
@@ -20,6 +35,22 @@ android {
     kotlinOptions { jvmTarget = "17" }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     testOptions { unitTests.isIncludeAndroidResources = true }
+
+    if (releaseSigningValues.all { it != null }) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(requireNotNull(releaseKeystoreFile))
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+        buildTypes {
+            getByName("release") {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
 }
 
 dependencies {

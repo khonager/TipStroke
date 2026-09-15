@@ -1,0 +1,80 @@
+name: Android release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TIPSTROKE_KEYSTORE_FILE: ${{ runner.temp }}/tipstroke-release.jks
+      TIPSTROKE_KEYSTORE_PASSWORD: ${{ secrets.TIPSTROKE_KEYSTORE_PASSWORD }}
+      TIPSTROKE_KEY_ALIAS: ${{ secrets.TIPSTROKE_KEY_ALIAS }}
+      TIPSTROKE_KEY_PASSWORD: ${{ secrets.TIPSTROKE_KEY_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check tag and signing secrets
+        env:
+          TIPSTROKE_SIGNING_KEY: ${{ secrets.TIPSTROKE_SIGNING_KEY }}
+        run: |
+          version_name=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle.kts)
+          if [[ "v${version_name}" != "${GITHUB_REF_NAME}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match app version ${version_name}." >&2
+            exit 1
+          fi
+
+          if [[ -z "${TIPSTROKE_SIGNING_KEY:-}" || \
+                -z "${TIPSTROKE_KEYSTORE_PASSWORD:-}" || \
+                -z "${TIPSTROKE_KEY_ALIAS:-}" || \
+                -z "${TIPSTROKE_KEY_PASSWORD:-}" ]]; then
+            echo "One or more TipStroke release-signing secrets are missing." >&2
+            exit 1
+          fi
+
+          umask 077
+          printf '%s' "$TIPSTROKE_SIGNING_KEY" | base64 --decode > "$TIPSTROKE_KEYSTORE_FILE"
+
+      - name: Test and build signed APK
+        run: ./gradlew test lint assembleRelease
+
+      - name: Verify and prepare release files
+        run: |
+          apk="app/build/outputs/apk/release/app-release.apk"
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          "$apksigner" verify --verbose --print-certs "$apk"
+
+          release_apk="TipStroke-${GITHUB_REF_NAME}.apk"
+          cp "$apk" "$release_apk"
+          sha256sum "$release_apk" > "${release_apk}.sha256"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_apk="TipStroke-${GITHUB_REF_NAME}.apk"
+          gh release create "$GITHUB_REF_NAME" \
+            "$release_apk" \
+            "${release_apk}.sha256" \
+            --verify-tag \
+            --generate-notes \
+            --title "TipStroke ${GITHUB_REF_NAME}"
+
+      - name: Remove decoded signing key
+        if: always()
+        run: rm -f "$TIPSTROKE_KEYSTORE_FILE"
