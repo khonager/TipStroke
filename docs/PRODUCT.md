@@ -10,7 +10,7 @@ The long-term differentiator is a hybrid document that can contain true raster a
 
 - Local gallery with named custom-size documents, generated thumbnails, deletion, and reopening.
 - Versioned local project directories containing manifests, sparse paint tiles, and copied original image assets.
-- Multiple paint/image layers with ordering, visibility, opacity, and non-destructive image scale.
+- Multiple paint/image layers with ordering, visibility, opacity, and direct non-destructive image move/resize/rotation.
 - PNG, JPEG, and WebP export through the layer compositor.
 - Pencil, Ink, and Airbrush presets; transparent eraser; precise size/opacity controls and basic colors.
 - Native stylus authoring and tile commits; configurable finger navigation, smudge, color pick, undo/redo, rotation lock, and diagnostics.

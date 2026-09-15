@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import dev.tipstroke.core.drawing.*
 import dev.tipstroke.core.geometry.Point
+import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.model.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -50,6 +51,23 @@ class TileStoreTest {
         store.finishSmudge()
         assertTrue(store.history.estimatedBytes > historyBefore)
         assertTrue(store.history.undo())
+    }
+
+    @Test fun airbrushWetPainterMatchesCommittedPixels() {
+        val airbrush = StrokeStyle(BrushPreset.Airbrush, 48f, .37f, RgbaColor(.8f, .2f, .1f), BlendBehavior.PAINT)
+        val completed = stroke(Point(60f, 90f), Point(190f, 140f), airbrush)
+        val preview = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        StrokeCanvasPainter.draw(Canvas(preview), completed)
+        val store = TileStore(256, 256)
+        store.commit(completed)
+        val committed = store.snapshotTiles().getValue(TileCoordinate(0, 0))
+        val previewPixels = IntArray(256 * 256)
+        val committedPixels = IntArray(256 * 256)
+        preview.getPixels(previewPixels, 0, 256, 0, 0, 256, 256)
+        committed.getPixels(committedPixels, 0, 256, 0, 0, 256, 256)
+        assertArrayEquals(previewPixels, committedPixels)
+        preview.recycle()
+        committed.recycle()
     }
 
     private fun stroke(a: Point, b: Point, style: StrokeStyle) = CompletedStroke(

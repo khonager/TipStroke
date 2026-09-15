@@ -32,11 +32,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         notifyLayers()
     }
     private val liveView = InProgressStrokesView(context)
+    private val wetPreview = WetStrokePreviewView(context)
     private val inkRenderer by lazy { CanvasStrokeRenderer.create(liveView.textureBitmapStore) }
     private var predictor: MotionEventPredictor? = null
     private val pendingSamples = mutableMapOf<Int, MutableList<StrokeSample>>()
     private data class PendingCommit(val stroke: CompletedStroke, val target: RasterLayerRuntime)
     private val pendingTargets = mutableMapOf<Int, RasterLayerRuntime>()
+    private var customPreviewStyle: StrokeStyle? = null
     private val finishedSamples = ArrayDeque<PendingCommit>()
     private var activeStylusId: Int? = null
     private var gestureStart = emptyMap<Int, android.graphics.PointF>()
@@ -60,11 +62,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId) -> Unit)? = null
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
+    private var imageTransformMode = false
 
     init {
         setWillNotDraw(false); setBackgroundColor(Color.rgb(23, 24, 27)); isMotionEventSplittingEnabled = false
         rasterView = RasterCanvasView(context, layerStack)
         addView(rasterView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(wetPreview, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(liveView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // Robolectric cannot load Ink's Android native library; real devices eagerly warm it.
         if (!Build.FINGERPRINT.contains("robolectric", ignoreCase = true)) liveView.eagerInit()
@@ -101,6 +105,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
     fun toggleLayerVisibility(id: LayerId) { layerStack.toggleVisible(id); notifyLayers() }
     fun setSelectedImageScale(value: Float) { layerStack.setImageScale(value); notifyLayers() }
+    fun setImageTransformMode(enabled: Boolean) {
+        imageTransformMode = enabled && layerStack.selectedImage() != null
+        rasterView.showImageTransformBounds = imageTransformMode
+    }
     fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
     fun originalSizeSelectedImage() { layerStack.originalSizeSelectedImage(); notifyLayers() }
     fun moveSelectedLayer(towardFront: Boolean) { layerStack.moveSelected(towardFront); notifyLayers() }
@@ -167,7 +175,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 activeStylusId = pointerId
                 pendingTargets[pointerId] = target
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex))
-                liveView.startStroke(event, pointerId, createInkBrush(), rasterView.viewToDocumentMatrix(), Matrix())
+                val style = currentStyle(event, event.actionIndex)
+                if (style.brush.engine == BrushEngine.AIRBRUSH && style.blend == BlendBehavior.PAINT) {
+                    customPreviewStyle = style
+                    wetPreview.documentToView = Matrix(rasterView.transformMatrix)
+                    wetPreview.canvasWidth = layerStack.canvasWidth
+                    wetPreview.canvasHeight = layerStack.canvasHeight
+                    updateCustomPreview(pointerId)
+                } else {
+                    liveView.startStroke(event, pointerId, createInkBrush(), rasterView.viewToDocumentMatrix(), Matrix())
+                }
             }
             MotionEvent.ACTION_MOVE -> {
                 val index = event.findPointerIndex(pointerId)
@@ -175,25 +192,41 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     val list = pendingSamples[pointerId] ?: return true
                     for (historyIndex in 0 until event.historySize) list += sample(event, index, historyIndex)
                     list += sample(event, index)
-                    val prediction = predictor?.predict()
-                    try { liveView.addToStroke(event, pointerId, prediction) } finally { prediction?.recycle() }
+                    if (customPreviewStyle != null) {
+                        updateCustomPreview(pointerId)
+                    } else {
+                        val prediction = predictor?.predict()
+                        try { liveView.addToStroke(event, pointerId, prediction) } finally { prediction?.recycle() }
+                    }
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val index = event.findPointerIndex(pointerId)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && event.flags and MotionEvent.FLAG_CANCELED != 0) {
-                    liveView.cancelStroke(event, pointerId); pendingSamples.remove(pointerId); pendingTargets.remove(pointerId); activeStylusId = null
+                    cancelActiveStroke(event, pointerId)
                     return true
                 }
                 if (index >= 0) pendingSamples[pointerId]?.add(sample(event, index))
                 val target = pendingTargets.remove(pointerId)
                 pendingSamples.remove(pointerId)?.let { samples ->
-                    if (target != null) finishedSamples += PendingCommit(CompletedStroke(samples, currentStyle(event, index.coerceAtLeast(0))), target)
+                    val style = customPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
+                    if (target != null) {
+                        val completed = CompletedStroke(samples, style)
+                        if (customPreviewStyle != null) {
+                            target.tiles.commit(completed)
+                            rasterView.invalidate()
+                            notifyHistory()
+                        } else finishedSamples += PendingCommit(completed, target)
+                    }
                 }
-                liveView.finishStroke(event, pointerId); activeStylusId = null
+                if (customPreviewStyle != null) {
+                    customPreviewStyle = null
+                    wetPreview.stroke = null
+                } else liveView.finishStroke(event, pointerId)
+                activeStylusId = null
             }
             MotionEvent.ACTION_CANCEL -> {
-                liveView.cancelStroke(event, pointerId); pendingSamples.remove(pointerId); pendingTargets.remove(pointerId); activeStylusId = null
+                cancelActiveStroke(event, pointerId)
             }
         }
         emitDiagnostics(event, event.actionIndex.coerceIn(0, event.pointerCount - 1))
@@ -209,10 +242,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 singleStart = android.graphics.PointF(event.x, event.y)
                 singleLast = android.graphics.PointF(event.x, event.y)
                 singleLastDocument = rasterView.screenToDocument(event.x, event.y)
-                if (settings.gestures.oneFingerDrag == FingerAction.SMUDGE) {
+                if (!isTransformingImage() && settings.gestures.oneFingerDrag == FingerAction.SMUDGE) {
                     smudgeTarget = layerStack.selectedRaster()?.also { it.tiles.beginSmudge() }
                 }
-                scheduleHold(singleLastDocument)
+                if (!isTransformingImage()) scheduleHold(singleLastDocument)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 cancelHold()
@@ -225,7 +258,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val distance = hypot(event.x - singleStart.x, event.y - singleStart.y)
                 if (distance > ViewConfiguration.get(context).scaledTouchSlop) { gestureMoved = true; cancelHold() }
                 val document = rasterView.screenToDocument(event.x, event.y)
-                when (settings.gestures.oneFingerDrag) {
+                if (isTransformingImage() && gestureMoved) {
+                    layerStack.transformSelectedImage(document.x - singleLastDocument.x, document.y - singleLastDocument.y)
+                } else when (settings.gestures.oneFingerDrag) {
                     FingerAction.NAVIGATE -> if (gestureMoved) {
                         val old = rasterView.transform
                         rasterView.updateTransform(old.panX + event.x - singleLast.x, old.panY + event.y - singleLast.y, old.scale, old.rotationDegrees)
@@ -246,7 +281,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP -> {
                 cancelHold()
                 smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null
-                if (gestureStart.size >= 2 && !gestureMoved && SystemClock.uptimeMillis() - gestureDownAt < 300) {
+                if (isTransformingImage()) {
+                    notifyLayers()
+                } else if (gestureStart.size >= 2 && !gestureMoved && SystemClock.uptimeMillis() - gestureDownAt < 300) {
                     performFingerAction(if (gestureStart.size >= 3) settings.gestures.threeFingerTap else settings.gestures.twoFingerTap, null)
                 } else if (event.actionMasked == MotionEvent.ACTION_UP && gestureMoved && !holdTriggered) {
                     when (settings.gestures.oneFingerDrag) {
@@ -303,13 +340,42 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val center = centroid(event); val newSpan = span(event); val newAngle = angle(event)
         val dx = center.x - lastGestureCentroid.x; val dy = center.y - lastGestureCentroid.y
         val scaleFactor = if (lastGestureSpan > 0f) newSpan / lastGestureSpan else 1f
-        val angleDelta = if (settings.gestures.rotationLocked) 0f else normalizedAngle(newAngle - lastGestureAngle)
-        val old = rasterView.transform
-        rasterView.updateTransform(old.panX + dx, old.panY + dy, (old.scale * scaleFactor).coerceIn(.08f, 12f), old.rotationDegrees + Math.toDegrees(angleDelta.toDouble()).toFloat())
-        liveView.motionEventToViewTransform = Matrix()
+        val rawAngleDelta = normalizedAngle(newAngle - lastGestureAngle)
+        val angleDelta = if (settings.gestures.rotationLocked) 0f else rawAngleDelta
+        if (isTransformingImage()) {
+            val previousDocument = rasterView.screenToDocument(lastGestureCentroid.x, lastGestureCentroid.y)
+            val currentDocument = rasterView.screenToDocument(center.x, center.y)
+            layerStack.transformSelectedImage(
+                currentDocument.x - previousDocument.x,
+                currentDocument.y - previousDocument.y,
+                scaleFactor,
+                Math.toDegrees(rawAngleDelta.toDouble()).toFloat(),
+            )
+        } else {
+            val old = rasterView.transform
+            rasterView.updateTransform(old.panX + dx, old.panY + dy, (old.scale * scaleFactor).coerceIn(.08f, 12f), old.rotationDegrees + Math.toDegrees(angleDelta.toDouble()).toFloat())
+            liveView.motionEventToViewTransform = Matrix()
+        }
         gestureMoved = gestureMoved || hypot(dx, dy) > 4f || abs(scaleFactor - 1f) > .015f || abs(angleDelta) > .02f
         lastGestureCentroid = center; lastGestureSpan = newSpan; lastGestureAngle = newAngle
         emitDiagnostics(event, 0)
+    }
+
+    private fun isTransformingImage() = imageTransformMode && layerStack.selectedImage() != null
+
+    private fun updateCustomPreview(pointerId: Int) {
+        val style = customPreviewStyle ?: return
+        val samples = pendingSamples[pointerId] ?: return
+        if (samples.isNotEmpty()) wetPreview.stroke = CompletedStroke(samples.toList(), style)
+    }
+
+    private fun cancelActiveStroke(event: MotionEvent, pointerId: Int) {
+        if (customPreviewStyle == null) liveView.cancelStroke(event, pointerId)
+        customPreviewStyle = null
+        wetPreview.stroke = null
+        pendingSamples.remove(pointerId)
+        pendingTargets.remove(pointerId)
+        activeStylusId = null
     }
 
     private fun currentStyle(event: MotionEvent, index: Int): StrokeStyle {

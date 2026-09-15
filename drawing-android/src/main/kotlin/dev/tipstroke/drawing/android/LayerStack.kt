@@ -66,6 +66,7 @@ internal class LayerStack(
 
     fun selected(): CanvasLayerRuntime = layers.first { it.id == selectedId }
     fun selectedRaster(): RasterLayerRuntime? = selected() as? RasterLayerRuntime
+    fun selectedImage(): ImageLayerRuntime? = selected() as? ImageLayerRuntime
     fun summariesFrontToBack(): List<LayerSummary> = layers.asReversed().map { it.summary() }
     fun allocatedTiles(): Int = layers.filterIsInstance<RasterLayerRuntime>().sumOf { it.tiles.allocatedTileCount }
     fun lastDirtyTiles(): Int = selectedRaster()?.tiles?.lastDirtyTiles?.size ?: 0
@@ -108,6 +109,13 @@ internal class LayerStack(
     fun setImageScale(value: Float) {
         (selected() as? ImageLayerRuntime)?.let {
             it.transform = it.transform.copy(scale = value.coerceIn(.02f, 4f))
+            invalidate()
+        }
+    }
+
+    fun transformSelectedImage(deltaX: Float, deltaY: Float, scaleFactor: Float = 1f, rotationDeltaDegrees: Float = 0f) {
+        selectedImage()?.let { image ->
+            image.transform = image.transform.changedBy(deltaX, deltaY, scaleFactor, rotationDeltaDegrees)
             invalidate()
         }
     }

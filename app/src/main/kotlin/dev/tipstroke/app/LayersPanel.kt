@@ -25,12 +25,14 @@ import kotlin.math.roundToInt
 internal fun LayersPanel(
     layers: List<LayerSummary>,
     selectedId: LayerId?,
+    imageTransforming: Boolean,
     onSelect: (LayerId) -> Unit,
     onToggleVisibility: (LayerId) -> Unit,
     onOpacity: (Float) -> Unit,
     onImageScale: (Float) -> Unit,
     onFitImage: () -> Unit,
     onOriginalImageSize: () -> Unit,
+    onImageTransforming: (Boolean) -> Unit,
     onAddPaint: () -> Unit,
     onImportImage: () -> Unit,
     onMoveForward: () -> Unit,
@@ -66,6 +68,19 @@ internal fun LayersPanel(
                 Slider(layer.opacity, onOpacity, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth().height(48.dp))
                 if (layer.kind == LayerKind.IMAGE) {
                     Spacer(Modifier.height(6.dp))
+                    FilledTonalButton(
+                        onClick = { onImageTransforming(!imageTransforming) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = if (imageTransforming) Color(0xFFED6A5A) else Color(0xFF34363B),
+                            contentColor = Color.White,
+                        ),
+                    ) { Text(if (imageTransforming) "Finish transforming" else "Move & resize on canvas") }
+                    Text(
+                        "Drag to move · pinch to resize · twist to rotate",
+                        color = Color(0xFFAAAEB4), fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 5.dp, bottom = 8.dp),
+                    )
                     ValueHeader("Image scale", "${((layer.imageScale ?: 1f) * 100).roundToInt()}%")
                     Slider(layer.imageScale ?: 1f, onImageScale, valueRange = .02f..4f, modifier = Modifier.fillMaxWidth().height(48.dp))
                     Text(

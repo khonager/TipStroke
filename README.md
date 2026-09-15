@@ -23,7 +23,7 @@ On NixOS, `nix develop` now provides the JDK without pulling the unfree Android 
 
 ## Layers and images
 
-Open **Layers** in the top bar. Add paint layers with **+ Paint** or use **+ Image** to choose any raster format Android can decode on the device. Layer order, visibility, and opacity are editable. Imported images use a persisted document URI as the authoritative original and store scale separately, so scaling down and back to 100% does not resample or discard the original pixels. The finite 2048×2048 canvas still clips and composites the displayed result at canvas coordinates.
+Open **Layers** in the top bar. Add paint layers with **+ Paint** or use **+ Image** to choose any raster format Android can decode on the device. Layer order, visibility, and opacity are editable. Select an image and tap **Move & resize on canvas**: drag to move, pinch to resize, and twist to rotate it. Imported images use a persisted document URI as the authoritative original and store transforms separately, so scaling down and back to 100% does not resample or discard the original pixels. The finite canvas still clips and composites the displayed result at canvas coordinates.
 
 ## Gallery, export, and gestures
 

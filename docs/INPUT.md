@@ -6,10 +6,11 @@
 - `TOOL_TYPE_ERASER` uses the same brush engine with clear blending.
 - Finger behavior comes from local `GestureSettings`. Defaults are one-finger drag to navigate, one-finger hold to pick color, two-finger tap to undo, and three-finger tap to redo.
 - One-finger drag can instead smudge the selected paint layer. Smudge snapshots only affected tiles and groups the whole finger gesture into one undo transaction.
+- Image transform mode temporarily takes priority over configured finger actions. One-finger drag moves the selected image; two-finger translation, pinch, and twist move, resize, and rotate it. Leaving transform mode restores the configured actions.
 - Two or more fingers continue to pan, zoom, and rotate the camera simultaneously; rotation can be locked.
 - Mouse data has a domain representation but mouse painting is not enabled in this Android milestone.
 
-Stylus has priority. Once a stylus stroke is active, touch cannot navigate or corrupt it. `ACTION_CANCEL` cancels wet ink and drops pending samples. `requestUnbufferedDispatch` and Jetpack motion prediction are used for lower latency.
+Stylus has priority. Once a stylus stroke is active, touch cannot navigate or corrupt it. `ACTION_CANCEL` cancels the active wet renderer and drops pending samples. `requestUnbufferedDispatch` and Jetpack motion prediction are used for lower latency.
 
 The camera matrix transforms screen events to document coordinates once at input. Navigation changes the view matrix only and never resamples document pixels.
 

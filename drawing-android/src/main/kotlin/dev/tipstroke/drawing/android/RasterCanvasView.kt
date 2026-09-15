@@ -10,6 +10,10 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val canvasPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(80, 255, 255, 255); style = Paint.Style.STROKE; strokeWidth = 2f }
+    private val transformBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(237, 106, 90); style = Paint.Style.STROKE }
+    private val transformHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
+    var showImageTransformBounds = false
+        set(value) { field = value; invalidate() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
 
     fun updateTransform(panX: Float, panY: Float, scale: Float, rotation: Float) {
@@ -67,8 +71,32 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                 }
             }
         }
+        if (showImageTransformBounds) drawSelectedImageBounds(canvas)
         bitmapPaint.alpha = 255
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), borderPaint)
+        canvas.restore()
+    }
+
+    private fun drawSelectedImageBounds(canvas: Canvas) {
+        val image = layerStack.selectedImage() ?: return
+        val halfWidth = image.source.width * image.transform.scale / 2f
+        val halfHeight = image.source.height * image.transform.scale / 2f
+        val bounds = RectF(
+            image.transform.centerX - halfWidth,
+            image.transform.centerY - halfHeight,
+            image.transform.centerX + halfWidth,
+            image.transform.centerY + halfHeight,
+        )
+        val lineWidth = 2f / transform.scale.coerceAtLeast(.08f)
+        val handleRadius = 5f / transform.scale.coerceAtLeast(.08f)
+        transformBorderPaint.strokeWidth = lineWidth
+        canvas.save()
+        canvas.rotate(image.transform.rotationDegrees, image.transform.centerX, image.transform.centerY)
+        canvas.drawRect(bounds, transformBorderPaint)
+        listOf(bounds.left to bounds.top, bounds.right to bounds.top, bounds.right to bounds.bottom, bounds.left to bounds.bottom).forEach { (x, y) ->
+            canvas.drawCircle(x, y, handleRadius, transformHandlePaint)
+            canvas.drawCircle(x, y, handleRadius, transformBorderPaint)
+        }
         canvas.restore()
     }
 }

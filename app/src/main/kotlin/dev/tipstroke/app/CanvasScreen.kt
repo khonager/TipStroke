@@ -62,13 +62,17 @@ fun CanvasScreen(
     var exporting by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<ExportRequest?>(null) }
+    var imageTransforming by remember { mutableStateOf(false) }
 
     val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            surface?.addImage(uri)?.onFailure { message = it.message ?: "This image could not be opened." }
+            surface?.addImage(uri)?.fold(
+                onSuccess = { imageTransforming = true },
+                onFailure = { message = it.message ?: "This image could not be opened." },
+            )
             layersOpen = true
         }
     }
@@ -88,6 +92,7 @@ fun CanvasScreen(
 
     fun sync() { surface?.settings?.apply { this.brush = brush; sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.debug = debug; gestures = gestureSettings } }
     LaunchedEffect(brush, erasing, size, opacity, color, debug, gestureSettings, surface) { sync() }
+    LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(surface, ready, library, documentId) {
         while (surface != null && ready && library != null && documentId != null) {
             delay(30_000)
@@ -177,12 +182,17 @@ fun CanvasScreen(
             LayersPanel(
                 layers = layers,
                 selectedId = selectedLayerId,
-                onSelect = { surface?.selectLayer(it) },
+                imageTransforming = imageTransforming,
+                onSelect = {
+                    imageTransforming = false
+                    surface?.selectLayer(it)
+                },
                 onToggleVisibility = { surface?.toggleLayerVisibility(it) },
                 onOpacity = { surface?.setSelectedLayerOpacity(it) },
                 onImageScale = { surface?.setSelectedImageScale(it) },
                 onFitImage = { surface?.fitSelectedImage() },
                 onOriginalImageSize = { surface?.originalSizeSelectedImage() },
+                onImageTransforming = { imageTransforming = it },
                 onAddPaint = { surface?.addPaintLayer() },
                 onImportImage = { message = null; importImage.launch(arrayOf("image/*")) },
                 onMoveForward = { surface?.moveSelectedLayer(true) },

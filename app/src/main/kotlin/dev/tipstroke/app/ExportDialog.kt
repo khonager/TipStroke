@@ -23,7 +23,14 @@ data class ExportRequest(
 )
 
 @Composable
-fun ExportDrawingDialog(drawingName: String, canvasWidth: Int, canvasHeight: Int, embeddedForScreenshot: Boolean = false, onDismiss: () -> Unit, onExport: (ExportRequest) -> Unit) {
+fun ExportDrawingDialog(drawingName: String, canvasWidth: Int, canvasHeight: Int, onDismiss: () -> Unit, onExport: (ExportRequest) -> Unit) {
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+        ExportDrawingSheet(drawingName, canvasWidth, canvasHeight, onDismiss, onExport)
+    }
+}
+
+@Composable
+internal fun ExportDrawingSheet(drawingName: String, canvasWidth: Int, canvasHeight: Int, onDismiss: () -> Unit, onExport: (ExportRequest) -> Unit) {
     var format by remember { mutableStateOf(ExportFormat.PNG) }
     var quality by remember { mutableFloatStateOf(90f) }
     var scale by remember { mutableFloatStateOf(1f) }
@@ -36,11 +43,10 @@ fun ExportDrawingDialog(drawingName: String, canvasWidth: Int, canvasHeight: Int
         if (selected == ExportFormat.JPEG) transparent = false
     }
 
-    val content: @Composable () -> Unit = {
-        Surface(
-            Modifier.widthIn(min = 320.dp, max = 580.dp).fillMaxWidth(.9f).verticalScroll(rememberScrollState()),
-            color = Color(0xFF202125), shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFF47494F)), shadowElevation = 24.dp,
-        ) {
+    Surface(
+        Modifier.widthIn(min = 320.dp, max = 580.dp).fillMaxWidth(.9f).verticalScroll(rememberScrollState()),
+        color = Color(0xFF202125), shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFF47494F)), shadowElevation = 24.dp,
+    ) {
             Column(Modifier.padding(24.dp)) {
                 Text("Export drawing", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                 ExportLabel("Format")
@@ -76,9 +82,7 @@ fun ExportDrawingDialog(drawingName: String, canvasWidth: Int, canvasHeight: Int
                     Button(onClick = { onExport(ExportRequest(format, quality.roundToInt(), scale, transparent, fileName.ifBlank { "TipStroke.${format.extension}" })) }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A))) { Text("Export") }
                 }
             }
-        }
     }
-    if (embeddedForScreenshot) content() else Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) { content() }
 }
 
 @Composable private fun ExportLabel(label: String, value: String? = null) {

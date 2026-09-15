@@ -13,6 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import dev.tipstroke.core.model.GestureSettings
+import dev.tipstroke.core.model.LayerId
+import dev.tipstroke.core.model.LayerKind
+import dev.tipstroke.core.model.LayerSummary
 import dev.tipstroke.drawing.android.DrawingLibrary
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,7 +62,21 @@ class CanvasScreenshotTest {
     @Test fun renderExportForVisualReview() = render(2560, 1600, "tipstroke-export.png") {
         Box(Modifier.fillMaxSize().background(Color(0xFF17181B)), contentAlignment = Alignment.Center) {
             CanvasScreen()
-            ExportDrawingDialog("Ink details", 2048, 2048, embeddedForScreenshot = true, onDismiss = {}, onExport = {})
+            ExportDrawingSheet("Ink details", 2048, 2048, onDismiss = {}, onExport = {})
+        }
+    }
+
+    @Test fun renderImageTransformControlsForVisualReview() = render(2560, 1600, "tipstroke-image-transform.png") {
+        Box(Modifier.fillMaxSize().background(Color(0xFF17181B)), contentAlignment = Alignment.Center) {
+            val imageId = LayerId("reference")
+            LayersPanel(
+                layers = listOf(LayerSummary(imageId, "Reference photo.png", LayerKind.IMAGE, true, .82f, 4032, 3024, .46f)),
+                selectedId = imageId,
+                imageTransforming = true,
+                onSelect = {}, onToggleVisibility = {}, onOpacity = {}, onImageScale = {},
+                onFitImage = {}, onOriginalImageSize = {}, onImageTransforming = {},
+                onAddPaint = {}, onImportImage = {}, onMoveForward = {}, onMoveBackward = {}, onDelete = {},
+            )
         }
     }
 

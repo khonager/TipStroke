@@ -8,7 +8,7 @@ Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable 
 2. Draw slow diagonals, circles, tight curves, quick flicks, and intersecting strokes. Check continuity and jitter.
 3. Vary pressure from feather-light to firm. Check width response and smooth taper.
 4. Lift the pen while watching the final segment. Check for gap, flash, doubled opacity, width jump, or color shift.
-5. Repeat with Pencil and Airbrush. Note that the current Airbrush wet preview becomes softer at commit.
+5. Repeat with Pencil and Airbrush. Airbrush softness, pressure sizing, and opacity should not change at commit.
 6. Toggle Eraser and use the hardware eraser tool if reported. Verify pixels become transparent (white v0 canvas shows through) and undo restores them.
 7. Press each stylus button while drawing and confirm the debug/input path remains stable; mappings are intentionally not assigned yet.
 

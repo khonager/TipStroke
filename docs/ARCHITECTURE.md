@@ -4,7 +4,7 @@
 
 `:core` is platform-neutral Kotlin. It owns `Document`, `CanvasSpec`, the sealed `Layer` contract, `RasterLayer`, non-destructive `ImageLayer` metadata, versioned `BrushPreset`, colors, transform/tile math, samples, renderer contracts, and bounded undo history. It contains no Android or Ink types.
 
-`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, `InProgressStrokesView` renders wet ink, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles.
+`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, native wet views render the active stroke, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles. Pencil and Ink use Jetpack Ink; Airbrush uses a native preview backed by the same `StrokeCanvasPainter` as its tile commit so softness and pressure are visible before pen-up.
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
@@ -35,7 +35,7 @@ The callback invalidates the raster view and removes Ink’s finished stroke in 
 
 ## Image layers
 
-An image layer keeps its persisted Android document URI and original pixel dimensions as authoritative source data. Center, scale, rotation, visibility, and opacity are separate metadata. Rendering decodes an immutable software bitmap cache from that original and draws directly into the finite canvas clip; changing scale never writes into the bitmap. Returning to 100% therefore returns to the original source resolution rather than enlarging an already-downsampled intermediate.
+An image layer keeps its persisted Android document URI and original pixel dimensions as authoritative source data. Center, scale, rotation, visibility, and opacity are separate metadata. Direct canvas gestures update only that transform metadata: drag moves, pinch resizes, and twist rotates. Rendering decodes an immutable software bitmap cache from the original and draws directly into the finite canvas clip; changing scale never writes into the bitmap. Returning to 100% therefore returns to the original source resolution rather than enlarging an already-downsampled intermediate.
 
 Image decoding runs on a dedicated background executor. Dimension probing occurs once at import. The current milestone caches a full decoded bitmap per imported image, so very large or numerous images may still encounter device memory limits; tiled image pyramids are a future optimization and do not require a project-format change.
 

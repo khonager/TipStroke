@@ -7,6 +7,14 @@ import dev.tipstroke.core.model.*
 import kotlin.test.*
 
 class CoreTests {
+    @Test fun imageTransformsRemainNonDestructiveMetadata() {
+        val transformed = ImageTransform(250f, 200f, 1f).changedBy(35f, -20f, .5f, 22f)
+        assertEquals(285f, transformed.centerX, .001f)
+        assertEquals(180f, transformed.centerY, .001f)
+        assertEquals(.5f, transformed.scale, .001f)
+        assertEquals(22f, transformed.rotationDegrees, .001f)
+    }
+
     @Test fun transformRoundTripsWithRotation() {
         val transform = CanvasTransform(90f, -24f, 1.75f, 31f)
         val source = Point(310f, 722f)
