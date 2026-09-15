@@ -50,6 +50,7 @@ fun CanvasScreen(
     var opacity by remember { mutableFloatStateOf(1f) }
     var color by remember { mutableStateOf(RgbaColor(.05f, .05f, .06f)) }
     var frequentColors by remember { mutableStateOf<List<RgbaColor>>(emptyList()) }
+    var colorPickerOpen by remember { mutableStateOf(false) }
     var debug by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(CanvasDiagnostics()) }
     var canUndo by remember { mutableStateOf(false) }
@@ -132,7 +133,7 @@ fun CanvasScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val portrait = maxHeight > maxWidth
-        val compactControls = portrait || maxHeight < 720.dp
+        val compactControls = portrait || maxHeight < 760.dp
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context -> DrawingSurface(context).also { view ->
@@ -164,22 +165,29 @@ fun CanvasScreen(
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
         )
 
-        BrushRail(
-            selected = brush, erasing = erasing,
-            onBrush = { brush = it; erasing = false; size = it.baseSizePx; opacity = it.opacity },
-            onEraser = { erasing = !erasing },
-            modifier = Modifier.align(if (compactControls) Alignment.BottomStart else Alignment.CenterStart)
-                .then(if (compactControls) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp)),
-            horizontal = compactControls,
-        )
+        Box(
+            Modifier.fillMaxSize().then(
+                if (compactControls) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp),
+            ),
+        ) {
+            BrushRail(
+                selected = brush, erasing = erasing,
+                onBrush = { brush = it; erasing = false; size = it.baseSizePx; opacity = it.opacity },
+                onEraser = { erasing = !erasing },
+                modifier = Modifier.align(if (compactControls) Alignment.BottomStart else Alignment.CenterStart)
+                    .then(if (compactControls) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp)),
+                horizontal = compactControls,
+            )
 
-        TipControls(
-            size = size, opacity = opacity, color = color, frequentColors = frequentColors,
-            onSize = { size = it }, onOpacity = { opacity = it }, onColor = { color = it },
-            horizontal = compactControls,
-            modifier = Modifier.align(if (compactControls) Alignment.BottomEnd else Alignment.CenterEnd)
-                .then(if (compactControls) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
-        )
+            TipControls(
+                size = size, opacity = opacity, color = color, frequentColors = frequentColors,
+                onSize = { size = it }, onOpacity = { opacity = it }, onColor = { color = it },
+                onOpenColorPicker = { colorPickerOpen = true },
+                horizontal = compactControls,
+                modifier = Modifier.align(if (compactControls) Alignment.BottomEnd else Alignment.CenterEnd)
+                    .then(if (compactControls) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
+            )
+        }
 
         if (layersOpen) {
             LayersPanel(
@@ -237,6 +245,12 @@ fun CanvasScreen(
             putExtra(Intent.EXTRA_TITLE, request.fileName)
         })
     }
+
+    if (colorPickerOpen) ColorPickerDialog(
+        initialColor = color,
+        onDismiss = { colorPickerOpen = false },
+        onColorSelected = { selected -> color = selected; colorPickerOpen = false },
+    )
 }
 
 @Composable private fun TopBar(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onLayers: () -> Unit, onBack: (() -> Unit)?, onExport: () -> Unit, modifier: Modifier = Modifier) {

@@ -20,6 +20,8 @@ Color picking opens a native magnifying loupe after the configured hold delay. T
 
 Brush size and opacity use long drag tracks with persistent numeric readouts. Adjacent minus/plus buttons apply 1 px and 1 percentage-point adjustments for precise tuning without requiring pixel-perfect slider motion.
 
+The compact color dock always exposes the current drawing's most-used colors. Tapping the large current-color circle opens a centered hue/saturation wheel with brightness control for selecting any brush color; canvas hold remains the eyedropper gesture for sampling existing artwork.
+
 ## Planned extension points
 
 The captured button state can later map stylus buttons to actions. Gesture routing can later add swipe actions, a quick menu, fullscreen toggle, and additional user mappings without adding work to the sample path.

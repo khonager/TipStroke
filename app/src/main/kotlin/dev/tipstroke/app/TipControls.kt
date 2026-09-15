@@ -29,11 +29,12 @@ internal fun TipControls(
     onSize: (Float) -> Unit,
     onOpacity: (Float) -> Unit,
     onColor: (RgbaColor) -> Unit,
+    onOpenColorPicker: () -> Unit,
     horizontal: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        ColorSwitcher(color, frequentColors, onColor)
+        ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker)
         Spacer(Modifier.height(14.dp))
         if (horizontal) {
             Row(
@@ -59,7 +60,12 @@ internal fun TipControls(
 }
 
 @Composable
-private fun ColorSwitcher(color: RgbaColor, frequentColors: List<RgbaColor>, onColor: (RgbaColor) -> Unit) {
+private fun ColorSwitcher(
+    color: RgbaColor,
+    frequentColors: List<RgbaColor>,
+    onColor: (RgbaColor) -> Unit,
+    onOpenColorPicker: () -> Unit,
+) {
     val defaults = listOf(
         RgbaColor(.05f, .05f, .06f), RgbaColor(.93f, .42f, .35f),
         RgbaColor(.2f, .45f, .9f), RgbaColor(.18f, .65f, .48f), RgbaColor(1f, 1f, 1f),
@@ -75,7 +81,8 @@ private fun ColorSwitcher(color: RgbaColor, frequentColors: List<RgbaColor>, onC
         Box(
             Modifier.size(46.dp).clip(CircleShape).background(color.toCompose())
                 .border(2.dp, Color.White, CircleShape)
-                .semantics { contentDescription = "Current color" },
+                .clickable(onClick = onOpenColorPicker)
+                .semantics { contentDescription = "Open color picker" },
         )
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             choices.chunked(2).forEachIndexed { rowIndex, row ->
