@@ -35,6 +35,8 @@ class CanvasScreenshotTest {
 
     @Test fun renderPortraitCanvasForVisualReview() = render(1600, 2560, "tipstroke-portrait.png") { CanvasScreen() }
 
+    @Test fun renderCompactLandscapeCanvasForVisualReview() = render(1600, 720, "tipstroke-compact-landscape.png") { CanvasScreen() }
+
     @Test fun renderGalleryForVisualReview() = render(2560, 1600, "tipstroke-gallery.png") { activity ->
         GalleryScreen(DrawingLibrary(activity), {}, {}, {})
     }

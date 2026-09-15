@@ -132,6 +132,7 @@ fun CanvasScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val portrait = maxHeight > maxWidth
+        val compactControls = portrait || maxHeight < 720.dp
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context -> DrawingSurface(context).also { view ->
@@ -167,17 +168,17 @@ fun CanvasScreen(
             selected = brush, erasing = erasing,
             onBrush = { brush = it; erasing = false; size = it.baseSizePx; opacity = it.opacity },
             onEraser = { erasing = !erasing },
-            modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
-                .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp)),
-            horizontal = portrait,
+            modifier = Modifier.align(if (compactControls) Alignment.BottomStart else Alignment.CenterStart)
+                .then(if (compactControls) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp)),
+            horizontal = compactControls,
         )
 
         TipControls(
             size = size, opacity = opacity, color = color, frequentColors = frequentColors,
             onSize = { size = it }, onOpacity = { opacity = it }, onColor = { color = it },
-            horizontal = portrait,
-            modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
-                .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
+            horizontal = compactControls,
+            modifier = Modifier.align(if (compactControls) Alignment.BottomEnd else Alignment.CenterEnd)
+                .then(if (compactControls) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
         )
 
         if (layersOpen) {

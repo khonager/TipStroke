@@ -8,10 +8,7 @@ import android.graphics.Path
 import android.graphics.PointF
 import android.view.View
 import dev.tipstroke.core.model.RgbaColor
-import kotlin.math.atan2
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 
 /** Native, non-interactive eyedropper preview drawn above the wet-ink surface. */
 internal class ColorPickerLoupeView(
@@ -71,18 +68,6 @@ internal class ColorPickerLoupeView(
 
     override fun onDraw(canvas: Canvas) {
         if (visibility != VISIBLE) return
-        val angle = atan2(finger.y - loupeCenter.y, finger.x - loupeCenter.x)
-        val connectorStart = PointF(
-            loupeCenter.x + cos(angle) * radius,
-            loupeCenter.y + sin(angle) * radius,
-        )
-        strokePaint.color = Color.argb(170, 10, 10, 12)
-        strokePaint.strokeWidth = 8f * density
-        canvas.drawLine(connectorStart.x, connectorStart.y, finger.x, finger.y, strokePaint)
-
-        fillPaint.color = Color.argb(150, 0, 0, 0)
-        canvas.drawCircle(loupeCenter.x + 2f * density, loupeCenter.y + 4f * density, radius + 5f * density, fillPaint)
-
         clipPath.reset()
         clipPath.addCircle(loupeCenter.x, loupeCenter.y, radius - 7f * density, Path.Direction.CW)
         canvas.save()
