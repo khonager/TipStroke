@@ -21,9 +21,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import dev.tipstroke.core.model.RgbaColor
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -33,21 +33,11 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @Composable
-internal fun ColorPickerDialog(
-    initialColor: RgbaColor,
-    onDismiss: () -> Unit,
-    onColorSelected: (RgbaColor) -> Unit,
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        ColorPickerPanel(initialColor, onDismiss, onColorSelected)
-    }
-}
-
-@Composable
 internal fun ColorPickerPanel(
     initialColor: RgbaColor,
     onDismiss: () -> Unit,
     onColorSelected: (RgbaColor) -> Unit,
+    compact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val initialHsv = remember(initialColor) { initialColor.toHsv() }
@@ -57,13 +47,13 @@ internal fun ColorPickerPanel(
     val selected = remember(hue, saturation, value) { hsvColor(hue, saturation, value) }
 
     Surface(
-        modifier.widthIn(max = 420.dp),
-        color = Color(0xFF202125),
-        shape = RoundedCornerShape(24.dp),
+        modifier.width(if (compact) 310.dp else 360.dp),
+        color = Color(0xE6202125),
+        shape = RoundedCornerShape(20.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF47494F)),
         shadowElevation = 0.dp,
     ) {
-        Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.padding(if (compact) 14.dp else 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Choose color", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
@@ -73,8 +63,8 @@ internal fun ColorPickerPanel(
                         .semantics { contentDescription = "Selected color preview" },
                 )
             }
-            Spacer(Modifier.height(18.dp))
-            HueSaturationWheel(hue, saturation, value, onChange = { newHue, newSaturation ->
+            Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
+            HueSaturationWheel(hue, saturation, value, if (compact) 180.dp else 230.dp, onChange = { newHue, newSaturation ->
                 hue = newHue
                 saturation = newSaturation
             })
@@ -101,6 +91,7 @@ private fun HueSaturationWheel(
     hue: Float,
     saturation: Float,
     value: Float,
+    wheelSize: Dp,
     onChange: (Float, Float) -> Unit,
 ) {
     fun update(position: Offset, width: Float, height: Float) {
@@ -113,7 +104,7 @@ private fun HueSaturationWheel(
         onChange(newHue, newSaturation)
     }
     Canvas(
-        Modifier.size(250.dp)
+        Modifier.size(wheelSize)
             .semantics { contentDescription = "Hue and saturation picker" }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -139,7 +130,6 @@ private fun HueSaturationWheel(
             brush = Brush.radialGradient(listOf(Color.White, Color.Transparent), radius = radius),
             radius = radius,
         )
-        if (value < 1f) drawCircle(Color.Black.copy(alpha = 1f - value), radius)
         val radians = hue / 180f * PI.toFloat()
         val marker = center + Offset(cos(radians), sin(radians)) * (saturation * radius)
         drawCircle(Color.Black.copy(alpha = .55f), 12.dp.toPx(), marker)

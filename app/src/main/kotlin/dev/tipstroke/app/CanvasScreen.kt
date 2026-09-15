@@ -32,6 +32,7 @@ import kotlin.math.roundToInt
 @Composable
 fun CanvasScreen(
     initialLayersOpen: Boolean = false,
+    initialColorPickerOpen: Boolean = false,
     documentId: String? = null,
     documentName: String = "Untitled drawing",
     canvasWidthPx: Int = 2048,
@@ -50,7 +51,7 @@ fun CanvasScreen(
     var opacity by remember { mutableFloatStateOf(1f) }
     var color by remember { mutableStateOf(RgbaColor(.05f, .05f, .06f)) }
     var frequentColors by remember { mutableStateOf<List<RgbaColor>>(emptyList()) }
-    var colorPickerOpen by remember { mutableStateOf(false) }
+    var colorPickerOpen by remember { mutableStateOf(initialColorPickerOpen) }
     var debug by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(CanvasDiagnostics()) }
     var canUndo by remember { mutableStateOf(false) }
@@ -130,10 +131,11 @@ fun CanvasScreen(
         onDispose { onSaveActionChanged?.invoke(null) }
     }
     BackHandler(enabled = onBackToGallery != null, onBack = leaveEditor)
+    BackHandler(enabled = colorPickerOpen) { colorPickerOpen = false }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val portrait = maxHeight > maxWidth
-        val compactControls = portrait || maxHeight < 760.dp
+        val compactLandscape = !portrait && maxHeight < 760.dp
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context -> DrawingSurface(context).also { view ->
@@ -155,37 +157,40 @@ fun CanvasScreen(
             } },
         )
 
-        TopBar(
+        EditorChrome(
             canUndo = canUndo, canRedo = canRedo, debug = debug,
+            zoomPercent = (diagnostics.zoom * 100).roundToInt(),
             onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
             onReset = { surface?.resetView() }, onDebug = { debug = !debug },
-            layersOpen = layersOpen, onLayers = { layersOpen = !layersOpen },
+            layersOpen = layersOpen, onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
             onBack = if (onBackToGallery != null) leaveEditor else null,
             onExport = { if (ready) exportOpen = true },
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+            modifier = Modifier.fillMaxSize().statusBarsPadding(),
         )
 
         Box(
             Modifier.fillMaxSize().then(
-                if (compactControls) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp),
+                if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp),
             ),
         ) {
             BrushRail(
                 selected = brush, erasing = erasing,
                 onBrush = { brush = it; erasing = false; size = it.baseSizePx; opacity = it.opacity },
                 onEraser = { erasing = !erasing },
-                modifier = Modifier.align(if (compactControls) Alignment.BottomStart else Alignment.CenterStart)
-                    .then(if (compactControls) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp)),
-                horizontal = compactControls,
+                modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
+                    .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp)),
+                horizontal = portrait,
+                compact = compactLandscape,
             )
 
             TipControls(
                 size = size, opacity = opacity, color = color, frequentColors = frequentColors,
                 onSize = { size = it }, onOpacity = { opacity = it }, onColor = { color = it },
-                onOpenColorPicker = { colorPickerOpen = true },
-                horizontal = compactControls,
-                modifier = Modifier.align(if (compactControls) Alignment.BottomEnd else Alignment.CenterEnd)
-                    .then(if (compactControls) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
+                onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
+                horizontal = portrait,
+                compactVertical = compactLandscape,
+                modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
+                    .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
             )
         }
 
@@ -214,6 +219,17 @@ fun CanvasScreen(
             )
         }
 
+        if (colorPickerOpen) {
+            ColorPickerPanel(
+                initialColor = color,
+                onDismiss = { colorPickerOpen = false },
+                onColorSelected = { selected -> color = selected; colorPickerOpen = false },
+                compact = maxHeight < 620.dp,
+                modifier = Modifier.align(Alignment.CenterEnd)
+                    .padding(end = if (portrait) 12.dp else 152.dp, top = 12.dp, bottom = 12.dp),
+            )
+        }
+
         message?.let { visibleMessage ->
             Snackbar(
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
@@ -222,16 +238,13 @@ fun CanvasScreen(
         }
 
         if (!ready || saving || exporting) {
-            Surface(Modifier.align(Alignment.TopCenter).padding(top = 66.dp), color = Color(0xE6202125), shape = RoundedCornerShape(12.dp)) {
+            Surface(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 72.dp), color = Color(0xD9202125), shape = RoundedCornerShape(12.dp)) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     Text(if (!ready) "Opening drawing…" else if (exporting) "Exporting…" else "Saving…", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 9.dp))
                 }
             }
         }
-
-        Text("${(diagnostics.zoom * 100).roundToInt()}%", color = Color(0xFFD8D9DC), fontSize = 12.sp,
-            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 22.dp, bottom = if (portrait) 116.dp else 16.dp))
 
         if (debug) DebugOverlay(diagnostics, Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 22.dp, bottom = if (portrait) 116.dp else 16.dp))
     }
@@ -246,54 +259,59 @@ fun CanvasScreen(
         })
     }
 
-    if (colorPickerOpen) ColorPickerDialog(
-        initialColor = color,
-        onDismiss = { colorPickerOpen = false },
-        onColorSelected = { selected -> color = selected; colorPickerOpen = false },
+}
+
+@Composable private fun EditorChrome(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, zoomPercent: Int, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onLayers: () -> Unit, onBack: (() -> Unit)?, onExport: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier) {
+        Row(Modifier.align(Alignment.TopStart).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (onBack != null) ChromeGroup { IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Back to gallery" }) { BackIcon() } }
+            ChromeGroup {
+                IconAction("Undo", enabled = canUndo, onClick = onUndo) { UndoIcon() }
+                IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
+                TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 13.dp)) { Text("Fit", fontSize = 13.sp) }
+                Text("$zoomPercent%", color = Color(0xFFD8D9DC), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp))
+            }
+        }
+        ChromeGroup(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+            IconButton(onClick = onLayers, modifier = Modifier.semantics { contentDescription = "Layers" }) { LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White) }
+            TextButton(onClick = onExport, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Export", fontSize = 13.sp) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Debug", color = Color(0xFFD8D9DC), fontSize = 11.sp)
+                Switch(checked = debug, onCheckedChange = { onDebug() }, modifier = Modifier.scale(.68f).semantics { contentDescription = "Debug overlay" })
+            }
+        }
+    }
+}
+
+@Composable private fun ChromeGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier.background(Color(0xD9202125), RoundedCornerShape(16.dp))
+            .border(1.dp, Color(0xB345474D), RoundedCornerShape(16.dp)).padding(horizontal = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
     )
 }
 
-@Composable private fun TopBar(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onLayers: () -> Unit, onBack: (() -> Unit)?, onExport: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().height(54.dp).background(Color(0xE617181B)).border(0.5.dp, Color(0xFF34363A)), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.padding(start = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (onBack != null) {
-                IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Back to gallery" }) { BackIcon() }
-                Spacer(Modifier.width(4.dp))
-            }
-            Text("Tip", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF4F4F2))
-            Text("Stroke", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFED6A5A))
-        }
-        Spacer(Modifier.weight(1f))
-        IconAction("Undo", enabled = canUndo, onClick = onUndo) { UndoIcon() }
-        IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
-        TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Fit", fontSize = 13.sp) }
-        IconButton(onClick = onLayers, modifier = Modifier.semantics { contentDescription = "Layers" }) { LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White) }
-        TextButton(onClick = onExport) { Text("Export", fontSize = 13.sp) }
-        Switch(checked = debug, onCheckedChange = { onDebug() }, modifier = Modifier.scale(.72f).semantics { contentDescription = "Debug overlay" })
-        Spacer(Modifier.width(18.dp))
-    }
-}
-
-@Composable private fun BrushRail(selected: BrushPreset, erasing: Boolean, onBrush: (BrushPreset) -> Unit, onEraser: () -> Unit, horizontal: Boolean, modifier: Modifier = Modifier) {
+@Composable private fun BrushRail(selected: BrushPreset, erasing: Boolean, onBrush: (BrushPreset) -> Unit, onEraser: () -> Unit, horizontal: Boolean, compact: Boolean = false, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(22.dp)
     val content: @Composable RowScope.() -> Unit = {
-        BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }) }
-        ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER)
+        BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }, compact = compact) }
+        ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact)
     }
-    if (horizontal) Row(modifier.background(Color(0xED202125), shape).border(1.dp, Color(0xFF45474D), shape).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), content = content)
-    else Column(modifier.background(Color(0xED202125), shape).border(1.dp, Color(0xFF45474D), shape).padding(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }) }
-        ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER)
+    if (horizontal) Row(modifier.background(Color(0xD9202125), shape).border(1.dp, Color(0xB345474D), shape).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), content = content)
+    else Column(modifier.background(Color(0xD9202125), shape).border(1.dp, Color(0xB345474D), shape).padding(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }, compact = compact) }
+        ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact)
     }
 }
 
 private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER }
 
-@Composable private fun ToolButton(label: String, selected: Boolean, onClick: () -> Unit, icon: ToolGlyph) {
+@Composable private fun ToolButton(label: String, selected: Boolean, onClick: () -> Unit, icon: ToolGlyph, compact: Boolean = false) {
     val bg by animateColorAsState(if (selected) Color(0xFFF4F4F2) else Color.Transparent, label = "tool")
     val fg = if (selected) Color(0xFF17181B) else Color(0xFFF1F1EF)
-    Column(Modifier.size(width = 68.dp, height = 72.dp).clip(RoundedCornerShape(16.dp)).background(bg).clickable(onClick = onClick).semantics { contentDescription = label }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Canvas(Modifier.size(28.dp)) {
+    Column(Modifier.size(width = if (compact) 58.dp else 68.dp, height = if (compact) 58.dp else 72.dp).clip(RoundedCornerShape(16.dp)).background(bg).clickable(onClick = onClick).semantics { contentDescription = label }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Canvas(Modifier.size(if (compact) 22.dp else 28.dp)) {
             when (icon) {
                 ToolGlyph.PENCIL -> { rotate(-40f) { drawRoundRect(fg, Offset(size.width*.42f, 1f), androidx.compose.ui.geometry.Size(size.width*.2f, size.height*.82f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f)); drawPath(Path().apply { moveTo(size.width*.42f, size.height*.82f); lineTo(size.width*.62f, size.height*.82f); lineTo(size.width*.52f, size.height); close() }, fg) } }
                 ToolGlyph.INK -> { drawPath(Path().apply { moveTo(size.width*.18f,size.height*.82f); cubicTo(size.width*.25f,size.height*.35f,size.width*.7f,size.height*.2f,size.width*.82f,size.height*.08f); cubicTo(size.width*.74f,size.height*.5f,size.width*.55f,size.height*.9f,size.width*.18f,size.height*.82f); close() }, fg) }
@@ -301,7 +319,7 @@ private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER }
                 ToolGlyph.ERASER -> { rotate(-40f) { drawRoundRect(fg, Offset(size.width*.25f,size.height*.18f), androidx.compose.ui.geometry.Size(size.width*.5f,size.height*.65f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()), style = Stroke(2.dp.toPx())) } }
             }
         }
-        Spacer(Modifier.height(5.dp)); Text(label, color = fg, fontSize = 11.sp, maxLines = 1)
+        Spacer(Modifier.height(if (compact) 3.dp else 5.dp)); Text(label, color = fg, fontSize = if (compact) 9.sp else 11.sp, maxLines = 1)
     }
 }
 

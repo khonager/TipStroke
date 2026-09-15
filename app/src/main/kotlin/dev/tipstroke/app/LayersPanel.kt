@@ -43,7 +43,7 @@ internal fun LayersPanel(
     val selected = layers.firstOrNull { it.id == selectedId }
     Surface(
         modifier.width(324.dp).fillMaxHeight(.9f).semantics { contentDescription = "Layers panel" },
-        color = Color(0xF5202125),
+        color = Color(0xE6202125),
         shape = RoundedCornerShape(24.dp),
         border = BorderStroke(1.dp, Color(0xFF47494F)),
         shadowElevation = 18.dp,

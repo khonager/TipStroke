@@ -4,6 +4,8 @@ TipStroke should feel like opening a sketchbook: the first meaningful action is 
 
 The product is raster-first, finite-canvas, local-first, account-free, ad-free, telemetry-free, and useful offline. The UI stays contextual and gesture-led rather than growing into a desktop graphics suite.
 
+Drawing mode has no branded or full-width header. Slightly translucent controls are split into small edge clusters, keeping the top center and canvas center clear; expanded tools such as the color picker remain side-attached in landscape.
+
 The long-term differentiator is a hybrid document that can contain true raster and vector layers plus animation metadata. That future does not change the current painting rule: artwork committed to a raster layer is pixels, not an indefinitely replayed stroke list.
 
 ## Current slice

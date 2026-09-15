@@ -16,7 +16,6 @@ import dev.tipstroke.core.model.GestureSettings
 import dev.tipstroke.core.model.LayerId
 import dev.tipstroke.core.model.LayerKind
 import dev.tipstroke.core.model.LayerSummary
-import dev.tipstroke.core.model.RgbaColor
 import dev.tipstroke.drawing.android.DrawingLibrary
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,9 +38,7 @@ class CanvasScreenshotTest {
     @Test fun renderCompactLandscapeCanvasForVisualReview() = render(1600, 720, "tipstroke-compact-landscape.png") { CanvasScreen() }
 
     @Test fun renderColorPickerForVisualReview() = render(2560, 1600, "tipstroke-color-picker.png") {
-        Box(Modifier.fillMaxSize().background(Color(0xFF17181B)), contentAlignment = Alignment.Center) {
-            ColorPickerPanel(RgbaColor(.2f, .45f, .9f), {}, {})
-        }
+        CanvasScreen(initialColorPickerOpen = true)
     }
 
     @Test fun renderGalleryForVisualReview() = render(2560, 1600, "tipstroke-gallery.png") { activity ->

@@ -31,24 +31,35 @@ internal fun TipControls(
     onColor: (RgbaColor) -> Unit,
     onOpenColorPicker: () -> Unit,
     horizontal: Boolean,
+    compactVertical: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker)
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(if (compactVertical) 6.dp else 14.dp))
         if (horizontal) {
             Row(
                 Modifier.widthIn(max = 390.dp).fillMaxWidth(.62f)
-                    .background(Color(0xF2202125), RoundedCornerShape(20.dp)).padding(12.dp),
+                    .background(Color(0xD9202125), RoundedCornerShape(20.dp)).padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 PrecisionSlider("Size", "${size.roundToInt()} px", size, 2f..180f, 1f, onSize, Modifier.weight(1f))
                 PrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, Modifier.weight(1f))
             }
+        } else if (compactVertical) {
+            Column(
+                Modifier.width(140.dp).background(Color(0xD9202125), RoundedCornerShape(20.dp))
+                    .border(1.dp, Color(0xB345474D), RoundedCornerShape(20.dp)).padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                CompactPrecisionSlider("Size", "${size.roundToInt()} px", size, 2f..180f, 1f, onSize)
+                HorizontalDivider(color = Color(0xFF3A3C41))
+                CompactPrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity)
+            }
         } else {
             Column(
-                Modifier.width(116.dp).background(Color(0xF2202125), RoundedCornerShape(24.dp))
-                    .border(1.dp, Color(0xFF45474D), RoundedCornerShape(24.dp)).padding(vertical = 14.dp),
+                Modifier.width(116.dp).background(Color(0xD9202125), RoundedCornerShape(24.dp))
+                    .border(1.dp, Color(0xB345474D), RoundedCornerShape(24.dp)).padding(vertical = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 VerticalPrecisionSlider("Size", "${size.roundToInt()} px", size, 2f..180f, 1f, onSize)
@@ -56,6 +67,26 @@ internal fun TipControls(
                 VerticalPrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity)
             }
         }
+    }
+}
+
+@Composable
+private fun CompactPrecisionSlider(label: String, valueLabel: String, value: Float, range: ClosedFloatingPointRange<Float>, step: Float, onValue: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = Color(0xFFE7E7E5), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(valueLabel, color = Color(0xFFED6A5A), fontSize = 11.sp)
+    }
+    Slider(value, onValue, valueRange = range, modifier = Modifier.fillMaxWidth().height(24.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        CompactStepButton("−") { onValue((value - step).coerceIn(range)) }
+        CompactStepButton("+") { onValue((value + step).coerceIn(range)) }
+    }
+}
+
+@Composable
+private fun CompactStepButton(label: String, onClick: () -> Unit) {
+    FilledTonalButton(onClick, modifier = Modifier.size(26.dp), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(8.dp)) {
+        Text(label, fontSize = 14.sp)
     }
 }
 
@@ -73,8 +104,8 @@ private fun ColorSwitcher(
     val choices = (frequentColors + defaults).distinctBy(::colorKey).filter { colorKey(it) != colorKey(color) }.take(4)
     Row(
         Modifier.width(116.dp).height(58.dp)
-            .background(Color(0xF2202125), RoundedCornerShape(20.dp))
-            .border(1.dp, Color(0xFF45474D), RoundedCornerShape(20.dp)).padding(5.dp),
+            .background(Color(0xD9202125), RoundedCornerShape(20.dp))
+            .border(1.dp, Color(0xB345474D), RoundedCornerShape(20.dp)).padding(5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
