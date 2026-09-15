@@ -25,6 +25,7 @@ import kotlin.math.*
 class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.util.AttributeSet? = null) : FrameLayout(context, attrs) {
     val settings = CanvasSettings()
     private lateinit var rasterView: RasterCanvasView
+    private lateinit var colorLoupe: ColorPickerLoupeView
     private var layerStack: LayerStack = createLayerStack(2048, 2048)
 
     private fun createLayerStack(width: Int, height: Int): LayerStack = LayerStack(context.contentResolver, width, height) {
@@ -49,6 +50,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private val gestureHandler = Handler(Looper.getMainLooper())
     private var holdRunnable: Runnable? = null
     private var holdTriggered = false
+    private var colorPicking = false
+    private var pendingPickedColor: RgbaColor? = null
     private var singleStart = android.graphics.PointF()
     private var singleLast = android.graphics.PointF()
     private var singleLastDocument = android.graphics.PointF()
@@ -67,8 +70,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     init {
         setWillNotDraw(false); setBackgroundColor(Color.rgb(23, 24, 27)); isMotionEventSplittingEnabled = false
         rasterView = RasterCanvasView(context, layerStack)
+        colorLoupe = ColorPickerLoupeView(context, rasterView)
         addView(rasterView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(liveView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(colorLoupe, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // Robolectric cannot load Ink's Android native library; real devices eagerly warm it.
         if (!Build.FINGERPRINT.contains("robolectric", ignoreCase = true)) liveView.eagerInit()
         liveView.addFinishedStrokesListener(object : InProgressStrokesFinishedListener {
@@ -170,6 +175,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 if (!isStylus(event, event.actionIndex)) return true
+                cancelColorPick()
                 val target = layerStack.selectedRaster() ?: return true
                 requestUnbufferedDispatch(event)
                 activeStylusId = pointerId
@@ -248,6 +254,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 cancelHold()
+                cancelColorPick()
                 smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null
                 if (event.pointerCount >= 2) beginGesture(event)
             }
@@ -257,7 +264,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val distance = hypot(event.x - singleStart.x, event.y - singleStart.y)
                 if (distance > ViewConfiguration.get(context).scaledTouchSlop) { gestureMoved = true; cancelHold() }
                 val document = rasterView.screenToDocument(event.x, event.y)
-                if (isTransformingImage() && gestureMoved) {
+                if (colorPicking) {
+                    updateColorPick(event.x, event.y, document)
+                } else if (isTransformingImage() && gestureMoved) {
                     layerStack.transformSelectedImage(document.x - singleLastDocument.x, document.y - singleLastDocument.y)
                 } else when (settings.gestures.oneFingerDrag) {
                     FingerAction.NAVIGATE -> if (gestureMoved) {
@@ -271,7 +280,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         )
                         rasterView.invalidate()
                     }
-                    FingerAction.PICK_COLOR -> if (gestureMoved) pickColor(document)
+                    FingerAction.PICK_COLOR -> if (gestureMoved) beginOrUpdateColorPick(event.x, event.y, document)
                     else -> Unit
                 }
                 singleLast = android.graphics.PointF(event.x, event.y)
@@ -280,6 +289,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP -> {
                 cancelHold()
                 smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null
+                if (event.actionMasked == MotionEvent.ACTION_UP && colorPicking) {
+                    updateColorPick(event.x, event.y, rasterView.screenToDocument(event.x, event.y))
+                    commitColorPick()
+                    gestureStart = emptyMap()
+                    notifyHistory()
+                    return true
+                }
                 if (event.actionMasked == MotionEvent.ACTION_POINTER_UP && isTransformingImage()) {
                     rebaseToRemainingPointer(event)
                     notifyLayers()
@@ -301,7 +317,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 notifyHistory()
             }
             MotionEvent.ACTION_CANCEL -> {
-                cancelHold(); smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null; gestureStart = emptyMap()
+                cancelHold(); cancelColorPick(); smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null; gestureStart = emptyMap()
             }
         }
         return true
@@ -313,7 +329,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         holdRunnable = Runnable {
             if (!gestureMoved) {
                 holdTriggered = true
-                performFingerAction(action, documentPoint)
+                if (action == FingerAction.PICK_COLOR) {
+                    beginOrUpdateColorPick(singleLast.x, singleLast.y, rasterView.screenToDocument(singleLast.x, singleLast.y))
+                } else performFingerAction(action, documentPoint)
             }
         }.also { gestureHandler.postDelayed(it, settings.gestures.holdDelayMillis) }
     }
@@ -324,15 +342,34 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         when (action) {
             FingerAction.UNDO -> undo()
             FingerAction.REDO -> redo()
-            FingerAction.PICK_COLOR -> point?.let(::pickColor)
+            FingerAction.PICK_COLOR -> Unit
             else -> Unit
         }
     }
 
-    private fun pickColor(point: android.graphics.PointF) {
-        val picked = layerStack.colorAt(point.x, point.y)
-        settings.color = picked
-        colorPickedListener?.invoke(picked)
+    private fun beginOrUpdateColorPick(screenX: Float, screenY: Float, document: android.graphics.PointF) {
+        colorPicking = true
+        updateColorPick(screenX, screenY, document)
+    }
+
+    private fun updateColorPick(screenX: Float, screenY: Float, document: android.graphics.PointF) {
+        val picked = layerStack.colorAt(document.x, document.y)
+        pendingPickedColor = picked
+        colorLoupe.showAt(screenX, screenY, picked)
+    }
+
+    private fun commitColorPick() {
+        pendingPickedColor?.let { picked ->
+            settings.color = picked
+            colorPickedListener?.invoke(picked)
+        }
+        cancelColorPick()
+    }
+
+    private fun cancelColorPick() {
+        colorPicking = false
+        pendingPickedColor = null
+        colorLoupe.dismiss()
     }
 
     private fun beginGesture(event: MotionEvent) {

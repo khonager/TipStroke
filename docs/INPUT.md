@@ -14,7 +14,7 @@ Stylus has priority. Once a stylus stroke is active, touch cannot navigate or co
 
 The camera matrix transforms screen events to document coordinates once at input. Navigation changes the view matrix only and never resamples document pixels.
 
-Color picking samples the current back-to-front layer composite at the held document coordinate and updates the active brush color. A stylus always retains priority and always draws regardless of finger mappings.
+Color picking opens a native magnifying loupe after the configured hold delay. The loupe follows the finger, shows enlarged composite pixels, outlines the pending color, and suppresses navigation while active. The active brush color changes only when the finger lifts; cancellation or adding another finger dismisses the loupe without changing color. A stylus always retains priority and always draws regardless of finger mappings.
 
 ## Brush controls
 
@@ -22,4 +22,4 @@ Brush size and opacity use long drag tracks with persistent numeric readouts. Ad
 
 ## Planned extension points
 
-The captured button state can later map stylus buttons to actions. Gesture routing can later add hold-to-eyedropper, swipe actions, quick menu, fullscreen toggle, and user mappings without adding work to the sample path.
+The captured button state can later map stylus buttons to actions. Gesture routing can later add swipe actions, a quick menu, fullscreen toggle, and additional user mappings without adding work to the sample path.
