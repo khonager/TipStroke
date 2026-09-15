@@ -12,7 +12,6 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      TIPSTROKE_KEYSTORE_FILE: ${{ runner.temp }}/tipstroke-release.jks
       TIPSTROKE_KEYSTORE_PASSWORD: ${{ secrets.TIPSTROKE_KEYSTORE_PASSWORD }}
       TIPSTROKE_KEY_ALIAS: ${{ secrets.TIPSTROKE_KEY_ALIAS }}
       TIPSTROKE_KEY_PASSWORD: ${{ secrets.TIPSTROKE_KEY_PASSWORD }}
@@ -48,7 +47,9 @@ jobs:
           fi
 
           umask 077
-          printf '%s' "$TIPSTROKE_SIGNING_KEY" | base64 --decode > "$TIPSTROKE_KEYSTORE_FILE"
+          keystore_file="$RUNNER_TEMP/tipstroke-release.jks"
+          printf '%s' "$TIPSTROKE_SIGNING_KEY" | base64 --decode > "$keystore_file"
+          echo "TIPSTROKE_KEYSTORE_FILE=$keystore_file" >> "$GITHUB_ENV"
 
       - name: Test and build signed APK
         run: ./gradlew test lint assembleRelease
@@ -77,4 +78,4 @@ jobs:
 
       - name: Remove decoded signing key
         if: always()
-        run: rm -f "$TIPSTROKE_KEYSTORE_FILE"
+        run: rm -f "$RUNNER_TEMP/tipstroke-release.jks"
