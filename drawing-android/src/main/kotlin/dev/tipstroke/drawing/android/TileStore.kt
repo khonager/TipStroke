@@ -20,23 +20,77 @@ class TileStore(
     val allocatedTileCount get() = tiles.size
     private var smudgeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
     private val smudgeTouched = mutableSetOf<TileCoordinate>()
+    private var liveStrokeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
+    private val liveStrokeTouched = mutableSetOf<TileCoordinate>()
 
     override fun commit(stroke: CompletedStroke): Set<TileCoordinate> {
         val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
         if (dirty.isEmpty()) return emptySet()
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        val preparedPaint = StrokeCanvasPainter.preparePaint(stroke)
         dirty.forEach { coordinate ->
             val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
             val canvas = Canvas(bitmap)
             canvas.save()
             canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
-            StrokeCanvasPainter.draw(canvas, stroke)
+            StrokeCanvasPainter.draw(canvas, stroke, preparedPaint)
             canvas.restore()
             if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after))
         lastDirtyTiles = dirty
+        return dirty
+    }
+
+    /** Starts a cancellable stroke that mutates only newly touched sparse tiles as samples arrive. */
+    internal fun beginLiveStroke() {
+        check(liveStrokeBefore == null) { "A live stroke is already active" }
+        liveStrokeBefore = mutableMapOf()
+        liveStrokeTouched.clear()
+    }
+
+    /** Applies one new point or segment and returns only the tiles that need screen invalidation. */
+    internal fun appendLiveStroke(stroke: CompletedStroke): Set<TileCoordinate> {
+        val before = liveStrokeBefore ?: return emptySet()
+        val candidates = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
+        val dirty = if (stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE) {
+            candidates.filterTo(mutableSetOf()) { it in tiles }
+        } else candidates
+        if (dirty.isEmpty()) return emptySet()
+        val preparedPaint = StrokeCanvasPainter.preparePaint(stroke)
+        dirty.forEach { coordinate ->
+            if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
+            val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val canvas = Canvas(bitmap)
+            canvas.save()
+            canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+            StrokeCanvasPainter.draw(canvas, stroke, preparedPaint)
+            canvas.restore()
+        }
+        liveStrokeTouched += dirty
+        lastDirtyTiles = dirty
+        return dirty
+    }
+
+    internal fun finishLiveStroke(): Set<TileCoordinate> {
+        val before = liveStrokeBefore ?: return emptySet()
+        liveStrokeBefore = null
+        if (liveStrokeTouched.isEmpty()) return emptySet()
+        liveStrokeTouched.forEach { coordinate ->
+            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) } }
+        }
+        val after = liveStrokeTouched.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        history.push(TileSnapshotTransaction(this, before, after))
+        return liveStrokeTouched.toSet().also { lastDirtyTiles = it; liveStrokeTouched.clear() }
+    }
+
+    internal fun cancelLiveStroke(): Set<TileCoordinate> {
+        val before = liveStrokeBefore ?: return emptySet()
+        liveStrokeBefore = null
+        val dirty = liveStrokeTouched.toSet()
+        restore(before)
+        liveStrokeTouched.clear()
         return dirty
     }
 
@@ -61,8 +115,13 @@ class TileStore(
     }
 
     fun draw(canvas: Canvas, paint: Paint) {
+        val visible = canvas.clipBounds
         tiles.forEach { (coordinate, bitmap) ->
-            canvas.drawBitmap(bitmap, (coordinate.x * tileSize).toFloat(), (coordinate.y * tileSize).toFloat(), paint)
+            val left = coordinate.x * tileSize
+            val top = coordinate.y * tileSize
+            if (visible.intersects(left, top, left + tileSize, top + tileSize)) {
+                canvas.drawBitmap(bitmap, left.toFloat(), top.toFloat(), paint)
+            }
         }
     }
 

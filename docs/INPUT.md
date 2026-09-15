@@ -6,7 +6,7 @@
 - `TOOL_TYPE_ERASER` uses the same brush engine with clear blending.
 - Finger behavior comes from local `GestureSettings`. Defaults are one-finger drag to navigate, one-finger hold to pick color, two-finger tap to undo, and three-finger tap to redo.
 - One-finger drag can instead smudge the selected paint layer. Smudge snapshots only affected tiles and groups the whole finger gesture into one undo transaction.
-- Image transform mode temporarily takes priority over configured finger actions. One-finger drag moves the selected image; two-finger translation, pinch, and twist move, resize, and rotate it. Leaving transform mode restores the configured actions.
+- Image transform mode temporarily takes priority over configured finger actions. One-finger drag moves the selected image; two-finger translation, pinch, and twist move, resize, and rotate it. When one finger of a two-finger transform lifts, the gesture rebases to the remaining finger so continued movement is smooth and does not jump. Leaving transform mode restores the configured actions.
 - Two or more fingers continue to pan, zoom, and rotate the camera simultaneously; rotation can be locked.
 - Mouse data has a domain representation but mouse painting is not enabled in this Android milestone.
 

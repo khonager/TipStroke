@@ -4,7 +4,7 @@
 
 `:core` is platform-neutral Kotlin. It owns `Document`, `CanvasSpec`, the sealed `Layer` contract, `RasterLayer`, non-destructive `ImageLayer` metadata, versioned `BrushPreset`, colors, transform/tile math, samples, renderer contracts, and bounded undo history. It contains no Android or Ink types.
 
-`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, native wet views render the active stroke, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles. Pencil and Ink use Jetpack Ink; Airbrush uses a native preview backed by the same `StrokeCanvasPainter` as its tile commit so softness and pressure are visible before pen-up.
+`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, native wet rendering shows the active stroke, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles. Pencil and Ink use Jetpack Ink. Airbrush and eraser gestures apply each new segment directly to affected raster tiles inside a cancellable transaction, so the wet composite is the final composite without replaying the growing stroke on every sample.
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 

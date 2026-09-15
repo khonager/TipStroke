@@ -35,10 +35,12 @@ class TileStoreTest {
         val store = TileStore(512, 512)
         store.commit(stroke(Point(30f, 30f), Point(220f, 30f), ink))
         val erase = ink.copy(sizePx = 40f, blend = BlendBehavior.ERASE)
-        store.commit(stroke(Point(30f, 30f), Point(220f, 30f), erase))
+        store.beginLiveStroke()
+        store.appendLiveStroke(stroke(Point(30f, 30f), Point(220f, 30f), erase))
         val result = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
         store.draw(Canvas(result), Paint())
         assertEquals(0, Color.alpha(result.getPixel(100, 30)))
+        store.finishLiveStroke()
     }
 
     @Test fun fingerSmudgeIsGroupedIntoOneUndoStep() {
@@ -55,11 +57,15 @@ class TileStoreTest {
 
     @Test fun airbrushWetPainterMatchesCommittedPixels() {
         val airbrush = StrokeStyle(BrushPreset.Airbrush, 48f, .37f, RgbaColor(.8f, .2f, .1f), BlendBehavior.PAINT)
-        val completed = stroke(Point(60f, 90f), Point(190f, 140f), airbrush)
+        val points = listOf(sample(Point(60f, 90f), 0), sample(Point(125f, 115f), 1), sample(Point(190f, 140f), 2))
+        val completed = CompletedStroke(points, airbrush)
         val preview = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
         StrokeCanvasPainter.draw(Canvas(preview), completed)
         val store = TileStore(256, 256)
-        store.commit(completed)
+        store.beginLiveStroke()
+        store.appendLiveStroke(CompletedStroke(points.subList(0, 2), airbrush))
+        store.appendLiveStroke(CompletedStroke(points.subList(1, 3), airbrush))
+        store.finishLiveStroke()
         val committed = store.snapshotTiles().getValue(TileCoordinate(0, 0))
         val previewPixels = IntArray(256 * 256)
         val committedPixels = IntArray(256 * 256)
@@ -68,6 +74,26 @@ class TileStoreTest {
         assertArrayEquals(previewPixels, committedPixels)
         preview.recycle()
         committed.recycle()
+    }
+
+    @Test fun canceledLiveEraserRestoresPixelsAndDoesNotAddHistory() {
+        val store = TileStore(256, 256)
+        store.commit(stroke(Point(30f, 80f), Point(220f, 80f), ink))
+        val historyBefore = store.history.estimatedBytes
+        val before = store.snapshotTiles().getValue(TileCoordinate(0, 0))
+        val erase = ink.copy(sizePx = 52f, blend = BlendBehavior.ERASE)
+        store.beginLiveStroke()
+        store.appendLiveStroke(stroke(Point(90f, 80f), Point(160f, 80f), erase))
+        store.cancelLiveStroke()
+        val restored = store.snapshotTiles().getValue(TileCoordinate(0, 0))
+        val expected = IntArray(256 * 256)
+        val actual = IntArray(256 * 256)
+        before.getPixels(expected, 0, 256, 0, 0, 256, 256)
+        restored.getPixels(actual, 0, 256, 0, 0, 256, 256)
+        assertArrayEquals(expected, actual)
+        assertEquals(historyBefore, store.history.estimatedBytes)
+        before.recycle()
+        restored.recycle()
     }
 
     private fun stroke(a: Point, b: Point, style: StrokeStyle) = CompletedStroke(

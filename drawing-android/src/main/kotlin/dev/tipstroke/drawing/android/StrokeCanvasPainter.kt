@@ -15,8 +15,7 @@ import kotlin.math.roundToInt
 
 /** Shared painter for custom wet previews and their byte-for-byte-equivalent tile commit. */
 internal object StrokeCanvasPainter {
-    fun draw(canvas: Canvas, stroke: CompletedStroke) {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    fun preparePaint(stroke: CompletedStroke) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             strokeWidth = stroke.style.sizePx
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
@@ -27,7 +26,9 @@ internal object StrokeCanvasPainter {
             if (stroke.style.brush.engine == BrushEngine.AIRBRUSH) {
                 maskFilter = BlurMaskFilter(stroke.style.sizePx * .35f, BlurMaskFilter.Blur.NORMAL)
             }
-        }
+    }
+
+    fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke)) {
         val samples = stroke.samples
         if (samples.size == 1) {
             val sample = samples.first()

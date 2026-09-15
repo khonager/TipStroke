@@ -5,6 +5,7 @@ import dev.tipstroke.core.geometry.Rect
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.RgbaColor
 
 enum class PointerKind { STYLUS, ERASER_STYLUS, FINGER, MOUSE, UNKNOWN }
@@ -22,7 +23,7 @@ data class StrokeStyle(val brush: BrushPreset, val sizePx: Float, val opacity: F
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     val bounds: Rect by lazy {
         require(samples.isNotEmpty())
-        val radius = style.sizePx / 2f
+        val radius = style.sizePx / 2f + if (style.brush.engine == BrushEngine.AIRBRUSH) style.sizePx * .35f else 0f
         Rect(samples.minOf { it.position.x }, samples.minOf { it.position.y },
             samples.maxOf { it.position.x }, samples.maxOf { it.position.y }).expanded(radius)
     }

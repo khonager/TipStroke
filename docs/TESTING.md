@@ -9,6 +9,8 @@ Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable 
 3. Vary pressure from feather-light to firm. Check width response and smooth taper.
 4. Lift the pen while watching the final segment. Check for gap, flash, doubled opacity, width jump, or color shift.
 5. Repeat with Pencil and Airbrush. Airbrush softness, pressure sizing, and opacity should not change at commit.
+6. Erase across marks on multiple layers. Lower layers should be revealed during the gesture, with no visual change at pen-up; canceling a stroke should restore it.
+7. Resize an image with two fingers, lift either finger, pause, then continue dragging with the remaining finger. The image must stay in place at the handoff and resume smoothly after the drag threshold.
 6. Toggle Eraser and use the hardware eraser tool if reported. Verify pixels become transparent (white v0 canvas shows through) and undo restores them.
 7. Press each stylus button while drawing and confirm the debug/input path remains stable; mappings are intentionally not assigned yet.
 

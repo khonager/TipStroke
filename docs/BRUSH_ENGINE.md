@@ -6,10 +6,10 @@ Current presets:
 
 - Pencil: smaller, lower opacity, natural pressure response.
 - Ink: reference latency brush with strong pressure-size response.
-- Airbrush: large low-opacity soft stroke, with the same native painter used while wet and at commit.
+- Airbrush: large low-opacity soft stroke, incrementally rasterized with the same native painter while wet and at commit.
 
 Jetpack Ink stable stock brushes author wet marks. Completed input samples are rasterized into tiles; Ink geometry is discarded. Erasing is `BlendBehavior.ERASE` and uses `PorterDuff.CLEAR`, never the background color.
 
 ## Known visual limitation
 
-Ink 1.0 stable has no stock soft-airbrush authoring brush, so Airbrush uses a lightweight native overlay and the shared custom raster painter. The wet preview now has the same softness, pressure sizing, and opacity as the committed pixels. The eraser wet preview remains a white approximation; a true multi-layer clear preview needs temporary compositing of the layers beneath the selected paint layer.
+Ink 1.0 stable has no stock soft-airbrush or clear-blend authoring brush. Airbrush and eraser therefore use a cancellable sparse-tile transaction while the pointer is down. Only the new segment and its intersecting tiles are processed; cancellation restores the before snapshots, and pen-up records one bounded undo transaction. This makes erasing reveal the real lower-layer composite immediately and avoids repeatedly rasterizing a long Airbrush stroke.

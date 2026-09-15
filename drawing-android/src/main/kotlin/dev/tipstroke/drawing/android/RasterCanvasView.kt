@@ -4,6 +4,10 @@ import android.content.Context
 import android.graphics.*
 import android.view.View
 import dev.tipstroke.core.geometry.CanvasTransform
+import dev.tipstroke.core.geometry.TileCoordinate
+import dev.tipstroke.core.geometry.TileGrid
+import kotlin.math.ceil
+import kotlin.math.floor
 
 internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : View(context) {
     val transformMatrix = Matrix()
@@ -42,6 +46,23 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     }
 
     fun viewToDocumentMatrix() = Matrix().also { transformMatrix.invert(it) }
+
+    fun invalidateTiles(tiles: Set<TileCoordinate>) {
+        if (tiles.isEmpty()) return
+        val documentBounds = RectF(
+            (tiles.minOf { it.x } * TileGrid.DEFAULT_TILE_SIZE).toFloat(),
+            (tiles.minOf { it.y } * TileGrid.DEFAULT_TILE_SIZE).toFloat(),
+            ((tiles.maxOf { it.x } + 1) * TileGrid.DEFAULT_TILE_SIZE).toFloat(),
+            ((tiles.maxOf { it.y } + 1) * TileGrid.DEFAULT_TILE_SIZE).toFloat(),
+        )
+        transformMatrix.mapRect(documentBounds)
+        postInvalidateOnAnimation(
+            floor(documentBounds.left).toInt() - 2,
+            floor(documentBounds.top).toInt() - 2,
+            ceil(documentBounds.right).toInt() + 2,
+            ceil(documentBounds.bottom).toInt() + 2,
+        )
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { if (w > 0 && h > 0 && (w != oldw || h != oldh)) fitCanvas() }
 

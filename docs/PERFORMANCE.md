@@ -1,6 +1,8 @@
 # Performance
 
-The latency budget belongs to stylus sampling and wet rendering. `MotionEvent`s go directly to native `InProgressStrokesView`; Compose sees only occasional diagnostics/control state.
+The latency budget belongs to stylus sampling and wet rendering. `MotionEvent`s go directly to the native drawing surface—Jetpack Ink for Pencil/Ink and sparse tile transactions for Airbrush/eraser. Compose sees only occasional diagnostics/control state.
+
+Airbrush and eraser samples use incremental sparse-tile transactions because replaying an increasingly long blurred path for every input sample becomes quadratic. Each update rasterizes only the new segment into intersecting tiles and schedules invalidation for that document region. Tile compositing also rejects tiles outside the current canvas clip.
 
 Current safeguards:
 
