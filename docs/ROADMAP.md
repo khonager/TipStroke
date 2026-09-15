@@ -7,9 +7,9 @@ Validate gallery creation/reopening, crash-resistant autosave, image export, con
 ## NEXT
 
 1. Recovery journaling/fsync, rename/duplicate gallery actions, and transferable project import/export.
-2. Layer renaming, draggable corner handles/non-uniform transforms, blend modes, and tiled image pyramids for extremely large sources. Direct drag/pinch/twist image transforms are already available.
-3. Transform and selection.
-4. Brush duplication/customization and brush assets.
+2. Layer renaming, draggable corner handles/non-uniform transforms, blend modes, and tiled image pyramids for extremely large sources. Direct drag/pinch/twist image transforms and non-destructive image erasing are already available.
+3. Lift/move/resize/rotate/flip for selected raster pixels, plus freehand selection. Rectangular editing bounds are already available for paint and image layers.
+4. Brush duplication and brush assets. Compact hardness, pressure, and speed controls are already available.
 5. Animation model, cels, timeline, playback, onion skin, and initial export.
 6. Real vector layers and the icon/logo workflow with SVG import/export.
 

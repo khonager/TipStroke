@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.net.Uri
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.model.LayerId
+import dev.tipstroke.core.model.ImageTransform
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -91,5 +92,44 @@ class ProjectPersistenceTest {
         loaded.layers.filterIsInstance<LoadedRaster>().flatMap { it.tiles.values }.forEach(Bitmap::recycle)
         snapshot.recycle()
         assertTrue(library.delete(id))
+    }
+
+    @Test fun imageMasksPersistAndEraseWithoutChangingTheOriginalAsset() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val id = library.newId()
+        val layerId = LayerId("masked-image")
+        val sourceFile = java.io.File.createTempFile("tipstroke-source", ".png")
+        Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { source ->
+            source.eraseColor(Color.RED)
+            sourceFile.outputStream().use { source.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            source.recycle()
+        }
+        val mask = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { setPixel(10, 10, Color.WHITE) }
+        val snapshot = DrawingSnapshot(
+            32, 32, layerId,
+            listOf(SavedImageSnapshot(
+                layerId, "Original", true, 1f, Uri.fromFile(sourceFile), 32, 32,
+                ImageTransform(16f, 16f), mapOf(TileCoordinate(0, 0) to mask),
+            )),
+        )
+
+        ProjectPersistence.save(context.contentResolver, library, id, "Masked", snapshot).getOrThrow()
+        val loaded = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
+        val loadedImage = loaded.layers.single() as LoadedImage
+        assertEquals(Color.WHITE, loadedImage.maskTiles.getValue(TileCoordinate(0, 0)).getPixel(10, 10))
+        assertEquals(32, loadedImage.originalWidthPx)
+        val copiedSource = BitmapFactory.decodeFile(loadedImage.assetFile.absolutePath)
+        assertEquals(Color.RED, copiedSource.getPixel(10, 10))
+
+        val output = java.io.File.createTempFile("tipstroke-masked-export", ".png")
+        ProjectPersistence.export(context.contentResolver, Uri.fromFile(output), snapshot, ExportFormat.PNG, 100, 1f, false).getOrThrow()
+        val exported = BitmapFactory.decodeFile(output.absolutePath)
+        assertEquals(Color.WHITE, exported.getPixel(10, 10))
+        assertEquals(Color.RED, exported.getPixel(20, 20))
+
+        copiedSource.recycle(); exported.recycle()
+        loadedImage.maskTiles.values.forEach(Bitmap::recycle)
+        snapshot.recycle(); output.delete(); sourceFile.delete(); library.delete(id)
     }
 }

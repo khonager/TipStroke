@@ -105,6 +105,7 @@ class TileStore(
             val canvas = Canvas(bitmap)
             canvas.save()
             canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+            stroke.style.clipBounds?.normalized()?.let { canvas.clipRect(it.left, it.top, it.right, it.bottom) }
             renderer.draw(canvas, inkStroke, Matrix())
             canvas.restore()
             if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }

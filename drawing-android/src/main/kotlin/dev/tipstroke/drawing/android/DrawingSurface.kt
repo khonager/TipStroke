@@ -19,6 +19,7 @@ import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.input.motionprediction.MotionEventPredictor
 import dev.tipstroke.core.drawing.*
 import dev.tipstroke.core.geometry.Point
+import dev.tipstroke.core.geometry.Rect
 import dev.tipstroke.core.model.*
 import kotlin.math.*
 
@@ -36,8 +37,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private val inkRenderer by lazy { CanvasStrokeRenderer.create(liveView.textureBitmapStore) }
     private var predictor: MotionEventPredictor? = null
     private val pendingSamples = mutableMapOf<Int, MutableList<StrokeSample>>()
-    private data class PendingCommit(val stroke: CompletedStroke, val target: RasterLayerRuntime)
-    private val pendingTargets = mutableMapOf<Int, RasterLayerRuntime>()
+    private data class StrokeTarget(val store: TileStore, val image: ImageLayerRuntime? = null)
+    private data class PendingCommit(val stroke: CompletedStroke, val target: StrokeTarget)
+    private val pendingTargets = mutableMapOf<Int, StrokeTarget>()
     private var customPreviewStyle: StrokeStyle? = null
     private val finishedSamples = ArrayDeque<PendingCommit>()
     private var activeStylusId: Int? = null
@@ -66,6 +68,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var frequentColorsListener: ((List<RgbaColor>) -> Unit)? = null
     private var imageTransformMode = false
+    private var selectionMode = false
+    private var selectionStart: android.graphics.PointF? = null
+    private var selectionBounds: Rect? = null
+    var selectionListener: ((Boolean, Boolean) -> Unit)? = null
 
     init {
         setWillNotDraw(false); setBackgroundColor(Color.rgb(23, 24, 27)); isMotionEventSplittingEnabled = false
@@ -81,7 +87,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 strokes.forEach { (_, inkStroke) ->
                     val pending = finishedSamples.removeFirstOrNull() ?: return@forEach
                     val stroke = pending.stroke
-                    val store = pending.target.tiles
+                    val store = pending.target.store
                     if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine != BrushEngine.AIRBRUSH) {
                         store.commitInk(stroke, inkStroke, inkRenderer)
                     } else {
@@ -101,8 +107,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
     }
 
-    fun undo() { layerStack.selectedRaster()?.tiles?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyFrequentColors() } } }
-    fun redo() { layerStack.selectedRaster()?.tiles?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyFrequentColors() } } }
+    fun undo() { layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyFrequentColors() } } }
+    fun redo() { layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyFrequentColors() } } }
     fun resetView() = rasterView.fitCanvas()
     fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
@@ -113,6 +119,22 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun setImageTransformMode(enabled: Boolean) {
         imageTransformMode = enabled && layerStack.selectedImage() != null
         rasterView.showImageTransformBounds = imageTransformMode
+    }
+    fun setSelectionMode(enabled: Boolean) {
+        selectionMode = enabled
+        if (enabled) setImageTransformMode(false)
+        selectionListener?.invoke(selectionMode, selectionBounds != null)
+    }
+    fun clearSelection() {
+        selectionBounds = null
+        selectionStart = null
+        rasterView.selectionBounds = null
+        selectionListener?.invoke(selectionMode, false)
+    }
+    fun selectAll() {
+        selectionBounds = Rect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
+        rasterView.selectionBounds = selectionBounds
+        selectionListener?.invoke(selectionMode, true)
     }
     fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
     fun originalSizeSelectedImage() { layerStack.originalSizeSelectedImage(); notifyLayers() }
@@ -164,6 +186,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         predictor?.record(event)
+        if (selectionMode) return handleSelection(event)
         val actionIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val toolType = event.getToolType(actionIndex)
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
@@ -176,15 +199,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 if (!isStylus(event, event.actionIndex)) return true
                 cancelColorPick()
-                val target = layerStack.selectedRaster() ?: return true
+                val baseStyle = currentStyle(event, event.actionIndex)
+                val target = when (val selected = layerStack.selected()) {
+                    is RasterLayerRuntime -> StrokeTarget(selected.tiles)
+                    is ImageLayerRuntime -> if (baseStyle.blend == BlendBehavior.ERASE) StrokeTarget(selected.mask, selected) else return true
+                }
                 requestUnbufferedDispatch(event)
                 activeStylusId = pointerId
                 pendingTargets[pointerId] = target
-                pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex))
-                val style = currentStyle(event, event.actionIndex)
-                if (style.brush.engine == BrushEngine.AIRBRUSH || style.blend == BlendBehavior.ERASE) {
+                pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
+                val style = styleForTarget(baseStyle, target)
+                if (target.image != null || style.brush.engine == BrushEngine.AIRBRUSH || style.blend == BlendBehavior.ERASE) {
                     customPreviewStyle = style
-                    target.tiles.beginLiveStroke()
+                    target.store.beginLiveStroke()
                 } else {
                     liveView.startStroke(event, pointerId, createInkBrush(), rasterView.viewToDocumentMatrix(), Matrix())
                 }
@@ -194,8 +221,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (index >= 0) {
                     val list = pendingSamples[pointerId] ?: return true
                     val additions = buildList {
-                        for (historyIndex in 0 until event.historySize) add(sample(event, index, historyIndex))
-                        add(sample(event, index))
+                        for (historyIndex in 0 until event.historySize) add(sample(event, index, historyIndex).forTarget(pendingTargets.getValue(pointerId)))
+                        add(sample(event, index).forTarget(pendingTargets.getValue(pointerId)))
                     }
                     appendSamples(pointerId, list, additions)
                     if (customPreviewStyle != null) {
@@ -212,14 +239,17 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     cancelActiveStroke(event, pointerId)
                     return true
                 }
-                if (index >= 0) pendingSamples[pointerId]?.let { appendSamples(pointerId, it, listOf(sample(event, index))) }
+                if (index >= 0) pendingSamples[pointerId]?.let { list ->
+                    pendingTargets[pointerId]?.let { target -> appendSamples(pointerId, list, listOf(sample(event, index).forTarget(target))) }
+                }
                 val target = pendingTargets.remove(pointerId)
                 pendingSamples.remove(pointerId)?.let { samples ->
                     val style = customPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
                     if (target != null) {
                         if (customPreviewStyle != null) {
-                            if (samples.size == 1) rasterView.invalidateTiles(target.tiles.appendLiveStroke(CompletedStroke(samples, style)))
-                            target.tiles.finishLiveStroke(CompletedStroke(samples, style))
+                            if (samples.size == 1) invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
+                            target.store.finishLiveStroke(CompletedStroke(samples, style))
+                            rasterView.invalidate()
                             notifyHistory()
                             notifyFrequentColors()
                         } else finishedSamples += PendingCommit(CompletedStroke(samples, style), target)
@@ -323,6 +353,39 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
 
+    private fun handleSelection(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val point = rasterView.screenToDocument(event.x, event.y)
+                selectionStart = point
+                selectionBounds = Rect(point.x, point.y, point.x, point.y)
+                rasterView.selectionBounds = selectionBounds
+            }
+            MotionEvent.ACTION_MOVE -> selectionStart?.let { start ->
+                val point = rasterView.screenToDocument(event.x, event.y)
+                selectionBounds = Rect(start.x, start.y, point.x, point.y).normalized()
+                rasterView.selectionBounds = selectionBounds
+            }
+            MotionEvent.ACTION_UP -> {
+                val bounds = selectionBounds?.normalized()
+                if (bounds == null || bounds.right - bounds.left < 2f || bounds.bottom - bounds.top < 2f) clearSelection()
+                else {
+                    selectionBounds = Rect(
+                        bounds.left.coerceIn(0f, layerStack.canvasWidth.toFloat()),
+                        bounds.top.coerceIn(0f, layerStack.canvasHeight.toFloat()),
+                        bounds.right.coerceIn(0f, layerStack.canvasWidth.toFloat()),
+                        bounds.bottom.coerceIn(0f, layerStack.canvasHeight.toFloat()),
+                    )
+                    rasterView.selectionBounds = selectionBounds
+                    selectionListener?.invoke(true, true)
+                }
+                selectionStart = null
+            }
+            MotionEvent.ACTION_CANCEL -> { selectionStart = null; clearSelection() }
+        }
+        return true
+    }
+
     private fun scheduleHold(documentPoint: android.graphics.PointF) {
         val action = settings.gestures.oneFingerHold
         if (action == FingerAction.DISABLED) return
@@ -416,7 +479,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 add(previous)
                 addAll(additions)
             }
-            rasterView.invalidateTiles(target.tiles.appendLiveStroke(CompletedStroke(segment, style)))
+            invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(segment, style)))
         }
     }
 
@@ -434,7 +497,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (customPreviewStyle == null) {
             liveView.cancelStroke(event, pointerId)
         } else {
-            pendingTargets[pointerId]?.tiles?.cancelLiveStroke()?.let(rasterView::invalidateTiles)
+            pendingTargets[pointerId]?.let { target -> invalidateTarget(target, target.store.cancelLiveStroke()) }
         }
         customPreviewStyle = null
         pendingSamples.remove(pointerId)
@@ -444,8 +507,41 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun currentStyle(event: MotionEvent, index: Int): StrokeStyle {
         val isHardwareEraser = index in 0 until event.pointerCount && event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
-        return StrokeStyle(settings.brush, settings.sizePx, settings.opacity, settings.color,
-            if (settings.erasing || isHardwareEraser) BlendBehavior.ERASE else BlendBehavior.PAINT)
+        val erasing = settings.erasing || isHardwareEraser
+        val brush = if (erasing) settings.brush.copy(hardness = settings.eraserHardness) else settings.brush
+        return StrokeStyle(brush, settings.sizePx, settings.opacity, settings.color,
+            if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionBounds)
+    }
+
+    private fun styleForTarget(style: StrokeStyle, target: StrokeTarget): StrokeStyle {
+        val image = target.image ?: return style
+        val localClip = style.clipBounds?.let { selection -> imageLocalBounds(image, selection) }
+        return style.copy(
+            brush = style.brush.copy(engine = BrushEngine.AIRBRUSH),
+            sizePx = style.sizePx / image.transform.scale.coerceAtLeast(.02f),
+            opacity = 1f,
+            color = RgbaColor(1f, 1f, 1f),
+            blend = BlendBehavior.PAINT,
+            clipBounds = localClip,
+        )
+    }
+
+    private fun StrokeSample.forTarget(target: StrokeTarget): StrokeSample {
+        val image = target.image ?: return this
+        val local = layerStack.imagePointFromDocument(image, android.graphics.PointF(position.x, position.y))
+        return copy(position = Point(local.x, local.y))
+    }
+
+    private fun imageLocalBounds(image: ImageLayerRuntime, selection: Rect): Rect {
+        val points = listOf(
+            android.graphics.PointF(selection.left, selection.top), android.graphics.PointF(selection.right, selection.top),
+            android.graphics.PointF(selection.right, selection.bottom), android.graphics.PointF(selection.left, selection.bottom),
+        ).map { layerStack.imagePointFromDocument(image, it) }
+        return Rect(points.minOf { it.x }, points.minOf { it.y }, points.maxOf { it.x }, points.maxOf { it.y })
+    }
+
+    private fun invalidateTarget(target: StrokeTarget, dirty: Set<dev.tipstroke.core.geometry.TileCoordinate>) {
+        if (target.image == null) rasterView.invalidateTiles(dirty) else rasterView.invalidate()
     }
 
     private fun createInkBrush(): Brush {
@@ -481,7 +577,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun normalizedAngle(value: Float): Float { var v = value; while (v > Math.PI) v -= (2 * Math.PI).toFloat(); while (v < -Math.PI) v += (2 * Math.PI).toFloat(); return v }
 
     private fun notifyHistory() {
-        val history = layerStack.selectedRaster()?.tiles?.history
+        val history = layerStack.selectedStore()?.history
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
     private fun notifyLayers() {

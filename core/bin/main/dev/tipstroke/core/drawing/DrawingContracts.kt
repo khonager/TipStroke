@@ -19,7 +19,15 @@ data class StrokeSample(
     val buttonState: Int,
     val kind: PointerKind,
 )
-data class StrokeStyle(val brush: BrushPreset, val sizePx: Float, val opacity: Float, val color: RgbaColor, val blend: BlendBehavior)
+data class StrokeStyle(
+    val brush: BrushPreset,
+    val sizePx: Float,
+    val opacity: Float,
+    val color: RgbaColor,
+    val blend: BlendBehavior,
+    /** Optional transient selection clip; it is never persisted as artwork. */
+    val clipBounds: Rect? = null,
+)
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     val bounds: Rect by lazy {
         require(samples.isNotEmpty())

@@ -87,6 +87,10 @@ internal fun LayersPanel(
                         "Original ${layer.originalWidthPx} × ${layer.originalHeightPx} px · source preserved",
                         color = Color(0xFFAAAEB4), fontSize = 11.sp,
                     )
+                    Text(
+                        "Choose Eraser to hide image pixels non-destructively. A selection limits where it erases.",
+                        color = Color(0xFFAAAEB4), fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp),
+                    )
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilledTonalButton(onFitImage, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Fit canvas") }
                         FilledTonalButton(onOriginalImageSize, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("100%") }

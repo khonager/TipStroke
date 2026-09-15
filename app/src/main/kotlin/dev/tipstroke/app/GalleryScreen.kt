@@ -137,8 +137,9 @@ private fun DrawingCard(drawing: DrawingSummary, onOpen: () -> Unit, onDelete: (
         val image = remember(drawing.thumbnailFile.absolutePath, drawing.modifiedAtMillis) {
             BitmapFactory.decodeFile(drawing.thumbnailFile.absolutePath)?.asImageBitmap()
         }
-        Box(Modifier.fillMaxWidth().aspectRatio(1.48f).clip(RoundedCornerShape(12.dp)).background(Color.White)) {
-            image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+        val documentAspect = (drawing.widthPx.toFloat() / drawing.heightPx).coerceIn(.125f, 8f)
+        Box(Modifier.fillMaxWidth().aspectRatio(documentAspect).clip(RoundedCornerShape(12.dp)).background(Color.White)) {
+            image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
         }
         Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {

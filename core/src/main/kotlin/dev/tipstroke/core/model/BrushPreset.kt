@@ -27,9 +27,13 @@ data class BrushPreset(
     val stabilization: Float,
     val pressureToSize: PressureCurve,
     val pressureToOpacity: PressureCurve,
+    /** 0 disables speed response; 1 produces the strongest everyday-use taper. */
+    val speedTaper: Float = 0f,
 ) {
+    init { require(speedTaper in 0f..1f) }
+
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 1
+        const val CURRENT_SCHEMA_VERSION = 2
         val Pencil = BrushPreset(id = BrushId("pencil-v1"), displayName = "Pencil", engine = BrushEngine.PENCIL,
             baseSizePx = 14f, opacity = .68f, hardness = .72f, spacing = .12f, stabilization = .22f,
             pressureToSize = PressureCurve(.2f, 1f, .8f), pressureToOpacity = PressureCurve(.25f, 1f, .65f))

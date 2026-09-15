@@ -16,6 +16,12 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(80, 255, 255, 255); style = Paint.Style.STROKE; strokeWidth = 2f }
     private val transformBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(237, 106, 90); style = Paint.Style.STROKE }
     private val transformHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
+    private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(237, 106, 90); style = Paint.Style.STROKE
+        pathEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
+    }
+    var selectionBounds: dev.tipstroke.core.geometry.Rect? = null
+        set(value) { field = value; invalidate() }
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
@@ -77,25 +83,53 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             when (layer) {
                 is RasterLayerRuntime -> layer.tiles.draw(canvas, bitmapPaint)
                 is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { bitmap ->
-                    val displayedWidth = layer.source.width * layer.transform.scale
-                    val displayedHeight = layer.source.height * layer.transform.scale
-                    canvas.save()
-                    canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
-                    val destination = RectF(
-                        layer.transform.centerX - displayedWidth / 2f,
-                        layer.transform.centerY - displayedHeight / 2f,
-                        layer.transform.centerX + displayedWidth / 2f,
-                        layer.transform.centerY + displayedHeight / 2f,
-                    )
-                    canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
-                    canvas.restore()
+                    drawImageLayer(canvas, layer, bitmap)
                 }
             }
         }
         if (showImageTransformBounds) drawSelectedImageBounds(canvas)
+        drawSelection(canvas)
         bitmapPaint.alpha = 255
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), borderPaint)
         canvas.restore()
+    }
+
+    private fun drawImageLayer(canvas: Canvas, layer: ImageLayerRuntime, bitmap: Bitmap) {
+        val displayedWidth = layer.source.width * layer.transform.scale
+        val displayedHeight = layer.source.height * layer.transform.scale
+        val destination = RectF(
+            layer.transform.centerX - displayedWidth / 2f,
+            layer.transform.centerY - displayedHeight / 2f,
+            layer.transform.centerX + displayedWidth / 2f,
+            layer.transform.centerY + displayedHeight / 2f,
+        )
+        val outerSave = canvas.save()
+        canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
+        if (layer.mask.allocatedTileCount == 0) {
+            canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
+        } else {
+            val layerSave = canvas.saveLayer(destination, bitmapPaint)
+            bitmapPaint.alpha = 255
+            canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
+            canvas.save()
+            canvas.translate(destination.left, destination.top)
+            canvas.scale(layer.transform.scale, layer.transform.scale)
+            bitmapPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+            layer.mask.draw(canvas, bitmapPaint)
+            bitmapPaint.xfermode = null
+            canvas.restore()
+            canvas.restoreToCount(layerSave)
+        }
+        canvas.restoreToCount(outerSave)
+    }
+
+    private fun drawSelection(canvas: Canvas) {
+        val bounds = selectionBounds?.normalized() ?: return
+        selectionPaint.strokeWidth = 2f / transform.scale.coerceAtLeast(.08f)
+        selectionPaint.pathEffect = DashPathEffect(
+            floatArrayOf(10f / transform.scale.coerceAtLeast(.08f), 7f / transform.scale.coerceAtLeast(.08f)), 0f,
+        )
+        canvas.drawRect(bounds.left, bounds.top, bounds.right, bounds.bottom, selectionPaint)
     }
 
     private fun drawSelectedImageBounds(canvas: Canvas) {

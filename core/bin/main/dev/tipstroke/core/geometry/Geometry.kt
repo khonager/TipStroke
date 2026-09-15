@@ -5,6 +5,7 @@ import kotlin.math.*
 data class Point(val x: Float, val y: Float)
 data class Rect(val left: Float, val top: Float, val right: Float, val bottom: Float) {
     fun expanded(by: Float) = Rect(left - by, top - by, right + by, bottom + by)
+    fun normalized() = Rect(min(left, right), min(top, bottom), max(left, right), max(top, bottom))
 }
 data class TileCoordinate(val x: Int, val y: Int)
 

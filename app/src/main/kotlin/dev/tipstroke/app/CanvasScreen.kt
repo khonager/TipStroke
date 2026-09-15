@@ -44,6 +44,8 @@ fun CanvasScreen(
     onSaveActionChanged: (((() -> Unit)?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val brushPreferences = remember { BrushPreferences(context) }
+    val initialBrushTuning = remember { brushPreferences.load(BrushPreset.Ink) }
     var surface by remember { mutableStateOf<DrawingSurface?>(null) }
     var brush by remember { mutableStateOf(BrushPreset.Ink) }
     var erasing by remember { mutableStateOf(false) }
@@ -66,6 +68,14 @@ fun CanvasScreen(
     var exportOpen by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<ExportRequest?>(null) }
     var imageTransforming by remember { mutableStateOf(false) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var hasSelection by remember { mutableStateOf(false) }
+    var brushStudioOpen by remember { mutableStateOf(false) }
+    var brushHardness by remember { mutableFloatStateOf(initialBrushTuning.hardness) }
+    var eraserHardness by remember { mutableFloatStateOf(brushPreferences.loadEraserHardness()) }
+    var pressureSize by remember { mutableStateOf(initialBrushTuning.pressureSize) }
+    var pressureOpacity by remember { mutableStateOf(initialBrushTuning.pressureOpacity) }
+    var speedTaper by remember { mutableStateOf(initialBrushTuning.speedTaper) }
 
     val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -93,9 +103,23 @@ fun CanvasScreen(
         pendingExport = null
     }
 
-    fun sync() { surface?.settings?.apply { this.brush = brush; sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.debug = debug; gestures = gestureSettings } }
-    LaunchedEffect(brush, erasing, size, opacity, color, debug, gestureSettings, surface) { sync() }
+    fun sync() { surface?.settings?.apply {
+        this.brush = brush.copy(
+            hardness = brushHardness,
+            pressureToSize = if (pressureSize) brush.pressureToSize else PressureCurve(1f, 1f, 1f),
+            pressureToOpacity = if (pressureOpacity) brush.pressureToOpacity else PressureCurve(1f, 1f, 1f),
+            speedTaper = if (speedTaper) .55f else 0f,
+        )
+        sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing
+        this.eraserHardness = eraserHardness; this.debug = debug; gestures = gestureSettings
+    } }
+    LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, debug, gestureSettings, surface) { sync() }
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
+    LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
+    LaunchedEffect(brush.id, brushHardness, pressureSize, pressureOpacity, speedTaper) {
+        brushPreferences.save(brush, BrushTuning(brushHardness, pressureSize, pressureOpacity, speedTaper))
+    }
+    LaunchedEffect(eraserHardness) { brushPreferences.saveEraserHardness(eraserHardness) }
     LaunchedEffect(surface, ready, library, documentId) {
         while (surface != null && ready && library != null && documentId != null) {
             delay(30_000)
@@ -145,6 +169,7 @@ fun CanvasScreen(
                 view.layersListener = { updated, selected -> layers = updated; selectedLayerId = selected }
                 view.colorPickedListener = { picked -> color = picked }
                 view.frequentColorsListener = { frequentColors = it }
+                view.selectionListener = { active, selected -> selectionMode = active; hasSelection = selected }
                 if (library != null && documentId != null) {
                     if (loadExisting) view.loadProject(library, documentId) { outcome ->
                         ready = outcome.isSuccess
@@ -162,6 +187,8 @@ fun CanvasScreen(
             zoomPercent = (diagnostics.zoom * 100).roundToInt(),
             onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
             onReset = { surface?.resetView() }, onDebug = { debug = !debug },
+            selectionActive = selectionMode || hasSelection,
+            onSelection = { selectionMode = !selectionMode; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
             layersOpen = layersOpen, onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
             onBack = if (onBackToGallery != null) leaveEditor else null,
             onExport = { if (ready) exportOpen = true },
@@ -175,8 +202,15 @@ fun CanvasScreen(
         ) {
             BrushRail(
                 selected = brush, erasing = erasing,
-                onBrush = { brush = it; erasing = false; size = it.baseSizePx; opacity = it.opacity },
+                onBrush = {
+                    brush = it; erasing = false; size = it.baseSizePx; opacity = it.opacity
+                    brushPreferences.load(it).let { tuning ->
+                        brushHardness = tuning.hardness; pressureSize = tuning.pressureSize
+                        pressureOpacity = tuning.pressureOpacity; speedTaper = tuning.speedTaper
+                    }
+                },
                 onEraser = { erasing = !erasing },
+                onAdjust = { brushStudioOpen = true },
                 modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
                     .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp)),
                 horizontal = portrait,
@@ -193,6 +227,15 @@ fun CanvasScreen(
                     .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
             )
         }
+
+        if (selectionMode || hasSelection) SelectionBar(
+            selecting = selectionMode,
+            hasSelection = hasSelection,
+            onSelectAll = { surface?.selectAll() },
+            onClear = { surface?.clearSelection() },
+            onDone = { selectionMode = false },
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp),
+        )
 
         if (layersOpen) {
             LayersPanel(
@@ -249,6 +292,25 @@ fun CanvasScreen(
         if (debug) DebugOverlay(diagnostics, Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 22.dp, bottom = if (portrait) 116.dp else 16.dp))
     }
 
+
+    if (brushStudioOpen) BrushStudioDialog(
+        toolName = if (erasing) "Eraser" else brush.displayName,
+        supportsHardness = erasing || brush.engine == BrushEngine.AIRBRUSH,
+        hardness = if (erasing) eraserHardness else brushHardness,
+        pressureSize = pressureSize,
+        pressureOpacity = pressureOpacity,
+        speedTaper = speedTaper,
+        onHardness = { if (erasing) eraserHardness = it else brushHardness = it },
+        onPressureSize = { pressureSize = it },
+        onPressureOpacity = { pressureOpacity = it },
+        onSpeedTaper = { speedTaper = it },
+        onReset = {
+            if (erasing) eraserHardness = .35f else brushHardness = brush.hardness
+            pressureSize = true; pressureOpacity = true; speedTaper = brush.speedTaper > 0f
+        },
+        onDismiss = { brushStudioOpen = false },
+    )
+
     if (exportOpen) ExportDrawingDialog(documentName, canvasWidthPx, canvasHeightPx, onDismiss = { exportOpen = false }) { request ->
         exportOpen = false
         pendingExport = request
@@ -261,7 +323,7 @@ fun CanvasScreen(
 
 }
 
-@Composable private fun EditorChrome(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, zoomPercent: Int, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onLayers: () -> Unit, onBack: (() -> Unit)?, onExport: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun EditorChrome(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, selectionActive: Boolean, zoomPercent: Int, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onSelection: () -> Unit, onLayers: () -> Unit, onBack: (() -> Unit)?, onExport: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier) {
         Row(Modifier.align(Alignment.TopStart).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (onBack != null) ChromeGroup { IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Back to gallery" }) { BackIcon() } }
@@ -270,6 +332,7 @@ fun CanvasScreen(
                 IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
                 TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 13.dp)) { Text("Fit", fontSize = 13.sp) }
                 Text("$zoomPercent%", color = Color(0xFFD8D9DC), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp))
+                TextButton(onClick = onSelection, colors = ButtonDefaults.textButtonColors(contentColor = if (selectionActive) Color(0xFFED6A5A) else Color.White)) { Text("Select", fontSize = 13.sp) }
             }
         }
         ChromeGroup(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
@@ -292,16 +355,29 @@ fun CanvasScreen(
     )
 }
 
-@Composable private fun BrushRail(selected: BrushPreset, erasing: Boolean, onBrush: (BrushPreset) -> Unit, onEraser: () -> Unit, horizontal: Boolean, compact: Boolean = false, modifier: Modifier = Modifier) {
+@Composable private fun BrushRail(selected: BrushPreset, erasing: Boolean, onBrush: (BrushPreset) -> Unit, onEraser: () -> Unit, onAdjust: () -> Unit, horizontal: Boolean, compact: Boolean = false, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(22.dp)
     val content: @Composable RowScope.() -> Unit = {
         BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }, compact = compact) }
         ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact)
+        TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
     }
     if (horizontal) Row(modifier.background(Color(0xD9202125), shape).border(1.dp, Color(0xB345474D), shape).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), content = content)
     else Column(modifier.background(Color(0xD9202125), shape).border(1.dp, Color(0xB345474D), shape).padding(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }, compact = compact) }
         ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact)
+        TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
+    }
+}
+
+@Composable private fun SelectionBar(selecting: Boolean, hasSelection: Boolean, onSelectAll: () -> Unit, onClear: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(modifier, color = Color(0xED202125), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
+        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (selecting) "Drag to select" else "Selection active", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp))
+            TextButton(onClick = onSelectAll) { Text("All") }
+            TextButton(onClick = onClear, enabled = hasSelection) { Text("Clear") }
+            TextButton(onClick = onDone) { Text("Done") }
+        }
     }
 }
 

@@ -4,7 +4,7 @@ An Android-first raster drawing experiment focused on excellent stylus feel and 
 
 [![Get it on Obtainium](https://img.shields.io/badge/Get_it_on-Obtainium-5c2d91?logo=android&logoColor=white)](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/khonager/TipStroke)
 
-The current milestone is a local drawing library with editable layered canvases. Stylus input draws on the selected paint layer; configurable finger gestures can navigate, smudge, pick color, undo, redo, or do nothing. Image layers retain their original source pixels while scale and opacity remain editable.
+The current milestone is a local drawing library with editable layered canvases. Stylus input draws on the selected paint layer; configurable finger gestures can navigate, smudge, pick color, undo, redo, or do nothing. Image layers retain their original source pixels while scale, opacity, and a non-destructive erase mask remain editable. Rectangular selections can constrain drawing or erasing on either layer type.
 
 ## Install
 
@@ -39,7 +39,9 @@ The release workflow tests and lints the project, verifies the APK signature, an
 
 ## Layers and images
 
-Open **Layers** in the top bar. Add paint layers with **+ Paint** or use **+ Image** to choose any raster format Android can decode on the device. Layer order, visibility, and opacity are editable. Select an image and tap **Move & resize on canvas**: drag to move, pinch to resize, and twist to rotate it. Imported images use a persisted document URI as the authoritative original and store transforms separately, so scaling down and back to 100% does not resample or discard the original pixels. The finite canvas still clips and composites the displayed result at canvas coordinates.
+Open **Layers** in the top bar. Add paint layers with **+ Paint** or use **+ Image** to choose any raster format Android can decode on the device. Layer order, visibility, and opacity are editable. Select an image and tap **Move & resize on canvas**: drag to move, pinch to resize, and twist to rotate it. Choose **Eraser** to hide image pixels through a source-resolution mask; the imported file remains untouched. Imported images use a persisted document URI as the authoritative original and store transforms and masks separately, so scaling down and back to 100% does not resample or discard the original pixels.
+
+Tap **Select** and drag a rectangle with a finger or stylus to constrain edits on the current paint or image layer. **Adjust** beside the brush tools opens a compact Brush Studio with hardness, pressure-size, pressure-opacity, and speed-taper controls.
 
 ## Gallery, export, and gestures
 

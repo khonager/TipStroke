@@ -8,6 +8,7 @@
 - One-finger drag can instead smudge the selected paint layer. Smudge snapshots only affected tiles and groups the whole finger gesture into one undo transaction.
 - Image transform mode temporarily takes priority over configured finger actions. One-finger drag moves the selected image; two-finger translation, pinch, and twist move, resize, and rotate it. When one finger of a two-finger transform lifts, the gesture rebases to the remaining finger so continued movement is smooth and does not jump. Leaving transform mode restores the configured actions.
 - Two or more fingers continue to pan, zoom, and rotate the camera simultaneously; rotation can be locked.
+- Select mode temporarily routes a one-pointer finger or stylus drag to a rectangular document-space selection. The selection constrains subsequent paint-layer drawing and erasing. On an image layer it constrains edits to the image's original-resolution erase mask. Select All, Clear, and Done are contextual controls; clearing the selection restores unconstrained editing.
 - Mouse data has a domain representation but mouse painting is not enabled in this Android milestone.
 
 Stylus has priority. Once a stylus stroke is active, touch cannot navigate or corrupt it. `ACTION_CANCEL` cancels the active wet renderer and drops pending samples. `requestUnbufferedDispatch` and Jetpack motion prediction are used for lower latency.
@@ -20,7 +21,7 @@ Color picking opens a native magnifying loupe after the configured hold delay. T
 
 Brush size and opacity use long drag tracks with persistent numeric readouts. Adjacent minus/plus buttons apply 1 px and 1 percentage-point adjustments for precise tuning without requiring pixel-perfect slider motion.
 
-The compact color dock always exposes the current drawing's most-used colors. Tapping the large current-color circle opens a centered hue/saturation wheel with brightness control for selecting any brush color; canvas hold remains the eyedropper gesture for sampling existing artwork.
+The compact color dock always exposes the current drawing's most-used colors. Tapping the large current-color circle opens a centered hue/saturation wheel with brightness control for selecting any brush color; canvas hold remains the eyedropper gesture for sampling existing artwork. Adjust opens the compact Brush Studio for edge hardness, pressure-to-size, pressure-to-opacity, and optional speed taper. These choices are stored locally per built-in brush; eraser hardness is stored separately.
 
 ## Planned extension points
 

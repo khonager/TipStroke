@@ -51,6 +51,26 @@ class DrawingSurfaceColorPickerTest {
         assertEquals(View.GONE, surface.getChildAt(2).visibility)
     }
 
+    @Test fun rectangularSelectionCanBeDrawnAndCleared() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication())
+        surface.layout(0, 0, 600, 600)
+        var active = false
+        var selected = false
+        surface.selectionListener = { isActive, hasSelection -> active = isActive; selected = hasSelection }
+        surface.setSelectionMode(true)
+        val downTime = SystemClock.uptimeMillis()
+
+        surface.dispatchTouchEvent(event(downTime, downTime, MotionEvent.ACTION_DOWN, 180f, 180f))
+        surface.dispatchTouchEvent(event(downTime, downTime + 16L, MotionEvent.ACTION_MOVE, 420f, 420f))
+        surface.dispatchTouchEvent(event(downTime, downTime + 32L, MotionEvent.ACTION_UP, 420f, 420f))
+
+        assertTrue(active)
+        assertTrue(selected)
+        surface.clearSelection()
+        assertTrue(active)
+        assertTrue(!selected)
+    }
+
     private fun event(downTime: Long, eventTime: Long, action: Int, x: Float, y: Float): MotionEvent =
         MotionEvent.obtain(downTime, eventTime, action, x, y, 0).apply {
             source = android.view.InputDevice.SOURCE_TOUCHSCREEN

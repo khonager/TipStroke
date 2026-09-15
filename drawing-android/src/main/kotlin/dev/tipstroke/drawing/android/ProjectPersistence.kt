@@ -93,6 +93,7 @@ internal data class SavedImageSnapshot(
     val originalWidthPx: Int,
     val originalHeightPx: Int,
     val transform: ImageTransform,
+    val maskTiles: Map<TileCoordinate, Bitmap> = emptyMap(),
 ) : SavedLayerSnapshot
 
 internal data class DrawingSnapshot(
@@ -101,7 +102,12 @@ internal data class DrawingSnapshot(
     val selectedId: LayerId,
     val layers: List<SavedLayerSnapshot>,
 ) {
-    fun recycle() = layers.filterIsInstance<SavedRasterSnapshot>().flatMap { it.tiles.values }.forEach { if (!it.isRecycled) it.recycle() }
+    fun recycle() = layers.flatMap { layer ->
+        when (layer) {
+            is SavedRasterSnapshot -> layer.tiles.values
+            is SavedImageSnapshot -> layer.maskTiles.values
+        }
+    }.forEach { if (!it.isRecycled) it.recycle() }
 }
 
 internal data class LoadedProject(
@@ -125,11 +131,12 @@ internal data class LoadedRaster(
 
 internal data class LoadedImage(
     override val id: LayerId, override val name: String, override val visible: Boolean, override val opacity: Float,
-    val assetFile: File, val transform: ImageTransform,
+    val assetFile: File, val transform: ImageTransform, val originalWidthPx: Int, val originalHeightPx: Int,
+    val maskTiles: Map<TileCoordinate, Bitmap> = emptyMap(),
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    private const val SCHEMA_VERSION = 1
+    private const val SCHEMA_VERSION = 2
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -173,6 +180,13 @@ internal object ProjectPersistence {
                             requireNotNull(input) { "Cannot reopen ${layer.name}" }
                             asset.outputStream().use(input::copyTo)
                         }
+                        val maskDirectory = File(temporary, "layers/${layer.id.value}/mask")
+                        layer.maskTiles.forEach { (coordinate, bitmap) ->
+                            maskDirectory.mkdirs()
+                            File(maskDirectory, "${coordinate.x}_${coordinate.y}.png").outputStream().use {
+                                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                            }
+                        }
                     }
                 }
                 layersJson.put(json)
@@ -201,7 +215,8 @@ internal object ProjectPersistence {
 
     fun load(directory: File): Result<LoadedProject> = runCatching {
         val json = JSONObject(File(directory, DrawingLibrary.MANIFEST).readText())
-        require(json.getInt("schemaVersion") == SCHEMA_VERSION) { "Unsupported drawing version" }
+        val schemaVersion = json.getInt("schemaVersion")
+        require(schemaVersion in 1..SCHEMA_VERSION) { "Unsupported drawing version" }
         val width = json.getInt("widthPx")
         val height = json.getInt("heightPx")
         val layersJson = json.getJSONArray("layers")
@@ -232,12 +247,17 @@ internal object ProjectPersistence {
                     } else inferColorUsage(tiles.values)
                     add(LoadedRaster(id, name, visible, opacity, tiles, usage))
                 } else {
+                    val originalWidth = layer.getInt("originalWidthPx")
+                    val originalHeight = layer.getInt("originalHeightPx")
+                    val maskDirectory = File(directory, "layers/${id.value}/mask")
+                    val maskTiles = loadTiles(maskDirectory)
                     add(LoadedImage(
                         id, name, visible, opacity, File(directory, "assets/${id.value}.source"),
                         ImageTransform(
                             layer.getDouble("centerX").toFloat(), layer.getDouble("centerY").toFloat(),
                             layer.getDouble("scale").toFloat(), layer.optDouble("rotationDegrees", 0.0).toFloat(),
                         ),
+                        originalWidth, originalHeight, maskTiles,
                     ))
                 }
             }
@@ -287,10 +307,27 @@ internal object ProjectPersistence {
                     try {
                         val width = layer.originalWidthPx * layer.transform.scale
                         val height = layer.originalHeightPx * layer.transform.scale
-                        canvas.save()
+                        val outerSave = canvas.save()
                         canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
-                        canvas.drawBitmap(source, null, RectF(layer.transform.centerX - width / 2, layer.transform.centerY - height / 2, layer.transform.centerX + width / 2, layer.transform.centerY + height / 2), paint)
-                        canvas.restore()
+                        val destination = RectF(layer.transform.centerX - width / 2, layer.transform.centerY - height / 2, layer.transform.centerX + width / 2, layer.transform.centerY + height / 2)
+                        if (layer.maskTiles.isEmpty()) {
+                            canvas.drawBitmap(source, null, destination, paint)
+                        } else {
+                            val layerSave = canvas.saveLayer(destination, paint)
+                            paint.alpha = 255
+                            canvas.drawBitmap(source, null, destination, paint)
+                            canvas.save()
+                            canvas.translate(destination.left, destination.top)
+                            canvas.scale(layer.transform.scale, layer.transform.scale)
+                            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+                            layer.maskTiles.forEach { (coordinate, bitmap) ->
+                                canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
+                            }
+                            paint.xfermode = null
+                            canvas.restore()
+                            canvas.restoreToCount(layerSave)
+                        }
+                        canvas.restoreToCount(outerSave)
                     } finally { source.recycle() }
                 }
             }
@@ -299,9 +336,19 @@ internal object ProjectPersistence {
     }
 
     private fun decodeBitmap(resolver: ContentResolver, uri: Uri): Bitmap =
-        ImageDecoder.decodeBitmap(if (uri.scheme == ContentResolver.SCHEME_FILE) ImageDecoder.createSource(File(requireNotNull(uri.path))) else ImageDecoder.createSource(resolver, uri)) { decoder, _, _ ->
+        if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            requireNotNull(BitmapFactory.decodeFile(requireNotNull(uri.path))) { "Cannot decode image asset" }
+        } else ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, _, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
+
+    private fun loadTiles(directory: File): Map<TileCoordinate, Bitmap> =
+        directory.listFiles().orEmpty().mapNotNull { file ->
+            val match = Regex("(-?\\d+)_(-?\\d+)\\.png").matchEntire(file.name) ?: return@mapNotNull null
+            val decoded = BitmapFactory.decodeFile(file.absolutePath) ?: return@mapNotNull null
+            val bitmap = decoded.copy(Bitmap.Config.ARGB_8888, true).also { decoded.recycle() }
+            TileCoordinate(match.groupValues[1].toInt(), match.groupValues[2].toInt()) to bitmap
+        }.toMap()
 
     /** Used only while loading pre-palette projects on the project I/O thread. */
     private fun inferColorUsage(tiles: Collection<Bitmap>): Map<Int, Long> {

@@ -109,6 +109,23 @@ class TileStoreTest {
         restored.recycle()
     }
 
+    @Test fun selectionClipRestrictsAnEraserStroke() {
+        val store = TileStore(256, 256)
+        store.commit(stroke(Point(20f, 80f), Point(230f, 80f), ink.copy(sizePx = 50f)))
+        val erase = ink.copy(
+            sizePx = 50f,
+            blend = BlendBehavior.ERASE,
+            clipBounds = dev.tipstroke.core.geometry.Rect(100f, 0f, 150f, 256f),
+        )
+        store.beginLiveStroke()
+        store.appendLiveStroke(stroke(Point(20f, 80f), Point(230f, 80f), erase))
+        store.finishLiveStroke()
+
+        assertNotEquals(0, Color.alpha(store.colorAt(70, 80)))
+        assertEquals(0, Color.alpha(store.colorAt(125, 80)))
+        assertNotEquals(0, Color.alpha(store.colorAt(180, 80)))
+    }
+
     private fun stroke(a: Point, b: Point, style: StrokeStyle) = CompletedStroke(
         listOf(sample(a, 0), sample(b, 1)), style
     )

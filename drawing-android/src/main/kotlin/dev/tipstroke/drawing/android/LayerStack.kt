@@ -40,6 +40,8 @@ internal class ImageLayerRuntime(
     override var opacity: Float = 1f,
     val source: OriginalImageSource,
     var transform: ImageTransform,
+    /** White pixels mark erased source pixels; the original image is never rewritten. */
+    val mask: TileStore = TileStore(source.width, source.height),
 ) : CanvasLayerRuntime() {
     override fun summary() = LayerSummary(
         id, name, LayerKind.IMAGE, visible, opacity,
@@ -68,9 +70,24 @@ internal class LayerStack(
     fun selectedRaster(): RasterLayerRuntime? = selected() as? RasterLayerRuntime
     fun selectedImage(): ImageLayerRuntime? = selected() as? ImageLayerRuntime
     fun summariesFrontToBack(): List<LayerSummary> = layers.asReversed().map { it.summary() }
-    fun allocatedTiles(): Int = layers.filterIsInstance<RasterLayerRuntime>().sumOf { it.tiles.allocatedTileCount }
+    fun allocatedTiles(): Int = layers.sumOf { layer ->
+        when (layer) {
+            is RasterLayerRuntime -> layer.tiles.allocatedTileCount
+            is ImageLayerRuntime -> layer.mask.allocatedTileCount
+        }
+    }
     fun lastDirtyTiles(): Int = selectedRaster()?.tiles?.lastDirtyTiles?.size ?: 0
-    fun undoBytes(): Long = layers.filterIsInstance<RasterLayerRuntime>().sumOf { it.tiles.history.estimatedBytes }
+    fun undoBytes(): Long = layers.sumOf { layer ->
+        when (layer) {
+            is RasterLayerRuntime -> layer.tiles.history.estimatedBytes
+            is ImageLayerRuntime -> layer.mask.history.estimatedBytes
+        }
+    }
+
+    fun selectedStore(): TileStore? = when (val layer = selected()) {
+        is RasterLayerRuntime -> layer.tiles
+        is ImageLayerRuntime -> layer.mask
+    }
 
     fun frequentColors(limit: Int = 4): List<RgbaColor> {
         val combined = mutableMapOf<Int, Long>()
@@ -182,7 +199,7 @@ internal class LayerStack(
                 )
                 is ImageLayerRuntime -> SavedImageSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity, layer.source.uri,
-                    layer.source.width, layer.source.height, layer.transform,
+                    layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(),
                 )
             }
         },
@@ -203,6 +220,7 @@ internal class LayerStack(
                 is LoadedImage -> ImageLayerRuntime(
                     layer.id, layer.name, layer.visible, layer.opacity,
                     OriginalImageSource(resolver, Uri.fromFile(layer.assetFile), invalidate), layer.transform,
+                    mask = TileStore(layer.originalWidthPx, layer.originalHeightPx).apply { replaceTiles(layer.maskTiles) },
                 )
             }
         }
@@ -225,7 +243,9 @@ internal class LayerStack(
                     val unrotatedY = (dx * sin(radians) + dy * cos(radians)).toFloat()
                     val imageX = (unrotatedX / layer.transform.scale + layer.source.width / 2f).toInt()
                     val imageY = (unrotatedY / layer.transform.scale + layer.source.height / 2f).toInt()
-                    if (imageX in 0 until bitmap.width && imageY in 0 until bitmap.height) bitmap.getPixel(imageX, imageY) else android.graphics.Color.TRANSPARENT
+                    if (imageX in 0 until bitmap.width && imageY in 0 until bitmap.height &&
+                        android.graphics.Color.alpha(layer.mask.colorAt(imageX, imageY)) == 0
+                    ) bitmap.getPixel(imageX, imageY) else android.graphics.Color.TRANSPARENT
                 }
             }
             result = sourceOver(source, result, layer.opacity)
@@ -241,6 +261,15 @@ internal class LayerStack(
     private fun indexAboveSelected() = (layers.indexOfFirst { it.id == selectedId } + 1).coerceAtMost(layers.size)
     private fun newRaster(name: String) = RasterLayerRuntime(newId(), name, tiles = TileStore(canvasWidth, canvasHeight))
     private fun newId() = LayerId(UUID.randomUUID().toString())
+
+    fun imagePointFromDocument(image: ImageLayerRuntime, point: android.graphics.PointF): android.graphics.PointF {
+        val radians = Math.toRadians((-image.transform.rotationDegrees).toDouble())
+        val dx = point.x - image.transform.centerX
+        val dy = point.y - image.transform.centerY
+        val x = (dx * cos(radians) - dy * sin(radians)).toFloat() / image.transform.scale + image.source.width / 2f
+        val y = (dx * sin(radians) + dy * cos(radians)).toFloat() / image.transform.scale + image.source.height / 2f
+        return android.graphics.PointF(x, y)
+    }
 
     private fun sourceOver(source: Int, destination: Int, layerOpacity: Float): Int {
         val sourceAlpha = android.graphics.Color.alpha(source) / 255f * layerOpacity
