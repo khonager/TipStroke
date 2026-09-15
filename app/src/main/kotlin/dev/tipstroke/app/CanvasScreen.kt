@@ -355,7 +355,7 @@ fun CanvasScreen(
     )
 }
 
-@Composable private fun BrushRail(selected: BrushPreset, erasing: Boolean, onBrush: (BrushPreset) -> Unit, onEraser: () -> Unit, onAdjust: () -> Unit, horizontal: Boolean, compact: Boolean = false, modifier: Modifier = Modifier) {
+@Composable private fun BrushRail(selected: BrushPreset, erasing: Boolean, onBrush: (BrushPreset) -> Unit, onEraser: () -> Unit, onAdjust: () -> Unit, horizontal: Boolean, modifier: Modifier = Modifier, compact: Boolean = false) {
     val shape = RoundedCornerShape(22.dp)
     val content: @Composable RowScope.() -> Unit = {
         BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }, compact = compact) }
