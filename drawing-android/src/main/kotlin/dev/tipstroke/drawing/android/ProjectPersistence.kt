@@ -81,6 +81,7 @@ internal data class SavedRasterSnapshot(
     override val visible: Boolean,
     override val opacity: Float,
     val tiles: Map<TileCoordinate, Bitmap>,
+    val colorUsage: Map<Int, Long> = emptyMap(),
 ) : SavedLayerSnapshot
 
 internal data class SavedImageSnapshot(
@@ -119,7 +120,7 @@ internal sealed interface LoadedLayer {
 
 internal data class LoadedRaster(
     override val id: LayerId, override val name: String, override val visible: Boolean, override val opacity: Float,
-    val tiles: Map<TileCoordinate, Bitmap>,
+    val tiles: Map<TileCoordinate, Bitmap>, val colorUsage: Map<Int, Long> = emptyMap(),
 ) : LoadedLayer
 
 internal data class LoadedImage(
@@ -146,6 +147,11 @@ internal object ProjectPersistence {
                 when (layer) {
                     is SavedRasterSnapshot -> {
                         json.put("kind", "raster")
+                        json.put("colorUsage", JSONArray().apply {
+                            layer.colorUsage.entries.sortedByDescending { it.value }.forEach { (argb, weight) ->
+                                put(JSONObject().put("argb", argb).put("weight", weight))
+                            }
+                        })
                         val tileDirectory = File(temporary, "layers/${layer.id.value}/tiles").apply { mkdirs() }
                         layer.tiles.forEach { (coordinate, bitmap) ->
                             File(tileDirectory, "${coordinate.x}_${coordinate.y}.png").outputStream().use {
@@ -214,7 +220,17 @@ internal object ProjectPersistence {
                         val bitmap = decoded.copy(Bitmap.Config.ARGB_8888, true).also { decoded.recycle() }
                         TileCoordinate(match.groupValues[1].toInt(), match.groupValues[2].toInt()) to bitmap
                     }.toMap()
-                    add(LoadedRaster(id, name, visible, opacity, tiles))
+                    val usage = if (layer.has("colorUsage")) {
+                        buildMap {
+                            val entries = layer.optJSONArray("colorUsage") ?: JSONArray()
+                            for (usageIndex in 0 until entries.length()) {
+                                val entry = entries.getJSONObject(usageIndex)
+                                val weight = entry.optLong("weight", 0L)
+                                if (weight > 0L) put(entry.getInt("argb"), weight)
+                            }
+                        }
+                    } else inferColorUsage(tiles.values)
+                    add(LoadedRaster(id, name, visible, opacity, tiles, usage))
                 } else {
                     add(LoadedImage(
                         id, name, visible, opacity, File(directory, "assets/${id.value}.source"),
@@ -286,6 +302,29 @@ internal object ProjectPersistence {
         ImageDecoder.decodeBitmap(if (uri.scheme == ContentResolver.SCHEME_FILE) ImageDecoder.createSource(File(requireNotNull(uri.path))) else ImageDecoder.createSource(resolver, uri)) { decoder, _, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
+
+    /** Used only while loading pre-palette projects on the project I/O thread. */
+    private fun inferColorUsage(tiles: Collection<Bitmap>): Map<Int, Long> {
+        val quantized = mutableMapOf<Int, Long>()
+        tiles.forEach { bitmap ->
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            for (y in 0 until bitmap.height step 4) {
+                for (x in 0 until bitmap.width step 4) {
+                    val pixel = pixels[y * bitmap.width + x]
+                    val alpha = Color.alpha(pixel)
+                    if (alpha < 16) continue
+                    val key = Color.rgb(
+                        Color.red(pixel) and 0xF8,
+                        Color.green(pixel) and 0xF8,
+                        Color.blue(pixel) and 0xF8,
+                    )
+                    quantized[key] = quantized.getOrDefault(key, 0L) + alpha
+                }
+            }
+        }
+        return quantized.entries.sortedByDescending { it.value }.take(16).associate { it.toPair() }
+    }
 
     private fun replaceDirectoryAtomically(temporary: File, target: File) {
         val backup = File(target.parentFile, ".${target.name}.backup")

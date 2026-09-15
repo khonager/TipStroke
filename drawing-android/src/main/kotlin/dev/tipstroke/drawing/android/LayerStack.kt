@@ -72,6 +72,23 @@ internal class LayerStack(
     fun lastDirtyTiles(): Int = selectedRaster()?.tiles?.lastDirtyTiles?.size ?: 0
     fun undoBytes(): Long = layers.filterIsInstance<RasterLayerRuntime>().sumOf { it.tiles.history.estimatedBytes }
 
+    fun frequentColors(limit: Int = 4): List<RgbaColor> {
+        val combined = mutableMapOf<Int, Long>()
+        layers.filterIsInstance<RasterLayerRuntime>().forEach { layer ->
+            layer.tiles.snapshotColorUsage().forEach { (argb, weight) ->
+                combined[argb] = combined.getOrDefault(argb, 0L) + weight
+            }
+        }
+        return combined.entries.sortedByDescending { it.value }.take(limit).map { (argb) ->
+            RgbaColor(
+                android.graphics.Color.red(argb) / 255f,
+                android.graphics.Color.green(argb) / 255f,
+                android.graphics.Color.blue(argb) / 255f,
+                android.graphics.Color.alpha(argb) / 255f,
+            )
+        }
+    }
+
     fun addRaster(): LayerId {
         val layer = newRaster("Paint ${layers.count { it is RasterLayerRuntime } + 1}")
         layers.add(indexAboveSelected(), layer)
@@ -159,7 +176,10 @@ internal class LayerStack(
         canvasWidth, canvasHeight, selectedId,
         layers.map { layer ->
             when (layer) {
-                is RasterLayerRuntime -> SavedRasterSnapshot(layer.id, layer.name, layer.visible, layer.opacity, layer.tiles.snapshotTiles())
+                is RasterLayerRuntime -> SavedRasterSnapshot(
+                    layer.id, layer.name, layer.visible, layer.opacity,
+                    layer.tiles.snapshotTiles(), layer.tiles.snapshotColorUsage(),
+                )
                 is ImageLayerRuntime -> SavedImageSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity, layer.source.uri,
                     layer.source.width, layer.source.height, layer.transform,
@@ -175,7 +195,10 @@ internal class LayerStack(
             layers += when (layer) {
                 is LoadedRaster -> RasterLayerRuntime(
                     layer.id, layer.name, layer.visible, layer.opacity,
-                    TileStore(loaded.widthPx, loaded.heightPx).apply { replaceTiles(layer.tiles) },
+                    TileStore(loaded.widthPx, loaded.heightPx).apply {
+                        replaceTiles(layer.tiles)
+                        replaceColorUsage(layer.colorUsage)
+                    },
                 )
                 is LoadedImage -> ImageLayerRuntime(
                     layer.id, layer.name, layer.visible, layer.opacity,

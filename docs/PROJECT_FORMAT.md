@@ -12,7 +12,7 @@ vectors/...                   # only when real vector layers exist
 animation/...                 # only when real animation data exists
 ```
 
-`manifest.json` begins with `schemaVersion`, stable document/layer IDs, canvas dimensions, ordered typed layer records, selection, transforms, opacity, visibility, and modification time. Unsupported schema versions produce a clear load error. Color-space metadata and forward-compatible unknown-field handling remain migration work before a distributable native file format.
+`manifest.json` begins with `schemaVersion`, stable document/layer IDs, canvas dimensions, ordered typed layer records, selection, transforms, opacity, visibility, and modification time. Raster layer records also carry optional color-usage weights for the editor's most-used-color shortcuts; the raster tiles remain the artwork source of truth. For backward compatibility, projects without usage metadata infer an approximate palette from sparse raster tiles on the project I/O thread while loading. Unsupported schema versions produce a clear load error. Color-space metadata and forward-compatible unknown-field handling remain migration work before a distributable native file format.
 
 Autosave writes to a temporary sibling directory on the project executor and atomically replaces the prior committed revision, retaining a backup until replacement succeeds. It snapshots immutable allocated tiles and never encodes or writes from the input path. Autosave runs periodically, on app backgrounding, and when returning to the gallery.
 

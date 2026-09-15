@@ -61,6 +61,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId) -> Unit)? = null
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
+    var frequentColorsListener: ((List<RgbaColor>) -> Unit)? = null
     private var imageTransformMode = false
 
     init {
@@ -85,6 +86,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 rasterView.invalidate()
                 liveView.removeFinishedStrokes(strokes.keys)
                 notifyHistory()
+                notifyFrequentColors()
             }
         })
     }
@@ -94,8 +96,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
     }
 
-    fun undo() { layerStack.selectedRaster()?.tiles?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory() } } }
-    fun redo() { layerStack.selectedRaster()?.tiles?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory() } } }
+    fun undo() { layerStack.selectedRaster()?.tiles?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyFrequentColors() } } }
+    fun redo() { layerStack.selectedRaster()?.tiles?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyFrequentColors() } } }
     fun resetView() = rasterView.fitCanvas()
     fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
@@ -110,8 +112,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
     fun originalSizeSelectedImage() { layerStack.originalSizeSelectedImage(); notifyLayers() }
     fun moveSelectedLayer(towardFront: Boolean) { layerStack.moveSelected(towardFront); notifyLayers() }
-    fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { notifyLayers(); notifyHistory() } }
-    fun publishLayers() { notifyLayers(); notifyHistory() }
+    fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { notifyLayers(); notifyHistory(); notifyFrequentColors() } }
+    fun publishLayers() { notifyLayers(); notifyHistory(); notifyFrequentColors() }
     fun configureBlank(widthPx: Int, heightPx: Int) {
         require(widthPx in 64..8192 && heightPx in 64..8192)
         layerStack = createLayerStack(widthPx, heightPx)
@@ -211,8 +213,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     if (target != null) {
                         if (customPreviewStyle != null) {
                             if (samples.size == 1) rasterView.invalidateTiles(target.tiles.appendLiveStroke(CompletedStroke(samples, style)))
-                            target.tiles.finishLiveStroke()
+                            target.tiles.finishLiveStroke(CompletedStroke(samples, style))
                             notifyHistory()
+                            notifyFrequentColors()
                         } else finishedSamples += PendingCommit(CompletedStroke(samples, style), target)
                     }
                 }
@@ -446,6 +449,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     private fun notifyLayers() {
         layersListener?.invoke(layerStack.summariesFrontToBack(), layerStack.selectedId)
+    }
+    private fun notifyFrequentColors() {
+        frequentColorsListener?.invoke(layerStack.frequentColors())
     }
     private fun emitDiagnostics(event: MotionEvent, index: Int) {
         val now = SystemClock.elapsedRealtimeNanos(); frameCount++

@@ -22,6 +22,7 @@ class TileStore(
     private val smudgeTouched = mutableSetOf<TileCoordinate>()
     private var liveStrokeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
     private val liveStrokeTouched = mutableSetOf<TileCoordinate>()
+    private val colorUsage = mutableMapOf<Int, Long>()
 
     override fun commit(stroke: CompletedStroke): Set<TileCoordinate> {
         val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
@@ -38,7 +39,7 @@ class TileStore(
             if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after))
+        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke)))
         lastDirtyTiles = dirty
         return dirty
     }
@@ -73,7 +74,7 @@ class TileStore(
         return dirty
     }
 
-    internal fun finishLiveStroke(): Set<TileCoordinate> {
+    internal fun finishLiveStroke(stroke: CompletedStroke? = null): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null
         if (liveStrokeTouched.isEmpty()) return emptySet()
@@ -81,7 +82,7 @@ class TileStore(
             tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) } }
         }
         val after = liveStrokeTouched.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after))
+        history.push(TileSnapshotTransaction(this, before, after, stroke?.let(::usageFor)))
         return liveStrokeTouched.toSet().also { lastDirtyTiles = it; liveStrokeTouched.clear() }
     }
 
@@ -109,7 +110,7 @@ class TileStore(
             if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after))
+        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke)))
         lastDirtyTiles = dirty
         return dirty
     }
@@ -127,6 +128,13 @@ class TileStore(
 
     internal fun snapshotTiles(): Map<TileCoordinate, Bitmap> =
         tiles.mapValues { (_, bitmap) -> bitmap.copy(Bitmap.Config.ARGB_8888, false) }
+
+    internal fun snapshotColorUsage(): Map<Int, Long> = colorUsage.toMap()
+
+    internal fun replaceColorUsage(replacement: Map<Int, Long>) {
+        colorUsage.clear()
+        replacement.filterValues { it > 0L }.forEach { (argb, weight) -> colorUsage[argb] = weight }
+    }
 
     internal fun replaceTiles(replacement: Map<TileCoordinate, Bitmap>) {
         tiles.values.forEach(Bitmap::recycle)
@@ -209,13 +217,41 @@ class TileStore(
         lastDirtyTiles = snapshot.keys
     }
 
+    private fun usageFor(stroke: CompletedStroke): Pair<Int, Long>? {
+        if (stroke.style.blend != dev.tipstroke.core.model.BlendBehavior.PAINT) return null
+        val color = stroke.style.color
+        val argb = Color.argb(
+            (color.alpha * 255).roundToInt().coerceIn(0, 255),
+            (color.red * 255).roundToInt().coerceIn(0, 255),
+            (color.green * 255).roundToInt().coerceIn(0, 255),
+            (color.blue * 255).roundToInt().coerceIn(0, 255),
+        )
+        val pathLength = stroke.samples.zipWithNext().sumOf { (first, second) ->
+            hypot(
+                (second.position.x - first.position.x).toDouble(),
+                (second.position.y - first.position.y).toDouble(),
+            )
+        }
+        val footprint = max(pathLength * stroke.style.sizePx, stroke.style.sizePx * stroke.style.sizePx.toDouble())
+        val weight = (footprint * stroke.style.opacity * color.alpha).roundToLong().coerceAtLeast(1L)
+        return argb to weight
+    }
+
+    private fun applyUsage(usage: Pair<Int, Long>?, direction: Long) {
+        usage ?: return
+        val updated = colorUsage.getOrDefault(usage.first, 0L) + usage.second * direction
+        if (updated > 0L) colorUsage[usage.first] = updated else colorUsage.remove(usage.first)
+    }
+
     private class TileSnapshotTransaction(
         private val store: TileStore,
         private val before: Map<TileCoordinate, Bitmap?>,
         private val after: Map<TileCoordinate, Bitmap?>,
+        private val colorUsage: Pair<Int, Long>? = null,
     ) : UndoTransaction {
+        init { store.applyUsage(colorUsage, 1L) }
         override val estimatedBytes = (before.values.count { it != null } + after.values.count { it != null }).toLong() * store.tileSize * store.tileSize * 4
-        override fun undo() = store.restore(before)
-        override fun redo() = store.restore(after)
+        override fun undo() { store.restore(before); store.applyUsage(colorUsage, -1L) }
+        override fun redo() { store.restore(after); store.applyUsage(colorUsage, 1L) }
     }
 }

@@ -13,6 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -26,7 +27,10 @@ class ProjectPersistenceTest {
         val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { setPixel(12, 18, Color.RED) }
         val snapshot = DrawingSnapshot(
             640, 480, layerId,
-            listOf(SavedRasterSnapshot(layerId, "Paint 1", true, .65f, mapOf(TileCoordinate(0, 0) to tile))),
+            listOf(SavedRasterSnapshot(
+                layerId, "Paint 1", true, .65f, mapOf(TileCoordinate(0, 0) to tile),
+                mapOf(Color.RED to 12_345L),
+            )),
         )
 
         val saved = ProjectPersistence.save(context.contentResolver, library, id, "Persistence test", snapshot).getOrThrow()
@@ -38,6 +42,7 @@ class ProjectPersistenceTest {
         assertEquals(layerId, loaded.selectedId)
         val raster = loaded.layers.single() as LoadedRaster
         assertEquals(.65f, raster.opacity, .001f)
+        assertEquals(12_345L, raster.colorUsage[Color.RED])
         assertEquals(Color.RED, raster.tiles.getValue(TileCoordinate(0, 0)).getPixel(12, 18))
 
         raster.tiles.values.forEach(Bitmap::recycle)
@@ -62,5 +67,29 @@ class ProjectPersistenceTest {
         assertEquals(Color.BLUE, decoded.getPixel(10, 10))
 
         decoded.recycle(); snapshot.recycle(); output.delete()
+    }
+
+    @Test fun infersColorUsageWhenLegacyManifestHasNoPaletteMetadata() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val id = library.newId()
+        val layerId = LayerId("legacy-paint")
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val snapshot = DrawingSnapshot(
+            256, 256, layerId,
+            listOf(SavedRasterSnapshot(layerId, "Paint", true, 1f, mapOf(TileCoordinate(0, 0) to tile))),
+        )
+        ProjectPersistence.save(context.contentResolver, library, id, "Legacy palette", snapshot).getOrThrow()
+        val manifest = java.io.File(library.projectDirectory(id), DrawingLibrary.MANIFEST)
+        val json = JSONObject(manifest.readText())
+        json.getJSONArray("layers").getJSONObject(0).remove("colorUsage")
+        manifest.writeText(json.toString())
+
+        val loaded = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
+        assertTrue((loaded.layers.single() as LoadedRaster).colorUsage.isNotEmpty())
+
+        loaded.layers.filterIsInstance<LoadedRaster>().flatMap { it.tiles.values }.forEach(Bitmap::recycle)
+        snapshot.recycle()
+        assertTrue(library.delete(id))
     }
 }

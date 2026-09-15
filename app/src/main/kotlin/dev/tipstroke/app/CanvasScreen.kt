@@ -49,6 +49,7 @@ fun CanvasScreen(
     var size by remember { mutableFloatStateOf(28f) }
     var opacity by remember { mutableFloatStateOf(1f) }
     var color by remember { mutableStateOf(RgbaColor(.05f, .05f, .06f)) }
+    var frequentColors by remember { mutableStateOf<List<RgbaColor>>(emptyList()) }
     var debug by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(CanvasDiagnostics()) }
     var canUndo by remember { mutableStateOf(false) }
@@ -139,6 +140,7 @@ fun CanvasScreen(
                 view.historyListener = { undo, redo -> canUndo = undo; canRedo = redo }
                 view.layersListener = { updated, selected -> layers = updated; selectedLayerId = selected }
                 view.colorPickedListener = { picked -> color = picked }
+                view.frequentColorsListener = { frequentColors = it }
                 if (library != null && documentId != null) {
                     if (loadExisting) view.loadProject(library, documentId) { outcome ->
                         ready = outcome.isSuccess
@@ -171,7 +173,7 @@ fun CanvasScreen(
         )
 
         TipControls(
-            size = size, opacity = opacity, color = color,
+            size = size, opacity = opacity, color = color, frequentColors = frequentColors,
             onSize = { size = it }, onOpacity = { opacity = it }, onColor = { color = it },
             horizontal = portrait,
             modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)

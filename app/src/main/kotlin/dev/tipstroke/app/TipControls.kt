@@ -25,37 +25,15 @@ internal fun TipControls(
     size: Float,
     opacity: Float,
     color: RgbaColor,
+    frequentColors: List<RgbaColor>,
     onSize: (Float) -> Unit,
     onOpacity: (Float) -> Unit,
     onColor: (RgbaColor) -> Unit,
     horizontal: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    var paletteOpen by remember { mutableStateOf(false) }
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier.size(58.dp).clip(CircleShape).background(color.toCompose())
-                .border(2.dp, Color.White, CircleShape).clickable { paletteOpen = !paletteOpen }
-                .semantics { contentDescription = "Current color" },
-        )
-        if (paletteOpen) {
-            Spacer(Modifier.height(8.dp))
-            Row(
-                Modifier.background(Color(0xF2202125), RoundedCornerShape(18.dp)).padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                listOf(
-                    RgbaColor(.05f, .05f, .06f), RgbaColor(.93f, .42f, .35f),
-                    RgbaColor(.2f, .45f, .9f), RgbaColor(.18f, .65f, .48f), RgbaColor(1f, 1f, 1f),
-                ).forEach { option ->
-                    Box(
-                        Modifier.size(30.dp).clip(CircleShape).background(option.toCompose())
-                            .border(if (option == color) 2.dp else 1.dp, Color.White, CircleShape)
-                            .clickable { onColor(option); paletteOpen = false },
-                    )
-                }
-            }
-        }
+        ColorSwitcher(color, frequentColors, onColor)
         Spacer(Modifier.height(14.dp))
         if (horizontal) {
             Row(
@@ -79,6 +57,47 @@ internal fun TipControls(
         }
     }
 }
+
+@Composable
+private fun ColorSwitcher(color: RgbaColor, frequentColors: List<RgbaColor>, onColor: (RgbaColor) -> Unit) {
+    val defaults = listOf(
+        RgbaColor(.05f, .05f, .06f), RgbaColor(.93f, .42f, .35f),
+        RgbaColor(.2f, .45f, .9f), RgbaColor(.18f, .65f, .48f), RgbaColor(1f, 1f, 1f),
+    )
+    val choices = (frequentColors + defaults).distinctBy(::colorKey).filter { colorKey(it) != colorKey(color) }.take(4)
+    Row(
+        Modifier.width(116.dp).height(58.dp)
+            .background(Color(0xF2202125), RoundedCornerShape(20.dp))
+            .border(1.dp, Color(0xFF45474D), RoundedCornerShape(20.dp)).padding(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.size(46.dp).clip(CircleShape).background(color.toCompose())
+                .border(2.dp, Color.White, CircleShape)
+                .semantics { contentDescription = "Current color" },
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            choices.chunked(2).forEachIndexed { rowIndex, row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    row.forEachIndexed { columnIndex, option ->
+                        val position = rowIndex * 2 + columnIndex + 1
+                        Box(
+                            Modifier.size(22.dp).clip(CircleShape).background(option.toCompose())
+                                .border(1.dp, Color.White.copy(alpha = .82f), CircleShape)
+                                .clickable { onColor(option) }
+                                .semantics { contentDescription = "Used color $position" },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun colorKey(color: RgbaColor): Int =
+    ((color.alpha * 255).roundToInt() shl 24) or ((color.red * 255).roundToInt() shl 16) or
+        ((color.green * 255).roundToInt() shl 8) or (color.blue * 255).roundToInt()
 
 @Composable
 private fun PrecisionSlider(label: String, valueLabel: String, value: Float, range: ClosedFloatingPointRange<Float>, step: Float, onValue: (Float) -> Unit, modifier: Modifier = Modifier) {

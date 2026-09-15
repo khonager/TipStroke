@@ -31,6 +31,19 @@ class TileStoreTest {
         assertEquals(2, store.allocatedTileCount)
     }
 
+    @Test fun colorUsageFollowsPaintUndoAndRedo() {
+        val store = TileStore(512, 512)
+        val red = ink.copy(color = RgbaColor(1f, 0f, 0f))
+        store.commit(stroke(Point(20f, 20f), Point(220f, 20f), red))
+        assertEquals(1, store.snapshotColorUsage().size)
+
+        assertTrue(store.history.undo())
+        assertTrue(store.snapshotColorUsage().isEmpty())
+
+        assertTrue(store.history.redo())
+        assertEquals(1, store.snapshotColorUsage().size)
+    }
+
     @Test fun eraserClearsToTransparencyRatherThanWhite() {
         val store = TileStore(512, 512)
         store.commit(stroke(Point(30f, 30f), Point(220f, 30f), ink))
