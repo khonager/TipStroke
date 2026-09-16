@@ -10,7 +10,7 @@ Current presets:
 
 Jetpack Ink stable stock brushes author wet marks. Completed input samples are rasterized into tiles; Ink geometry is discarded. Erasing paint is `BlendBehavior.ERASE` and uses `PorterDuff.CLEAR`, never the background color. Erasing an imported image instead paints into a sparse original-resolution mask; the encoded source asset is unchanged. Hardness controls the edge blur of both eraser paths.
 
-Brush Studio deliberately exposes only edge hardness, pressure affecting size, pressure affecting opacity, and optional faster-stroke taper. Size and overall opacity remain direct canvas controls. Adjustments persist locally per built-in brush rather than expanding the document format with a large brush library prematurely.
+Brush Studio deliberately exposes only edge hardness where supported, pressure affecting size, pressure affecting opacity, and optional faster-stroke taper. Size and overall opacity remain direct canvas controls. Tuning, size, and opacity persist locally per built-in brush, while the eraser has an independent remembered setup. These local preferences avoid expanding the document format with a large brush library prematurely.
 
 ## Known visual limitation
 

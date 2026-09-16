@@ -20,8 +20,11 @@ import androidx.input.motionprediction.MotionEventPredictor
 import dev.tipstroke.core.drawing.*
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.Rect
+import dev.tipstroke.core.geometry.SelectionRegion
 import dev.tipstroke.core.model.*
 import kotlin.math.*
+
+enum class SelectionTool { RECTANGLE, LASSO }
 
 class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.util.AttributeSet? = null) : FrameLayout(context, attrs) {
     val settings = CanvasSettings()
@@ -69,8 +72,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var frequentColorsListener: ((List<RgbaColor>) -> Unit)? = null
     private var imageTransformMode = false
     private var selectionMode = false
-    private var selectionStart: android.graphics.PointF? = null
-    private var selectionBounds: Rect? = null
+    private var selectionTool = SelectionTool.LASSO
+    private val selectionPoints = mutableListOf<Point>()
+    private var selectionRegion: SelectionRegion? = null
+    private var selectionMoveMode = false
+    private var selectionMoveStart: android.graphics.PointF? = null
     var selectionListener: ((Boolean, Boolean) -> Unit)? = null
 
     init {
@@ -122,18 +128,33 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun setSelectionMode(enabled: Boolean) {
         selectionMode = enabled
-        if (enabled) setImageTransformMode(false)
-        selectionListener?.invoke(selectionMode, selectionBounds != null)
+        if (enabled) { selectionMoveMode = false; setImageTransformMode(false) }
+        selectionListener?.invoke(selectionMode, selectionRegion != null)
+    }
+    fun setSelectionTool(tool: SelectionTool) {
+        selectionTool = tool
+        selectionMoveMode = false
+        selectionMode = true
+        selectionListener?.invoke(true, selectionRegion != null)
+    }
+    fun setSelectionMoveMode(enabled: Boolean) {
+        selectionMoveMode = enabled && selectionRegion != null && layerStack.selectedRaster() != null
+        if (selectionMoveMode) selectionMode = false
+        selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
     fun clearSelection() {
-        selectionBounds = null
-        selectionStart = null
-        rasterView.selectionBounds = null
+        selectionRegion = null
+        selectionPoints.clear()
+        selectionMoveStart = null
+        selectionMoveMode = false
+        rasterView.selectionRegion = null
+        rasterView.selectionDraftPoints = emptyList()
+        rasterView.selectionPreviewOffset = Point(0f, 0f)
         selectionListener?.invoke(selectionMode, false)
     }
     fun selectAll() {
-        selectionBounds = Rect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
-        rasterView.selectionBounds = selectionBounds
+        selectionRegion = SelectionRegion.rectangle(Rect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat()))
+        rasterView.selectionRegion = selectionRegion
         selectionListener?.invoke(selectionMode, true)
     }
     fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
@@ -144,6 +165,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun configureBlank(widthPx: Int, heightPx: Int) {
         require(widthPx in 64..8192 && heightPx in 64..8192)
         layerStack = createLayerStack(widthPx, heightPx)
+        clearSelection()
         rasterView.layerStack = layerStack
         rasterView.fitCanvas()
         publishLayers()
@@ -156,6 +178,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val result = loaded.map { project ->
                     val replacement = createLayerStack(project.widthPx, project.heightPx)
                     layerStack = replacement
+                    clearSelection()
                     rasterView.layerStack = replacement
                     replacement.replaceWith(project)
                     rasterView.fitCanvas()
@@ -186,6 +209,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         predictor?.record(event)
+        if (selectionMoveMode) return handleSelectionMove(event)
         if (selectionMode) return handleSelection(event)
         val actionIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val toolType = event.getToolType(actionIndex)
@@ -357,31 +381,72 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val point = rasterView.screenToDocument(event.x, event.y)
-                selectionStart = point
-                selectionBounds = Rect(point.x, point.y, point.x, point.y)
-                rasterView.selectionBounds = selectionBounds
+                selectionPoints.clear()
+                selectionPoints += Point(point.x, point.y)
+                selectionRegion = null
+                rasterView.selectionRegion = null
+                rasterView.selectionDraftPoints = selectionPoints.toList()
             }
-            MotionEvent.ACTION_MOVE -> selectionStart?.let { start ->
+            MotionEvent.ACTION_MOVE -> selectionPoints.firstOrNull()?.let { start ->
                 val point = rasterView.screenToDocument(event.x, event.y)
-                selectionBounds = Rect(start.x, start.y, point.x, point.y).normalized()
-                rasterView.selectionBounds = selectionBounds
+                if (selectionTool == SelectionTool.RECTANGLE) {
+                    val bounds = Rect(start.x, start.y, point.x, point.y).normalized()
+                    if (bounds.right - bounds.left >= 2f && bounds.bottom - bounds.top >= 2f) {
+                        selectionRegion = SelectionRegion.rectangle(bounds)
+                        rasterView.selectionRegion = selectionRegion
+                    }
+                } else {
+                    val candidate = Point(point.x, point.y)
+                    val previous = selectionPoints.last()
+                    val minimum = 2f / rasterView.transform.scale.coerceAtLeast(.08f)
+                    if (hypot(candidate.x - previous.x, candidate.y - previous.y) >= minimum) selectionPoints += candidate
+                    rasterView.selectionDraftPoints = selectionPoints.toList()
+                }
             }
             MotionEvent.ACTION_UP -> {
-                val bounds = selectionBounds?.normalized()
-                if (bounds == null || bounds.right - bounds.left < 2f || bounds.bottom - bounds.top < 2f) clearSelection()
-                else {
-                    selectionBounds = Rect(
-                        bounds.left.coerceIn(0f, layerStack.canvasWidth.toFloat()),
-                        bounds.top.coerceIn(0f, layerStack.canvasHeight.toFloat()),
-                        bounds.right.coerceIn(0f, layerStack.canvasWidth.toFloat()),
-                        bounds.bottom.coerceIn(0f, layerStack.canvasHeight.toFloat()),
-                    )
-                    rasterView.selectionBounds = selectionBounds
-                    selectionListener?.invoke(true, true)
+                if (selectionTool == SelectionTool.LASSO) {
+                    val point = rasterView.screenToDocument(event.x, event.y)
+                    selectionPoints += Point(point.x, point.y)
+                    selectionRegion = selectionPoints.takeIf { it.size >= 3 }?.let(::SelectionRegion)
                 }
-                selectionStart = null
+                rasterView.selectionDraftPoints = emptyList()
+                rasterView.selectionRegion = selectionRegion
+                selectionPoints.clear()
+                if (selectionRegion == null) clearSelection() else selectionListener?.invoke(true, true)
             }
-            MotionEvent.ACTION_CANCEL -> { selectionStart = null; clearSelection() }
+            MotionEvent.ACTION_CANCEL -> clearSelection()
+        }
+        return true
+    }
+
+    private fun handleSelectionMove(event: MotionEvent): Boolean {
+        val selection = selectionRegion ?: return true
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val point = rasterView.screenToDocument(event.x, event.y)
+                selectionMoveStart = point.takeIf { selection.contains(Point(it.x, it.y)) }
+            }
+            MotionEvent.ACTION_MOVE -> selectionMoveStart?.let { start ->
+                val point = rasterView.screenToDocument(event.x, event.y)
+                rasterView.selectionPreviewOffset = Point(point.x - start.x, point.y - start.y)
+            }
+            MotionEvent.ACTION_UP -> selectionMoveStart?.let { start ->
+                val point = rasterView.screenToDocument(event.x, event.y)
+                val deltaX = point.x - start.x
+                val deltaY = point.y - start.y
+                layerStack.selectedRaster()?.tiles?.let { store ->
+                    rasterView.invalidateTiles(store.moveSelection(selection, deltaX, deltaY))
+                    selectionRegion = selection.translated(deltaX, deltaY)
+                    rasterView.selectionRegion = selectionRegion
+                    notifyHistory()
+                }
+                rasterView.selectionPreviewOffset = Point(0f, 0f)
+                selectionMoveStart = null
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                rasterView.selectionPreviewOffset = Point(0f, 0f)
+                selectionMoveStart = null
+            }
         }
         return true
     }
@@ -510,19 +575,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val erasing = settings.erasing || isHardwareEraser
         val brush = if (erasing) settings.brush.copy(hardness = settings.eraserHardness) else settings.brush
         return StrokeStyle(brush, settings.sizePx, settings.opacity, settings.color,
-            if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionBounds)
+            if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion)
     }
 
     private fun styleForTarget(style: StrokeStyle, target: StrokeTarget): StrokeStyle {
         val image = target.image ?: return style
-        val localClip = style.clipBounds?.let { selection -> imageLocalBounds(image, selection) }
+        val localSelection = style.selection?.let { selection -> imageLocalSelection(image, selection) }
         return style.copy(
             brush = style.brush.copy(engine = BrushEngine.AIRBRUSH),
             sizePx = style.sizePx / image.transform.scale.coerceAtLeast(.02f),
             opacity = 1f,
             color = RgbaColor(1f, 1f, 1f),
             blend = BlendBehavior.PAINT,
-            clipBounds = localClip,
+            selection = localSelection,
         )
     }
 
@@ -532,13 +597,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return copy(position = Point(local.x, local.y))
     }
 
-    private fun imageLocalBounds(image: ImageLayerRuntime, selection: Rect): Rect {
-        val points = listOf(
-            android.graphics.PointF(selection.left, selection.top), android.graphics.PointF(selection.right, selection.top),
-            android.graphics.PointF(selection.right, selection.bottom), android.graphics.PointF(selection.left, selection.bottom),
-        ).map { layerStack.imagePointFromDocument(image, it) }
-        return Rect(points.minOf { it.x }, points.minOf { it.y }, points.maxOf { it.x }, points.maxOf { it.y })
-    }
+    private fun imageLocalSelection(image: ImageLayerRuntime, selection: SelectionRegion) = SelectionRegion(selection.points.map { point ->
+        val local = layerStack.imagePointFromDocument(image, android.graphics.PointF(point.x, point.y))
+        Point(local.x, local.y)
+    })
 
     private fun invalidateTarget(target: StrokeTarget, dirty: Set<dev.tipstroke.core.geometry.TileCoordinate>) {
         if (target.image == null) rasterView.invalidateTiles(dirty) else rasterView.invalidate()

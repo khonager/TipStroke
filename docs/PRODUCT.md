@@ -16,6 +16,6 @@ The long-term differentiator is a hybrid document that can contain true raster a
 - PNG, JPEG, and WebP export through the layer compositor.
 - Pencil, Ink, and Airbrush presets; transparent eraser; precise size/opacity controls; an always-visible switcher for the drawing's most-used colors; and a compact Brush Studio for hardness, pressure response, and optional speed taper.
 - Native stylus authoring and tile commits; configurable finger navigation, smudge, color pick, undo/redo, rotation lock, and diagnostics.
-- Rectangular selection on paint or image layers. The selection currently constrains drawing and erasing; selected-pixel transforms remain future work.
+- Freehand lasso and rectangular selection on paint or image layers. The selection constrains drawing and erasing, and selected paint pixels can be moved as one undoable operation. Image-layer selections constrain the source-resolution erase mask; whole images retain their separate non-destructive transform.
 
-Vectors, animation, selected-pixel transforms, filters, layer renaming, and blend modes remain intentionally absent.
+Vectors, animation, selected-pixel resize/rotation/warp, filters, layer renaming, and blend modes remain intentionally absent.

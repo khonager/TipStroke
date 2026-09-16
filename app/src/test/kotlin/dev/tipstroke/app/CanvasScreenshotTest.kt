@@ -41,6 +41,10 @@ class CanvasScreenshotTest {
         CanvasScreen(initialColorPickerOpen = true)
     }
 
+    @Test fun renderSelectionControlsForVisualReview() = render(1600, 2560, "tipstroke-selection.png") {
+        CanvasScreen(initialSelectionOpen = true)
+    }
+
     @Test fun renderGalleryForVisualReview() = render(2560, 1600, "tipstroke-gallery.png") { activity ->
         GalleryScreen(DrawingLibrary(activity), {}, {}, {})
     }

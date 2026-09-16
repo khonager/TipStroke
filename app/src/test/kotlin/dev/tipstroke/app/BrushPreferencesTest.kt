@@ -12,15 +12,24 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class BrushPreferencesTest {
     @Test fun tuningPersistsPerBrushAndSeparatelyForEraser() {
-        val preferences = BrushPreferences(RuntimeEnvironment.getApplication())
-        preferences.save(BrushPreset.Ink, BrushTuning(.8f, false, true, true))
-        preferences.saveEraserHardness(.95f)
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("brush-settings", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        val preferences = BrushPreferences(context)
+        preferences.save(BrushPreset.Ink, BrushTuning(41f, .7f, .8f, false, true, true))
+        preferences.saveEraser(BrushTuning(63f, .8f, .95f, true, false, false))
 
         val loaded = preferences.load(BrushPreset.Ink)
+        assertEquals(41f, loaded.sizePx, .001f)
+        assertEquals(.7f, loaded.opacity, .001f)
         assertEquals(.8f, loaded.hardness, .001f)
         assertFalse(loaded.pressureSize)
         assertTrue(loaded.pressureOpacity)
         assertTrue(loaded.speedTaper)
-        assertEquals(.95f, preferences.loadEraserHardness(), .001f)
+        val eraser = preferences.loadEraser()
+        assertEquals(63f, eraser.sizePx, .001f)
+        assertEquals(.8f, eraser.opacity, .001f)
+        assertEquals(.95f, eraser.hardness, .001f)
+        assertFalse(eraser.pressureOpacity)
+        context.getSharedPreferences("brush-settings", android.content.Context.MODE_PRIVATE).edit().clear().commit()
     }
 }

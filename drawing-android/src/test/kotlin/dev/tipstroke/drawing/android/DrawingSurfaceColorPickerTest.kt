@@ -57,7 +57,7 @@ class DrawingSurfaceColorPickerTest {
         var active = false
         var selected = false
         surface.selectionListener = { isActive, hasSelection -> active = isActive; selected = hasSelection }
-        surface.setSelectionMode(true)
+        surface.setSelectionTool(SelectionTool.RECTANGLE)
         val downTime = SystemClock.uptimeMillis()
 
         surface.dispatchTouchEvent(event(downTime, downTime, MotionEvent.ACTION_DOWN, 180f, 180f))

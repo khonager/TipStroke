@@ -6,6 +6,7 @@ import androidx.ink.strokes.Stroke
 import dev.tipstroke.core.drawing.*
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.geometry.TileGrid
+import dev.tipstroke.core.geometry.SelectionRegion
 import kotlin.math.*
 
 class TileStore(
@@ -105,7 +106,7 @@ class TileStore(
             val canvas = Canvas(bitmap)
             canvas.save()
             canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
-            stroke.style.clipBounds?.normalized()?.let { canvas.clipRect(it.left, it.top, it.right, it.bottom) }
+            stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
             renderer.draw(canvas, inkStroke, Matrix())
             canvas.restore()
             if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
@@ -202,6 +203,62 @@ class TileStore(
         history.push(TileSnapshotTransaction(this, before, after))
         lastDirtyTiles = smudgeTouched.toSet()
         smudgeTouched.clear()
+    }
+
+    /** Moves only pixels inside [selection] without copying the full canvas or layer. */
+    internal fun moveSelection(selection: SelectionRegion, deltaX: Float, deltaY: Float): Set<TileCoordinate> {
+        if (abs(deltaX) < .01f && abs(deltaY) < .01f) return emptySet()
+        val sourceTiles = TileGrid.intersecting(selection.bounds, canvasWidth, canvasHeight, tileSize)
+        if (sourceTiles.isEmpty()) return emptySet()
+        val destinationRegion = selection.translated(deltaX, deltaY)
+        val destinationTiles = TileGrid.intersecting(destinationRegion.bounds, canvasWidth, canvasHeight, tileSize)
+        val dirty = sourceTiles + destinationTiles
+        val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        val sourceSnapshots = sourceTiles.associateWith { before[it] }
+
+        val clearPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.TRANSPARENT
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        }
+        sourceTiles.forEach { coordinate ->
+            tiles[coordinate]?.let { bitmap ->
+                Canvas(bitmap).apply {
+                    save()
+                    translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+                    drawPath(selection.toAndroidPath(), clearPaint)
+                    restore()
+                }
+            }
+        }
+        clearPaint.xfermode = null
+
+        val copyPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        destinationTiles.forEach { destination ->
+            val bitmap = tiles.getOrPut(destination) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val canvas = Canvas(bitmap)
+            canvas.save()
+            canvas.translate((-destination.x * tileSize).toFloat(), (-destination.y * tileSize).toFloat())
+            canvas.clipPath(destinationRegion.toAndroidPath())
+            sourceSnapshots.forEach { (source, snapshot) ->
+                snapshot?.let {
+                    canvas.drawBitmap(
+                        it,
+                        source.x * tileSize + deltaX,
+                        source.y * tileSize + deltaY,
+                        copyPaint,
+                    )
+                }
+            }
+            canvas.restore()
+        }
+
+        dirty.forEach { coordinate ->
+            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) } }
+        }
+        val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        history.push(TileSnapshotTransaction(this, before, after))
+        lastDirtyTiles = dirty
+        return dirty
     }
 
     private fun Bitmap.isFullyTransparent(): Boolean {

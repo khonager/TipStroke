@@ -30,6 +30,14 @@ class CoreTests {
         val curve = PressureCurve(.2f, 1f, .7f)
         assertEquals(.2f, curve.map(-1f)); assertEquals(1f, curve.map(2f)); assertTrue(curve.map(.7f) > curve.map(.3f))
     }
+    @Test fun lassoSelectionSupportsContainmentAndTranslation() {
+        val lasso = SelectionRegion(listOf(Point(10f, 10f), Point(90f, 10f), Point(50f, 90f)))
+        assertTrue(lasso.contains(Point(50f, 40f)))
+        assertFalse(lasso.contains(Point(10f, 90f)))
+        val moved = lasso.translated(100f, 20f)
+        assertTrue(moved.contains(Point(150f, 60f)))
+        assertEquals(110f, moved.bounds.left)
+    }
     @Test fun undoHistoryEvictsWithinBudgetAndRedoes() {
         var value = 2
         fun tx(before: Int, after: Int) = object : UndoTransaction {

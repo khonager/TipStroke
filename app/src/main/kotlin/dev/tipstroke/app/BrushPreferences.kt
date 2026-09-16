@@ -4,6 +4,8 @@ import android.content.Context
 import dev.tipstroke.core.model.BrushPreset
 
 internal data class BrushTuning(
+    val sizePx: Float,
+    val opacity: Float,
     val hardness: Float,
     val pressureSize: Boolean,
     val pressureOpacity: Boolean,
@@ -15,17 +17,16 @@ internal class BrushPreferences(context: Context) {
 
     fun load(brush: BrushPreset): BrushTuning {
         val prefix = "brush_${brush.id.value}_"
-        return BrushTuning(
-            preferences.getFloat(prefix + "hardness", brush.hardness).coerceIn(0f, 1f),
-            preferences.getBoolean(prefix + "pressure_size", true),
-            preferences.getBoolean(prefix + "pressure_opacity", true),
-            preferences.getBoolean(prefix + "speed_taper", brush.speedTaper > 0f),
-        )
+        return load(prefix, BrushTuning(
+            brush.baseSizePx, brush.opacity, brush.hardness, true, true, brush.speedTaper > 0f,
+        ))
     }
 
     fun save(brush: BrushPreset, tuning: BrushTuning) {
         val prefix = "brush_${brush.id.value}_"
         preferences.edit()
+            .putFloat(prefix + "size", tuning.sizePx)
+            .putFloat(prefix + "opacity", tuning.opacity)
             .putFloat(prefix + "hardness", tuning.hardness)
             .putBoolean(prefix + "pressure_size", tuning.pressureSize)
             .putBoolean(prefix + "pressure_opacity", tuning.pressureOpacity)
@@ -33,6 +34,24 @@ internal class BrushPreferences(context: Context) {
             .apply()
     }
 
-    fun loadEraserHardness(): Float = preferences.getFloat("eraser_hardness", .35f).coerceIn(0f, 1f)
-    fun saveEraserHardness(value: Float) { preferences.edit().putFloat("eraser_hardness", value.coerceIn(0f, 1f)).apply() }
+    fun loadEraser(): BrushTuning = load("eraser_", BrushTuning(32f, 1f, .35f, true, true, false))
+    fun saveEraser(tuning: BrushTuning) {
+        preferences.edit()
+            .putFloat("eraser_size", tuning.sizePx)
+            .putFloat("eraser_opacity", tuning.opacity)
+            .putFloat("eraser_hardness", tuning.hardness)
+            .putBoolean("eraser_pressure_size", tuning.pressureSize)
+            .putBoolean("eraser_pressure_opacity", tuning.pressureOpacity)
+            .putBoolean("eraser_speed_taper", tuning.speedTaper)
+            .apply()
+    }
+
+    private fun load(prefix: String, fallback: BrushTuning) = BrushTuning(
+        preferences.getFloat(prefix + "size", fallback.sizePx).coerceIn(2f, 180f),
+        preferences.getFloat(prefix + "opacity", fallback.opacity).coerceIn(.05f, 1f),
+        preferences.getFloat(prefix + "hardness", fallback.hardness).coerceIn(0f, 1f),
+        preferences.getBoolean(prefix + "pressure_size", fallback.pressureSize),
+        preferences.getBoolean(prefix + "pressure_opacity", fallback.pressureOpacity),
+        preferences.getBoolean(prefix + "speed_taper", fallback.speedTaper),
+    )
 }

@@ -8,6 +8,8 @@
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
+Selections are transient platform-neutral polygons. Rectangle selection is the four-point case and freehand lasso retains its sampled boundary. Moving selected raster content reads only intersecting source-tile snapshots, clears the polygon from those tiles, composites it into intersecting destination tiles, and records the combined before/after set as one bounded undo transaction. It never copies a full layer or canvas.
+
 The app shell owns three destinations: local gallery, editor, and settings. `DrawingLibrary` and `ProjectPersistence` live in `:drawing-android` because decoding/encoding tiles and imported assets requires Android bitmap/content-resolver types. Gesture choices remain platform-neutral values in `:core` and are persisted by the app with local preferences.
 
 ## Stroke pipeline

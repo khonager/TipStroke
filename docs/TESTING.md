@@ -11,8 +11,15 @@ Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable 
 5. Repeat with Pencil and Airbrush. Airbrush softness, pressure sizing, and opacity should not change at commit.
 6. Erase across marks on multiple layers. Lower layers should be revealed during the gesture, with no visual change at pen-up; canceling a stroke should restore it.
 7. Resize an image with two fingers, lift either finger, pause, then continue dragging with the remaining finger. The image must stay in place at the handoff and resume smoothly after the drag threshold.
-6. Toggle Eraser and use the hardware eraser tool if reported. Verify pixels become transparent (white v0 canvas shows through) and undo restores them.
-7. Press each stylus button while drawing and confirm the debug/input path remains stable; mappings are intentionally not assigned yet.
+8. Toggle Eraser and use the hardware eraser tool if reported. Verify pixels become transparent (white v0 canvas shows through) and undo restores them.
+9. Press each stylus button while drawing and confirm the debug/input path remains stable; mappings are intentionally not assigned yet.
+
+## Selection and brush memory
+
+1. Draw across several tiles, make a rectangle selection, choose **Move**, and drag from inside the selection. Only selected pixels should move on lift; undo and redo must restore both locations.
+2. Repeat with a curved freehand lasso and verify pixels inside the polygon move while nearby pixels outside it remain unchanged.
+3. Select an imported image, make a lasso selection, and erase across its edge. Erasing must remain inside the lasso; save, reopen, resize to 100%, and verify the original-resolution mask remains aligned.
+4. Give Pencil, Ink, Airbrush, and Eraser visibly different size/opacity values. Switch among them and relaunch the editor; each tool must restore its own values.
 
 ## Touch and camera
 

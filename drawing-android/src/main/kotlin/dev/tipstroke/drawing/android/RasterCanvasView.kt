@@ -6,6 +6,8 @@ import android.view.View
 import dev.tipstroke.core.geometry.CanvasTransform
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.geometry.TileGrid
+import dev.tipstroke.core.geometry.Point
+import dev.tipstroke.core.geometry.SelectionRegion
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -20,7 +22,11 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         color = Color.rgb(237, 106, 90); style = Paint.Style.STROKE
         pathEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
     }
-    var selectionBounds: dev.tipstroke.core.geometry.Rect? = null
+    var selectionRegion: SelectionRegion? = null
+        set(value) { field = value; invalidate() }
+    var selectionDraftPoints: List<Point> = emptyList()
+        set(value) { field = value; invalidate() }
+    var selectionPreviewOffset = Point(0f, 0f)
         set(value) { field = value; invalidate() }
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
@@ -124,12 +130,18 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     }
 
     private fun drawSelection(canvas: Canvas) {
-        val bounds = selectionBounds?.normalized() ?: return
         selectionPaint.strokeWidth = 2f / transform.scale.coerceAtLeast(.08f)
         selectionPaint.pathEffect = DashPathEffect(
             floatArrayOf(10f / transform.scale.coerceAtLeast(.08f), 7f / transform.scale.coerceAtLeast(.08f)), 0f,
         )
-        canvas.drawRect(bounds.left, bounds.top, bounds.right, bounds.bottom, selectionPaint)
+        selectionRegion?.let { canvas.drawPath(it.toAndroidPath(selectionPreviewOffset.x, selectionPreviewOffset.y), selectionPaint) }
+        if (selectionDraftPoints.size >= 2) {
+            val draft = Path().apply {
+                moveTo(selectionDraftPoints.first().x, selectionDraftPoints.first().y)
+                selectionDraftPoints.drop(1).forEach { lineTo(it.x, it.y) }
+            }
+            canvas.drawPath(draft, selectionPaint)
+        }
     }
 
     private fun drawSelectedImageBounds(canvas: Canvas) {

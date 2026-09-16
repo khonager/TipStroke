@@ -2,6 +2,7 @@ package dev.tipstroke.core.drawing
 
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.Rect
+import dev.tipstroke.core.geometry.SelectionRegion
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushPreset
@@ -26,7 +27,7 @@ data class StrokeStyle(
     val color: RgbaColor,
     val blend: BlendBehavior,
     /** Optional transient selection clip; it is never persisted as artwork. */
-    val clipBounds: Rect? = null,
+    val selection: SelectionRegion? = null,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     val bounds: Rect by lazy {

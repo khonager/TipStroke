@@ -115,7 +115,7 @@ class TileStoreTest {
         val erase = ink.copy(
             sizePx = 50f,
             blend = BlendBehavior.ERASE,
-            clipBounds = dev.tipstroke.core.geometry.Rect(100f, 0f, 150f, 256f),
+            selection = dev.tipstroke.core.geometry.SelectionRegion.rectangle(dev.tipstroke.core.geometry.Rect(100f, 0f, 150f, 256f)),
         )
         store.beginLiveStroke()
         store.appendLiveStroke(stroke(Point(20f, 80f), Point(230f, 80f), erase))
@@ -124,6 +124,23 @@ class TileStoreTest {
         assertNotEquals(0, Color.alpha(store.colorAt(70, 80)))
         assertEquals(0, Color.alpha(store.colorAt(125, 80)))
         assertNotEquals(0, Color.alpha(store.colorAt(180, 80)))
+    }
+
+    @Test fun movesOnlySelectedPixelsAndUndoRestoresTheirOriginalPosition() {
+        val store = TileStore(256, 256)
+        store.commit(stroke(Point(20f, 80f), Point(100f, 80f), ink.copy(sizePx = 20f)))
+        val selection = dev.tipstroke.core.geometry.SelectionRegion.rectangle(
+            dev.tipstroke.core.geometry.Rect(40f, 60f, 80f, 100f),
+        )
+
+        store.moveSelection(selection, 100f, 0f)
+        assertNotEquals(0, Color.alpha(store.colorAt(25, 80)))
+        assertEquals(0, Color.alpha(store.colorAt(55, 80)))
+        assertNotEquals(0, Color.alpha(store.colorAt(155, 80)))
+
+        assertTrue(store.history.undo())
+        assertNotEquals(0, Color.alpha(store.colorAt(55, 80)))
+        assertEquals(0, Color.alpha(store.colorAt(155, 80)))
     }
 
     private fun stroke(a: Point, b: Point, style: StrokeStyle) = CompletedStroke(

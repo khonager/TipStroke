@@ -35,7 +35,7 @@ internal object StrokeCanvasPainter {
 
     fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke)) {
         val saveCount = canvas.save()
-        stroke.style.clipBounds?.normalized()?.let { canvas.clipRect(it.left, it.top, it.right, it.bottom) }
+        stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
         val samples = stroke.samples
         if (samples.size == 1) {
             val sample = samples.first()
