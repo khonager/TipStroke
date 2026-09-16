@@ -14,7 +14,9 @@ Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable 
 8. Erase across marks on multiple layers. Lower layers should be revealed during the gesture, with no visual change at pen-up; canceling a stroke should restore it.
 9. Resize an image with two fingers, lift either finger, pause, then continue dragging with the remaining finger. The image must stay in place at the handoff and resume smoothly after the drag threshold.
 10. Toggle Eraser and use the hardware eraser tool if reported. Verify pixels become transparent (white v0 canvas shows through) and undo restores them.
-11. Press each stylus button while drawing and confirm the debug/input path remains stable; mappings are intentionally not assigned yet.
+11. In Settings, leave the primary/lower button on **Switch brush / eraser** and the secondary/upper button on **Undo**. Test each with the pen hovering, touching, and moving. Each physical press must fire exactly once; holding a button must not oscillate tools or repeatedly undo. The selected tool in the rail must follow hardware switching.
+12. Remap both buttons to redo/disabled and relaunch TipStroke. Confirm mappings persist. On Xiaomi Smart Pen 2, use short presses; long presses may remain reserved by HyperOS for the note and screenshot shortcuts.
+13. Repeat the button tests on an S Pen device if available. In-range/contact presses should use Android's standard stylus events; Bluetooth remote/air actions are not part of this test.
 
 ## Selection and brush memory
 

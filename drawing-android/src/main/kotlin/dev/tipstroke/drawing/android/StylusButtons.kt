@@ -7,7 +7,8 @@ enum class StylusButton { PRIMARY, SECONDARY }
 
 /** Normalizes modern Android stylus events and legacy Linux/OEM button mappings. */
 object StylusButtons {
-    private const val PRIMARY_MOTION_MASK = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_SECONDARY
+    private const val PRIMARY_MOTION_MASK =
+        MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_SECONDARY or MotionEvent.BUTTON_PRIMARY
     private const val SECONDARY_MOTION_MASK = MotionEvent.BUTTON_STYLUS_SECONDARY or MotionEvent.BUTTON_TERTIARY
 
     fun pressed(state: Int): Int =

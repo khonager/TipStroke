@@ -35,14 +35,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val button = StylusButtons.fromKeyCode(event.keyCode)
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val button = StylusButtons.fromKeyCode(keyCode)
         val handler = stylusButtonHandler
         if (button != null && handler != null) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) handler(button)
+            if (event.repeatCount == 0) handler(button)
             return true
         }
-        return super.dispatchKeyEvent(event)
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (StylusButtons.fromKeyCode(keyCode) != null && stylusButtonHandler != null) return true
+        return super.onKeyUp(keyCode, event)
     }
 
     override fun onStop() {

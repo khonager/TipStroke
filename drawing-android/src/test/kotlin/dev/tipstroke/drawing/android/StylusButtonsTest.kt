@@ -14,6 +14,7 @@ class StylusButtonsTest {
     @Test fun normalizesStandardAndLegacyMotionButtons() {
         assertEquals(1, StylusButtons.pressed(MotionEvent.BUTTON_STYLUS_PRIMARY))
         assertEquals(1, StylusButtons.pressed(MotionEvent.BUTTON_SECONDARY))
+        assertEquals(1, StylusButtons.pressed(MotionEvent.BUTTON_PRIMARY))
         assertEquals(2, StylusButtons.pressed(MotionEvent.BUTTON_STYLUS_SECONDARY))
         assertEquals(2, StylusButtons.pressed(MotionEvent.BUTTON_TERTIARY))
         assertEquals(3, StylusButtons.pressed(MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY))

@@ -81,6 +81,7 @@ fun CanvasScreen(
     var pressureSize by remember { mutableStateOf(initialBrushTuning.pressureSize) }
     var pressureOpacity by remember { mutableStateOf(initialBrushTuning.pressureOpacity) }
     var speedTaper by remember { mutableStateOf(initialBrushTuning.speedTaper) }
+    val lastStylusButtonAt = remember { longArrayOf(Long.MIN_VALUE, Long.MIN_VALUE) }
 
     val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -128,6 +129,10 @@ fun CanvasScreen(
         sync()
     }
     fun performStylusButton(button: StylusButton) {
+        val now = android.os.SystemClock.uptimeMillis()
+        val buttonIndex = button.ordinal
+        if (lastStylusButtonAt[buttonIndex] != Long.MIN_VALUE && now - lastStylusButtonAt[buttonIndex] < 80L) return
+        lastStylusButtonAt[buttonIndex] = now
         val action = when (button) {
             StylusButton.PRIMARY -> gestureSettings.stylusPrimaryButton
             StylusButton.SECONDARY -> gestureSettings.stylusSecondaryButton

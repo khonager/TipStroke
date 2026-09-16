@@ -43,6 +43,8 @@ Open **Layers** in the top bar. Add paint layers with **+ Paint** or use **+ Ima
 
 Tap **Select**, choose **Lasso** or **Rectangle**, and draw with a finger or stylus to constrain edits on the current paint or image layer. On paint layers, choose **Move** and drag to reposition only the selected pixels; the move is undoable. **Adjust** beside the brush tools opens a compact Brush Studio with hardness, pressure-size, pressure-opacity, and speed-taper controls. TipStroke remembers size, opacity, and tuning separately for every brush and for the eraser.
 
+Stylus side buttons are configurable in Settings. By default, the primary button switches between the current brush and eraser, and the secondary button undoes. TipStroke accepts standard Android stylus events plus the Page Up/Page Down key events reported by Xiaomi Smart Pen 2 on Pad 6; short presses are intended because the system may reserve Xiaomi long-press shortcuts.
+
 Pencil and Airbrush use TipStroke-owned Jetpack Ink 1.1 custom families. Pencil combines pressure, tilt, barrel orientation, speed taper, and procedural paper grain. Airbrush lays down textured particles with deterministic scatter and natural buildup instead of overlapping blurred circles. Both use the same brush family for the wet stroke and the final sparse-tile rasterization.
 
 ## Gallery, export, and gestures

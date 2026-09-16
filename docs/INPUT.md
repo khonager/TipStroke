@@ -4,6 +4,8 @@
 
 - `TOOL_TYPE_STYLUS` draws and captures pressure, tilt, orientation, timestamps, button state, pointer ID, and cancellation.
 - `TOOL_TYPE_ERASER` uses the same brush engine with clear blending.
+- The primary and secondary stylus buttons are edge-triggered and configurable. Defaults are **Switch brush / eraser** for the primary button (normally nearest the tip) and **Undo** for the secondary button. Mappings are stored locally and can also be set to redo or disabled.
+- Button input accepts Android's standard stylus `MotionEvent` bits, legacy primary/secondary/tertiary mappings from stylus-class devices, and Android 14's dedicated stylus `KeyEvent` codes. Xiaomi Pad 6 compatibility additionally recognizes the Smart Pen 2's observed `KEYCODE_PAGE_UP`/`KEYCODE_PAGE_DOWN` events while the editor is active. Duplicate motion/key delivery within one physical press is suppressed.
 - Finger behavior comes from local `GestureSettings`. Defaults are one-finger drag to navigate, one-finger hold to pick color, two-finger tap to undo, and three-finger tap to redo.
 - One-finger drag can instead smudge the selected paint layer. Smudge snapshots only affected tiles and groups the whole finger gesture into one undo transaction.
 - Image transform mode temporarily takes priority over configured finger actions. One-finger drag moves the selected image; two-finger translation, pinch, and twist move, resize, and rotate it. When one finger of a two-finger transform lifts, the gesture rebases to the remaining finger so continued movement is smooth and does not jump. Leaving transform mode restores the configured actions.
@@ -25,4 +27,6 @@ The compact color dock always exposes the current drawing's most-used colors. Ta
 
 ## Planned extension points
 
-The captured button state can later map stylus buttons to actions. Gesture routing can later add swipe actions, a quick menu, fullscreen toggle, and additional user mappings without adding work to the sample path.
+Gesture routing can later add swipe actions, a quick menu, fullscreen toggle, and additional user mappings without adding work to the sample path.
+
+Remote/air actions are intentionally outside the generic button path. Samsung's remote S Pen SDK is model-specific, and Xiaomi reserves long presses for system note/screenshot shortcuts; TipStroke targets short in-range/contact button presses through Android input APIs first.
