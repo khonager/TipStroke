@@ -14,6 +14,8 @@ class GesturePreferences(context: Context) {
         holdDelayMillis = preferences.getLong("hold_delay", 420L).coerceIn(150L, 1500L),
         smudgeStrength = preferences.getFloat("smudge_strength", .45f).coerceIn(0f, 1f),
         rotationLocked = preferences.getBoolean("rotation_locked", false),
+        stylusPrimaryButton = stylusAction("stylus_primary", StylusButtonAction.TOGGLE_ERASER),
+        stylusSecondaryButton = stylusAction("stylus_secondary", StylusButtonAction.UNDO),
     )
 
     fun save(settings: GestureSettings) {
@@ -25,9 +27,14 @@ class GesturePreferences(context: Context) {
             .putLong("hold_delay", settings.holdDelayMillis)
             .putFloat("smudge_strength", settings.smudgeStrength)
             .putBoolean("rotation_locked", settings.rotationLocked)
+            .putString("stylus_primary", settings.stylusPrimaryButton.name)
+            .putString("stylus_secondary", settings.stylusSecondaryButton.name)
             .apply()
     }
 
     private fun action(key: String, fallback: FingerAction) =
         runCatching { FingerAction.valueOf(preferences.getString(key, fallback.name) ?: fallback.name) }.getOrDefault(fallback)
+
+    private fun stylusAction(key: String, fallback: StylusButtonAction) =
+        runCatching { StylusButtonAction.valueOf(preferences.getString(key, fallback.name) ?: fallback.name) }.getOrDefault(fallback)
 }

@@ -9,6 +9,13 @@ enum class FingerAction(val displayName: String) {
     DISABLED("Disabled"),
 }
 
+enum class StylusButtonAction(val displayName: String) {
+    TOGGLE_ERASER("Switch brush / eraser"),
+    UNDO("Undo"),
+    REDO("Redo"),
+    DISABLED("Disabled"),
+}
+
 data class GestureSettings(
     val oneFingerDrag: FingerAction = FingerAction.NAVIGATE,
     val oneFingerHold: FingerAction = FingerAction.PICK_COLOR,
@@ -17,6 +24,8 @@ data class GestureSettings(
     val holdDelayMillis: Long = 420L,
     val smudgeStrength: Float = .45f,
     val rotationLocked: Boolean = false,
+    val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.TOGGLE_ERASER,
+    val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.UNDO,
 ) {
     init {
         require(holdDelayMillis in 150L..1500L)

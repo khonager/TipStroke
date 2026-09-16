@@ -71,6 +71,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var layersListener: ((List<LayerSummary>, LayerId) -> Unit)? = null
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var frequentColorsListener: ((List<RgbaColor>) -> Unit)? = null
+    var stylusButtonListener: ((StylusButton) -> Unit)? = null
+    private var pressedStylusButtons = 0
     private var imageTransformMode = false
     private var selectionMode = false
     private var selectionTool = SelectionTool.LASSO
@@ -214,12 +216,32 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         predictor?.record(event)
+        if (eventHasStylus(event)) updateStylusButtons(event.buttonState)
         if (selectionMoveMode) return handleSelectionMove(event)
         if (selectionMode) return handleSelection(event)
         val actionIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val toolType = event.getToolType(actionIndex)
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
         return if (stylus || activeStylusId != null) handleStylus(event) else handleTouchGesture(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (eventHasStylus(event)) {
+            updateStylusButtons(event.buttonState)
+            if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS || event.actionMasked == MotionEvent.ACTION_BUTTON_RELEASE) return true
+        }
+        return super.dispatchGenericMotionEvent(event)
+    }
+
+    private fun eventHasStylus(event: MotionEvent): Boolean =
+        (0 until event.pointerCount).any { isStylus(event, it) }
+
+    private fun updateStylusButtons(buttonState: Int) {
+        val pressed = StylusButtons.pressed(buttonState)
+        val newPresses = pressed and pressedStylusButtons.inv()
+        pressedStylusButtons = pressed
+        if (newPresses and 1 != 0) stylusButtonListener?.invoke(StylusButton.PRIMARY)
+        if (newPresses and 2 != 0) stylusButtonListener?.invoke(StylusButton.SECONDARY)
     }
 
     private fun handleStylus(event: MotionEvent): Boolean {

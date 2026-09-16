@@ -1,6 +1,7 @@
 package dev.tipstroke.app
 
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
@@ -8,6 +9,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 import dev.tipstroke.core.model.GestureSettings
 import dev.tipstroke.drawing.android.DrawingLibrary
+import dev.tipstroke.drawing.android.StylusButton
+import dev.tipstroke.drawing.android.StylusButtons
 
 private sealed interface AppScreen {
     data object Gallery : AppScreen
@@ -17,11 +20,29 @@ private sealed interface AppScreen {
 
 class MainActivity : ComponentActivity() {
     private var saveActiveDrawing: (() -> Unit)? = null
+    private var stylusButtonHandler: ((StylusButton) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { TipStrokeTheme { TipStrokeApp { saveActiveDrawing = it } } }
+        setContent {
+            TipStrokeTheme {
+                TipStrokeApp(
+                    onSaveActionChanged = { saveActiveDrawing = it },
+                    onStylusButtonHandlerChanged = { stylusButtonHandler = it },
+                )
+            }
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val button = StylusButtons.fromKeyCode(event.keyCode)
+        val handler = stylusButtonHandler
+        if (button != null && handler != null) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) handler(button)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onStop() {
@@ -31,7 +52,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun TipStrokeApp(onSaveActionChanged: ((() -> Unit)?) -> Unit) {
+private fun TipStrokeApp(
+    onSaveActionChanged: ((() -> Unit)?) -> Unit,
+    onStylusButtonHandlerChanged: (((StylusButton) -> Unit)?) -> Unit,
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val library = remember { DrawingLibrary(context) }
     val gesturePreferences = remember { GesturePreferences(context) }
@@ -57,6 +81,7 @@ private fun TipStrokeApp(onSaveActionChanged: ((() -> Unit)?) -> Unit) {
             loadExisting = current.existing, library = library, gestureSettings = gestures,
             onBackToGallery = { screen = AppScreen.Gallery },
             onSaveActionChanged = onSaveActionChanged,
+            onStylusButtonHandlerChanged = onStylusButtonHandlerChanged,
         )
     }
 }

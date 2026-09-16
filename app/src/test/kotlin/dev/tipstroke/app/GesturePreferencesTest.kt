@@ -21,6 +21,8 @@ class GesturePreferencesTest {
             holdDelayMillis = 650,
             smudgeStrength = .72f,
             rotationLocked = true,
+            stylusPrimaryButton = StylusButtonAction.REDO,
+            stylusSecondaryButton = StylusButtonAction.DISABLED,
         )
         preferences.save(expected)
         assertEquals(expected, preferences.load())

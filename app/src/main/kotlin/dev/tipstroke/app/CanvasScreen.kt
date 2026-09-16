@@ -43,6 +43,7 @@ fun CanvasScreen(
     gestureSettings: GestureSettings = GestureSettings(),
     onBackToGallery: (() -> Unit)? = null,
     onSaveActionChanged: (((() -> Unit)?) -> Unit)? = null,
+    onStylusButtonHandlerChanged: ((((StylusButton) -> Unit)?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val brushPreferences = remember { BrushPreferences(context) }
@@ -121,6 +122,23 @@ fun CanvasScreen(
         size = tuning.sizePx; opacity = tuning.opacity; brushHardness = tuning.hardness
         pressureSize = tuning.pressureSize; pressureOpacity = tuning.pressureOpacity; speedTaper = tuning.speedTaper
     }
+    fun toggleEraser() {
+        erasing = !erasing
+        applyTuning(if (erasing) brushPreferences.loadEraser() else brushPreferences.load(brush))
+        sync()
+    }
+    fun performStylusButton(button: StylusButton) {
+        val action = when (button) {
+            StylusButton.PRIMARY -> gestureSettings.stylusPrimaryButton
+            StylusButton.SECONDARY -> gestureSettings.stylusSecondaryButton
+        }
+        when (action) {
+            StylusButtonAction.TOGGLE_ERASER -> toggleEraser()
+            StylusButtonAction.UNDO -> surface?.undo()
+            StylusButtonAction.REDO -> surface?.redo()
+            StylusButtonAction.DISABLED -> Unit
+        }
+    }
     LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, debug, gestureSettings, surface) { sync() }
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
@@ -163,6 +181,10 @@ fun CanvasScreen(
     DisposableEffect(onSaveActionChanged) {
         onDispose { onSaveActionChanged?.invoke(null) }
     }
+    DisposableEffect(onStylusButtonHandlerChanged, gestureSettings, surface) {
+        onStylusButtonHandlerChanged?.invoke(::performStylusButton)
+        onDispose { onStylusButtonHandlerChanged?.invoke(null) }
+    }
     BackHandler(enabled = onBackToGallery != null, onBack = leaveEditor)
     BackHandler(enabled = colorPickerOpen) { colorPickerOpen = false }
 
@@ -178,6 +200,7 @@ fun CanvasScreen(
                 view.layersListener = { updated, selected -> layers = updated; selectedLayerId = selected }
                 view.colorPickedListener = { picked -> color = picked }
                 view.frequentColorsListener = { frequentColors = it }
+                view.stylusButtonListener = ::performStylusButton
                 view.selectionListener = { active, selected -> selectionMode = active; hasSelection = selected }
                 if (library != null && documentId != null) {
                     if (loadExisting) view.loadProject(library, documentId) { outcome ->
@@ -215,8 +238,7 @@ fun CanvasScreen(
                     brush = it; erasing = false; applyTuning(brushPreferences.load(it))
                 },
                 onEraser = {
-                    erasing = !erasing
-                    applyTuning(if (erasing) brushPreferences.loadEraser() else brushPreferences.load(brush))
+                    toggleEraser()
                 },
                 onAdjust = { brushStudioOpen = true },
                 modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
