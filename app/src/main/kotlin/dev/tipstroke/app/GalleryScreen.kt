@@ -2,30 +2,44 @@ package dev.tipstroke.app
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.zIndex
 import dev.tipstroke.drawing.android.DrawingLibrary
 import dev.tipstroke.drawing.android.DrawingSummary
+import dev.tipstroke.drawing.android.GalleryDrawing
+import dev.tipstroke.drawing.android.GalleryItem
+import dev.tipstroke.drawing.android.GalleryStack
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 data class NewDrawingRequest(val id: String, val name: String, val widthPx: Int, val heightPx: Int)
 
@@ -36,29 +50,162 @@ fun GalleryScreen(
     onNew: (NewDrawingRequest) -> Unit,
     onSettings: () -> Unit,
 ) {
-    var refresh by remember { mutableIntStateOf(0) }
-    val drawings = remember(refresh) { library.list() }
+    var items by remember(library) { mutableStateOf(library.galleryItems()) }
+    var openStackId by remember { mutableStateOf<String?>(null) }
     var creating by remember { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<DrawingSummary?>(null) }
+    var renameStack by remember { mutableStateOf<GalleryStack?>(null) }
+    var draggedKey by remember { mutableStateOf<String?>(null) }
+    var dragPoint by remember { mutableStateOf(Offset.Unspecified) }
+    var dragTranslation by remember { mutableStateOf(Offset.Zero) }
+    var dropTargetKey by remember { mutableStateOf<String?>(null) }
+    val cardBounds = remember { mutableStateMapOf<String, Rect>() }
+    var gridBounds by remember { mutableStateOf(Rect.Zero) }
+    val gridState = rememberLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
+    var autoScrollJob by remember { mutableStateOf<Job?>(null) }
+    val openStack = items.filterIsInstance<GalleryStack>().firstOrNull { it.id == openStackId }
+    val visibleItems: List<GalleryItem> = openStack?.drawings?.map(::GalleryDrawing) ?: items
+    LaunchedEffect(openStackId) { cardBounds.clear() }
+
+    fun refreshGallery() {
+        items = library.galleryItems()
+        if (openStackId != null && items.none { it is GalleryStack && it.id == openStackId }) openStackId = null
+    }
+
+    fun updateDropTarget(point: Offset) {
+        dropTargetKey = cardBounds.entries.firstOrNull { (key, bounds) -> key != draggedKey && bounds.contains(point) }?.key
+    }
+
+    fun finishDrag() {
+        val sourceKey = draggedKey
+        val targetKey = dropTargetKey
+        val point = dragPoint
+        val targetBounds = targetKey?.let(cardBounds::get)
+        if (sourceKey != null && targetKey != null && targetBounds != null) {
+            val centerZone = Rect(
+                targetBounds.left + targetBounds.width * .22f,
+                targetBounds.top + targetBounds.height * .18f,
+                targetBounds.right - targetBounds.width * .22f,
+                targetBounds.bottom - targetBounds.height * .18f,
+            )
+            if (openStack != null) {
+                library.reorderInStack(
+                    openStack.id,
+                    sourceKey.removePrefix("drawing:"),
+                    targetKey.removePrefix("drawing:"),
+                    point.y > targetBounds.center.y || point.x > targetBounds.center.x,
+                )
+            } else {
+                val source = items.firstOrNull { it.key == sourceKey }
+                val target = items.firstOrNull { it.key == targetKey }
+                if (source is GalleryDrawing && centerZone.contains(point) && target != null) {
+                    library.stackDrawing(source.drawing.id, target.key)
+                } else {
+                    library.reorderTopLevel(
+                        sourceKey,
+                        targetKey,
+                        point.y > targetBounds.center.y || point.x > targetBounds.center.x,
+                    )
+                }
+            }
+            refreshGallery()
+        }
+        draggedKey = null
+        dropTargetKey = null
+        dragPoint = Offset.Unspecified
+        dragTranslation = Offset.Zero
+        autoScrollJob?.cancel()
+        autoScrollJob = null
+    }
+
+    fun dragModifier(item: GalleryItem) = Modifier
+        .onGloballyPositioned { cardBounds[item.key] = it.boundsInRoot() }
+        .zIndex(if (draggedKey == item.key) 2f else 0f)
+        .graphicsLayer {
+            alpha = if (draggedKey == item.key) .72f else 1f
+            if (draggedKey == item.key) {
+                translationX = dragTranslation.x
+                translationY = dragTranslation.y
+            }
+        }
+        .then(if (dropTargetKey == item.key) Modifier.border(2.dp, Color(0xFFED6A5A), RoundedCornerShape(14.dp)) else Modifier)
+        .pointerInput(item.key, openStackId) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { local ->
+                    draggedKey = item.key
+                    dragTranslation = Offset.Zero
+                    dragPoint = (cardBounds[item.key]?.topLeft ?: Offset.Zero) + local
+                    updateDropTarget(dragPoint)
+                },
+                onDrag = { change, amount ->
+                    change.consume()
+                    dragPoint += amount
+                    dragTranslation += amount
+                    updateDropTarget(dragPoint)
+                    if (gridBounds != Rect.Zero && autoScrollJob?.isActive != true) {
+                        when {
+                            dragPoint.y < gridBounds.top + 90f -> autoScrollJob = coroutineScope.launch {
+                                dragTranslation += Offset(0f, gridState.scrollBy(-32f))
+                            }
+                            dragPoint.y > gridBounds.bottom - 90f -> autoScrollJob = coroutineScope.launch {
+                                dragTranslation += Offset(0f, gridState.scrollBy(32f))
+                            }
+                        }
+                    }
+                },
+                onDragEnd = ::finishDrag,
+                onDragCancel = {
+                    autoScrollJob?.cancel(); autoScrollJob = null
+                    draggedKey = null; dropTargetKey = null; dragPoint = Offset.Unspecified; dragTranslation = Offset.Zero
+                },
+            )
+        }
 
     Column(Modifier.fillMaxSize().background(Color(0xFF17181B))) {
         GalleryTopBar(onNew = { creating = true }, onSettings = onSettings)
         Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 22.dp)) {
-            Text("Your drawings", color = Color(0xFFF5F5F2), fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (openStack != null) {
+                    TextButton(onClick = { openStackId = null }) { Text("‹  Gallery") }
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(openStack?.name ?: "Your drawings", color = Color(0xFFF5F5F2), fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                if (openStack != null) {
+                    TextButton(onClick = { renameStack = openStack }) { Text("Rename") }
+                    TextButton(onClick = { library.unstack(openStack.id); refreshGallery() }) { Text("Unstack") }
+                }
+            }
+            Text(
+                if (openStack == null) "Long-press and drag to reorder. Drop in the center of a drawing or stack to group it."
+                else "Long-press and drag to reorder drawings inside this stack.",
+                color = Color(0xFF9EA0A6), fontSize = 12.sp,
+            )
             Spacer(Modifier.height(20.dp))
-            if (drawings.isEmpty()) {
+            if (visibleItems.isEmpty()) {
                 EmptyGallery { creating = true }
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(260.dp),
-                    modifier = Modifier.fillMaxSize(),
+                    state = gridState,
+                    modifier = Modifier.fillMaxSize().onGloballyPositioned { gridBounds = it.boundsInRoot() },
                     horizontalArrangement = Arrangement.spacedBy(22.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
-                    items(drawings, key = { it.id }) { drawing ->
-                        DrawingCard(drawing, { onOpen(drawing) }, { deleteCandidate = drawing })
+                    items(visibleItems, key = GalleryItem::key) { item ->
+                        when (item) {
+                            is GalleryDrawing -> DrawingCard(
+                                item.drawing,
+                                { onOpen(item.drawing) },
+                                { deleteCandidate = item.drawing },
+                                dragModifier(item),
+                                onMoveOut = openStack?.let { stack -> { library.moveOutOfStack(stack.id, item.drawing.id); refreshGallery() } },
+                            )
+                            is GalleryStack -> StackCard(item, { openStackId = item.id }, dragModifier(item))
+                        }
                     }
-                    item { NewDrawingCard { creating = true } }
+                    if (openStack == null) item { NewDrawingCard { creating = true } }
                 }
             }
         }
@@ -76,8 +223,15 @@ fun GalleryScreen(
             onDismissRequest = { deleteCandidate = null },
             title = { Text("Delete ${drawing.name}?") },
             text = { Text("This removes the local drawing and cannot be undone.") },
-            confirmButton = { TextButton(onClick = { library.delete(drawing.id); deleteCandidate = null; refresh++ }) { Text("Delete") } },
+            confirmButton = { TextButton(onClick = { library.delete(drawing.id); deleteCandidate = null; refreshGallery() }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deleteCandidate = null }) { Text("Cancel") } },
+        )
+    }
+    renameStack?.let { stack ->
+        RenameStackDialog(
+            stack.name,
+            onDismiss = { renameStack = null },
+            onRename = { library.renameStack(stack.id, it); renameStack = null; refreshGallery() },
         )
     }
 }
@@ -131,9 +285,15 @@ private fun EmptyGallery(onNew: () -> Unit) {
 }
 
 @Composable
-private fun DrawingCard(drawing: DrawingSummary, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun DrawingCard(
+    drawing: DrawingSummary,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+    onMoveOut: (() -> Unit)? = null,
+) {
     var menuOpen by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+    Column(modifier.fillMaxWidth().clickable(onClick = onOpen).padding(2.dp)) {
         val image = remember(drawing.thumbnailFile.absolutePath, drawing.modifiedAtMillis) {
             BitmapFactory.decodeFile(drawing.thumbnailFile.absolutePath)?.asImageBitmap()
         }
@@ -152,11 +312,53 @@ private fun DrawingCard(drawing: DrawingSummary, onOpen: () -> Unit, onDelete: (
             Box {
                 TextButton(onClick = { menuOpen = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(38.dp)) { Text("⋮", fontSize = 24.sp) }
                 DropdownMenu(menuOpen, { menuOpen = false }) {
+                    onMoveOut?.let { moveOut -> DropdownMenuItem(text = { Text("Move out of stack") }, onClick = { menuOpen = false; moveOut() }) }
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menuOpen = false; onDelete() })
                 }
             }
         }
     }
+}
+
+@Composable
+private fun StackCard(stack: GalleryStack, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().clickable(onClick = onOpen).padding(2.dp)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(1.48f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)).padding(8.dp),
+        ) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                repeat(2) { column ->
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        repeat(2) { row ->
+                            val drawing = stack.drawings.getOrNull(column * 2 + row)
+                            Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(7.dp)).background(if (drawing == null) Color(0xFF34363A) else Color.White)) {
+                                drawing?.let {
+                                    val image = remember(it.thumbnailFile.absolutePath, it.modifiedAtMillis) {
+                                        BitmapFactory.decodeFile(it.thumbnailFile.absolutePath)?.asImageBitmap()
+                                    }
+                                    image?.let { bitmap -> Image(bitmap, it.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Text(stack.name, color = Color(0xFFF3F3F0), fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 9.dp))
+        Text("${stack.drawings.size} drawings", color = Color(0xFF9EA0A6), fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun RenameStackDialog(currentName: String, onDismiss: () -> Unit, onRename: (String) -> Unit) {
+    var name by remember(currentName) { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename stack") },
+        text = { OutlinedTextField(name, { name = it }, label = { Text("Stack name") }, singleLine = true) },
+        confirmButton = { Button(onClick = { onRename(name) }) { Text("Rename") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

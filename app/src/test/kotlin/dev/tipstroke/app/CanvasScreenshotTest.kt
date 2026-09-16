@@ -2,6 +2,7 @@ package dev.tipstroke.app
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
 import android.view.View
 import androidx.activity.compose.setContent
 import androidx.activity.ComponentActivity
@@ -26,6 +27,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.io.FileOutputStream
+import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w1280dp-h800dp-land-xhdpi")
@@ -46,15 +48,15 @@ class CanvasScreenshotTest {
     }
 
     @Test fun renderGalleryForVisualReview() = render(2560, 1600, "tipstroke-gallery.png") { activity ->
-        GalleryScreen(DrawingLibrary(activity), {}, {}, {})
+        GalleryScreen(galleryWithExamples(activity), {}, {}, {})
     }
 
     @Test fun renderGalleryPortraitForVisualReview() = render(1600, 2560, "tipstroke-gallery-portrait.png") { activity ->
-        GalleryScreen(DrawingLibrary(activity), {}, {}, {})
+        GalleryScreen(galleryWithExamples(activity), {}, {}, {})
     }
 
     @Test fun renderGalleryPhoneForVisualReview() = render(800, 1280, "tipstroke-gallery-phone.png") { activity ->
-        GalleryScreen(DrawingLibrary(activity), {}, {}, {})
+        GalleryScreen(galleryWithExamples(activity), {}, {}, {})
     }
 
     @Test fun renderSettingsForVisualReview() = render(2560, 1600, "tipstroke-settings.png") {
@@ -104,6 +106,35 @@ class CanvasScreenshotTest {
         output.parentFile?.mkdirs()
         FileOutputStream(output).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         check(output.length() > 10_000) { "Screenshot render was unexpectedly empty" }
+    }
+
+    private fun galleryWithExamples(activity: ComponentActivity): DrawingLibrary {
+        val library = DrawingLibrary(activity)
+        val colors = listOf(0xFFE9B8A4.toInt(), 0xFF8DB9C8.toInt(), 0xFFDECB7B.toInt(), 0xFF9D8BC4.toInt(), 0xFF86A77A.toInt())
+        colors.forEachIndexed { index, color ->
+            val id = "qa-gallery-$index"
+            val directory = library.projectDirectory(id).apply { mkdirs() }
+            val manifest = java.io.File(directory, "manifest.json")
+            if (!manifest.isFile) {
+                manifest.writeText(JSONObject()
+                    .put("schemaVersion", 2).put("id", id).put("name", "Sketch ${index + 1}")
+                    .put("widthPx", 1200 + index * 100).put("heightPx", 900 + index * 80)
+                    .put("modifiedAtMillis", 1_800_000_000_000L - index * 1_000L)
+                    .put("selectedLayerId", "paint").put("layers", org.json.JSONArray()).toString())
+                Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888).also { bitmap ->
+                    bitmap.eraseColor(color)
+                    Canvas(bitmap).drawCircle(200f, 150f, 82f + index * 8f, android.graphics.Paint().apply {
+                        this.color = AndroidColor.argb(180, 35, 38, 43)
+                    })
+                    java.io.File(directory, "thumbnail.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    bitmap.recycle()
+                }
+            }
+        }
+        if (library.galleryItems().none { it is dev.tipstroke.drawing.android.GalleryStack }) {
+            library.stackDrawing("qa-gallery-1", "drawing:qa-gallery-0")?.let { library.renameStack(it, "Character studies") }
+        }
+        return library
     }
 }
 

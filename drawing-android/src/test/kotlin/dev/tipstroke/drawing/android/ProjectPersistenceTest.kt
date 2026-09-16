@@ -20,6 +20,36 @@ import org.json.JSONObject
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProjectPersistenceTest {
+    @Test fun galleryOrderAndStacksPersistAndDissolveWithoutTouchingProjects() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val ids = List(3) { library.newId() }
+        ids.forEachIndexed { index, id ->
+            val layer = LayerId("gallery-layer-$index")
+            val snapshot = DrawingSnapshot(64, 64, layer, listOf(SavedRasterSnapshot(layer, "Paint", true, 1f, emptyMap())))
+            ProjectPersistence.save(context.contentResolver, library, id, "Drawing $index", snapshot).getOrThrow()
+            snapshot.recycle()
+        }
+
+        assertTrue(library.reorderTopLevel("drawing:${ids[2]}", "drawing:${ids[0]}", placeAfter = false))
+        val reordered = library.galleryItems().filterIsInstance<GalleryDrawing>().filter { it.drawing.id in ids }
+        assertTrue(reordered.indexOfFirst { it.drawing.id == ids[2] } < reordered.indexOfFirst { it.drawing.id == ids[0] })
+
+        val stackId = requireNotNull(library.stackDrawing(ids[1], "drawing:${ids[0]}"))
+        var stack = library.galleryItems().filterIsInstance<GalleryStack>().single { it.id == stackId }
+        assertEquals(listOf(ids[0], ids[1]), stack.drawings.map(DrawingSummary::id))
+        assertTrue(library.renameStack(stackId, "References"))
+        assertTrue(library.reorderInStack(stackId, ids[1], ids[0], placeAfter = false))
+        stack = library.galleryItems().filterIsInstance<GalleryStack>().single { it.id == stackId }
+        assertEquals("References", stack.name)
+        assertEquals(listOf(ids[1], ids[0]), stack.drawings.map(DrawingSummary::id))
+
+        assertTrue(library.moveOutOfStack(stackId, ids[1]))
+        assertTrue(library.galleryItems().none { it is GalleryStack && it.id == stackId })
+        assertTrue(ids.all(library::exists))
+        ids.forEach { assertTrue(library.delete(it)) }
+    }
+
     @Test fun savesListsAndReloadsSparseRasterLayers() {
         val context = RuntimeEnvironment.getApplication()
         val library = DrawingLibrary(context)

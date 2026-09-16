@@ -14,6 +14,10 @@ case "${1:-help}" in
   test)
     ./gradlew test
     ;;
+  brushes)
+    ./gradlew :drawing-android:connectedDebugAndroidTest
+    printf '\nBrush review images: drawing-android/build/outputs/connected_android_test_additional_output/\n'
+    ;;
   check)
     ./gradlew test lint assembleDebug
     ;;
@@ -26,6 +30,7 @@ case "${1:-help}" in
       '  ./tipstroke build    Build a debug APK' \
       '  ./tipstroke install  Build and install on a connected phone/emulator' \
       '  ./tipstroke test     Run local tests' \
+      '  ./tipstroke brushes  Render and verify production brushes on a connected device' \
       '  ./tipstroke check    Test, lint, and build' \
       '  ./tipstroke clean    Remove generated build output'
     ;;

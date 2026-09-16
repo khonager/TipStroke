@@ -6,7 +6,9 @@ import android.graphics.Color
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.services.storage.TestStorage
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.BrushEngine
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,9 +24,14 @@ class BrushVisualInstrumentedTest {
             val metrics = metrics(bitmap)
             val file = File(output, "${preset.id.value}.png")
             file.outputStream().use { stream -> check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) }
+            TestStorage().openOutputFile("brush-qa/${preset.id.value}.png").use { stream ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream))
+            }
             Log.i("TipStrokeBrushQA", "${preset.displayName}: $metrics; ${file.absolutePath}")
-            assertTrue("${preset.displayName} rendered no visible ink", metrics.changedPixels > 500)
-            assertTrue("${preset.displayName} output has negligible contrast", metrics.darkness > 10_000L)
+            val minimumChanged = if (preset.engine == BrushEngine.AIRBRUSH) 30_000 else 12_000
+            val minimumDarkness = if (preset.engine == BrushEngine.AIRBRUSH) 500_000L else 1_000_000L
+            assertTrue("${preset.displayName} rendered too little final coverage: $metrics", metrics.changedPixels > minimumChanged)
+            assertTrue("${preset.displayName} final output is too faint: $metrics", metrics.darkness > minimumDarkness)
             bitmap.recycle()
         }
     }

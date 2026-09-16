@@ -2,6 +2,8 @@
 
 Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable the debug overlay, and test in both landscape and portrait.
 
+Before subjective pen testing, run `./tipstroke brushes` with a device attached. It renders the exact production Pencil and Airbrush families through the finalized Canvas renderer, fails on empty/near-invisible output, and writes review PNGs under `drawing-android/build/outputs/connected_android_test_additional_output/`. Inspect those images whenever a brush family or Ink version changes; ordinary JVM tests cannot load Ink's native implementation.
+
 ## Pen
 
 1. Relaunch, immediately draw the first Ink stroke, and check that it starts under the nib without a warm-up hitch.
@@ -9,7 +11,7 @@ Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable 
 3. Vary pressure from feather-light to firm. Check width response and smooth taper.
 4. With Pencil, repeat while changing stylus tilt and barrel orientation. A low angle should produce a broader, flatter graphite patch aligned with the stylus, with visible paper grain and no clipped tile seams.
 5. Lift the pen while watching the final segment. Check for gap, flash, doubled opacity, width jump, texture jump, or color shift.
-6. With Airbrush, draw fast and slow passes, pause briefly in place, and cross the same area. It should show discrete pigment particles without circular stamp outlines; slow/held passes should build density.
+6. With Airbrush, draw fast and slow passes and cross the same area. It should show an irregular sparse pigment halo and denser core without circular stamp outlines; slow passes should deposit more color.
 7. Repeat Pencil and Airbrush at 100%, 1200%, and after camera rotation. The final mark must stay in document coordinates, preserve canvas-pixel resolution, and show no tile-boundary clipping.
 8. Erase across marks on multiple layers. Lower layers should be revealed during the gesture, with no visual change at pen-up; canceling a stroke should restore it.
 9. Resize an image with two fingers, lift either finger, pause, then continue dragging with the remaining finger. The image must stay in place at the handoff and resume smoothly after the drag threshold.
@@ -33,6 +35,14 @@ Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable 
 3. Put a palm down during a pen stroke. Confirm it does not paint, move the camera, or cancel/corrupt the stroke.
 4. Two-finger tap repeatedly to undo; three-finger tap to redo.
 5. Rotate the device in both directions and use **Fit** to recover the canvas.
+
+## Gallery organization
+
+1. Long-press and drag drawings and stacks by their edges to reorder them; scroll by holding near the top or bottom edge.
+2. Drop one drawing in the center of another to create a stack, then drop another drawing onto that stack.
+3. Open the stack, reorder its drawings, rename it, and move a drawing out. A stack with one remaining drawing should dissolve automatically.
+4. Relaunch TipStroke and verify top-level order, stack name, membership, and internal order persist.
+5. Delete a stacked drawing and verify its project is removed while the gallery index remains valid. Unstack and confirm all project contents and thumbnails are unchanged.
 
 ## Stress
 

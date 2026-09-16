@@ -27,6 +27,14 @@ data class DrawingSummary(
     val thumbnailFile: File,
 )
 
+sealed interface GalleryItem { val key: String }
+data class GalleryDrawing(val drawing: DrawingSummary) : GalleryItem { override val key = "drawing:${drawing.id}" }
+data class GalleryStack(
+    val id: String,
+    val name: String,
+    val drawings: List<DrawingSummary>,
+) : GalleryItem { override val key = "stack:$id" }
+
 class DrawingLibrary(context: Context) {
     val root: File = File(context.filesDir, "drawings").apply { mkdirs() }
 
@@ -47,16 +55,189 @@ class DrawingLibrary(context: Context) {
         }.getOrNull()
     }.sortedByDescending { it.modifiedAtMillis }
 
+    @Synchronized
+    fun galleryItems(): List<GalleryItem> {
+        val drawings = list()
+        val byId = drawings.associateBy(DrawingSummary::id)
+        val persisted = readGalleryState()
+        val state = reconciledState(persisted, drawings.map(DrawingSummary::id))
+        if (state != persisted) writeGalleryState(state)
+        return state.mapNotNull { entry ->
+            when (entry) {
+                is GalleryEntry.Drawing -> byId[entry.id]?.let(::GalleryDrawing)
+                is GalleryEntry.Stack -> GalleryStack(entry.id, entry.name, entry.drawingIds.mapNotNull(byId::get))
+            }
+        }
+    }
+
+    @Synchronized
+    fun reorderTopLevel(sourceKey: String, targetKey: String, placeAfter: Boolean): Boolean = mutateGallery { state ->
+        val from = state.indexOfFirst { it.key == sourceKey }
+        val target = state.indexOfFirst { it.key == targetKey }
+        if (from < 0 || target < 0 || from == target) return@mutateGallery false
+        val moving = state.removeAt(from)
+        val adjustedTarget = state.indexOfFirst { it.key == targetKey }
+        state.add((adjustedTarget + if (placeAfter) 1 else 0).coerceIn(0, state.size), moving)
+        true
+    }
+
+    /** Drops a top-level drawing into a stack, creating one when the target is another drawing. */
+    @Synchronized
+    fun stackDrawing(sourceDrawingId: String, targetKey: String): String? {
+        var resultingStackId: String? = null
+        mutateGallery { state ->
+            val sourceIndex = state.indexOfFirst { it is GalleryEntry.Drawing && it.id == sourceDrawingId }
+            if (sourceIndex < 0) return@mutateGallery false
+            val source = state.removeAt(sourceIndex) as GalleryEntry.Drawing
+            val targetIndex = state.indexOfFirst { it.key == targetKey }
+            if (targetIndex < 0) {
+                state.add(sourceIndex.coerceAtMost(state.size), source)
+                return@mutateGallery false
+            }
+            when (val target = state[targetIndex]) {
+                is GalleryEntry.Drawing -> {
+                    val id = "stack-${UUID.randomUUID()}"
+                    state[targetIndex] = GalleryEntry.Stack(id, "Stack", mutableListOf(target.id, source.id))
+                    resultingStackId = id
+                }
+                is GalleryEntry.Stack -> {
+                    target.drawingIds += source.id
+                    resultingStackId = target.id
+                }
+            }
+            true
+        }
+        return resultingStackId
+    }
+
+    @Synchronized
+    fun reorderInStack(stackId: String, drawingId: String, targetDrawingId: String, placeAfter: Boolean): Boolean = mutateGallery { state ->
+        val stack = state.filterIsInstance<GalleryEntry.Stack>().firstOrNull { it.id == stackId } ?: return@mutateGallery false
+        val from = stack.drawingIds.indexOf(drawingId)
+        val target = stack.drawingIds.indexOf(targetDrawingId)
+        if (from < 0 || target < 0 || from == target) return@mutateGallery false
+        val moving = stack.drawingIds.removeAt(from)
+        val adjustedTarget = stack.drawingIds.indexOf(targetDrawingId)
+        stack.drawingIds.add((adjustedTarget + if (placeAfter) 1 else 0).coerceIn(0, stack.drawingIds.size), moving)
+        true
+    }
+
+    @Synchronized
+    fun moveOutOfStack(stackId: String, drawingId: String): Boolean = mutateGallery { state ->
+        val stackIndex = state.indexOfFirst { it is GalleryEntry.Stack && it.id == stackId }
+        val stack = state.getOrNull(stackIndex) as? GalleryEntry.Stack ?: return@mutateGallery false
+        if (!stack.drawingIds.remove(drawingId)) return@mutateGallery false
+        state.add(stackIndex + 1, GalleryEntry.Drawing(drawingId))
+        dissolveIfNeeded(state, stackIndex)
+        true
+    }
+
+    @Synchronized
+    fun renameStack(stackId: String, name: String): Boolean = mutateGallery { state ->
+        val index = state.indexOfFirst { it is GalleryEntry.Stack && it.id == stackId }
+        val stack = state.getOrNull(index) as? GalleryEntry.Stack ?: return@mutateGallery false
+        state[index] = stack.copy(name = name.trim().ifBlank { "Stack" })
+        true
+    }
+
+    @Synchronized
+    fun unstack(stackId: String): Boolean = mutateGallery { state ->
+        val index = state.indexOfFirst { it is GalleryEntry.Stack && it.id == stackId }
+        val stack = state.getOrNull(index) as? GalleryEntry.Stack ?: return@mutateGallery false
+        state.removeAt(index)
+        state.addAll(index, stack.drawingIds.map { GalleryEntry.Drawing(it) })
+        true
+    }
+
     fun delete(id: String): Boolean {
         val directory = projectDirectory(id)
         if (!directory.exists() || directory.parentFile != root) return false
         directory.deleteRecursively()
-        return !directory.exists()
+        val deleted = !directory.exists()
+        if (deleted) synchronized(this) {
+            writeGalleryState(reconciledState(readGalleryState(), list().map(DrawingSummary::id)))
+        }
+        return deleted
+    }
+
+    private fun mutateGallery(block: (MutableList<GalleryEntry>) -> Boolean): Boolean {
+        val state = reconciledState(readGalleryState(), list().map(DrawingSummary::id)).toMutableList()
+        if (!block(state)) return false
+        writeGalleryState(state)
+        return true
+    }
+
+    private fun dissolveIfNeeded(state: MutableList<GalleryEntry>, stackIndex: Int) {
+        val stack = state.getOrNull(stackIndex) as? GalleryEntry.Stack ?: return
+        if (stack.drawingIds.size <= 1) {
+            state.removeAt(stackIndex)
+            stack.drawingIds.singleOrNull()?.let { state.add(stackIndex, GalleryEntry.Drawing(it)) }
+        }
+    }
+
+    private fun reconciledState(state: List<GalleryEntry>, availableIds: List<String>): List<GalleryEntry> {
+        val available = availableIds.toSet()
+        val claimed = mutableSetOf<String>()
+        val clean = mutableListOf<GalleryEntry>()
+        state.forEach { entry ->
+            when (entry) {
+                is GalleryEntry.Drawing -> if (entry.id in available && claimed.add(entry.id)) clean += entry
+                is GalleryEntry.Stack -> {
+                    val ids = entry.drawingIds.filter { it in available && claimed.add(it) }.toMutableList()
+                    if (ids.size >= 2) clean += entry.copy(drawingIds = ids)
+                    else ids.singleOrNull()?.let { clean += GalleryEntry.Drawing(it) }
+                }
+            }
+        }
+        val newDrawings = availableIds.filterNot(claimed::contains).map { GalleryEntry.Drawing(it) }
+        return newDrawings + clean
+    }
+
+    private fun readGalleryState(): List<GalleryEntry> = runCatching {
+        val file = File(root, GALLERY_STATE)
+        if (!file.isFile) return@runCatching emptyList()
+        val items = JSONObject(file.readText()).getJSONArray("items")
+        buildList {
+            for (index in 0 until items.length()) {
+                val item = items.getJSONObject(index)
+                if (item.getString("kind") == "drawing") add(GalleryEntry.Drawing(item.getString("id")))
+                else add(GalleryEntry.Stack(
+                    item.getString("id"), item.optString("name", "Stack"),
+                    item.getJSONArray("drawingIds").let { ids -> MutableList(ids.length()) { ids.getString(it) } },
+                ))
+            }
+        }
+    }.getOrDefault(emptyList())
+
+    private fun writeGalleryState(state: List<GalleryEntry>) {
+        val json = JSONObject().put("schemaVersion", 1).put("items", JSONArray().apply {
+            state.forEach { entry -> put(when (entry) {
+                is GalleryEntry.Drawing -> JSONObject().put("kind", "drawing").put("id", entry.id)
+                is GalleryEntry.Stack -> JSONObject().put("kind", "stack").put("id", entry.id).put("name", entry.name)
+                    .put("drawingIds", JSONArray(entry.drawingIds))
+            }) }
+        })
+        val temporary = File(root, "$GALLERY_STATE.tmp")
+        temporary.writeText(json.toString(2))
+        try {
+            Files.move(temporary.toPath(), File(root, GALLERY_STATE).toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(temporary.toPath(), File(root, GALLERY_STATE).toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+
+    private sealed interface GalleryEntry {
+        val key: String
+        data class Drawing(val id: String) : GalleryEntry { override val key = "drawing:$id" }
+        data class Stack(val id: String, val name: String, val drawingIds: MutableList<String>) : GalleryEntry {
+            override val key = "stack:$id"
+        }
     }
 
     companion object {
         internal const val MANIFEST = "manifest.json"
         internal const val THUMBNAIL = "thumbnail.png"
+        internal const val GALLERY_STATE = "gallery.json"
         private fun requireSafeId(id: String): String {
             require(id.matches(Regex("[A-Za-z0-9_-]+"))) { "Invalid drawing ID" }
             return id

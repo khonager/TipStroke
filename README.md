@@ -21,6 +21,7 @@ The short commands are intentionally similar to Flutter/npm workflows:
 ./tipstroke install  # connected Android phone or running emulator
 ./tipstroke test
 ./tipstroke check
+./tipstroke brushes  # native brush regression sheets on a connected device
 ```
 
 Android Studio is optional. To install manually, enable USB debugging on your phone, connect it, confirm it appears in `adb devices`, then run `./tipstroke install`. On a laptop, run the APK in an Android emulator; TipStroke is not a native Linux desktop app yet.
@@ -45,11 +46,13 @@ Tap **Select**, choose **Lasso** or **Rectangle**, and draw with a finger or sty
 
 Stylus side buttons are configurable in Settings. By default, the primary button switches between the current brush and eraser, and the secondary button undoes. TipStroke accepts standard Android stylus events plus the Page Up/Page Down key events reported by Xiaomi Smart Pen 2 on Pad 6; short presses are intended because the system may reserve Xiaomi long-press shortcuts.
 
-Pencil and Airbrush use TipStroke-owned Jetpack Ink 1.1 custom families. Pencil combines pressure, tilt, barrel orientation, speed taper, and procedural paper grain. Airbrush lays down textured particles with deterministic scatter and natural buildup instead of overlapping blurred circles. Both use the same brush family for the wet stroke and the final sparse-tile rasterization.
+Pencil and Airbrush use TipStroke-owned Jetpack Ink 1.1 custom families. Pencil combines pressure, tilt, barrel orientation, speed taper, and smooth procedural paper grain. Airbrush uses sparse outer and core pigment fields with speed-sensitive deposition instead of overlapping blurred circles. Both use the same brush family for the wet stroke and the final sparse-tile rasterization.
 
 ## Gallery, export, and gestures
 
 TipStroke starts in **Your drawings**. Create a named canvas up to 8192×8192, or reopen a local project with its paint tiles, image sources, transforms, layer ordering, and opacity intact. Projects autosave every 30 seconds, when the app backgrounds, and before returning to the gallery.
+
+Long-press a drawing or stack and drag it to reorder the gallery. Drop a drawing in the center of another drawing to create a stack, or in the center of an existing stack to add it. Open a stack to reorder its drawings, rename it, move drawings back out, or unstack everything. Gallery organization is local metadata and never rewrites the drawing packages.
 
 Use **Export** in the editor to save PNG, JPEG, or WebP at canvas size, 50%, or 25%. PNG and WebP can preserve a transparent background; JPEG always composites onto white.
 

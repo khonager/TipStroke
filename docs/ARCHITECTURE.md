@@ -10,7 +10,7 @@
 
 Selections are transient platform-neutral polygons. Rectangle selection is the four-point case and freehand lasso retains its sampled boundary. Moving selected raster content reads only intersecting source-tile snapshots, clears the polygon from those tiles, composites it into intersecting destination tiles, and records the combined before/after set as one bounded undo transaction. It never copies a full layer or canvas.
 
-The app shell owns three destinations: local gallery, editor, and settings. `DrawingLibrary` and `ProjectPersistence` live in `:drawing-android` because decoding/encoding tiles and imported assets requires Android bitmap/content-resolver types. Gesture choices remain platform-neutral values in `:core` and are persisted by the app with local preferences.
+The app shell owns three destinations: local gallery, editor, and settings. `DrawingLibrary` and `ProjectPersistence` live in `:drawing-android` because decoding/encoding tiles and imported assets requires Android bitmap/content-resolver types. Gallery order and stacks are stored in a separate root `gallery.json`; stack operations never move or rewrite project directories. The Compose gallery supplies long-press drag hit-testing, edge auto-scroll, stack previews, and stack management. Gesture choices remain platform-neutral values in `:core` and are persisted by the app with local preferences.
 
 ## Stroke pipeline
 
@@ -34,6 +34,8 @@ MotionEvent
 ```
 
 The callback rasterizes with the same brush family/texture store, invalidates the raster view, and removes Ink’s finished stroke in the same UI-thread run loop to avoid a gap or double-opacity frame. Ink `Stroke` objects are not stored as document truth. Experimental Ink types remain behind `TipStrokeInkBrushes`; `:core` only sees versioned TipStroke presets and samples.
+
+`BrushVisualHarness` creates deterministic pressure/tilt reference strokes from the production families. Its connected-device instrumentation test renders them through `CanvasStrokeRenderer`, asserts non-empty/contrasting final pixels, and exports review PNGs through Android Test Storage. This tests the native alpha implementation that Robolectric cannot load.
 
 ## Image layers
 
