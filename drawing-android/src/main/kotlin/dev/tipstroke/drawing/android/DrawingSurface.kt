@@ -13,7 +13,6 @@ import androidx.ink.authoring.InProgressStrokeId
 import androidx.ink.authoring.InProgressStrokesFinishedListener
 import androidx.ink.authoring.InProgressStrokesView
 import androidx.ink.brush.Brush
-import androidx.ink.brush.StockBrushes
 import androidx.ink.strokes.Stroke
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.input.motionprediction.MotionEventPredictor
@@ -26,6 +25,7 @@ import kotlin.math.*
 
 enum class SelectionTool { RECTANGLE, LASSO }
 
+@OptIn(androidx.ink.brush.ExperimentalInkCustomBrushApi::class)
 class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.util.AttributeSet? = null) : FrameLayout(context, attrs) {
     val settings = CanvasSettings()
     private lateinit var rasterView: RasterCanvasView
@@ -37,7 +37,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         notifyLayers()
     }
     private val liveView = InProgressStrokesView(context)
-    private val inkRenderer by lazy { CanvasStrokeRenderer.create(liveView.textureBitmapStore) }
+    private val tipStrokeInkBrushes = TipStrokeInkBrushes()
+    private val inkRenderer by lazy { CanvasStrokeRenderer.create(tipStrokeInkBrushes.textureStore) }
     private var predictor: MotionEventPredictor? = null
     private val pendingSamples = mutableMapOf<Int, MutableList<StrokeSample>>()
     private data class StrokeTarget(val store: TileStore, val image: ImageLayerRuntime? = null)
@@ -84,17 +85,21 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView = RasterCanvasView(context, layerStack)
         colorLoupe = ColorPickerLoupeView(context, rasterView)
         addView(rasterView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        liveView.textureBitmapStore = tipStrokeInkBrushes.textureStore
         addView(liveView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(colorLoupe, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // Robolectric cannot load Ink's Android native library; real devices eagerly warm it.
-        if (!Build.FINGERPRINT.contains("robolectric", ignoreCase = true)) liveView.eagerInit()
+        if (!Build.FINGERPRINT.contains("robolectric", ignoreCase = true)) {
+            tipStrokeInkBrushes.prewarm()
+            liveView.eagerInit()
+        }
         liveView.addFinishedStrokesListener(object : InProgressStrokesFinishedListener {
             override fun onStrokesFinished(strokes: Map<InProgressStrokeId, Stroke>) {
                 strokes.forEach { (_, inkStroke) ->
                     val pending = finishedSamples.removeFirstOrNull() ?: return@forEach
                     val stroke = pending.stroke
                     val store = pending.target.store
-                    if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine != BrushEngine.AIRBRUSH) {
+                    if (stroke.style.blend == BlendBehavior.PAINT) {
                         store.commitInk(stroke, inkStroke, inkRenderer)
                     } else {
                         store.commit(stroke)
@@ -233,7 +238,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 pendingTargets[pointerId] = target
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
                 val style = styleForTarget(baseStyle, target)
-                if (target.image != null || style.brush.engine == BrushEngine.AIRBRUSH || style.blend == BlendBehavior.ERASE) {
+                if (target.image != null || style.blend == BlendBehavior.ERASE) {
                     customPreviewStyle = style
                     target.store.beginLiveStroke()
                 } else {
@@ -610,14 +615,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val c = settings.color
         val alpha = (settings.opacity * c.alpha * 255).roundToInt().coerceIn(1, 255)
         val argb = Color.argb(alpha, (c.red * 255).roundToInt(), (c.green * 255).roundToInt(), (c.blue * 255).roundToInt())
-        val family = when (settings.brush.engine) {
-            BrushEngine.INK, BrushEngine.PENCIL -> StockBrushes.pressurePen()
-            BrushEngine.AIRBRUSH -> StockBrushes.marker()
-        }
-        // The v0 canvas composites its single transparent paint layer over white.
-        // White wet ink therefore previews transparent erasing without a dark flash.
+        val family = tipStrokeInkBrushes.familyFor(settings.brush)
         val liveColor = if (settings.erasing) Color.WHITE else argb
-        return Brush.createWithColorIntArgb(family, liveColor, settings.sizePx.coerceAtLeast(1f), .1f)
+        val epsilon = when (settings.brush.engine) {
+            // At 1200% zoom these remain below one screen pixel, while avoiding
+            // needlessly dense meshes that cannot add detail to the raster canvas.
+            BrushEngine.PENCIL -> .04f
+            BrushEngine.AIRBRUSH -> .08f
+            BrushEngine.INK -> .1f
+        }
+        return Brush.createWithColorIntArgb(family, liveColor, settings.sizePx.coerceAtLeast(1f), epsilon)
     }
 
     private fun sample(event: MotionEvent, index: Int, historyIndex: Int? = null): StrokeSample {

@@ -32,7 +32,14 @@ data class StrokeStyle(
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     val bounds: Rect by lazy {
         require(samples.isNotEmpty())
-        val radius = style.sizePx / 2f + if (style.brush.engine == BrushEngine.AIRBRUSH) style.sizePx * .35f else 0f
+        // Custom tips can extend beyond half of the nominal brush size. Keep bounds
+        // conservative so a rotated, tilted pencil or scattered airbrush particle
+        // can never be clipped at a sparse-tile boundary.
+        val radius = style.sizePx * when (style.brush.engine) {
+            BrushEngine.PENCIL -> 1.35f
+            BrushEngine.AIRBRUSH -> .85f
+            BrushEngine.INK -> .55f
+        }
         Rect(samples.minOf { it.position.x }, samples.minOf { it.position.y },
             samples.maxOf { it.position.x }, samples.maxOf { it.position.y }).expanded(radius)
     }

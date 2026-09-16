@@ -36,7 +36,8 @@ data class BrushPreset(
         const val CURRENT_SCHEMA_VERSION = 2
         val Pencil = BrushPreset(id = BrushId("pencil-v1"), displayName = "Pencil", engine = BrushEngine.PENCIL,
             baseSizePx = 14f, opacity = .68f, hardness = .72f, spacing = .12f, stabilization = .22f,
-            pressureToSize = PressureCurve(.2f, 1f, .8f), pressureToOpacity = PressureCurve(.25f, 1f, .65f))
+            pressureToSize = PressureCurve(.2f, 1f, .8f), pressureToOpacity = PressureCurve(.25f, 1f, .65f),
+            speedTaper = .38f)
         val Ink = BrushPreset(id = BrushId("ink-v1"), displayName = "Ink", engine = BrushEngine.INK,
             baseSizePx = 28f, opacity = 1f, hardness = 1f, spacing = .08f, stabilization = .16f,
             pressureToSize = PressureCurve(.12f, 1f, .62f), pressureToOpacity = PressureCurve(.8f, 1f, 1f))

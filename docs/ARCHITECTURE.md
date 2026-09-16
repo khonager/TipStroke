@@ -4,7 +4,7 @@
 
 `:core` is platform-neutral Kotlin. It owns `Document`, `CanvasSpec`, the sealed `Layer` contract, `RasterLayer`, non-destructive `ImageLayer` metadata, versioned `BrushPreset`, colors, transform/tile math, samples, renderer contracts, and bounded undo history. It contains no Android or Ink types.
 
-`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, native wet rendering shows the active stroke, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles. Pencil and Ink use Jetpack Ink. Airbrush and eraser gestures apply each new segment directly to affected raster tiles inside a cancellable transaction, so the wet composite is the final composite without replaying the growing stroke on every sample. Image erase masks reuse the same sparse tile and bounded-history machinery in original image coordinates.
+`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, native wet rendering shows the active stroke, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles. Pencil and Airbrush use TipStroke custom families from Jetpack Ink 1.1's experimental API; Ink uses the stock pressure pen. The wet renderer and final tile renderer share the same texture store and family. Eraser gestures apply each new segment directly to affected raster tiles inside a cancellable transaction so lower layers are revealed immediately. Image erase masks reuse the same sparse tile and bounded-history machinery in original image coordinates.
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
@@ -17,7 +17,7 @@ The app shell owns three destinations: local gallery, editor, and settings. `Dra
 ```text
 MotionEvent
   ├─ capture pressure, tilt, orientation, button, pointer ID and time
-  ├─ Jetpack Ink 1.0 InProgressStrokesView (immediate wet stroke)
+  ├─ Jetpack Ink 1.1 InProgressStrokesView (immediate wet stroke)
   └─ domain StrokeSample list in document coordinates
           ↓ pen up / Ink completion callback
       calculate stroke bounds
@@ -33,7 +33,7 @@ MotionEvent
       remove finished wet Ink stroke
 ```
 
-The callback invalidates the raster view and removes Ink’s finished stroke in the same UI-thread run loop to avoid a gap or double-opacity frame. Ink `Stroke` objects are not stored as document truth.
+The callback rasterizes with the same brush family/texture store, invalidates the raster view, and removes Ink’s finished stroke in the same UI-thread run loop to avoid a gap or double-opacity frame. Ink `Stroke` objects are not stored as document truth. Experimental Ink types remain behind `TipStrokeInkBrushes`; `:core` only sees versioned TipStroke presets and samples.
 
 ## Image layers
 

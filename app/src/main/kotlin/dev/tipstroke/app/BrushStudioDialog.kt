@@ -37,7 +37,7 @@ internal fun BrushStudioDialog(
                 }
                 StudioSwitch("Pressure changes size", pressureSize, onPressureSize)
                 StudioSwitch("Pressure changes opacity", pressureOpacity, onPressureOpacity)
-                StudioSwitch("Faster strokes get thinner", speedTaper, onSpeedTaper)
+                StudioSwitch("Faster strokes taper", speedTaper, onSpeedTaper)
                 Text("These are the useful everyday adjustments. Size and opacity stay on the canvas.", style = MaterialTheme.typography.bodySmall)
             }
         },

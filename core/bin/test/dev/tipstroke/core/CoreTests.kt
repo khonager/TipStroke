@@ -2,6 +2,10 @@ package dev.tipstroke.core
 
 import dev.tipstroke.core.drawing.UndoHistory
 import dev.tipstroke.core.drawing.UndoTransaction
+import dev.tipstroke.core.drawing.CompletedStroke
+import dev.tipstroke.core.drawing.PointerKind
+import dev.tipstroke.core.drawing.StrokeSample
+import dev.tipstroke.core.drawing.StrokeStyle
 import dev.tipstroke.core.geometry.*
 import dev.tipstroke.core.model.*
 import kotlin.test.*
@@ -29,6 +33,21 @@ class CoreTests {
     @Test fun pressureCurveIsBoundedAndMonotonic() {
         val curve = PressureCurve(.2f, 1f, .7f)
         assertEquals(.2f, curve.map(-1f)); assertEquals(1f, curve.map(2f)); assertTrue(curve.map(.7f) > curve.map(.3f))
+    }
+    @Test fun customBrushBoundsCoverTiltAndParticleScatter() {
+        val sample = StrokeSample(1, Point(100f, 100f), 1f, 1f, 0f, 0L, 0, PointerKind.STYLUS)
+        val pencil = CompletedStroke(
+            listOf(sample),
+            StrokeStyle(BrushPreset.Pencil, 20f, 1f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT),
+        )
+        val airbrush = CompletedStroke(
+            listOf(sample),
+            StrokeStyle(BrushPreset.Airbrush, 20f, 1f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT),
+        )
+        assertEquals(73f, pencil.bounds.left)
+        assertEquals(127f, pencil.bounds.right)
+        assertEquals(83f, airbrush.bounds.left)
+        assertEquals(117f, airbrush.bounds.right)
     }
     @Test fun lassoSelectionSupportsContainmentAndTranslation() {
         val lasso = SelectionRegion(listOf(Point(10f, 10f), Point(90f, 10f), Point(50f, 90f)))
