@@ -17,6 +17,56 @@ import kotlin.math.roundToInt
 
 /** Shared painter for custom wet previews and their byte-for-byte-equivalent tile commit. */
 internal object StrokeCanvasPainter {
+    /**
+     * Applies a spatial pressure mask to an already-rendered Ink tile. Ink still supplies the
+     * nib geometry and Pencil texture; this makes final raster alpha deterministic on devices
+     * where the experimental opacity target is visually ineffective.
+     */
+    fun applyPressureOpacityMask(bitmap: android.graphics.Bitmap, stroke: CompletedStroke, tileLeft: Int, tileTop: Int) {
+        if (!pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity) || stroke.samples.isEmpty()) return
+        val mask = android.graphics.Bitmap.createBitmap(bitmap.width, bitmap.height, android.graphics.Bitmap.Config.ARGB_8888)
+        val maskCanvas = Canvas(mask)
+        val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            // Covers Pencil's widest tilt-expanded tip while alpha varies along its centerline.
+            strokeWidth = stroke.style.sizePx * 4f
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+        }
+        val samples = stroke.samples
+        fun maskAlpha(sample: StrokeSample): Float = sample.pressureOpacity(stroke).coerceIn(0f, 1f)
+        if (samples.size == 1) {
+            val sample = samples.first()
+            maskPaint.style = Paint.Style.FILL
+            maskPaint.alpha = (maskAlpha(sample) * 255).roundToInt()
+            maskCanvas.drawCircle(
+                sample.position.x - tileLeft,
+                sample.position.y - tileTop,
+                stroke.style.sizePx * 2f,
+                maskPaint,
+            )
+        } else {
+            for (index in 1 until samples.size) {
+                val previous = samples[index - 1]
+                val current = samples[index]
+                maskPaint.alpha = (((maskAlpha(previous) + maskAlpha(current)) / 2f) * 255).roundToInt()
+                maskCanvas.drawLine(
+                    previous.position.x - tileLeft,
+                    previous.position.y - tileTop,
+                    current.position.x - tileLeft,
+                    current.position.y - tileTop,
+                    maskPaint,
+                )
+            }
+        }
+        Canvas(bitmap).drawBitmap(mask, 0f, 0f, Paint().apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        })
+        mask.recycle()
+    }
+
     fun preparePaint(stroke: CompletedStroke) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             strokeWidth = stroke.style.sizePx
             strokeCap = Paint.Cap.ROUND

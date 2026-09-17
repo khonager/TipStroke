@@ -42,7 +42,8 @@ internal class TipStrokeInkBrushes {
     }
 
     private fun pencilFamily(preset: BrushPreset): BrushFamily {
-        val pressure = eased(SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f))
+        val rawPressure = SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f)
+        val pressure = eased(rawPressure)
         val tilt = eased(SourceNode(SourceNode.Source.TILT_IN_RADIANS, 0f, (PI / 2).toFloat()))
         val orientation = SourceNode(SourceNode.Source.ORIENTATION_ABOUT_ZERO_IN_RADIANS, (-PI).toFloat(), PI.toFloat())
         val speed = eased(SourceNode(SourceNode.Source.SPEED_IN_MULTIPLES_OF_BRUSH_SIZE_PER_SECOND, 0f, 18f))
@@ -53,7 +54,7 @@ internal class TipStrokeInkBrushes {
                 add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, pressure))
             }
             if (pressureBehaviorEnabled(preset.pressureToOpacity)) {
-                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, pressure))
+                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, rawPressure))
             }
             add(mapped(TargetNode.Target.WIDTH_MULTIPLIER, 1f, 3.15f, tilt))
             add(mapped(TargetNode.Target.HEIGHT_MULTIPLIER, 1f, .52f, tilt))
@@ -94,7 +95,8 @@ internal class TipStrokeInkBrushes {
     }
 
     private fun inkFamily(preset: BrushPreset): BrushFamily {
-        val pressure = eased(SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f))
+        val rawPressure = SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f)
+        val pressure = eased(rawPressure)
         val start = ResponseNode(
             EasingFunction.Predefined.EASE_OUT,
             SourceNode(SourceNode.Source.DISTANCE_TRAVELED_IN_MULTIPLES_OF_BRUSH_SIZE, 0f, 1.15f),
@@ -109,7 +111,7 @@ internal class TipStrokeInkBrushes {
                 add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, pressure))
             }
             if (pressureBehaviorEnabled(preset.pressureToOpacity)) {
-                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, pressure))
+                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, rawPressure))
             }
             // Baskerville-style entry and exit points stay pointed even when pressure is steady.
             add(mapped(TargetNode.Target.SIZE_MULTIPLIER, .07f, 1f, start))

@@ -109,6 +109,33 @@ class TipStrokeInkBrushesTest {
         bitmap.recycle()
     }
 
+    @Test fun finishedInkPressureMaskChangesOpacityAlongStroke() {
+        val bitmap = Bitmap.createBitmap(256, 96, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.BLACK)
+        }
+        val pressures = listOf(.05f, .05f, 1f, 1f)
+        val samples = pressures.mapIndexed { index, pressure ->
+            StrokeSample(0, Point(32f + index * 64f, 48f), pressure, 0f, 0f, index * 8_000_000L, 0, PointerKind.STYLUS)
+        }
+        val stroke = CompletedStroke(
+            samples,
+            StrokeStyle(
+                BrushPreset.Ink.copy(pressureToSize = PressureCurve(1f, 1f, 1f)),
+                24f,
+                1f,
+                RgbaColor(0f, 0f, 0f),
+                BlendBehavior.PAINT,
+            ),
+        )
+
+        StrokeCanvasPainter.applyPressureOpacityMask(bitmap, stroke, 0, 0)
+
+        val lightPressureAlpha = Color.alpha(bitmap.getPixel(48, 48))
+        val fullPressureAlpha = Color.alpha(bitmap.getPixel(208, 48))
+        assertTrue("low=$lightPressureAlpha high=$fullPressureAlpha", fullPressureAlpha > lightPressureAlpha + 100)
+        bitmap.recycle()
+    }
+
     private fun writeReviewTexture(name: String, bitmap: android.graphics.Bitmap) {
         val output = File("build/qa/brush-textures/$name")
         output.parentFile?.mkdirs()

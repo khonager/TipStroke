@@ -103,12 +103,24 @@ class TileStore(
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         dirty.forEach { coordinate ->
             val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
-            val canvas = Canvas(bitmap)
+            val pressureOpacity = pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)
+            val rendered = if (pressureOpacity) Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) else bitmap
+            val canvas = Canvas(rendered)
             canvas.save()
             canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
             stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
             renderer.draw(canvas, inkStroke, Matrix())
             canvas.restore()
+            if (pressureOpacity) {
+                StrokeCanvasPainter.applyPressureOpacityMask(
+                    rendered,
+                    stroke,
+                    coordinate.x * tileSize,
+                    coordinate.y * tileSize,
+                )
+                Canvas(bitmap).drawBitmap(rendered, 0f, 0f, null)
+                rendered.recycle()
+            }
             if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }

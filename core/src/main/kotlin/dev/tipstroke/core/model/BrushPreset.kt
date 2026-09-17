@@ -36,11 +36,11 @@ data class BrushPreset(
         const val CURRENT_SCHEMA_VERSION = 2
         val Pencil = BrushPreset(id = BrushId("pencil-v1"), displayName = "Pencil", engine = BrushEngine.PENCIL,
             baseSizePx = 9f, opacity = .82f, hardness = .72f, spacing = .09f, stabilization = .24f,
-            pressureToSize = PressureCurve(.14f, 1f, .72f), pressureToOpacity = PressureCurve(.2f, 1f, .62f),
+            pressureToSize = PressureCurve(.14f, 1f, .72f), pressureToOpacity = PressureCurve(.1f, 1f, .72f),
             speedTaper = .24f)
         val Ink = BrushPreset(id = BrushId("ink-v1"), displayName = "Ink", engine = BrushEngine.INK,
             baseSizePx = 18f, opacity = 1f, hardness = 1f, spacing = .06f, stabilization = .2f,
-            pressureToSize = PressureCurve(.09f, 1f, .58f), pressureToOpacity = PressureCurve(.3f, 1f, .78f),
+            pressureToSize = PressureCurve(.09f, 1f, .58f), pressureToOpacity = PressureCurve(.12f, 1f, .78f),
             speedTaper = .12f)
         val Airbrush = BrushPreset(id = BrushId("airbrush-v1"), displayName = "Airbrush", engine = BrushEngine.AIRBRUSH,
             baseSizePx = 96f, opacity = .28f, hardness = .06f, spacing = .08f, stabilization = .1f,
