@@ -69,9 +69,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var frameCount = 0
     private var fpsWindowAt = SystemClock.elapsedRealtimeNanos()
     private var fps = 0f
+    private var publishedZoomPercent = 100
     private val memoryBudgetAdvisor = MemoryBudgetAdvisor(context)
     private var lastDiagnostics = CanvasDiagnostics()
     var diagnosticsListener: ((CanvasDiagnostics) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(lastDiagnostics)
+        }
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>) -> Unit)? = null
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
@@ -92,6 +97,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     init {
         setWillNotDraw(false); setBackgroundColor(Color.rgb(23, 24, 27)); isMotionEventSplittingEnabled = false
         rasterView = RasterCanvasView(context, layerStack)
+        rasterView.transformChangedListener = { transform ->
+            val percent = (transform.scale * 100f).roundToInt()
+            lastDiagnostics = lastDiagnostics.copy(zoom = transform.scale)
+            if (percent != publishedZoomPercent) {
+                publishedZoomPercent = percent
+                diagnosticsListener?.invoke(lastDiagnostics)
+            }
+        }
         colorLoupe = ColorPickerLoupeView(context, rasterView)
         addView(rasterView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         liveView.textureBitmapStore = tipStrokeInkBrushes.textureStore
@@ -463,9 +476,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     notifyHistory()
                     return true
                 }
-                if (event.actionMasked == MotionEvent.ACTION_POINTER_UP && isTransformingImage()) {
+                if (event.actionMasked == MotionEvent.ACTION_POINTER_UP && (isTransformingImage() || gestureMoved)) {
                     rebaseToRemainingPointer(event)
-                    notifyLayers()
+                    if (isTransformingImage()) notifyLayers()
                     notifyHistory()
                     return true
                 }
@@ -677,6 +690,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         singleStart = android.graphics.PointF(x, y)
         singleLast = android.graphics.PointF(x, y)
         singleLastDocument = rasterView.screenToDocument(x, y)
+        gestureStart = emptyMap()
         gestureMoved = false
     }
 

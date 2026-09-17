@@ -37,10 +37,11 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var adjustmentPreviewStroke: CompletedStroke? = null
         set(value) { field = value; postInvalidateOnAnimation() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
+    var transformChangedListener: ((CanvasTransform) -> Unit)? = null
 
     fun updateTransform(panX: Float, panY: Float, scale: Float, rotation: Float) {
         transform = CanvasTransform(panX, panY, scale, rotation)
-        rebuildMatrix(); invalidate()
+        rebuildMatrix(); invalidate(); transformChangedListener?.invoke(transform)
     }
 
     fun fitCanvas() {

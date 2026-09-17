@@ -68,6 +68,24 @@ class TileStoreTest {
         assertTrue(store.history.undo())
     }
 
+    @Test fun smudgeDoesNotAmplifyASmallMarkIntoMorePigment() {
+        val store = TileStore(512, 256)
+        store.commit(stroke(Point(55f, 128f), Point(65f, 128f), ink.copy(sizePx = 14f)))
+        val alphaBefore = totalAlpha(store, 512, 256)
+
+        store.beginSmudge()
+        var x = 60f
+        repeat(20) {
+            store.smudge(x, 128f, x + 14f, 128f, 22f, .7f)
+            x += 14f
+        }
+        store.finishSmudge()
+
+        val alphaAfter = totalAlpha(store, 512, 256)
+        assertTrue("Smudge created alpha: before=$alphaBefore after=$alphaAfter", alphaAfter <= alphaBefore * 1.01)
+        assertNotEquals(0, Color.alpha(store.colorAt(250, 128)))
+    }
+
     @Test fun airbrushWetPainterMatchesCommittedPixels() {
         val airbrush = StrokeStyle(BrushPreset.Airbrush, 48f, .37f, RgbaColor(.8f, .2f, .1f), BlendBehavior.PAINT)
         val points = listOf(sample(Point(60f, 90f), 0), sample(Point(125f, 115f), 1), sample(Point(190f, 140f), 2))
@@ -145,4 +163,13 @@ class TileStoreTest {
     )
 
     private fun sample(point: Point, t: Long) = StrokeSample(1, point, 1f, 0f, 0f, t, 0, PointerKind.STYLUS)
+
+    private fun totalAlpha(store: TileStore, width: Int, height: Int): Long {
+        val rendered = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        store.draw(Canvas(rendered), Paint())
+        val pixels = IntArray(width * height)
+        rendered.getPixels(pixels, 0, width, 0, 0, width, height)
+        rendered.recycle()
+        return pixels.sumOf { Color.alpha(it).toLong() }
+    }
 }

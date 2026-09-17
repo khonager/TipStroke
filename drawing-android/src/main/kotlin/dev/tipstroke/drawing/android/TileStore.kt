@@ -173,6 +173,7 @@ class TileStore(
     internal fun smudge(fromX: Float, fromY: Float, toX: Float, toY: Float, radius: Float, strength: Float) {
         val before = smudgeBefore ?: return
         val safeRadius = radius.coerceIn(4f, 96f)
+        val safeStrength = strength.coerceIn(.05f, 1f)
         val diameter = (safeRadius * 2f).roundToInt().coerceAtLeast(2)
         val patch = Bitmap.createBitmap(diameter, diameter, Bitmap.Config.ARGB_8888)
         val patchCanvas = Canvas(patch)
@@ -186,18 +187,40 @@ class TileStore(
                 patchCanvas.drawBitmap(bitmap, coordinate.x * tileSize - sourceLeft, coordinate.y * tileSize - sourceTop, null)
             }
         }
+        if (patch.isFullyTransparent()) {
+            patch.recycle()
+            return
+        }
+        val source = dev.tipstroke.core.geometry.Rect(fromX - safeRadius, fromY - safeRadius, fromX + safeRadius, fromY + safeRadius)
         val destination = dev.tipstroke.core.geometry.Rect(toX - safeRadius, toY - safeRadius, toX + safeRadius, toY + safeRadius)
-        val dirty = TileGrid.intersecting(destination, canvasWidth, canvasHeight, tileSize)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { alpha = (strength.coerceIn(.05f, 1f) * 255).roundToInt() }
+        val dirty = TileGrid.intersecting(source, canvasWidth, canvasHeight, tileSize) +
+            TileGrid.intersecting(destination, canvasWidth, canvasHeight, tileSize)
+        val transferAlpha = (safeStrength * 255).roundToInt()
+
+        // A smudge transports existing premultiplied color instead of stamping another
+        // copy. Removing the same fraction from the pickup area before depositing it
+        // prevents a tiny opaque mark from being amplified by repeated passes.
         dirty.forEach { coordinate ->
             if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
+        }
+        TileGrid.intersecting(source, canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
+            val bitmap = tiles[coordinate] ?: return@forEach
+            val localX = fromX - coordinate.x * tileSize
+            val localY = fromY - coordinate.y * tileSize
+            Canvas(bitmap).drawCircle(localX, localY, safeRadius, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                alpha = transferAlpha
+                xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+            })
+        }
+        val depositPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { alpha = transferAlpha }
+        TileGrid.intersecting(destination, canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
             val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
             val tileCanvas = Canvas(bitmap)
             val localX = toX - coordinate.x * tileSize
             val localY = toY - coordinate.y * tileSize
             tileCanvas.save()
             tileCanvas.clipPath(Path().apply { addCircle(localX, localY, safeRadius, Path.Direction.CW) })
-            tileCanvas.drawBitmap(patch, localX - safeRadius, localY - safeRadius, paint)
+            tileCanvas.drawBitmap(patch, localX - safeRadius, localY - safeRadius, depositPaint)
             tileCanvas.restore()
         }
         patch.recycle()
