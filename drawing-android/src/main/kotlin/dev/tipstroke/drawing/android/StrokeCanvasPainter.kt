@@ -40,13 +40,19 @@ internal object StrokeCanvasPainter {
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
         val samples = stroke.samples
         if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine == BrushEngine.AIRBRUSH) {
-            drawUnifiedAirbrushMask(canvas, stroke, paint)
+            if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
+                drawPressureResponsiveAirbrush(canvas, stroke, paint)
+            } else {
+                drawUnifiedAirbrushMask(canvas, stroke, paint)
+            }
             canvas.restoreToCount(saveCount)
             return
         }
         if (samples.size == 1) {
             val sample = samples.first()
             paint.style = Paint.Style.FILL
+            paint.alpha = (stroke.style.opacity * stroke.style.color.alpha * sample.pressureOpacity(stroke) * 255)
+                .roundToInt().coerceIn(0, 255)
             canvas.drawCircle(sample.position.x, sample.position.y, stroke.style.sizePx * sample.pressureSize(stroke) / 2f, paint)
         } else {
             for (index in 1 until samples.size) {
@@ -60,6 +66,52 @@ internal object StrokeCanvasPainter {
             }
         }
         canvas.restoreToCount(saveCount)
+    }
+
+    /**
+     * Draws variable-opacity airbrush segments into an isolated layer. SRC replacement inside
+     * that layer prevents overlapping samples from becoming darker while pressure still varies
+     * along the stroke; restoring the layer composites the result over existing paint once.
+     */
+    private fun drawPressureResponsiveAirbrush(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
+        val samples = stroke.samples
+        val padding = stroke.style.sizePx
+        val bounds = stroke.bounds
+        val layer = canvas.saveLayer(
+            bounds.left - padding,
+            bounds.top - padding,
+            bounds.right + padding,
+            bounds.bottom + padding,
+            null,
+        )
+        val originalMode = paint.xfermode
+        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        val baseAlpha = stroke.style.opacity * stroke.style.color.alpha * 255f
+        if (samples.size == 1) {
+            val sample = samples.first()
+            paint.style = Paint.Style.FILL
+            paint.alpha = (baseAlpha * sample.pressureOpacity(stroke)).roundToInt().coerceIn(0, 255)
+            canvas.drawCircle(
+                sample.position.x,
+                sample.position.y,
+                stroke.style.sizePx * sample.pressureSize(stroke) / 2f,
+                paint,
+            )
+        } else {
+            for (index in 1 until samples.size) {
+                val previous = samples[index - 1]
+                val current = samples[index]
+                val sizeScale = (previous.pressureSize(stroke) + current.pressureSize(stroke)) / 2f
+                paint.strokeWidth = stroke.style.sizePx * sizeScale * current.speedSize(stroke, previous)
+                val opacityScale = (previous.pressureOpacity(stroke) + current.pressureOpacity(stroke)) / 2f
+                paint.alpha = (baseAlpha * opacityScale).roundToInt().coerceIn(0, 255)
+                canvas.drawLine(previous.position.x, previous.position.y, current.position.x, current.position.y, paint)
+            }
+        }
+        paint.xfermode = originalMode
+        canvas.restoreToCount(layer)
     }
 
     /** Builds one filled variable-width silhouette, then applies the blur to that union once. */
