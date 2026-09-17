@@ -10,6 +10,7 @@ import dev.tipstroke.core.drawing.StrokeStyle
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.PressureCurve
 import dev.tipstroke.core.model.RgbaColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -24,6 +25,11 @@ import java.io.File
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TipStrokeInkBrushesTest {
+    @Test fun constantPressureCurveOmitsTheInvalidInkBehavior() {
+        assertTrue(!pressureBehaviorEnabled(PressureCurve(1f, 1f, 1f)))
+        assertTrue(pressureBehaviorEnabled(BrushPreset.Pencil.pressureToOpacity))
+    }
+
     @Test fun generatedPencilGrainUsesOpaqueGraphiteAndExposedPaper() {
         val bitmap = TipStrokeInkBrushes.pencilGrainTexture()
         val pixels = IntArray(bitmap.width * bitmap.height)

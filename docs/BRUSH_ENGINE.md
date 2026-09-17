@@ -16,7 +16,7 @@ Pencil starts with a compact round contact patch. Pressure changes size and opac
 
 Erasing paint is `BlendBehavior.ERASE` and uses `PorterDuff.CLEAR`, never the background color. Erasing an imported image instead paints into a sparse original-resolution mask; the encoded source asset is unchanged. Eraser hardness controls edge blur.
 
-Brush Studio deliberately exposes only edge hardness where supported, pressure affecting size, pressure affecting opacity, and optional faster-stroke taper. Size and overall opacity remain direct canvas controls. Tuning, size, and opacity persist locally per built-in brush, while the eraser has an independent remembered setup. These local preferences avoid expanding the document format with a large brush library prematurely.
+Brush Studio deliberately exposes only edge hardness where supported, pressure affecting size, pressure affecting opacity, and optional faster-stroke taper. Disabling a pressure response omits that Jetpack Ink behavior node entirely; a constant start/end mapping is invalid in the Ink brush API. Size and overall opacity remain direct canvas controls. Tuning, size, and opacity persist locally per built-in brush, while the eraser has an independent remembered setup. These local preferences avoid expanding the document format with a large brush library prematurely.
 
 ## Experimental dependency
 

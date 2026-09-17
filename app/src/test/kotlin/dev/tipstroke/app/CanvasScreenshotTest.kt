@@ -41,6 +41,8 @@ class CanvasScreenshotTest {
 
     @Test fun renderCompactLandscapeCanvasForVisualReview() = render(1600, 720, "tipstroke-compact-landscape.png") { CanvasScreen() }
 
+    @Test fun renderMediumLandscapeCanvasForVisualReview() = render(1600, 1200, "tipstroke-medium-landscape.png") { CanvasScreen() }
+
     @Test fun renderColorPickerForVisualReview() = render(2560, 1600, "tipstroke-color-picker.png") {
         CanvasScreen(initialColorPickerOpen = true)
     }
@@ -65,7 +67,14 @@ class CanvasScreenshotTest {
 
     @Test fun renderClassicColorPickerForVisualReview() = render(
         2560, 1600, "tipstroke-color-picker-classic.png",
-        afterLayout = { root -> tap(root, 2000f, 356f) },
+        afterLayout = { root -> tap(root, 1880f, 356f) },
+    ) {
+        CanvasScreen(initialColorPickerOpen = true)
+    }
+
+    @Test fun renderValuesColorPickerForVisualReview() = render(
+        2560, 1600, "tipstroke-color-picker-values.png",
+        afterLayout = { root -> tap(root, 2050f, 356f) },
     ) {
         CanvasScreen(initialColorPickerOpen = true)
     }

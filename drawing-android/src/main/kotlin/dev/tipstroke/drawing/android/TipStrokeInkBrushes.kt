@@ -6,6 +6,7 @@ import androidx.ink.brush.*
 import androidx.ink.brush.behavior.*
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.PressureCurve
 import java.util.LinkedHashMap
 import kotlin.math.PI
 import kotlin.math.sin
@@ -48,8 +49,12 @@ internal class TipStrokeInkBrushes {
         val edgeWidthNoise = NoiseNode(0x51A7, ProgressDomain.DISTANCE_IN_MULTIPLES_OF_BRUSH_SIZE, .34f)
         val edgePositionNoise = NoiseNode(0x27C1, ProgressDomain.DISTANCE_IN_MULTIPLES_OF_BRUSH_SIZE, .21f)
         val behaviors = buildList {
-            add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, pressure))
-            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, pressure))
+            if (pressureBehaviorEnabled(preset.pressureToSize)) {
+                add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, pressure))
+            }
+            if (pressureBehaviorEnabled(preset.pressureToOpacity)) {
+                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, pressure))
+            }
             add(mapped(TargetNode.Target.WIDTH_MULTIPLIER, 1f, 3.15f, tilt))
             add(mapped(TargetNode.Target.HEIGHT_MULTIPLIER, 1f, .52f, tilt))
             add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, .64f, tilt))
@@ -100,8 +105,12 @@ internal class TipStrokeInkBrushes {
         )
         val speed = eased(SourceNode(SourceNode.Source.SPEED_IN_MULTIPLES_OF_BRUSH_SIZE_PER_SECOND, 0f, 16f))
         val behaviors = buildList {
-            add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, pressure))
-            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, pressure))
+            if (pressureBehaviorEnabled(preset.pressureToSize)) {
+                add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, pressure))
+            }
+            if (pressureBehaviorEnabled(preset.pressureToOpacity)) {
+                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, pressure))
+            }
             // Baskerville-style entry and exit points stay pointed even when pressure is steady.
             add(mapped(TargetNode.Target.SIZE_MULTIPLIER, .07f, 1f, start))
             add(mapped(TargetNode.Target.SIZE_MULTIPLIER, .05f, 1f, end))
@@ -125,16 +134,21 @@ internal class TipStrokeInkBrushes {
 
     private fun airbrushFamily(preset: BrushPreset): BrushFamily {
         val pressure = eased(SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f))
-        val tip = BrushTip.builder()
-            .setScaleX(1f)
-            .setScaleY(1f)
-            .setCornerRounding(1f)
-            .setBehaviors(listOf(BrushBehavior(mapped(
+        val behaviors = if (pressureBehaviorEnabled(preset.pressureToSize)) {
+            listOf(BrushBehavior(mapped(
                 TargetNode.Target.SIZE_MULTIPLIER,
                 preset.pressureToSize.start,
                 preset.pressureToSize.end,
                 pressure,
-            ))))
+            )))
+        } else {
+            emptyList()
+        }
+        val tip = BrushTip.builder()
+            .setScaleX(1f)
+            .setScaleY(1f)
+            .setCornerRounding(1f)
+            .setBehaviors(behaviors)
             .build()
         return family(
             "Solid fallback tip; production Airbrush uses the native raster blur path.",
@@ -209,3 +223,5 @@ internal class TipStrokeInkBrushes {
         private fun lerp(start: Float, end: Float, amount: Float) = start + (end - start) * amount
     }
 }
+
+internal fun pressureBehaviorEnabled(curve: PressureCurve): Boolean = curve.start != curve.end

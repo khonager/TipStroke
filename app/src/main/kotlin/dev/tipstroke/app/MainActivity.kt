@@ -3,22 +3,29 @@ package dev.tipstroke.app
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.runtime.*
+import androidx.lifecycle.ViewModel
 import dev.tipstroke.core.model.GestureSettings
 import dev.tipstroke.drawing.android.DrawingLibrary
 import dev.tipstroke.drawing.android.StylusButton
 import dev.tipstroke.drawing.android.StylusButtons
 
-private sealed interface AppScreen {
+internal sealed interface AppScreen {
     data object Gallery : AppScreen
     data object Settings : AppScreen
     data class Editor(val id: String, val name: String, val widthPx: Int, val heightPx: Int, val existing: Boolean) : AppScreen
 }
 
+internal class TipStrokeAppState : ViewModel() {
+    var screen by mutableStateOf<AppScreen>(AppScreen.Gallery)
+}
+
 class MainActivity : ComponentActivity() {
+    private val appState by viewModels<TipStrokeAppState>()
     private var saveActiveDrawing: (() -> Unit)? = null
     private var stylusButtonHandler: ((StylusButton) -> Unit)? = null
 
@@ -28,6 +35,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             TipStrokeTheme {
                 TipStrokeApp(
+                    appState = appState,
                     onSaveActionChanged = { saveActiveDrawing = it },
                     onStylusButtonHandlerChanged = { stylusButtonHandler = it },
                 )
@@ -58,6 +66,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun TipStrokeApp(
+    appState: TipStrokeAppState,
     onSaveActionChanged: ((() -> Unit)?) -> Unit,
     onStylusButtonHandlerChanged: (((StylusButton) -> Unit)?) -> Unit,
 ) {
@@ -65,26 +74,26 @@ private fun TipStrokeApp(
     val library = remember { DrawingLibrary(context) }
     val gesturePreferences = remember { GesturePreferences(context) }
     var gestures by remember { mutableStateOf(gesturePreferences.load()) }
-    var screen by remember { mutableStateOf<AppScreen>(AppScreen.Gallery) }
-    BackHandler(enabled = screen == AppScreen.Settings) { screen = AppScreen.Gallery }
+    val screen = appState.screen
+    BackHandler(enabled = screen == AppScreen.Settings) { appState.screen = AppScreen.Gallery }
 
     when (val current = screen) {
         AppScreen.Gallery -> GalleryScreen(
             library,
-            onOpen = { drawing -> screen = AppScreen.Editor(drawing.id, drawing.name, drawing.widthPx, drawing.heightPx, true) },
-            onNew = { request -> screen = AppScreen.Editor(request.id, request.name, request.widthPx, request.heightPx, false) },
-            onSettings = { screen = AppScreen.Settings },
+            onOpen = { drawing -> appState.screen = AppScreen.Editor(drawing.id, drawing.name, drawing.widthPx, drawing.heightPx, true) },
+            onNew = { request -> appState.screen = AppScreen.Editor(request.id, request.name, request.widthPx, request.heightPx, false) },
+            onSettings = { appState.screen = AppScreen.Settings },
         )
         AppScreen.Settings -> SettingsScreen(
             gestures,
             onChange = { updated: GestureSettings -> gestures = updated; gesturePreferences.save(updated) },
-            onBack = { screen = AppScreen.Gallery },
+            onBack = { appState.screen = AppScreen.Gallery },
         )
         is AppScreen.Editor -> CanvasScreen(
             documentId = current.id, documentName = current.name,
             canvasWidthPx = current.widthPx, canvasHeightPx = current.heightPx,
             loadExisting = current.existing, library = library, gestureSettings = gestures,
-            onBackToGallery = { screen = AppScreen.Gallery },
+            onBackToGallery = { appState.screen = AppScreen.Gallery },
             onSaveActionChanged = onSaveActionChanged,
             onStylusButtonHandlerChanged = onStylusButtonHandlerChanged,
         )

@@ -14,12 +14,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +46,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -58,8 +62,9 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private enum class ColorPickerMode(val label: String) {
-    HSV_WHEEL("HSV Wheel"),
-    HSV_SLIDERS("HSV Sliders"),
+    HSV_WHEEL("Wheel"),
+    HSV_SLIDERS("Sliders"),
+    VALUES("Values"),
 }
 
 @Composable
@@ -130,6 +135,14 @@ internal fun ColorPickerPanel(
                 )
                 ColorPickerMode.HSV_SLIDERS -> ClassicPicker(
                     hue, saturation, value, compact,
+                    onChange = { newHue, newSaturation, newValue ->
+                        hue = newHue
+                        saturation = newSaturation
+                        value = newValue
+                    },
+                )
+                ColorPickerMode.VALUES -> ValuesPicker(
+                    hue, saturation, value,
                     onChange = { newHue, newSaturation, newValue ->
                         hue = newHue
                         saturation = newSaturation
@@ -360,6 +373,135 @@ private fun ClassicPicker(
 }
 
 @Composable
+private fun ValuesPicker(
+    hue: Float,
+    saturation: Float,
+    value: Float,
+    onChange: (Float, Float, Float) -> Unit,
+) {
+    var hexText by remember { mutableStateOf("") }
+    var redText by remember { mutableStateOf("") }
+    var greenText by remember { mutableStateOf("") }
+    var blueText by remember { mutableStateOf("") }
+    var hueText by remember { mutableStateOf("") }
+    var saturationText by remember { mutableStateOf("") }
+    var valueText by remember { mutableStateOf("") }
+
+    LaunchedEffect(hue, saturation, value) {
+        val color = hsvColor(hue, saturation, value)
+        hexText = colorToHex(color)
+        redText = color.channelText { red }
+        greenText = color.channelText { green }
+        blueText = color.channelText { blue }
+        hueText = hue.roundToInt().coerceIn(0, 360).toString()
+        saturationText = (saturation * 100f).roundToInt().coerceIn(0, 100).toString()
+        valueText = (value * 100f).roundToInt().coerceIn(0, 100).toString()
+    }
+
+    Text(
+        "Enter a standard color value",
+        color = Color(0xFFBFC0C4),
+        fontSize = 12.sp,
+    )
+    Spacer(Modifier.height(8.dp))
+    OutlinedTextField(
+        value = hexText,
+        onValueChange = { entered ->
+            val digits = entered.removePrefix("#").filter { it.isDigit() || it.uppercaseChar() in 'A'..'F' }
+                .take(6).uppercase()
+            hexText = "#$digits"
+            parseHexColor(hexText)?.toHsv()?.let { onChange(it[0], it[1], it[2]) }
+        },
+        label = { Text("HEX") },
+        placeholder = { Text("#RRGGBB") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.Characters,
+            keyboardType = KeyboardType.Ascii,
+        ),
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Hex color value" },
+    )
+
+    Spacer(Modifier.height(12.dp))
+    ValueSectionLabel("RGB", "0–255")
+    Spacer(Modifier.height(6.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ValueField("R", redText, 255, Modifier.weight(1f)) { text, number ->
+            redText = text
+            number?.let {
+                val current = hsvColor(hue, saturation, value)
+                RgbaColor(it / 255f, current.green, current.blue).toHsv()
+                    .let { hsv -> onChange(hsv[0], hsv[1], hsv[2]) }
+            }
+        }
+        ValueField("G", greenText, 255, Modifier.weight(1f)) { text, number ->
+            greenText = text
+            number?.let {
+                val current = hsvColor(hue, saturation, value)
+                RgbaColor(current.red, it / 255f, current.blue).toHsv()
+                    .let { hsv -> onChange(hsv[0], hsv[1], hsv[2]) }
+            }
+        }
+        ValueField("B", blueText, 255, Modifier.weight(1f)) { text, number ->
+            blueText = text
+            number?.let {
+                val current = hsvColor(hue, saturation, value)
+                RgbaColor(current.red, current.green, it / 255f).toHsv()
+                    .let { hsv -> onChange(hsv[0], hsv[1], hsv[2]) }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    ValueSectionLabel("HSV", "H 0–360 · S/V 0–100")
+    Spacer(Modifier.height(6.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ValueField("H", hueText, 360, Modifier.weight(1f)) { text, number ->
+            hueText = text
+            number?.let { onChange(it.toFloat(), saturation, value) }
+        }
+        ValueField("S", saturationText, 100, Modifier.weight(1f)) { text, number ->
+            saturationText = text
+            number?.let { onChange(hue, it / 100f, value) }
+        }
+        ValueField("V", valueText, 100, Modifier.weight(1f)) { text, number ->
+            valueText = text
+            number?.let { onChange(hue, saturation, it / 100f) }
+        }
+    }
+}
+
+@Composable
+private fun ValueSectionLabel(name: String, range: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.width(7.dp))
+        Text(range, color = Color(0xFF8E9096), fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun ValueField(
+    label: String,
+    value: String,
+    maximum: Int,
+    modifier: Modifier = Modifier,
+    onValue: (String, Int?) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { entered ->
+            val digits = entered.filter(Char::isDigit).take(3)
+            onValue(digits, digits.toIntOrNull()?.takeIf { it in 0..maximum })
+        },
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = modifier.semantics { contentDescription = "$label color value" },
+    )
+}
+
+@Composable
 private fun ClassicColorField(
     hue: Float,
     saturation: Float,
@@ -543,6 +685,26 @@ private fun ColorSwatch(color: RgbaColor, size: Dp, description: String, onClick
         .border(1.5.dp, Color.White.copy(alpha = .9f), CircleShape)
         .semantics { contentDescription = description }
     Box(if (onClick == null) base else base.clickable(onClick = onClick))
+}
+
+private inline fun RgbaColor.channelText(channel: RgbaColor.() -> Float): String =
+    (channel().coerceIn(0f, 1f) * 255f).roundToInt().toString()
+
+internal fun colorToHex(color: RgbaColor): String = "#%02X%02X%02X".format(
+    (color.red.coerceIn(0f, 1f) * 255f).roundToInt(),
+    (color.green.coerceIn(0f, 1f) * 255f).roundToInt(),
+    (color.blue.coerceIn(0f, 1f) * 255f).roundToInt(),
+)
+
+internal fun parseHexColor(input: String): RgbaColor? {
+    val digits = input.trim().removePrefix("#")
+    if (digits.length != 6 || digits.any { !it.isDigit() && it.uppercaseChar() !in 'A'..'F' }) return null
+    val packed = digits.toIntOrNull(16) ?: return null
+    return RgbaColor(
+        ((packed shr 16) and 0xFF) / 255f,
+        ((packed shr 8) and 0xFF) / 255f,
+        (packed and 0xFF) / 255f,
+    )
 }
 
 private fun RgbaColor.toHsv(): FloatArray = FloatArray(3).also { hsv ->

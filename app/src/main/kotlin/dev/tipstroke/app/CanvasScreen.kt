@@ -200,6 +200,7 @@ fun CanvasScreen(
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val portrait = maxHeight > maxWidth
+        val viewportHeight = maxHeight
         val compactLandscape = !portrait && maxHeight < 760.dp
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -233,6 +234,11 @@ fun CanvasScreen(
             selectionActive = selectionMode || hasSelection,
             onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
             layersOpen = layersOpen, onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
+            showTopColorSwitcher = !portrait,
+            color = color,
+            frequentColors = drawingPalette,
+            onColor = { color = it },
+            onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
             onBack = if (onBackToGallery != null) leaveEditor else null,
             onExport = { if (ready) exportOpen = true },
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -264,6 +270,12 @@ fun CanvasScreen(
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
                 horizontal = portrait,
                 compactVertical = compactLandscape,
+                verticalTrackHeight = when {
+                    viewportHeight < 440.dp -> 44.dp
+                    compactLandscape -> 154.dp
+                    else -> 205.dp
+                },
+                showColorSwitcher = portrait,
                 modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
                     .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
             )
@@ -305,7 +317,7 @@ fun CanvasScreen(
                 onMoveBackward = { surface?.moveSelectedLayer(false) },
                 onDelete = { surface?.deleteSelectedLayer() },
                 modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
-                    .padding(top = 66.dp, bottom = if (portrait) 106.dp else 16.dp, end = if (portrait) 0.dp else 132.dp),
+                    .padding(top = 66.dp, bottom = if (portrait) 106.dp else 16.dp, end = if (portrait) 0.dp else 116.dp),
             )
         }
 
@@ -330,7 +342,7 @@ fun CanvasScreen(
                 },
                 compact = portrait || maxHeight < 620.dp,
                 modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
-                    .padding(end = if (portrait) 12.dp else 152.dp, top = 12.dp, bottom = 12.dp),
+                    .padding(end = if (portrait) 12.dp else 116.dp, top = 12.dp, bottom = 12.dp),
             )
         }
 
@@ -384,7 +396,29 @@ fun CanvasScreen(
 
 }
 
-@Composable private fun EditorChrome(canUndo: Boolean, canRedo: Boolean, debug: Boolean, layersOpen: Boolean, selectionActive: Boolean, zoomPercent: Int, onUndo: () -> Unit, onRedo: () -> Unit, onReset: () -> Unit, onDebug: () -> Unit, onSelection: () -> Unit, onLayers: () -> Unit, onBack: (() -> Unit)?, onExport: () -> Unit, modifier: Modifier = Modifier) {
+@Composable
+private fun EditorChrome(
+    canUndo: Boolean,
+    canRedo: Boolean,
+    debug: Boolean,
+    layersOpen: Boolean,
+    selectionActive: Boolean,
+    zoomPercent: Int,
+    showTopColorSwitcher: Boolean,
+    color: RgbaColor,
+    frequentColors: List<RgbaColor>,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onReset: () -> Unit,
+    onDebug: () -> Unit,
+    onSelection: () -> Unit,
+    onLayers: () -> Unit,
+    onColor: (RgbaColor) -> Unit,
+    onOpenColorPicker: () -> Unit,
+    onBack: (() -> Unit)?,
+    onExport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(modifier) {
         Row(Modifier.align(Alignment.TopStart).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (onBack != null) ChromeGroup { IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Back to gallery" }) { BackIcon() } }
@@ -398,6 +432,9 @@ fun CanvasScreen(
         }
         ChromeGroup(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
             IconButton(onClick = onLayers, modifier = Modifier.semantics { contentDescription = "Layers" }) { LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White) }
+            if (showTopColorSwitcher) {
+                ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker, compact = true)
+            }
             TextButton(onClick = onExport, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Export", fontSize = 13.sp) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Debug", color = Color(0xFFD8D9DC), fontSize = 11.sp)

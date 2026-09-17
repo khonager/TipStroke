@@ -21,9 +21,9 @@ Color picking opens a native magnifying loupe after the configured hold delay. T
 
 ## Brush controls
 
-Brush size and opacity use long drag tracks with persistent numeric readouts. Adjacent minus/plus buttons apply 1 px and 1 percentage-point adjustments for precise tuning without requiring pixel-perfect slider motion.
+Brush size and opacity use drag tracks with persistent numeric readouts. In landscape they are stacked as narrow vertical controls: plus sits at the maximum end and minus at the minimum end. Portrait keeps the wider horizontal controls. The buttons apply 1 px and 1 percentage-point adjustments for precise tuning without requiring pixel-perfect slider motion.
 
-The compact color dock always exposes the current drawing's most-used colors. Tapping the large current-color circle opens a centered hue/saturation wheel with brightness control for selecting any brush color; canvas hold remains the eyedropper gesture for sampling existing artwork. Adjust opens the compact Brush Studio for edge hardness, pressure-to-size, pressure-to-opacity, and optional speed taper. Tuning, size, and opacity are stored locally for each built-in brush; the eraser has its own remembered size, opacity, hardness, and dynamics.
+The compact color dock always exposes the current drawing's most-used colors. In landscape it sits in the top-right toolbar immediately after Layers; in portrait it remains above the bottom adjustment controls. Tapping the large current-color circle opens the color chooser; canvas hold remains the eyedropper gesture for sampling existing artwork. Adjust opens the compact Brush Studio for edge hardness, pressure-to-size, pressure-to-opacity, and optional speed taper. Tuning, size, and opacity are stored locally for each built-in brush; the eraser has its own remembered size, opacity, hardness, and dynamics.
 
 ## Planned extension points
 
