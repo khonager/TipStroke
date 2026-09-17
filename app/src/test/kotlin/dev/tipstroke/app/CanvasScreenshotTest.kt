@@ -139,8 +139,9 @@ class CanvasScreenshotTest {
                 layers = listOf(LayerSummary(imageId, "Reference photo.png", LayerKind.IMAGE, true, .82f, 4032, 3024, .46f)),
                 previews = emptyMap(),
                 selectedId = imageId,
+                selectedIds = setOf(imageId),
                 imageTransforming = true,
-                onSelect = {}, onToggleVisibility = {}, onOpacity = {}, onRename = {}, onImageScale = {},
+                onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {}, onRename = {}, onImageScale = {},
                 onFitImage = {}, onOriginalImageSize = {}, onImageTransforming = {},
                 onAddPaint = {}, onImportImage = {}, onMoveForward = {}, onMoveBackward = {}, onDelete = {},
             )

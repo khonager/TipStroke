@@ -2,6 +2,7 @@ package dev.tipstroke.app
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -28,8 +31,10 @@ internal fun LayersPanel(
     layers: List<LayerSummary>,
     previews: Map<LayerId, Bitmap>,
     selectedId: LayerId?,
+    selectedIds: Set<LayerId>,
     imageTransforming: Boolean,
     onSelect: (LayerId) -> Unit,
+    onToggleSelection: (LayerId) -> Unit,
     onToggleVisibility: (LayerId) -> Unit,
     onOpacity: (Float) -> Unit,
     onRename: (String) -> Unit,
@@ -61,11 +66,20 @@ internal fun LayersPanel(
                 TextButton(onClick = onImportImage, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("+ Image") }
             }
             Text("Front to back", color = Color(0xFF9B9DA3), fontSize = 11.sp)
+            Text("Swipe a layer right to add it to the selection", color = Color(0xFF777A81), fontSize = 10.sp)
             Spacer(Modifier.height(10.dp))
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 items(layers, key = { it.id.value }) { layer ->
                     Column {
-                        LayerRow(layer, previews[layer.id], layer.id == selectedId, { onSelect(layer.id) }, { onToggleVisibility(layer.id) })
+                        LayerRow(
+                            layer = layer,
+                            preview = previews[layer.id],
+                            primary = layer.id == selectedId,
+                            selected = layer.id in selectedIds,
+                            onSelect = { onSelect(layer.id) },
+                            onToggleSelection = { onToggleSelection(layer.id) },
+                            onVisibility = { onToggleVisibility(layer.id) },
+                        )
                         if (layer.id == selectedId) {
                             LayerControls(
                                 layer = layer,
@@ -170,12 +184,37 @@ private fun LayerControls(
 }
 
 @Composable
-private fun LayerRow(layer: LayerSummary, preview: Bitmap?, selected: Boolean, onSelect: () -> Unit, onVisibility: () -> Unit) {
+private fun LayerRow(
+    layer: LayerSummary,
+    preview: Bitmap?,
+    primary: Boolean,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onToggleSelection: () -> Unit,
+    onVisibility: () -> Unit,
+) {
     val shape = RoundedCornerShape(15.dp)
+    var dragDistance by remember(layer.id) { mutableFloatStateOf(0f) }
+    val swipeThreshold = with(LocalDensity.current) { 34.dp.toPx() }
     Row(
-        Modifier.fillMaxWidth().clip(shape)
+        Modifier.fillMaxWidth().offset { IntOffset(dragDistance.coerceIn(0f, swipeThreshold).roundToInt(), 0) }.clip(shape)
             .background(if (selected) Color(0xFF343034) else Color(0xFF292A2E))
-            .border(if (selected) 1.5.dp else .5.dp, if (selected) Color(0xFFED6A5A) else Color(0xFF414349), shape)
+            .border(if (selected) 1.5.dp else .5.dp, if (primary) Color(0xFFED6A5A) else if (selected) Color(0xFF75A7FF) else Color(0xFF414349), shape)
+            .pointerInput(layer.id, selected) {
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, amount ->
+                        if (amount > 0f || dragDistance > 0f) {
+                            change.consume()
+                            dragDistance = (dragDistance + amount).coerceAtLeast(0f)
+                        }
+                    },
+                    onDragEnd = {
+                        if (dragDistance >= swipeThreshold) onToggleSelection()
+                        dragDistance = 0f
+                    },
+                    onDragCancel = { dragDistance = 0f },
+                )
+            }
             .clickable(onClick = onSelect).padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

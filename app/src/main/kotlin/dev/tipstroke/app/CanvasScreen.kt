@@ -69,6 +69,7 @@ fun CanvasScreen(
     var layers by remember { mutableStateOf<List<LayerSummary>>(emptyList()) }
     var layerPreviews by remember { mutableStateOf<Map<LayerId, Bitmap>>(emptyMap()) }
     var selectedLayerId by remember { mutableStateOf<LayerId?>(null) }
+    var selectedLayerIds by remember { mutableStateOf<Set<LayerId>>(emptySet()) }
     var layersOpen by remember { mutableStateOf(initialLayersOpen) }
     var message by remember { mutableStateOf<String?>(null) }
     var ready by remember { mutableStateOf(library == null) }
@@ -210,9 +211,10 @@ fun CanvasScreen(
                 surface = view
                 view.diagnosticsListener = { diagnostics = it }
                 view.historyListener = { undo, redo -> canUndo = undo; canRedo = redo }
-                view.layersListener = { updated, selected, previews ->
+                view.layersListener = { updated, selected, selectedIds, previews ->
                     layers = updated
                     selectedLayerId = selected
+                    selectedLayerIds = selectedIds
                     layerPreviews = previews
                 }
                 view.colorPickedListener = { picked -> color = picked }
@@ -292,7 +294,8 @@ fun CanvasScreen(
             hasSelection = hasSelection,
             tool = selectionTool,
             moving = movingSelection,
-            canMove = layers.firstOrNull { it.id == selectedLayerId }?.kind == LayerKind.RASTER,
+            canMove = layers.any { it.id in selectedLayerIds && it.kind == LayerKind.RASTER },
+            selectedLayerCount = selectedLayerIds.size,
             onTool = { tool -> selectionTool = tool; movingSelection = false; selectionMode = true; surface?.setSelectionTool(tool) },
             onMove = { movingSelection = !movingSelection; selectionMode = false },
             onSelectAll = { surface?.selectAll() },
@@ -306,12 +309,14 @@ fun CanvasScreen(
                 layers = layers,
                 previews = layerPreviews,
                 selectedId = selectedLayerId,
+                selectedIds = selectedLayerIds,
                 imageTransforming = imageTransforming,
                 onSelect = {
                     movingSelection = false
                     imageTransforming = false
                     surface?.selectLayer(it)
                 },
+                onToggleSelection = { surface?.toggleLayerSelection(it) },
                 onToggleVisibility = { surface?.toggleLayerVisibility(it) },
                 onOpacity = { surface?.setSelectedLayerOpacity(it) },
                 onRename = { surface?.renameSelectedLayer(it) },
@@ -476,11 +481,11 @@ private fun EditorChrome(
     }
 }
 
-@Composable private fun SelectionBar(selecting: Boolean, hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit, onClear: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun SelectionBar(selecting: Boolean, hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, selectedLayerCount: Int, onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit, onClear: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
     Surface(modifier.fillMaxWidth(.94f).widthIn(max = 620.dp), color = Color(0xED202125), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (moving) "Drag to move selected paint" else if (selecting) "Draw a selection" else "Selection active", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                Text(if (moving) "Drag to move paint on $selectedLayerCount selected layer${if (selectedLayerCount == 1) "" else "s"}" else if (selecting) "Draw a selection" else "Selection active", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
                 TextButton(onClick = onDone) { Text("Done") }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {

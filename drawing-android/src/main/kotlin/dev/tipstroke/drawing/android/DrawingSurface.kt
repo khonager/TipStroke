@@ -70,7 +70,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var fps = 0f
     var diagnosticsListener: ((CanvasDiagnostics) -> Unit)? = null
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
-    var layersListener: ((List<LayerSummary>, LayerId, Map<LayerId, android.graphics.Bitmap>) -> Unit)? = null
+    var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>) -> Unit)? = null
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
@@ -134,6 +134,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
+    fun toggleLayerSelection(id: LayerId) { layerStack.toggleAdditionalSelection(id); notifyLayers(); notifyHistory() }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
     fun renameSelectedLayer(name: String) { layerStack.renameSelected(name); notifyLayers() }
     fun toggleLayerVisibility(id: LayerId) { layerStack.toggleVisible(id); notifyLayers() }
@@ -159,7 +160,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(true, selectionRegion != null)
     }
     fun setSelectionMoveMode(enabled: Boolean) {
-        selectionMoveMode = enabled && selectionRegion != null && layerStack.selectedRaster() != null
+        selectionMoveMode = enabled && selectionRegion != null && layerStack.selectedRasters().isNotEmpty()
         if (selectionMoveMode) selectionMode = false
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
@@ -487,8 +488,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val point = rasterView.screenToDocument(event.x, event.y)
                 val deltaX = point.x - start.x
                 val deltaY = point.y - start.y
-                layerStack.selectedRaster()?.tiles?.let { store ->
-                    rasterView.invalidateTiles(store.moveSelection(selection, deltaX, deltaY))
+                val stores = layerStack.selectedRasters().map { it.tiles }
+                if (stores.isNotEmpty()) {
+                    val dirty = stores.flatMapTo(mutableSetOf()) { it.moveSelection(selection, deltaX, deltaY) }
+                    rasterView.invalidateTiles(dirty)
                     selectionRegion = selection.translated(deltaX, deltaY)
                     rasterView.selectionRegion = selectionRegion
                     notifyHistory()
@@ -705,7 +708,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
     private fun notifyLayers() {
-        layersListener?.invoke(layerStack.summariesFrontToBack(), layerStack.selectedId, layerStack.previewsFrontToBack(96))
+        layersListener?.invoke(
+            layerStack.summariesFrontToBack(),
+            layerStack.selectedId,
+            layerStack.selectedLayerIds(),
+            layerStack.previewsFrontToBack(96),
+        )
     }
     private fun notifyVisiblePalette() {
         visiblePaletteListener?.invoke(layerStack.visiblePalette(paletteColorCount))

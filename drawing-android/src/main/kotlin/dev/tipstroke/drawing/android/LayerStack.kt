@@ -64,16 +64,20 @@ internal class LayerStack(
     val layers = mutableListOf<CanvasLayerRuntime>()
     var selectedId: LayerId
         private set
+    private val selectedIds = linkedSetOf<LayerId>()
 
     init {
         val initial = newRaster("Paint 1")
         layers += initial
         selectedId = initial.id
+        selectedIds += initial.id
     }
 
     fun selected(): CanvasLayerRuntime = layers.first { it.id == selectedId }
     fun selectedRaster(): RasterLayerRuntime? = selected() as? RasterLayerRuntime
+    fun selectedRasters(): List<RasterLayerRuntime> = layers.filterIsInstance<RasterLayerRuntime>().filter { it.id in selectedIds }
     fun selectedImage(): ImageLayerRuntime? = selected() as? ImageLayerRuntime
+    fun selectedLayerIds(): Set<LayerId> = selectedIds.toSet()
     fun summariesFrontToBack(): List<LayerSummary> = layers.asReversed().map { it.summary() }
     fun previewsFrontToBack(sizePx: Int): Map<LayerId, Bitmap> = layers.asReversed().associate { layer ->
         layer.id to renderPreview(layer, sizePx.coerceAtLeast(1))
@@ -127,6 +131,8 @@ internal class LayerStack(
         val layer = newRaster("Paint ${layers.count { it is RasterLayerRuntime } + 1}")
         layers.add(indexAboveSelected(), layer)
         selectedId = layer.id
+        selectedIds.clear()
+        selectedIds += layer.id
         invalidate()
         return layer.id
     }
@@ -142,11 +148,32 @@ internal class LayerStack(
         )
         layers.add(indexAboveSelected(), layer)
         selectedId = layer.id
+        selectedIds.clear()
+        selectedIds += layer.id
         invalidate()
         layer.id
     }
 
-    fun select(id: LayerId) { if (layers.any { it.id == id }) { selectedId = id; invalidate() } }
+    fun select(id: LayerId) {
+        if (layers.any { it.id == id }) {
+            selectedId = id
+            selectedIds.clear()
+            selectedIds += id
+            invalidate()
+        }
+    }
+
+    fun toggleAdditionalSelection(id: LayerId) {
+        if (layers.none { it.id == id }) return
+        if (id in selectedIds) {
+            if (selectedIds.size == 1) return
+            selectedIds -= id
+            if (selectedId == id) selectedId = selectedIds.first()
+        } else {
+            selectedIds += id
+        }
+        invalidate()
+    }
 
     fun setOpacity(value: Float) {
         selected().opacity = value.coerceIn(0f, 1f)
@@ -210,6 +237,8 @@ internal class LayerStack(
         val removed = layers.removeAt(index)
         if (removed is ImageLayerRuntime) removed.source.close()
         selectedId = layers[index.coerceAtMost(layers.lastIndex)].id
+        selectedIds.clear()
+        selectedIds += selectedId
         invalidate()
         return true
     }
@@ -250,6 +279,8 @@ internal class LayerStack(
             }
         }
         selectedId = loaded.selectedId
+        selectedIds.clear()
+        selectedIds += selectedId
         invalidate()
     }
 

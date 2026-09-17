@@ -12,6 +12,21 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LayerStackTest {
+    @Test fun layersCanBeAddedToAndRemovedFromSelection() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 2048, 2048) {}
+        val first = stack.selectedId
+        val second = stack.addRaster()
+
+        stack.toggleAdditionalSelection(first)
+        assertEquals(setOf(first, second), stack.selectedLayerIds())
+        assertEquals(2, stack.selectedRasters().size)
+
+        stack.toggleAdditionalSelection(first)
+        assertEquals(setOf(second), stack.selectedLayerIds())
+        stack.toggleAdditionalSelection(second)
+        assertEquals(setOf(second), stack.selectedLayerIds())
+    }
+
     @Test fun selectedLayerCanBeRenamed() {
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 2048, 2048) {}
 
