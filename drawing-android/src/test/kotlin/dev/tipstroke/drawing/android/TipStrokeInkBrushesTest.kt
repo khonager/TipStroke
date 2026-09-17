@@ -14,33 +14,40 @@ import java.io.File
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TipStrokeInkBrushesTest {
-    @Test fun generatedPencilGrainIsOpaqueEnoughButNotFlat() {
+    @Test fun generatedPencilGrainUsesOpaqueGraphiteAndExposedPaper() {
         val bitmap = TipStrokeInkBrushes.pencilGrainTexture()
-        val alphas = alphaRange(bitmap)
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val opaqueRatio = pixels.count { Color.alpha(it) == 255 } / pixels.size.toFloat()
         assertEquals(256, bitmap.width)
         assertEquals(256, bitmap.height)
-        assertTrue(alphas.first >= 130)
-        assertTrue(alphas.last > alphas.first)
+        assertTrue(pixels.all { Color.alpha(it) == 0 || Color.alpha(it) == 255 })
+        assertTrue(opaqueRatio in .8f..9f)
         writeReviewTexture("pencil-grain.png", bitmap)
         bitmap.recycle()
     }
 
-    @Test fun generatedAirbrushFieldIsSparseAndUsesHardEdgedPigmentPixels() {
-        val bitmap = TipStrokeInkBrushes.airbrushParticleTexture(1234, .08f)
-        val pixels = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        val visible = pixels.count { Color.alpha(it) > 0 }
-        assertTrue(visible in 3_000..9_000)
-        assertTrue(pixels.any { Color.alpha(it) == 0 })
-        assertTrue(pixels.any { Color.alpha(it) > 150 })
-        writeReviewTexture("airbrush-pigment-field.png", bitmap)
-        bitmap.recycle()
+    @Test fun softAirbrushProfileIsFeatheredAndHardnessCollapsesTheFalloff() {
+        val soft = TipStrokeInkBrushes.softAirbrushProfile(0f)
+        val hard = TipStrokeInkBrushes.softAirbrushProfile(1f)
+        assertEquals(10, soft.size)
+        assertEquals(1f, soft.first().scale)
+        assertTrue(soft.zipWithNext().all { (outer, inner) -> outer.scale > inner.scale })
+        assertTrue(soft.first().opacity < soft.last().opacity)
+        assertEquals(1f, soft.last().opacity)
+        val compositedOpacity = 1f - soft.fold(1f) { remaining, coat -> remaining * (1f - coat.opacity) }
+        assertEquals(1f, compositedOpacity, .0001f)
+        assertTrue(hard.all { it.scale == 1f })
+        assertEquals(soft.sumOf { it.opacity.toDouble() }, hard.sumOf { it.opacity.toDouble() }, .0001)
     }
 
-    private fun alphaRange(bitmap: android.graphics.Bitmap): IntRange {
+    @Test fun airbrushCoatOpacityTextureIsUniformAndRendererSafe() {
+        val bitmap = TipStrokeInkBrushes.uniformAlphaTexture(.16f)
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        return pixels.minOf(Color::alpha)..pixels.maxOf(Color::alpha)
+        assertEquals(4, bitmap.width)
+        assertTrue(pixels.all { Color.alpha(it) == 40 })
+        bitmap.recycle()
     }
 
     private fun writeReviewTexture(name: String, bitmap: android.graphics.Bitmap) {

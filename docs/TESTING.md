@@ -9,9 +9,9 @@ Before subjective pen testing, run `./tipstroke brushes` with a device attached.
 1. Relaunch, immediately draw the first Ink stroke, and check that it starts under the nib without a warm-up hitch.
 2. Draw slow diagonals, circles, tight curves, quick flicks, and intersecting strokes. Check continuity and jitter.
 3. Vary pressure from feather-light to firm. Check width response and smooth taper.
-4. With Pencil, repeat while changing stylus tilt and barrel orientation. A low angle should produce a broader, flatter graphite patch aligned with the stylus, with visible paper grain and no clipped tile seams.
+4. With Pencil, repeat while changing stylus tilt and barrel orientation. A low angle should produce a broader, flatter graphite patch aligned with the stylus, with visible paper grain, subtly irregular connected edges, and no clipped tile seams. At 100% opacity, covered graphite pixels must fully replace the color below while paper-tooth gaps remain untouched.
 5. Lift the pen while watching the final segment. Check for gap, flash, doubled opacity, width jump, texture jump, or color shift.
-6. With Airbrush, draw fast and slow passes and cross the same area. It should show an irregular sparse pigment halo and denser core without circular stamp outlines; slow passes should deposit more color.
+6. With Airbrush, draw fast and slow passes and cross the same area. It should have a smooth soft-edged falloff with no visible particles, rings, or circular stamp outlines. At 100% opacity its center must fully replace the color below while only the feathered edge remains translucent. Raise hardness and confirm that the feathered region contracts toward a solid disk; lower overall opacity for lighter buildup.
 7. Repeat Pencil and Airbrush at 100%, 1200%, and after camera rotation. The final mark must stay in document coordinates, preserve canvas-pixel resolution, and show no tile-boundary clipping.
 8. Erase across marks on multiple layers. Lower layers should be revealed during the gesture, with no visual change at pen-up; canceling a stroke should restore it.
 9. Resize an image with two fingers, lift either finger, pause, then continue dragging with the remaining finger. The image must stay in place at the handoff and resume smoothly after the drag threshold.

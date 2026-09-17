@@ -20,7 +20,9 @@ class BrushVisualInstrumentedTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val output = File(requireNotNull(context.getExternalFilesDir(null)), "brush-qa").apply { mkdirs() }
         listOf(BrushPreset.Pencil, BrushPreset.Airbrush).forEach { preset ->
-            val bitmap = BrushVisualHarness.render(preset)
+            // Render the exact 100% setting as well as pressure variation so opacity regressions
+            // cannot hide behind a deliberately light built-in default.
+            val bitmap = BrushVisualHarness.render(preset.copy(opacity = 1f))
             val metrics = metrics(bitmap)
             val file = File(output, "${preset.id.value}.png")
             file.outputStream().use { stream -> check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) }
@@ -32,6 +34,7 @@ class BrushVisualInstrumentedTest {
             val minimumDarkness = if (preset.engine == BrushEngine.AIRBRUSH) 500_000L else 1_000_000L
             assertTrue("${preset.displayName} rendered too little final coverage: $metrics", metrics.changedPixels > minimumChanged)
             assertTrue("${preset.displayName} final output is too faint: $metrics", metrics.darkness > minimumDarkness)
+            assertTrue("${preset.displayName} has no fully covering pixels at 100% opacity: $metrics", metrics.darkest <= 35)
             bitmap.recycle()
         }
     }
@@ -41,13 +44,16 @@ class BrushVisualInstrumentedTest {
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         var changed = 0
         var darkness = 0L
+        var darkest = 255
         pixels.forEach { pixel ->
-            val amount = 255 - ((Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3)
+            val brightness = (Color.red(pixel) + Color.green(pixel) + Color.blue(pixel)) / 3
+            val amount = 255 - brightness
             if (amount > 1) changed++
             darkness += amount
+            darkest = minOf(darkest, brightness)
         }
-        return Metrics(changed, darkness)
+        return Metrics(changed, darkness, darkest)
     }
 
-    private data class Metrics(val changedPixels: Int, val darkness: Long)
+    private data class Metrics(val changedPixels: Int, val darkness: Long, val darkest: Int)
 }

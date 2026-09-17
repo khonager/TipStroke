@@ -35,15 +35,16 @@ data class BrushPreset(
     companion object {
         const val CURRENT_SCHEMA_VERSION = 2
         val Pencil = BrushPreset(id = BrushId("pencil-v1"), displayName = "Pencil", engine = BrushEngine.PENCIL,
-            baseSizePx = 14f, opacity = .68f, hardness = .72f, spacing = .12f, stabilization = .22f,
-            pressureToSize = PressureCurve(.2f, 1f, .8f), pressureToOpacity = PressureCurve(.25f, 1f, .65f),
-            speedTaper = .38f)
+            baseSizePx = 9f, opacity = .82f, hardness = .72f, spacing = .09f, stabilization = .24f,
+            pressureToSize = PressureCurve(.14f, 1f, .72f), pressureToOpacity = PressureCurve(.2f, 1f, .62f),
+            speedTaper = .24f)
         val Ink = BrushPreset(id = BrushId("ink-v1"), displayName = "Ink", engine = BrushEngine.INK,
-            baseSizePx = 28f, opacity = 1f, hardness = 1f, spacing = .08f, stabilization = .16f,
-            pressureToSize = PressureCurve(.12f, 1f, .62f), pressureToOpacity = PressureCurve(.8f, 1f, 1f))
+            baseSizePx = 18f, opacity = 1f, hardness = 1f, spacing = .06f, stabilization = .2f,
+            pressureToSize = PressureCurve(.09f, 1f, .58f), pressureToOpacity = PressureCurve(.86f, 1f, 1f),
+            speedTaper = .12f)
         val Airbrush = BrushPreset(id = BrushId("airbrush-v1"), displayName = "Airbrush", engine = BrushEngine.AIRBRUSH,
-            baseSizePx = 84f, opacity = .24f, hardness = .08f, spacing = .1f, stabilization = .1f,
-            pressureToSize = PressureCurve(.55f, 1f, .9f), pressureToOpacity = PressureCurve(.12f, 1f, .8f))
+            baseSizePx = 96f, opacity = .28f, hardness = .06f, spacing = .08f, stabilization = .1f,
+            pressureToSize = PressureCurve(.48f, 1f, .9f), pressureToOpacity = PressureCurve(.26f, 1f, .78f))
         val builtIns = listOf(Pencil, Ink, Airbrush)
     }
 }
