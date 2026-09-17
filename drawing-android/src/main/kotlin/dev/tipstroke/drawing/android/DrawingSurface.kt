@@ -321,6 +321,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                             rasterView.invalidate()
                             notifyHistory()
                             notifyVisiblePalette()
+                            notifyLayers()
                         } else if (airbrushPreviewStyle != null) {
                             target.store.commit(CompletedStroke(samples, style))
                             rasterView.previewStroke = null
@@ -328,6 +329,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                             notifyHistory()
                             drawnColorListener?.invoke(style.color)
                             notifyVisiblePalette()
+                            notifyLayers()
                         } else finishedSamples += PendingCommit(CompletedStroke(samples, style), target)
                     }
                 }
