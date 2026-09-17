@@ -40,7 +40,7 @@ data class BrushPreset(
             speedTaper = .24f)
         val Ink = BrushPreset(id = BrushId("ink-v1"), displayName = "Ink", engine = BrushEngine.INK,
             baseSizePx = 18f, opacity = 1f, hardness = 1f, spacing = .06f, stabilization = .2f,
-            pressureToSize = PressureCurve(.09f, 1f, .58f), pressureToOpacity = PressureCurve(.86f, 1f, 1f),
+            pressureToSize = PressureCurve(.09f, 1f, .58f), pressureToOpacity = PressureCurve(.3f, 1f, .78f),
             speedTaper = .12f)
         val Airbrush = BrushPreset(id = BrushId("airbrush-v1"), displayName = "Airbrush", engine = BrushEngine.AIRBRUSH,
             baseSizePx = 96f, opacity = .28f, hardness = .06f, spacing = .08f, stabilization = .1f,
