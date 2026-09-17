@@ -444,8 +444,14 @@ internal class LayerStack(
     private fun renderPreview(layer: CanvasLayerRuntime, sizePx: Int): Bitmap {
         val preview = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(preview)
-        val scale = minOf(sizePx.toFloat() / canvasWidth, sizePx.toFloat() / canvasHeight)
-        canvas.translate((sizePx - canvasWidth * scale) / 2f, (sizePx - canvasHeight * scale) / 2f)
+        val contentBounds = when (layer) {
+            is RasterLayerRuntime -> layer.tiles.contentBounds()
+            is ImageLayerRuntime -> imageDocumentBounds(layer)
+        } ?: return preview
+        val contentWidth = contentBounds.width().coerceAtLeast(1f)
+        val contentHeight = contentBounds.height().coerceAtLeast(1f)
+        val scale = minOf(sizePx * .82f / contentWidth, sizePx * .82f / contentHeight)
+        canvas.translate(sizePx / 2f - contentBounds.centerX() * scale, sizePx / 2f - contentBounds.centerY() * scale)
         canvas.scale(scale, scale)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         when (layer) {
@@ -479,6 +485,20 @@ internal class LayerStack(
             }
         }
         return preview
+    }
+
+    private fun imageDocumentBounds(layer: ImageLayerRuntime): RectF {
+        val width = layer.source.width * layer.transform.scale
+        val height = layer.source.height * layer.transform.scale
+        val radians = Math.toRadians(layer.transform.rotationDegrees.toDouble())
+        val rotatedWidth = kotlin.math.abs(cos(radians)) * width + kotlin.math.abs(sin(radians)) * height
+        val rotatedHeight = kotlin.math.abs(sin(radians)) * width + kotlin.math.abs(cos(radians)) * height
+        return RectF(
+            layer.transform.centerX - rotatedWidth.toFloat() / 2f,
+            layer.transform.centerY - rotatedHeight.toFloat() / 2f,
+            layer.transform.centerX + rotatedWidth.toFloat() / 2f,
+            layer.transform.centerY + rotatedHeight.toFloat() / 2f,
+        )
     }
 
     fun imagePointFromDocument(image: ImageLayerRuntime, point: android.graphics.PointF): android.graphics.PointF {

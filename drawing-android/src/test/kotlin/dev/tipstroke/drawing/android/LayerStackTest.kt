@@ -50,6 +50,22 @@ class LayerStackTest {
         assertEquals(Color.BLUE, original.tiles.colorAt(200, 210))
     }
 
+    @Test fun layerPreviewFitsSparseContentInsteadOfTheWholeCanvas() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 2048, 2048) {}
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {
+            for (y in 100 until 110) for (x in 120 until 130) setPixel(x, y, Color.RED)
+        }
+        stack.selectedRaster()!!.tiles.replaceTiles(mapOf(TileCoordinate(4, 3) to tile))
+
+        val preview = stack.previewsFrontToBack(96).getValue(stack.selectedId)
+        val opaquePixels = IntArray(preview.width * preview.height).also {
+            preview.getPixels(it, 0, preview.width, 0, 0, preview.width, preview.height)
+        }.count { Color.alpha(it) > 0 }
+
+        assertTrue("opaquePixels=$opaquePixels", opaquePixels > 2_000)
+        preview.recycle()
+    }
+
     @Test fun layersCanBeAddedToAndRemovedFromSelection() {
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 2048, 2048) {}
         val first = stack.selectedId

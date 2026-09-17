@@ -17,7 +17,14 @@ class TileStore(
 ) : StrokeRasterizer {
     private val tiles = mutableMapOf<TileCoordinate, Bitmap>()
     val history = UndoHistory(historyBudgetBytes)
-    var lastDirtyTiles: Set<TileCoordinate> = emptySet(); private set
+    private val tileContentBounds = mutableMapOf<TileCoordinate, Rect>()
+    private val dirtyContentBoundsTiles = mutableSetOf<TileCoordinate>()
+    private var contentBoundsInitialized = false
+    var lastDirtyTiles: Set<TileCoordinate> = emptySet()
+        private set(value) {
+            field = value
+            dirtyContentBoundsTiles += value
+        }
     val allocatedTileCount get() = tiles.size
     val allocatedTileBytes: Long get() = allocatedTileCount.toLong() * tileSize * tileSize * 4L
     private var smudgeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
@@ -146,6 +153,61 @@ class TileStore(
 
     internal fun snapshotColorUsage(): Map<Int, Long> = colorUsage.toMap()
 
+    internal fun contentBounds(): RectF? {
+        if (!contentBoundsInitialized) {
+            dirtyContentBoundsTiles += tiles.keys
+            contentBoundsInitialized = true
+        }
+        dirtyContentBoundsTiles.forEach { coordinate ->
+            val bitmap = tiles[coordinate]
+            val localBounds = bitmap?.let(::opaqueBounds)
+            if (localBounds == null) tileContentBounds.remove(coordinate)
+            else tileContentBounds[coordinate] = Rect(
+                coordinate.x * tileSize + localBounds.left,
+                coordinate.y * tileSize + localBounds.top,
+                coordinate.x * tileSize + localBounds.right,
+                coordinate.y * tileSize + localBounds.bottom,
+            )
+        }
+        dirtyContentBoundsTiles.clear()
+        if (tileContentBounds.isEmpty()) return null
+        var left = canvasWidth
+        var top = canvasHeight
+        var right = 0
+        var bottom = 0
+        tileContentBounds.values.forEach { bounds ->
+            left = minOf(left, bounds.left)
+            top = minOf(top, bounds.top)
+            right = maxOf(right, bounds.right)
+            bottom = maxOf(bottom, bounds.bottom)
+        }
+        return RectF(
+            left.coerceIn(0, canvasWidth).toFloat(),
+            top.coerceIn(0, canvasHeight).toFloat(),
+            right.coerceIn(0, canvasWidth).toFloat(),
+            bottom.coerceIn(0, canvasHeight).toFloat(),
+        )
+    }
+
+    private fun opaqueBounds(bitmap: Bitmap): Rect? {
+        var left = bitmap.width
+        var top = bitmap.height
+        var right = 0
+        var bottom = 0
+        val row = IntArray(bitmap.width)
+        for (y in 0 until bitmap.height) {
+            bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+            for (x in 0 until bitmap.width) {
+                if (Color.alpha(row[x]) == 0) continue
+                left = minOf(left, x)
+                top = minOf(top, y)
+                right = maxOf(right, x + 1)
+                bottom = maxOf(bottom, y + 1)
+            }
+        }
+        return if (right > left && bottom > top) Rect(left, top, right, bottom) else null
+    }
+
     internal fun replaceColorUsage(replacement: Map<Int, Long>) {
         colorUsage.clear()
         replacement.filterValues { it > 0L }.forEach { (argb, weight) -> colorUsage[argb] = weight }
@@ -155,6 +217,9 @@ class TileStore(
         tiles.values.forEach(Bitmap::recycle)
         tiles.clear()
         tiles.putAll(replacement)
+        tileContentBounds.clear()
+        dirtyContentBoundsTiles.clear()
+        contentBoundsInitialized = false
         lastDirtyTiles = replacement.keys
         history.clear()
     }
