@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
 import androidx.ink.authoring.InProgressStrokeId
@@ -29,6 +30,27 @@ import kotlin.math.*
 enum class SelectionTool { RECTANGLE, LASSO }
 
 internal fun galleryQuarterTurns(rotationDegrees: Float): Int = (rotationDegrees / 90f).roundToInt().mod(4)
+
+internal fun normalizedPencilInkSamples(samples: List<StrokeSample>): List<StrokeSample> {
+    var previousMillis = -1L
+    return samples.mapNotNull { sample ->
+        if (!sample.position.x.isFinite() || !sample.position.y.isFinite()) return@mapNotNull null
+        val elapsedMillis = maxOf(sample.elapsedNanos / 1_000_000L, previousMillis + 1L)
+        previousMillis = elapsedMillis
+        val pressure = sample.pressure.takeIf(Float::isFinite)?.coerceIn(.01f, 1f) ?: .5f
+        val tilt = sample.tiltRadians.takeIf(Float::isFinite)?.coerceIn(0f, (Math.PI / 2).toFloat()) ?: 0f
+        val orientation = sample.orientationRadians.takeIf(Float::isFinite)?.let {
+            atan2(sin(it), cos(it))
+        } ?: 0f
+        sample.copy(
+            pressure = pressure,
+            opacityPressure = sample.opacityPressure.takeIf(Float::isFinite)?.coerceIn(.01f, 1f) ?: pressure,
+            tiltRadians = tilt,
+            orientationRadians = orientation,
+            elapsedNanos = elapsedMillis * 1_000_000L,
+        )
+    }
+}
 
 @OptIn(androidx.ink.brush.ExperimentalInkCustomBrushApi::class)
 class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.util.AttributeSet? = null) : FrameLayout(context, attrs) {
@@ -132,7 +154,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     finishedPencil = finishedPencil || stroke.style.brush.engine == BrushEngine.PENCIL
                     if (stroke.style.blend == BlendBehavior.PAINT) {
                         val rasterStroke = if (stroke.style.brush.engine == BrushEngine.PENCIL) {
-                            createPencilStroke(stroke)
+                            runCatching { createPencilStroke(stroke) }.getOrElse { failure ->
+                                Log.e("TipStroke", "Could not rebuild Pencil inputs; using authored Ink stroke", failure)
+                                Stroke(createInkBrush(stroke.style, includePressureOpacity = false), inkStroke.inputs)
+                            }
                         } else if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
                             Stroke(createInkBrush(stroke.style, includePressureOpacity = false), inkStroke.inputs)
                         } else inkStroke
@@ -820,9 +845,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun createPencilStroke(stroke: CompletedStroke): Stroke {
+        val normalizedSamples = normalizedPencilInkSamples(stroke.samples)
+        require(normalizedSamples.isNotEmpty()) { "Pencil stroke has no finite samples" }
         val inputs = MutableStrokeInputBatch().apply {
             setNoiseSeed(0x51A7)
-            stroke.samples.forEach { sample ->
+            normalizedSamples.forEach { sample ->
                 add(
                     InputToolType.STYLUS,
                     sample.position.x,

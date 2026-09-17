@@ -2,8 +2,12 @@ package dev.tipstroke.drawing.android
 
 import android.view.MotionEvent
 import android.view.View
+import dev.tipstroke.core.drawing.PointerKind
+import dev.tipstroke.core.drawing.StrokeSample
+import dev.tipstroke.core.geometry.Point
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
@@ -13,6 +17,24 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class DrawingSurfaceGestureTest {
+    @Test fun pencilInkSamplesAreSafeForNativeBatchValidation() {
+        val samples = listOf(
+            StrokeSample(0, Point(10f, 20f), Float.NaN, Float.NaN, Float.NaN, 0L, 0, PointerKind.STYLUS),
+            StrokeSample(0, Point(11f, 21f), 2f, 2f, 8f, 0L, 0, PointerKind.STYLUS),
+            StrokeSample(0, Point(Float.NaN, 22f), 1f, 0f, 0f, 0L, 0, PointerKind.STYLUS),
+        )
+
+        val normalized = normalizedPencilInkSamples(samples)
+
+        assertEquals(2, normalized.size)
+        assertEquals(0L, normalized[0].elapsedNanos)
+        assertEquals(1_000_000L, normalized[1].elapsedNanos)
+        assertEquals(.5f, normalized[0].pressure, .001f)
+        assertEquals(1f, normalized[1].pressure, .001f)
+        assertEquals((Math.PI / 2).toFloat(), normalized[1].tiltRadians, .001f)
+        assertTrue(normalized.all { it.orientationRadians.isFinite() })
+    }
+
     @Test fun galleryOrientationSnapsToTheNearestQuarterTurn() {
         assertEquals(0, galleryQuarterTurns(44f))
         assertEquals(1, galleryQuarterTurns(46f))
