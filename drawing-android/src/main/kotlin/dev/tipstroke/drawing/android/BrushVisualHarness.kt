@@ -11,7 +11,15 @@ import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.ink.strokes.MutableStrokeInputBatch
 import androidx.ink.strokes.Stroke
 import androidx.ink.strokes.StrokeInput
+import dev.tipstroke.core.drawing.CompletedStroke
+import dev.tipstroke.core.drawing.PointerKind
+import dev.tipstroke.core.drawing.StrokeSample
+import dev.tipstroke.core.drawing.StrokeStyle
+import dev.tipstroke.core.geometry.Point
+import dev.tipstroke.core.model.BlendBehavior
+import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.RgbaColor
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -49,6 +57,39 @@ internal object BrushVisualHarness {
         tilt: Float,
         orientation: Float,
     ) {
+        val samples = List(121) { index ->
+            val progress = index / 120f
+            val pressure = .08f + (endPressure - .08f) * progress
+            StrokeSample(
+                pointerId = 0,
+                position = Point(
+                    60f + progress * (WIDTH - 120f),
+                    centerY + sin(progress * PI.toFloat() * 4f) * 24f,
+                ),
+                pressure = pressure,
+                tiltRadians = tilt,
+                orientationRadians = orientation,
+                elapsedNanos = index * 8_000_000L,
+                buttonState = 0,
+                kind = PointerKind.STYLUS,
+            )
+        }
+        if (preset.engine == BrushEngine.AIRBRUSH) {
+            StrokeCanvasPainter.draw(
+                canvas,
+                CompletedStroke(
+                    samples,
+                    StrokeStyle(
+                        preset,
+                        preset.baseSizePx,
+                        preset.opacity,
+                        RgbaColor(28f / 255f, 30f / 255f, 34f / 255f),
+                        BlendBehavior.PAINT,
+                    ),
+                ),
+            )
+            return
+        }
         val brush = Brush.createWithColorIntArgb(
             families.familyFor(preset),
             Color.argb((preset.opacity * 255).toInt().coerceIn(1, 255), 28, 30, 34),
@@ -57,20 +98,16 @@ internal object BrushVisualHarness {
         )
         val inputs = MutableStrokeInputBatch().apply {
             setNoiseSeed(0x51A7)
-            repeat(121) { index ->
-                val progress = index / 120f
-                val pressure = .08f + (endPressure - .08f) * progress
-                val x = 60f + progress * (WIDTH - 120f)
-                val y = centerY + sin(progress * PI.toFloat() * 4f) * 24f
+            samples.forEach { sample ->
                 add(
                     InputToolType.STYLUS,
-                    x,
-                    y,
-                    index * 8L,
+                    sample.position.x,
+                    sample.position.y,
+                    sample.elapsedNanos / 1_000_000L,
                     StrokeInput.NO_STROKE_UNIT_LENGTH,
-                    pressure,
-                    tilt,
-                    orientation,
+                    sample.pressure,
+                    sample.tiltRadians,
+                    sample.orientationRadians,
                 )
             }
         }

@@ -1,14 +1,14 @@
 # Performance
 
-The latency budget belongs to stylus sampling and wet rendering. `MotionEvent`s go directly to the native drawing surface—Jetpack Ink for Pencil, Ink, and Airbrush, and sparse tile transactions for erasing. Compose sees only occasional diagnostics/control state.
+The latency budget belongs to stylus sampling and wet rendering. `MotionEvent`s go directly to the native drawing surface—Jetpack Ink for Pencil and Ink, a native raster preview for Airbrush, and sparse tile transactions for erasing. Compose sees only occasional diagnostics/control state.
 
-The old Airbrush replayed blurred circle segments into tiles while drawing. That avoided full-stroke replay but still issued many Canvas blur operations and produced overlapping edge bands. The soft Airbrush now stays in Ink's native wet path and commits its finished nested-coat mesh once into intersecting tiles. Erasing alone uses incremental sparse-tile transactions: each update rasterizes only its new segment and schedules invalidation for that document region. Tile compositing rejects tiles outside the current canvas clip.
+The old Airbrush approaches either replayed individually blurred segments, producing darker input-sample bands, or stacked native Ink coats, producing concentric outlines. The soft Airbrush now rebuilds only its current in-memory preview silhouette as samples arrive, applies one native blur to that union, and touches no permanent pixels before pen-up. Commit draws the same silhouette only into intersecting sparse tiles. Erasing uses incremental sparse-tile transactions: each update rasterizes only its new segment and schedules invalidation for that document region. Tile compositing rejects tiles outside the current canvas clip.
 
 Current safeguards:
 
 - Ink is eagerly initialized before the first stroke.
-- Procedural brush textures are generated once per drawing surface; custom families are cached in a 32-entry LRU keyed by effective tuning.
-- Airbrush uses ten simple continuous native coats (the alpha08 native maximum) instead of emitting thousands of individual particle quads or running a blur per sample, and tessellation tolerances stay below one screen pixel at the 1200% zoom limit without generating invisible subpixel geometry.
+- The procedural Pencil texture is generated once per drawing surface; custom Ink families are cached in a 32-entry LRU keyed by effective tuning.
+- Airbrush holds only the current sample list and unified preview path while drawing; it neither copies full layers nor mutates or redraws permanent tiles per sample.
 - Unbuffered stylus dispatch and motion prediction are requested.
 - Canvas pixels use sparse 256×256 tiles; only intersecting tiles allocate and redraw.
 - Undo snapshots cover affected tiles only and have a 96 MiB configurable budget.

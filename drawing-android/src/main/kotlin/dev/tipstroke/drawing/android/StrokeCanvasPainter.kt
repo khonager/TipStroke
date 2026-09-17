@@ -4,10 +4,12 @@ import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import dev.tipstroke.core.drawing.CompletedStroke
 import dev.tipstroke.core.drawing.StrokeSample
+import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.RgbaColor
@@ -21,7 +23,7 @@ internal object StrokeCanvasPainter {
             strokeJoin = Paint.Join.ROUND
             style = Paint.Style.STROKE
             color = stroke.style.color.toArgb()
-            alpha = (stroke.style.opacity.coerceIn(0f, 1f) * 255).roundToInt()
+            alpha = (stroke.style.opacity.coerceIn(0f, 1f) * stroke.style.color.alpha * 255).roundToInt()
             xfermode = if (stroke.style.blend == BlendBehavior.ERASE) PorterDuffXfermode(PorterDuff.Mode.CLEAR) else null
             val soften = when {
                 stroke.style.blend == BlendBehavior.ERASE -> 1f - stroke.style.brush.hardness
@@ -37,6 +39,11 @@ internal object StrokeCanvasPainter {
         val saveCount = canvas.save()
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
         val samples = stroke.samples
+        if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine == BrushEngine.AIRBRUSH) {
+            drawUnifiedAirbrushMask(canvas, stroke, paint)
+            canvas.restoreToCount(saveCount)
+            return
+        }
         if (samples.size == 1) {
             val sample = samples.first()
             paint.style = Paint.Style.FILL
@@ -47,11 +54,61 @@ internal object StrokeCanvasPainter {
                 val current = samples[index]
                 val pressureSize = (previous.pressureSize(stroke) + current.pressureSize(stroke)) / 2f
                 paint.strokeWidth = stroke.style.sizePx * pressureSize * current.speedSize(stroke, previous)
-                paint.alpha = (stroke.style.opacity * current.pressureOpacity(stroke) * 255).roundToInt().coerceIn(0, 255)
+                paint.alpha = (stroke.style.opacity * stroke.style.color.alpha * current.pressureOpacity(stroke) * 255)
+                    .roundToInt().coerceIn(0, 255)
                 canvas.drawLine(previous.position.x, previous.position.y, current.position.x, current.position.y, paint)
             }
         }
         canvas.restoreToCount(saveCount)
+    }
+
+    /** Builds one filled variable-width silhouette, then applies the blur to that union once. */
+    private fun drawUnifiedAirbrushMask(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
+        val samples = stroke.samples
+        if (samples.size == 1) {
+            val sample = samples.first()
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(
+                sample.position.x,
+                sample.position.y,
+                stroke.style.sizePx * sample.pressureSize(stroke) / 2f,
+                paint,
+            )
+            return
+        }
+        val radii = samples.mapIndexed { index, sample ->
+            val speedScale = if (index == 0) 1f else sample.speedSize(stroke, samples[index - 1])
+            stroke.style.sizePx * sample.pressureSize(stroke) * speedScale / 2f
+        }
+        val normals = samples.indices.map { index ->
+            val before = samples[(index - 1).coerceAtLeast(0)].position
+            val after = samples[(index + 1).coerceAtMost(samples.lastIndex)].position
+            val dx = after.x - before.x
+            val dy = after.y - before.y
+            val length = kotlin.math.hypot(dx, dy).coerceAtLeast(.0001f)
+            Point(-dy / length, dx / length)
+        }
+        val path = Path().apply {
+            val first = samples.first().position
+            moveTo(first.x + normals.first().x * radii.first(), first.y + normals.first().y * radii.first())
+            for (index in 1..samples.lastIndex) {
+                val point = samples[index].position
+                lineTo(point.x + normals[index].x * radii[index], point.y + normals[index].y * radii[index])
+            }
+            for (index in samples.lastIndex downTo 0) {
+                val point = samples[index].position
+                lineTo(point.x - normals[index].x * radii[index], point.y - normals[index].y * radii[index])
+            }
+            close()
+            // Match the ribbon winding so the caps union with it instead of punching out their
+            // overlapping halves and leaving detached semicircles.
+            addCircle(samples.first().position.x, samples.first().position.y, radii.first(), Path.Direction.CCW)
+            addCircle(samples.last().position.x, samples.last().position.y, radii.last(), Path.Direction.CCW)
+        }
+        paint.style = Paint.Style.FILL
+        paint.alpha = (stroke.style.opacity.coerceIn(0f, 1f) * stroke.style.color.alpha * 255)
+            .roundToInt().coerceIn(0, 255)
+        canvas.drawPath(path, paint)
     }
 
     private fun StrokeSample.pressureSize(stroke: CompletedStroke) = stroke.style.brush.pressureToSize.map(pressure)

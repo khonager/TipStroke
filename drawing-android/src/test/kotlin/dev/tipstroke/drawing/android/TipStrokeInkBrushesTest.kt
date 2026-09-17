@@ -1,6 +1,16 @@
 package dev.tipstroke.drawing.android
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import dev.tipstroke.core.drawing.CompletedStroke
+import dev.tipstroke.core.drawing.PointerKind
+import dev.tipstroke.core.drawing.StrokeSample
+import dev.tipstroke.core.drawing.StrokeStyle
+import dev.tipstroke.core.geometry.Point
+import dev.tipstroke.core.model.BlendBehavior
+import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.RgbaColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,26 +37,43 @@ class TipStrokeInkBrushesTest {
         bitmap.recycle()
     }
 
-    @Test fun softAirbrushProfileIsFeatheredAndHardnessCollapsesTheFalloff() {
-        val soft = TipStrokeInkBrushes.softAirbrushProfile(0f)
-        val hard = TipStrokeInkBrushes.softAirbrushProfile(1f)
-        assertEquals(10, soft.size)
-        assertEquals(1f, soft.first().scale)
-        assertTrue(soft.zipWithNext().all { (outer, inner) -> outer.scale > inner.scale })
-        assertTrue(soft.first().opacity < soft.last().opacity)
-        assertEquals(1f, soft.last().opacity)
-        val compositedOpacity = 1f - soft.fold(1f) { remaining, coat -> remaining * (1f - coat.opacity) }
-        assertEquals(1f, compositedOpacity, .0001f)
-        assertTrue(hard.all { it.scale == 1f })
-        assertEquals(soft.sumOf { it.opacity.toDouble() }, hard.sumOf { it.opacity.toDouble() }, .0001)
-    }
-
-    @Test fun airbrushCoatOpacityTextureIsUniformAndRendererSafe() {
-        val bitmap = TipStrokeInkBrushes.uniformAlphaTexture(.16f)
-        val pixels = IntArray(bitmap.width * bitmap.height)
-        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        assertEquals(4, bitmap.width)
-        assertTrue(pixels.all { Color.alpha(it) == 40 })
+    @Test fun softAirbrushRasterPathHasOneContinuousFalloff() {
+        val bitmap = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        val samples = (0..20).map { index ->
+            StrokeSample(
+                0,
+                Point(48f + index * 8f, 128f),
+                1f,
+                0f,
+                0f,
+                index * 8_000_000L,
+                0,
+                PointerKind.STYLUS,
+            )
+        }
+        StrokeCanvasPainter.draw(
+            Canvas(bitmap),
+            CompletedStroke(
+                samples,
+                StrokeStyle(
+                    BrushPreset.Airbrush.copy(hardness = 0f),
+                    64f,
+                    1f,
+                    RgbaColor(0f, 0f, 0f),
+                    BlendBehavior.PAINT,
+                ),
+            ),
+        )
+        val falloff = (0..128).map { y -> Color.alpha(bitmap.getPixel(128, y)) }
+        assertEquals(256, bitmap.width)
+        assertEquals(256, bitmap.height)
+        assertTrue(falloff.zipWithNext().all { (outer, inner) -> outer <= inner })
+        assertEquals(0, falloff.first())
+        assertTrue(falloff.last() >= 245)
+        assertTrue(falloff.toSet().size > 20)
+        val centerline = (80..176).map { x -> Color.alpha(bitmap.getPixel(x, 128)) }
+        assertTrue(centerline.max() - centerline.min() <= 2)
+        writeReviewTexture("airbrush-falloff.png", bitmap)
         bitmap.recycle()
     }
 

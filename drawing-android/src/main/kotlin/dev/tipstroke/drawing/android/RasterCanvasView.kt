@@ -3,6 +3,7 @@ package dev.tipstroke.drawing.android
 import android.content.Context
 import android.graphics.*
 import android.view.View
+import dev.tipstroke.core.drawing.CompletedStroke
 import dev.tipstroke.core.geometry.CanvasTransform
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.geometry.TileGrid
@@ -30,6 +31,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         set(value) { field = value; invalidate() }
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
+    var previewStroke: CompletedStroke? = null
+        set(value) { field = value; postInvalidateOnAnimation() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
 
     fun updateTransform(panX: Float, panY: Float, scale: Float, rotation: Float) {
@@ -93,6 +96,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                 }
             }
         }
+        previewStroke?.let { StrokeCanvasPainter.draw(canvas, it) }
         if (showImageTransformBounds) drawSelectedImageBounds(canvas)
         drawSelection(canvas)
         bitmapPaint.alpha = 255

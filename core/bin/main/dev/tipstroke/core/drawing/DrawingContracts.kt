@@ -37,7 +37,7 @@ data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeSty
         // can never be clipped at a sparse-tile boundary.
         val radius = style.sizePx * when (style.brush.engine) {
             BrushEngine.PENCIL -> 1.35f
-            BrushEngine.AIRBRUSH -> .85f
+            BrushEngine.AIRBRUSH -> 1.35f
             BrushEngine.INK -> .55f
         }
         Rect(samples.minOf { it.position.x }, samples.minOf { it.position.y },

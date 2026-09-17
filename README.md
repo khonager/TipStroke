@@ -46,7 +46,7 @@ Tap **Select**, choose **Lasso** or **Rectangle**, and draw with a finger or sty
 
 Stylus side buttons are configurable in Settings. By default, the primary button switches between the current brush and eraser, and the secondary button undoes. TipStroke accepts standard Android stylus events plus the Page Up/Page Down key events reported by Xiaomi Smart Pen 2 on Pad 6; short presses are intended because the system may reserve Xiaomi long-press shortcuts.
 
-Pencil, Ink, and Airbrush use TipStroke-owned Jetpack Ink 1.1 custom families. Pencil combines pressure, tilt, barrel orientation, speed taper, and clustered procedural paper tooth; Ink uses a smooth pressure nib with pointed entry and exit tapers; and Airbrush layers continuous translucent coats into a soft radial falloff instead of spraying particles or replaying blurred circles. Every brush uses the same family for the wet stroke and final sparse-tile rasterization.
+Pencil and Ink use TipStroke-owned Jetpack Ink 1.1 custom families. Pencil combines pressure, tilt, barrel orientation, speed taper, and clustered procedural paper tooth; Ink uses a smooth pressure nib with pointed entry and exit tapers. Airbrush joins its pressure-sized samples into one native raster silhouette and blurs that mask once, matching the soft eraser technique without stacked translucent outlines. Its wet preview and sparse-tile commit share the same painter.
 
 ## Gallery, export, and gestures
 

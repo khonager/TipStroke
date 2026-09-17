@@ -16,9 +16,6 @@ import kotlin.random.Random
 internal class TipStrokeInkBrushes {
     private val textures = buildMap {
         put(PENCIL_GRAIN_TEXTURE, pencilGrainTexture())
-        softAirbrushProfile(0f).forEachIndexed { index, coat ->
-            put(airbrushOpacityTextureId(index), uniformAlphaTexture(coat.opacity))
-        }
     }
     val textureStore = object : TextureBitmapStore {
         override fun get(clientTextureId: String): Bitmap? = textures[clientTextureId]
@@ -41,7 +38,6 @@ internal class TipStrokeInkBrushes {
     fun prewarm() {
         familyFor(BrushPreset.Pencil)
         familyFor(BrushPreset.Ink)
-        familyFor(BrushPreset.Airbrush)
     }
 
     private fun pencilFamily(preset: BrushPreset): BrushFamily {
@@ -129,43 +125,21 @@ internal class TipStrokeInkBrushes {
 
     private fun airbrushFamily(preset: BrushPreset): BrushFamily {
         val pressure = eased(SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f))
-        val speed = eased(SourceNode(SourceNode.Source.SPEED_IN_MULTIPLES_OF_BRUSH_SIZE_PER_SECOND, 0f, 12f))
-        val behaviors = buildList {
-            add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, pressure))
-            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, pressure))
-            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, .38f, speed))
-            if (preset.speedTaper > 0f) {
-                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, 1f - preset.speedTaper * .5f, speed))
-            }
-        }
-        fun coat(index: Int, profile: AirbrushCoat) = BrushCoat(
-            BrushTip.builder()
-                .setScaleX(profile.scale)
-                .setScaleY(profile.scale)
-                .setCornerRounding(1f)
-                .setBehaviors(behaviors.map(::BrushBehavior))
-                .build(),
-            BrushPaint(
-                listOf(BrushPaint.TilingTexture.builder()
-                    .setClientTextureId(airbrushOpacityTextureId(index))
-                    .setSizeX(1f)
-                    .setSizeY(1f)
-                    .setSizeUnit(BrushPaint.TextureLayer.SizeUnit.BRUSH_SIZE)
-                    .setOrigin(BrushPaint.TilingTexture.Origin.STROKE_SPACE_ORIGIN)
-                    .setWrapX(BrushPaint.TextureLayer.Wrap.REPEAT)
-                    .setWrapY(BrushPaint.TextureLayer.Wrap.REPEAT)
-                    .setBlendMode(BrushPaint.TextureLayer.BlendMode.MODULATE)
-                    .build()),
-                emptyList(),
-                // Together, these continuous silhouettes approximate a Gaussian falloff
-                // without particle noise or repeated stamp outlines. The alpha is in a
-                // texture because DISCARD's path renderer ignores color functions.
-                SelfOverlap.DISCARD,
-            ),
-        )
+        val tip = BrushTip.builder()
+            .setScaleX(1f)
+            .setScaleY(1f)
+            .setCornerRounding(1f)
+            .setBehaviors(listOf(BrushBehavior(mapped(
+                TargetNode.Target.SIZE_MULTIPLIER,
+                preset.pressureToSize.start,
+                preset.pressureToSize.end,
+                pressure,
+            ))))
+            .build()
         return family(
-            "Smooth Gaussian-style airbrush with hardness-controlled edge falloff.",
-            softAirbrushProfile(preset.hardness).mapIndexed(::coat),
+            "Solid fallback tip; production Airbrush uses the native raster blur path.",
+            tip,
+            BrushPaint(emptyList(), emptyList(), SelfOverlap.DISCARD),
             7L,
         )
     }
@@ -187,34 +161,6 @@ internal class TipStrokeInkBrushes {
 
     companion object {
         const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v3"
-        private const val AIRBRUSH_OPACITY_TEXTURE_PREFIX = "dev.tipstroke.texture.airbrush-opacity.v1"
-
-        internal data class AirbrushCoat(val scale: Float, val opacity: Float)
-
-        /** Nested translucent disks approximate a soft radial falloff using native Ink meshes. */
-        internal fun softAirbrushProfile(hardness: Float): List<AirbrushCoat> {
-            val clampedHardness = hardness.coerceIn(0f, 1f)
-            // Jetpack Ink 1.1.0-alpha08 rejects BrushFamily instances with over ten coats.
-            val softScales = floatArrayOf(1f, .89f, .79f, .69f, .59f, .49f, .4f, .31f, .23f, .15f)
-            // A fully opaque core means the 100% opacity setting really covers underlying
-            // color. The progressively lighter outer coats retain the soft feathered edge.
-            val opacities = floatArrayOf(.025f, .04f, .055f, .075f, .1f, .13f, .16f, .2f, .24f, 1f)
-            return softScales.indices.map { index ->
-                AirbrushCoat(
-                    scale = softScales[index] + (1f - softScales[index]) * clampedHardness,
-                    opacity = opacities[index],
-                )
-            }
-        }
-
-        internal fun airbrushOpacityTextureId(index: Int) = "$AIRBRUSH_OPACITY_TEXTURE_PREFIX.$index"
-
-        internal fun uniformAlphaTexture(opacity: Float): Bitmap {
-            val alpha = (opacity.coerceIn(0f, 1f) * 255f).toInt()
-            return Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).apply {
-                eraseColor(Color.argb(alpha, 255, 255, 255))
-            }
-        }
 
         fun pencilGrainTexture(): Bitmap {
             val size = 256

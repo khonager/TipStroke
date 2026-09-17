@@ -46,8 +46,8 @@ class CoreTests {
         )
         assertEquals(73f, pencil.bounds.left)
         assertEquals(127f, pencil.bounds.right)
-        assertEquals(83f, airbrush.bounds.left)
-        assertEquals(117f, airbrush.bounds.right)
+        assertEquals(73f, airbrush.bounds.left)
+        assertEquals(127f, airbrush.bounds.right)
     }
     @Test fun lassoSelectionSupportsContainmentAndTranslation() {
         val lasso = SelectionRegion(listOf(Point(10f, 10f), Point(90f, 10f), Point(50f, 90f)))
