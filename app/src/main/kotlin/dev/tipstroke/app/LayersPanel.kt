@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -32,6 +32,7 @@ internal fun LayersPanel(
     onSelect: (LayerId) -> Unit,
     onToggleVisibility: (LayerId) -> Unit,
     onOpacity: (Float) -> Unit,
+    onRename: (String) -> Unit,
     onImageScale: (Float) -> Unit,
     onFitImage: () -> Unit,
     onOriginalImageSize: () -> Unit,
@@ -43,6 +44,8 @@ internal fun LayersPanel(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var renameLayer by remember { mutableStateOf<LayerSummary?>(null) }
+    var renameText by remember { mutableStateOf("") }
     Surface(
         modifier.width(324.dp).fillMaxHeight(.9f).semantics { contentDescription = "Layers panel" },
         color = Color(0xE6202125),
@@ -67,6 +70,10 @@ internal fun LayersPanel(
                             LayerControls(
                                 layer = layer,
                                 imageTransforming = imageTransforming,
+                                onRename = {
+                                    renameLayer = layer
+                                    renameText = layer.name
+                                },
                                 onOpacity = onOpacity,
                                 onImageScale = onImageScale,
                                 onFitImage = onFitImage,
@@ -87,12 +94,34 @@ internal fun LayersPanel(
             }
         }
     }
+    renameLayer?.let {
+        AlertDialog(
+            onDismissRequest = { renameLayer = null },
+            title = { Text("Rename layer") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it.take(80) },
+                    label = { Text("Layer name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = renameText.isNotBlank(),
+                    onClick = { onRename(renameText); renameLayer = null },
+                ) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { renameLayer = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
 private fun LayerControls(
     layer: LayerSummary,
     imageTransforming: Boolean,
+    onRename: () -> Unit,
     onOpacity: (Float) -> Unit,
     onImageScale: (Float) -> Unit,
     onFitImage: () -> Unit,
@@ -102,6 +131,10 @@ private fun LayerControls(
     Column(
         Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp),
     ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(layer.name, color = Color(0xFFE7E7E5), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            TextButton(onClick = onRename, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(32.dp)) { Text("Rename", fontSize = 11.sp) }
+        }
         ValueHeader("Layer opacity", "${(layer.opacity * 100).roundToInt()}%")
         Slider(layer.opacity, onOpacity, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth().height(40.dp))
         if (layer.kind == LayerKind.IMAGE) {

@@ -135,6 +135,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
+    fun renameSelectedLayer(name: String) { layerStack.renameSelected(name); notifyLayers() }
     fun toggleLayerVisibility(id: LayerId) { layerStack.toggleVisible(id); notifyLayers() }
     fun setPaletteColorCount(count: Int) {
         val safeCount = count.coerceIn(1, 8)

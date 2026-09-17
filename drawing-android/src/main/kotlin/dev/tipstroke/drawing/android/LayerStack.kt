@@ -153,6 +153,14 @@ internal class LayerStack(
         invalidate()
     }
 
+    fun renameSelected(name: String) {
+        val cleaned = name.trim().take(80)
+        if (cleaned.isNotEmpty() && cleaned != selected().name) {
+            selected().name = cleaned
+            invalidate()
+        }
+    }
+
     fun toggleVisible(id: LayerId) {
         layers.firstOrNull { it.id == id }?.let { it.visible = !it.visible; invalidate() }
     }

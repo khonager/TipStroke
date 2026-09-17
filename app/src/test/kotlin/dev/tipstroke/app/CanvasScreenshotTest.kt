@@ -140,7 +140,7 @@ class CanvasScreenshotTest {
                 previews = emptyMap(),
                 selectedId = imageId,
                 imageTransforming = true,
-                onSelect = {}, onToggleVisibility = {}, onOpacity = {}, onImageScale = {},
+                onSelect = {}, onToggleVisibility = {}, onOpacity = {}, onRename = {}, onImageScale = {},
                 onFitImage = {}, onOriginalImageSize = {}, onImageTransforming = {},
                 onAddPaint = {}, onImportImage = {}, onMoveForward = {}, onMoveBackward = {}, onDelete = {},
             )

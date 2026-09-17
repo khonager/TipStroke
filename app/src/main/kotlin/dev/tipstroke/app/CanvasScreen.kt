@@ -314,6 +314,7 @@ fun CanvasScreen(
                 },
                 onToggleVisibility = { surface?.toggleLayerVisibility(it) },
                 onOpacity = { surface?.setSelectedLayerOpacity(it) },
+                onRename = { surface?.renameSelectedLayer(it) },
                 onImageScale = { surface?.setSelectedImageScale(it) },
                 onFitImage = { surface?.fitSelectedImage() },
                 onOriginalImageSize = { surface?.originalSizeSelectedImage() },

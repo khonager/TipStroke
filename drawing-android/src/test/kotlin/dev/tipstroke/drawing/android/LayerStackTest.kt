@@ -12,6 +12,16 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LayerStackTest {
+    @Test fun selectedLayerCanBeRenamed() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 2048, 2048) {}
+
+        stack.renameSelected("  Line art  ")
+        assertEquals("Line art", stack.selected().name)
+
+        stack.renameSelected("   ")
+        assertEquals("Line art", stack.selected().name)
+    }
+
     @Test fun paintLayersCanBeOrderedHiddenAndMadeTranslucent() {
         var invalidations = 0
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 2048, 2048) { invalidations++ }
