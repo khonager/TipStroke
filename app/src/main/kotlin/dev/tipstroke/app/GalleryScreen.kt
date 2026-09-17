@@ -39,7 +39,9 @@ import dev.tipstroke.drawing.android.GalleryStack
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class NewDrawingRequest(val id: String, val name: String, val widthPx: Int, val heightPx: Int)
 
@@ -54,6 +56,7 @@ fun GalleryScreen(
     var openStackId by remember { mutableStateOf<String?>(null) }
     var creating by remember { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<DrawingSummary?>(null) }
+    var operationError by remember { mutableStateOf<String?>(null) }
     var renameStack by remember { mutableStateOf<GalleryStack?>(null) }
     var draggedKey by remember { mutableStateOf<String?>(null) }
     var dragPoint by remember { mutableStateOf(Offset.Unspecified) }
@@ -117,6 +120,20 @@ fun GalleryScreen(
         dragTranslation = Offset.Zero
         autoScrollJob?.cancel()
         autoScrollJob = null
+    }
+
+    fun duplicateDrawing(drawing: DrawingSummary) {
+        val stackKey = openStack?.key
+        coroutineScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                library.duplicate(drawing.id).onSuccess { duplicate ->
+                    stackKey?.let { library.stackDrawing(duplicate.id, it) }
+                }
+            }
+            result.onSuccess { duplicate ->
+                refreshGallery()
+            }.onFailure { operationError = it.message ?: "The drawing could not be duplicated." }
+        }
     }
 
     fun dragModifier(item: GalleryItem) = Modifier
@@ -198,6 +215,7 @@ fun GalleryScreen(
                             is GalleryDrawing -> DrawingCard(
                                 item.drawing,
                                 { onOpen(item.drawing) },
+                                { duplicateDrawing(item.drawing) },
                                 { deleteCandidate = item.drawing },
                                 dragModifier(item),
                                 onMoveOut = openStack?.let { stack -> { library.moveOutOfStack(stack.id, item.drawing.id); refreshGallery() } },
@@ -225,6 +243,14 @@ fun GalleryScreen(
             text = { Text("This removes the local drawing and cannot be undone.") },
             confirmButton = { TextButton(onClick = { library.delete(drawing.id); deleteCandidate = null; refreshGallery() }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deleteCandidate = null }) { Text("Cancel") } },
+        )
+    }
+    operationError?.let { error ->
+        AlertDialog(
+            onDismissRequest = { operationError = null },
+            title = { Text("Could not duplicate drawing") },
+            text = { Text(error) },
+            confirmButton = { TextButton(onClick = { operationError = null }) { Text("OK") } },
         )
     }
     renameStack?.let { stack ->
@@ -288,6 +314,7 @@ private fun EmptyGallery(onNew: () -> Unit) {
 private fun DrawingCard(
     drawing: DrawingSummary,
     onOpen: () -> Unit,
+    onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     onMoveOut: (() -> Unit)? = null,
@@ -313,6 +340,7 @@ private fun DrawingCard(
                 TextButton(onClick = { menuOpen = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(38.dp)) { Text("⋮", fontSize = 24.sp) }
                 DropdownMenu(menuOpen, { menuOpen = false }) {
                     onMoveOut?.let { moveOut -> DropdownMenuItem(text = { Text("Move out of stack") }, onClick = { menuOpen = false; moveOut() }) }
+                    DropdownMenuItem(text = { Text("Duplicate") }, onClick = { menuOpen = false; onDuplicate() })
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menuOpen = false; onDelete() })
                 }
             }

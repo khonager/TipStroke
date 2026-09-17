@@ -319,10 +319,12 @@ fun CanvasScreen(
             tool = selectionTool,
             moving = movingSelection,
             canMove = selectedLayerIds.isNotEmpty(),
+            canDuplicate = selectedLayerIds.any { selectedId -> layers.any { it.id == selectedId && it.kind == LayerKind.RASTER } },
             selectedLayerCount = selectedLayerIds.size,
             onTool = { tool -> selectionTool = tool; movingSelection = false; selectionMode = true; surface?.setSelectionTool(tool) },
             onMove = { movingSelection = !movingSelection; selectionMode = false },
             onSelectAll = { surface?.selectAll() },
+            onDuplicate = { surface?.duplicateSelection() },
             onClear = { movingSelection = false; surface?.clearSelection() },
             onDone = { selectionMode = false; movingSelection = false },
             modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp),
@@ -359,6 +361,7 @@ fun CanvasScreen(
                 onImportImage = { message = null; importImage.launch(arrayOf("image/*")) },
                 onMoveForward = { surface?.moveSelectedLayer(true) },
                 onMoveBackward = { surface?.moveSelectedLayer(false) },
+                onDuplicate = { imageTransforming = false; surface?.duplicateSelectedLayers() },
                 onDelete = { surface?.deleteSelectedLayer() },
                 modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
                     .padding(top = 66.dp, bottom = if (portrait) 106.dp else 16.dp, end = if (portrait) 0.dp else 116.dp),
@@ -514,7 +517,7 @@ private fun EditorChrome(
     }
 }
 
-@Composable private fun SelectionBar(selecting: Boolean, hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, selectedLayerCount: Int, onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit, onClear: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun SelectionBar(selecting: Boolean, hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, canDuplicate: Boolean, selectedLayerCount: Int, onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit, onDuplicate: () -> Unit, onClear: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
     Surface(modifier.fillMaxWidth(.94f).widthIn(max = 620.dp), color = Color(0xED202125), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -525,6 +528,7 @@ private fun EditorChrome(
                 TextButton(onClick = { onTool(SelectionTool.LASSO) }, colors = ButtonDefaults.textButtonColors(contentColor = if (tool == SelectionTool.LASSO && selecting) Color(0xFFED6A5A) else Color.White)) { Text("Lasso") }
                 TextButton(onClick = { onTool(SelectionTool.RECTANGLE) }, colors = ButtonDefaults.textButtonColors(contentColor = if (tool == SelectionTool.RECTANGLE && selecting) Color(0xFFED6A5A) else Color.White)) { Text("Rectangle") }
                 TextButton(onClick = onMove, enabled = hasSelection && canMove, colors = ButtonDefaults.textButtonColors(contentColor = if (moving) Color(0xFFED6A5A) else Color.White)) { Text("Move") }
+                TextButton(onClick = onDuplicate, enabled = hasSelection && canDuplicate) { Text("Duplicate") }
                 TextButton(onClick = onSelectAll) { Text("All") }
                 TextButton(onClick = onClear, enabled = hasSelection) { Text("Clear") }
             }

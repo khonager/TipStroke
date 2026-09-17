@@ -46,6 +46,7 @@ internal fun LayersPanel(
     onImportImage: () -> Unit,
     onMoveForward: () -> Unit,
     onMoveBackward: () -> Unit,
+    onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -103,6 +104,7 @@ internal fun LayersPanel(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PanelButton("Back", onMoveBackward)
                     PanelButton("Front", onMoveForward)
+                    PanelButton("Duplicate", onDuplicate)
                 }
                 TextButton(onClick = onDelete, enabled = layers.size > 1, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED6A5A))) { Text("Delete") }
             }

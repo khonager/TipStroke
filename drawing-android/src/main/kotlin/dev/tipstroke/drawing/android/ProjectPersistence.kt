@@ -160,6 +160,36 @@ class DrawingLibrary(context: Context) {
         return deleted
     }
 
+    @Synchronized
+    fun duplicate(id: String): Result<DrawingSummary> = runCatching {
+        val source = projectDirectory(id)
+        require(File(source, MANIFEST).isFile) { "Drawing does not exist" }
+        val newId = newId()
+        val target = projectDirectory(newId)
+        val temporary = File(root, ".$newId-${UUID.randomUUID()}.duplicating")
+        try {
+            check(source.copyRecursively(temporary)) { "Could not copy drawing" }
+            val manifest = File(temporary, MANIFEST)
+            val json = JSONObject(manifest.readText())
+            val name = "${json.optString("name", "Untitled drawing")} copy"
+            val modifiedAt = maxOf(System.currentTimeMillis(), json.optLong("modifiedAtMillis") + 1L)
+            json.put("id", newId).put("name", name).put("modifiedAtMillis", modifiedAt)
+            manifest.writeText(json.toString(2))
+            try {
+                Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary.toPath(), target.toPath())
+            }
+            DrawingSummary(
+                newId, name, json.getInt("widthPx"), json.getInt("heightPx"), modifiedAt,
+                File(target, THUMBNAIL),
+            )
+        } catch (failure: Throwable) {
+            temporary.deleteRecursively()
+            throw failure
+        }
+    }
+
     private fun mutateGallery(block: (MutableList<GalleryEntry>) -> Boolean): Boolean {
         val state = reconciledState(readGalleryState(), list().map(DrawingSummary::id)).toMutableList()
         if (!block(state)) return false

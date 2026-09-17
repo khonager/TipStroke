@@ -181,6 +181,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         gestureHandler.postDelayed(hideBrushPreview, 300L)
     }
     fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
+    fun duplicateSelectedLayers() {
+        if (layerStack.duplicateSelected().isNotEmpty()) { notifyLayers(); notifyHistory(); notifyVisiblePalette() }
+    }
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
     fun toggleLayerSelection(id: LayerId) { layerStack.toggleAdditionalSelection(id); notifyLayers(); notifyHistory() }
@@ -228,6 +231,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionRegion = SelectionRegion.rectangle(Rect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat()))
         rasterView.selectionRegion = selectionRegion
         selectionListener?.invoke(selectionMode, true)
+    }
+    fun duplicateSelection() {
+        val selection = selectionRegion ?: return
+        if (layerStack.duplicateSelection(selection).isNotEmpty()) {
+            rasterView.invalidate()
+            notifyLayers()
+            notifyHistory()
+            notifyVisiblePalette()
+        }
     }
     fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
     fun originalSizeSelectedImage() { layerStack.originalSizeSelectedImage(); notifyLayers() }

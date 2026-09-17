@@ -1,5 +1,10 @@
 package dev.tipstroke.drawing.android
 
+import android.graphics.Bitmap
+import android.graphics.Color
+import dev.tipstroke.core.geometry.Rect
+import dev.tipstroke.core.geometry.SelectionRegion
+import dev.tipstroke.core.geometry.TileCoordinate
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -12,6 +17,39 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LayerStackTest {
+    @Test fun selectedLayersCanBeDuplicated() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 512, 512) {}
+        val original = stack.selectedRaster()!!
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { setPixel(20, 30, Color.RED) }
+        original.tiles.replaceTiles(mapOf(TileCoordinate(0, 0) to tile))
+
+        val duplicatedIds = stack.duplicateSelected()
+
+        assertEquals(1, duplicatedIds.size)
+        assertEquals(2, stack.layers.size)
+        assertEquals("Paint 1 copy", stack.selected().name)
+        assertEquals(Color.RED, stack.selectedRaster()!!.tiles.colorAt(20, 30))
+        assertNotSame(original.tiles, stack.selectedRaster()!!.tiles)
+    }
+
+    @Test fun selectedPixelsAreDuplicatedToANewSparseLayer() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 512, 512) {}
+        val original = stack.selectedRaster()!!
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {
+            setPixel(20, 30, Color.RED)
+            setPixel(200, 210, Color.BLUE)
+        }
+        original.tiles.replaceTiles(mapOf(TileCoordinate(0, 0) to tile))
+        val selection = SelectionRegion.rectangle(Rect(0f, 0f, 64f, 64f))
+
+        val duplicatedIds = stack.duplicateSelection(selection)
+
+        assertEquals(1, duplicatedIds.size)
+        assertEquals(Color.RED, stack.selectedRaster()!!.tiles.colorAt(20, 30))
+        assertEquals(Color.TRANSPARENT, stack.selectedRaster()!!.tiles.colorAt(200, 210))
+        assertEquals(Color.BLUE, original.tiles.colorAt(200, 210))
+    }
+
     @Test fun layersCanBeAddedToAndRemovedFromSelection() {
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 2048, 2048) {}
         val first = stack.selectedId

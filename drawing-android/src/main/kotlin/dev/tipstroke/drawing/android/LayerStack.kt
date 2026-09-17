@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import dev.tipstroke.core.geometry.SelectionRegion
 import dev.tipstroke.core.model.*
 import java.io.File
 import java.util.UUID
@@ -159,6 +160,37 @@ internal class LayerStack(
         selectedIds += layer.id
         invalidate()
         layer.id
+    }
+
+    fun duplicateSelected(): List<LayerId> {
+        val originals = layers.filter { it.id in selectedIds }
+        if (originals.isEmpty()) return emptyList()
+        val insertionIndex = originals.maxOf { layers.indexOf(it) } + 1
+        val duplicates = originals.map(::duplicateLayer)
+        layers.addAll(insertionIndex, duplicates)
+        val primaryIndex = originals.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
+        selectedId = duplicates[primaryIndex].id
+        selectedIds.clear()
+        selectedIds += duplicates.map { it.id }
+        invalidate()
+        return duplicates.map { it.id }
+    }
+
+    fun duplicateSelection(selection: SelectionRegion): List<LayerId> {
+        val originals = selectedRasters()
+        val duplicates = originals.mapNotNull { original ->
+            original.tiles.duplicate(selection).takeIf { it.allocatedTileCount > 0 }?.let { tiles ->
+                RasterLayerRuntime(newId(), "${original.name} selection", original.visible, original.opacity, tiles)
+            }
+        }
+        if (duplicates.isEmpty()) return emptyList()
+        val insertionIndex = originals.maxOf { layers.indexOf(it) } + 1
+        layers.addAll(insertionIndex, duplicates)
+        selectedId = duplicates.last().id
+        selectedIds.clear()
+        selectedIds += duplicates.map { it.id }
+        invalidate()
+        return duplicates.map { it.id }
     }
 
     fun select(id: LayerId) {
@@ -397,6 +429,17 @@ internal class LayerStack(
     private fun indexAboveSelected() = (layers.indexOfFirst { it.id == selectedId } + 1).coerceAtMost(layers.size)
     private fun newRaster(name: String) = RasterLayerRuntime(newId(), name, tiles = TileStore(canvasWidth, canvasHeight))
     private fun newId() = LayerId(UUID.randomUUID().toString())
+
+    private fun duplicateLayer(layer: CanvasLayerRuntime): CanvasLayerRuntime = when (layer) {
+        is RasterLayerRuntime -> RasterLayerRuntime(
+            newId(), "${layer.name} copy", layer.visible, layer.opacity, layer.tiles.duplicate(),
+        )
+        is ImageLayerRuntime -> ImageLayerRuntime(
+            newId(), "${layer.name} copy", layer.visible, layer.opacity,
+            OriginalImageSource(resolver, layer.source.uri, invalidate), layer.transform,
+            layer.mask.duplicate(),
+        )
+    }
 
     private fun renderPreview(layer: CanvasLayerRuntime, sizePx: Int): Bitmap {
         val preview = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)

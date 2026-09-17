@@ -159,6 +159,33 @@ class TileStore(
         history.clear()
     }
 
+    internal fun duplicate(selection: SelectionRegion? = null): TileStore {
+        val duplicate = TileStore(canvasWidth, canvasHeight, tileSize)
+        val copiedTiles = if (selection == null) {
+            snapshotTiles()
+        } else {
+            val path = selection.toAndroidPath()
+            TileGrid.intersecting(selection.bounds, canvasWidth, canvasHeight, tileSize).mapNotNull { coordinate ->
+                val source = tiles[coordinate] ?: return@mapNotNull null
+                val copy = Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888)
+                Canvas(copy).apply {
+                    save()
+                    translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+                    clipPath(path)
+                    drawBitmap(source, (coordinate.x * tileSize).toFloat(), (coordinate.y * tileSize).toFloat(), null)
+                    restore()
+                }
+                if (copy.isFullyTransparent()) {
+                    copy.recycle()
+                    null
+                } else coordinate to copy
+            }.toMap()
+        }
+        duplicate.replaceTiles(copiedTiles)
+        duplicate.replaceColorUsage(colorUsage)
+        return duplicate
+    }
+
     internal fun colorAt(x: Int, y: Int): Int {
         if (x !in 0 until canvasWidth || y !in 0 until canvasHeight) return Color.TRANSPARENT
         val coordinate = TileCoordinate(x / tileSize, y / tileSize)

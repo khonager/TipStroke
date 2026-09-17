@@ -20,6 +20,30 @@ import org.json.JSONObject
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProjectPersistenceTest {
+    @Test fun duplicatesDrawingIntoAnIndependentProject() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val id = library.newId()
+        val layerId = LayerId("duplicate-source-layer")
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { setPixel(12, 18, Color.MAGENTA) }
+        val snapshot = DrawingSnapshot(
+            320, 240, layerId,
+            listOf(SavedRasterSnapshot(layerId, "Paint", true, 1f, mapOf(TileCoordinate(0, 0) to tile))),
+        )
+        ProjectPersistence.save(context.contentResolver, library, id, "Original", snapshot).getOrThrow()
+
+        val duplicate = library.duplicate(id).getOrThrow()
+        val loaded = ProjectPersistence.load(library.projectDirectory(duplicate.id)).getOrThrow()
+
+        assertNotEquals(id, duplicate.id)
+        assertEquals("Original copy", duplicate.name)
+        assertEquals(Color.MAGENTA, (loaded.layers.single() as LoadedRaster).tiles.getValue(TileCoordinate(0, 0)).getPixel(12, 18))
+        loaded.layers.filterIsInstance<LoadedRaster>().flatMap { it.tiles.values }.forEach(Bitmap::recycle)
+        snapshot.recycle()
+        assertTrue(library.delete(id))
+        assertTrue(library.delete(duplicate.id))
+    }
+
     @Test fun galleryOrderAndStacksPersistAndDissolveWithoutTouchingProjects() {
         val context = RuntimeEnvironment.getApplication()
         val library = DrawingLibrary(context)
