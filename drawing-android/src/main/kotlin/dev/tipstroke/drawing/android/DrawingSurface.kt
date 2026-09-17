@@ -13,7 +13,10 @@ import androidx.ink.authoring.InProgressStrokeId
 import androidx.ink.authoring.InProgressStrokesFinishedListener
 import androidx.ink.authoring.InProgressStrokesView
 import androidx.ink.brush.Brush
+import androidx.ink.brush.InputToolType
 import androidx.ink.strokes.Stroke
+import androidx.ink.strokes.MutableStrokeInputBatch
+import androidx.ink.strokes.StrokeInput
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.input.motionprediction.MotionEventPredictor
 import dev.tipstroke.core.drawing.*
@@ -49,6 +52,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private val pendingTargets = mutableMapOf<Int, StrokeTarget>()
     private var customPreviewStyle: StrokeStyle? = null
     private var airbrushPreviewStyle: StrokeStyle? = null
+    private var pencilPreviewStyle: StrokeStyle? = null
+    private var pencilPreviewStore: TileStore? = null
     private val finishedSamples = ArrayDeque<PendingCommit>()
     private var activeStylusId: Int? = null
     private var gestureStart = emptyMap<Int, android.graphics.PointF>()
@@ -119,12 +124,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
         liveView.addFinishedStrokesListener(object : InProgressStrokesFinishedListener {
             override fun onStrokesFinished(strokes: Map<InProgressStrokeId, Stroke>) {
+                var finishedPencil = false
                 strokes.forEach { (_, inkStroke) ->
                     val pending = finishedSamples.removeFirstOrNull() ?: return@forEach
                     val stroke = pending.stroke
                     val store = pending.target.store
+                    finishedPencil = finishedPencil || stroke.style.brush.engine == BrushEngine.PENCIL
                     if (stroke.style.blend == BlendBehavior.PAINT) {
-                        val rasterStroke = if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
+                        val rasterStroke = if (stroke.style.brush.engine == BrushEngine.PENCIL) {
+                            createPencilStroke(stroke)
+                        } else if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
                             Stroke(createInkBrush(stroke.style, includePressureOpacity = false), inkStroke.inputs)
                         } else inkStroke
                         store.commitInk(stroke, rasterStroke, inkRenderer)
@@ -137,6 +146,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
                 rasterView.invalidate()
                 liveView.removeFinishedStrokes(strokes.keys)
+                if (finishedPencil && pencilPreviewStyle == null && airbrushPreviewStyle == null) {
+                    clearPencilPreview()
+                }
                 notifyHistory()
                 notifyVisiblePalette()
                 notifyLayers()
@@ -358,6 +370,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 } else if (style.brush.engine == BrushEngine.AIRBRUSH) {
                     airbrushPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId).toList(), style)
+                } else if (style.brush.engine == BrushEngine.PENCIL) {
+                    pencilPreviewStyle = style
+                    startPencilPreview(CompletedStroke(pendingSamples.getValue(pointerId).toList(), style))
+                    // Ink still authors the stroke, but its alpha/tilt preview is unreliable in
+                    // 1.1.0-alpha08. Keep that mesh effectively transparent until finalization.
+                    liveView.startStroke(event, pointerId, createInkBrush(style, previewAlpha = 1), rasterView.viewToDocumentMatrix(), Matrix())
                 } else {
                     liveView.startStroke(event, pointerId, createInkBrush(style), rasterView.viewToDocumentMatrix(), Matrix())
                 }
@@ -397,7 +415,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val target = pendingTargets.remove(pointerId)
                 pendingSamples.remove(pointerId)?.let { rawSamples ->
                     val samples = stabilizeLiftOffOpacity(rawSamples)
-                    val style = customPreviewStyle ?: airbrushPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
+                    val style = customPreviewStyle ?: airbrushPreviewStyle ?: pencilPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
                     if (target != null) {
                         if (customPreviewStyle != null) {
                             if (samples.size == 1) invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
@@ -421,7 +439,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     customPreviewStyle = null
                 } else if (airbrushPreviewStyle != null) {
                     airbrushPreviewStyle = null
-                } else liveView.finishStroke(event, pointerId)
+                } else {
+                    liveView.finishStroke(event, pointerId)
+                    pencilPreviewStyle = null
+                }
                 activeStylusId = null
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -694,6 +715,17 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             rasterView.previewStroke = CompletedStroke(samples.toList(), style)
             return
         }
+        pencilPreviewStyle?.let { style ->
+            val target = pencilPreviewStore ?: return
+            if (previous != null) {
+                val segment = ArrayList<StrokeSample>(additions.size + 1).apply {
+                    add(previous)
+                    addAll(additions)
+                }
+                rasterView.invalidateTiles(target.appendLiveStroke(CompletedStroke(segment, style)))
+            }
+            return
+        }
         val style = customPreviewStyle ?: return
         val target = pendingTargets[pointerId] ?: return
         if (previous != null) {
@@ -724,6 +756,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
         customPreviewStyle = null
         airbrushPreviewStyle = null
+        pencilPreviewStyle = null
+        clearPencilPreview()
         rasterView.previewStroke = null
         pendingSamples.remove(pointerId)
         pendingTargets.remove(pointerId)
@@ -766,9 +800,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (target.image == null) rasterView.invalidateTiles(dirty) else rasterView.invalidate()
     }
 
-    private fun createInkBrush(style: StrokeStyle, includePressureOpacity: Boolean = true): Brush {
+    private fun createInkBrush(style: StrokeStyle, includePressureOpacity: Boolean = true, previewAlpha: Int? = null): Brush {
         val c = style.color
-        val alpha = (style.opacity * c.alpha * 255).roundToInt().coerceIn(1, 255)
+        val alpha = previewAlpha ?: (style.opacity * c.alpha * 255).roundToInt().coerceIn(1, 255)
         val argb = Color.argb(alpha, (c.red * 255).roundToInt(), (c.green * 255).roundToInt(), (c.blue * 255).roundToInt())
         val brushPreset = if (includePressureOpacity) style.brush else {
             style.brush.copy(pressureToOpacity = PressureCurve(1f, 1f, 1f))
@@ -783,6 +817,40 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             BrushEngine.INK -> .1f
         }
         return Brush.createWithColorIntArgb(family, liveColor, style.sizePx.coerceAtLeast(1f), epsilon)
+    }
+
+    private fun createPencilStroke(stroke: CompletedStroke): Stroke {
+        val inputs = MutableStrokeInputBatch().apply {
+            setNoiseSeed(0x51A7)
+            stroke.samples.forEach { sample ->
+                add(
+                    InputToolType.STYLUS,
+                    sample.position.x,
+                    sample.position.y,
+                    sample.elapsedNanos / 1_000_000L,
+                    StrokeInput.NO_STROKE_UNIT_LENGTH,
+                    sample.pressure,
+                    sample.tiltRadians,
+                    sample.orientationRadians,
+                )
+            }
+        }
+        return Stroke(createInkBrush(stroke.style, includePressureOpacity = false), inputs)
+    }
+
+    private fun startPencilPreview(stroke: CompletedStroke) {
+        clearPencilPreview()
+        pencilPreviewStore = TileStore(layerStack.canvasWidth, layerStack.canvasHeight).also { store ->
+            store.beginLiveStroke()
+            store.appendLiveStroke(stroke)
+            rasterView.pencilPreviewStore = store
+        }
+    }
+
+    private fun clearPencilPreview() {
+        pencilPreviewStore?.cancelLiveStroke()
+        pencilPreviewStore = null
+        rasterView.pencilPreviewStore = null
     }
 
     private fun sample(event: MotionEvent, index: Int, historyIndex: Int? = null): StrokeSample {

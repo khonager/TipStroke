@@ -13,7 +13,7 @@ import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.RgbaColor
-import kotlin.math.roundToInt
+import kotlin.math.*
 
 /** Shared painter for custom wet previews and their byte-for-byte-equivalent tile commit. */
 internal object StrokeCanvasPainter {
@@ -89,6 +89,11 @@ internal object StrokeCanvasPainter {
         val saveCount = canvas.save()
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
         val samples = stroke.samples
+        if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine == BrushEngine.PENCIL) {
+            drawPencilPreview(canvas, stroke, paint)
+            canvas.restoreToCount(saveCount)
+            return
+        }
         if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine == BrushEngine.AIRBRUSH) {
             if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
                 drawPressureResponsiveAirbrush(canvas, stroke, paint)
@@ -116,6 +121,94 @@ internal object StrokeCanvasPainter {
             }
         }
         canvas.restoreToCount(saveCount)
+    }
+
+    /**
+     * Wet Pencil fallback for Ink 1.1.0-alpha08, whose live opacity and tilt targets are not
+     * dependable on all devices. The finalized mark is still rebuilt and rasterized from the
+     * Jetpack Ink family; this preview mirrors its pressure, tilt, and barrel-orientation inputs.
+     */
+    private fun drawPencilPreview(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
+        val samples = stroke.samples
+        if (samples.isEmpty()) return
+        val layer = canvas.saveLayer(
+            stroke.bounds.left,
+            stroke.bounds.top,
+            stroke.bounds.right,
+            stroke.bounds.bottom,
+            null,
+        )
+        paint.style = Paint.Style.FILL
+        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+
+        fun drawTip(sample: StrokeSample, speedScale: Float = 1f) {
+            val dynamics = pencilTipDynamics(stroke, sample, speedScale)
+            paint.alpha = dynamics.alpha
+            val halfWidth = dynamics.width / 2f
+            val halfHeight = dynamics.height / 2f
+            canvas.save()
+            canvas.rotate(Math.toDegrees(sample.orientationRadians.toDouble()).toFloat(), sample.position.x, sample.position.y)
+            canvas.drawOval(
+                sample.position.x - halfWidth,
+                sample.position.y - halfHeight,
+                sample.position.x + halfWidth,
+                sample.position.y + halfHeight,
+                paint,
+            )
+            canvas.restore()
+        }
+
+        if (samples.size == 1) {
+            drawTip(samples.first())
+        } else {
+            for (index in 1 until samples.size) {
+                val previous = samples[index - 1]
+                val current = samples[index]
+                val distance = hypot(current.position.x - previous.position.x, current.position.y - previous.position.y)
+                val minimumTip = minOf(
+                    pencilTipDynamics(stroke, previous).height,
+                    pencilTipDynamics(stroke, current).height,
+                ).coerceAtLeast(.75f)
+                val steps = ceil(distance / (minimumTip * .35f)).toInt().coerceIn(1, 96)
+                val orientationDelta = atan2(
+                    sin(current.orientationRadians - previous.orientationRadians),
+                    cos(current.orientationRadians - previous.orientationRadians),
+                )
+                for (step in 1..steps) {
+                    val amount = step / steps.toFloat()
+                    val interpolated = current.copy(
+                        position = Point(
+                            previous.position.x + (current.position.x - previous.position.x) * amount,
+                            previous.position.y + (current.position.y - previous.position.y) * amount,
+                        ),
+                        pressure = previous.pressure + (current.pressure - previous.pressure) * amount,
+                        opacityPressure = previous.opacityPressure + (current.opacityPressure - previous.opacityPressure) * amount,
+                        tiltRadians = previous.tiltRadians + (current.tiltRadians - previous.tiltRadians) * amount,
+                        orientationRadians = previous.orientationRadians + orientationDelta * amount,
+                    )
+                    drawTip(interpolated, current.speedSize(stroke, previous))
+                }
+            }
+        }
+        paint.xfermode = null
+        canvas.restoreToCount(layer)
+    }
+
+    internal data class PencilTipDynamics(val width: Float, val height: Float, val alpha: Int)
+
+    internal fun pencilTipDynamics(stroke: CompletedStroke, sample: StrokeSample, speedScale: Float = 1f): PencilTipDynamics {
+        val normalizedTilt = (sample.tiltRadians / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
+        val tiltResponse = 1f - (1f - normalizedTilt) * (1f - normalizedTilt)
+        val widthMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * tiltResponse
+        val heightMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_HEIGHT_MULTIPLIER - 1f) * tiltResponse
+        val tiltOpacity = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER - 1f) * tiltResponse
+        val pressureSize = sample.pressureSize(stroke)
+        return PencilTipDynamics(
+            width = stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * pressureSize * speedScale * widthMultiplier,
+            height = stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * pressureSize * speedScale * heightMultiplier,
+            alpha = (stroke.style.opacity * stroke.style.color.alpha * sample.pressureOpacity(stroke) * tiltOpacity * 255f)
+                .roundToInt().coerceIn(0, 255),
+        )
     }
 
     /**

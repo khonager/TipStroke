@@ -71,8 +71,8 @@ internal class TipStrokeInkBrushes {
             add(mapped(TargetNode.Target.POSITION_OFFSET_LATERAL_IN_MULTIPLES_OF_BRUSH_SIZE, -.012f, .012f, edgePositionNoise))
         }
         val tip = BrushTip.builder()
-            .setScaleX(.58f)
-            .setScaleY(.58f)
+            .setScaleX(PENCIL_BASE_TIP_SCALE)
+            .setScaleY(PENCIL_BASE_TIP_SCALE)
             .setCornerRounding(1f)
             .setBehaviors(behaviors.map(::BrushBehavior))
             .build()
@@ -177,6 +177,7 @@ internal class TipStrokeInkBrushes {
 
     companion object {
         const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v3"
+        internal const val PENCIL_BASE_TIP_SCALE = .58f
         internal const val PENCIL_MAX_TILT_WIDTH_MULTIPLIER = 4.2f
         internal const val PENCIL_MIN_TILT_HEIGHT_MULTIPLIER = .42f
         internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .48f

@@ -20,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import kotlin.math.PI
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -29,6 +30,33 @@ class TipStrokeInkBrushesTest {
         assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER >= 4f)
         assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_HEIGHT_MULTIPLIER < .5f)
         assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER < .55f)
+    }
+
+    @Test fun pencilPreviewRespondsToTiltAndPressureBeforeCommit() {
+        val style = StrokeStyle(
+            BrushPreset.Pencil.copy(pressureToSize = PressureCurve(1f, 1f, 1f)),
+            32f,
+            1f,
+            RgbaColor(0f, 0f, 0f),
+            BlendBehavior.PAINT,
+        )
+        fun sample(x: Float, pressure: Float, tilt: Float = 0f) = StrokeSample(
+            0, Point(x, 48f), pressure, tilt, 0f, x.toLong() * 1_000_000L, 0, PointerKind.STYLUS,
+        )
+        val upright = StrokeCanvasPainter.pencilTipDynamics(CompletedStroke(listOf(sample(48f, 1f)), style), sample(48f, 1f))
+        val tiltedSample = sample(48f, 1f, (PI / 2).toFloat())
+        val tilted = StrokeCanvasPainter.pencilTipDynamics(CompletedStroke(listOf(tiltedSample), style), tiltedSample)
+        assertTrue("upright=$upright tilted=$tilted", tilted.width > upright.width * 4f)
+        assertTrue("upright=$upright tilted=$tilted", tilted.height < upright.height * .5f)
+        assertTrue("upright=$upright tilted=$tilted", tilted.alpha < upright.alpha * .55f)
+
+        val bitmap = Bitmap.createBitmap(256, 96, Bitmap.Config.ARGB_8888)
+        val samples = listOf(sample(32f, .05f), sample(80f, .05f), sample(176f, 1f), sample(224f, 1f))
+        StrokeCanvasPainter.draw(Canvas(bitmap), CompletedStroke(samples, style))
+        val lowPressureAlpha = Color.alpha(bitmap.getPixel(48, 48))
+        val highPressureAlpha = Color.alpha(bitmap.getPixel(208, 48))
+        assertTrue("low=$lowPressureAlpha high=$highPressureAlpha", highPressureAlpha > lowPressureAlpha + 100)
+        bitmap.recycle()
     }
 
     @Test fun constantPressureCurveOmitsTheInvalidInkBehavior() {
