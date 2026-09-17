@@ -1,7 +1,11 @@
 package dev.tipstroke.app
 
 import android.os.Bundle
+import android.os.Build
 import android.view.KeyEvent
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -28,6 +32,7 @@ class MainActivity : ComponentActivity() {
     private val appState by viewModels<TipStrokeAppState>()
     private var saveActiveDrawing: (() -> Unit)? = null
     private var stylusButtonHandler: ((StylusButton) -> Unit)? = null
+    private var navigationBarHiddenForDrawing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +43,7 @@ class MainActivity : ComponentActivity() {
                     appState = appState,
                     onSaveActionChanged = { saveActiveDrawing = it },
                     onStylusButtonHandlerChanged = { stylusButtonHandler = it },
+                    onImmersiveModeChanged = ::setNavigationBarHiddenForDrawing,
                 )
             }
         }
@@ -62,6 +68,34 @@ class MainActivity : ComponentActivity() {
         saveActiveDrawing?.invoke()
         super.onStop()
     }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyNavigationBarVisibility()
+    }
+
+    private fun setNavigationBarHiddenForDrawing(hidden: Boolean) {
+        navigationBarHiddenForDrawing = hidden
+        applyNavigationBarVisibility()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applyNavigationBarVisibility() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let { controller ->
+                controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                if (navigationBarHiddenForDrawing) controller.hide(WindowInsets.Type.navigationBars())
+                else controller.show(WindowInsets.Type.navigationBars())
+            }
+        } else {
+            val hideFlags = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            window.decorView.systemUiVisibility = if (navigationBarHiddenForDrawing) {
+                window.decorView.systemUiVisibility or hideFlags
+            } else {
+                window.decorView.systemUiVisibility and hideFlags.inv()
+            }
+        }
+    }
 }
 
 @Composable
@@ -69,12 +103,17 @@ private fun TipStrokeApp(
     appState: TipStrokeAppState,
     onSaveActionChanged: ((() -> Unit)?) -> Unit,
     onStylusButtonHandlerChanged: (((StylusButton) -> Unit)?) -> Unit,
+    onImmersiveModeChanged: (Boolean) -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val library = remember { DrawingLibrary(context) }
     val gesturePreferences = remember { GesturePreferences(context) }
     var gestures by remember { mutableStateOf(gesturePreferences.load()) }
     val screen = appState.screen
+    DisposableEffect(screen, gestures.hideNavigationBarWhileDrawing) {
+        onImmersiveModeChanged(screen is AppScreen.Editor && gestures.hideNavigationBarWhileDrawing)
+        onDispose { onImmersiveModeChanged(false) }
+    }
     BackHandler(enabled = screen == AppScreen.Settings) { appState.screen = AppScreen.Gallery }
 
     when (val current = screen) {

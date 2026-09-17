@@ -86,6 +86,16 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
             Column(Modifier.weight(1f)) { Text("Rotation lock", color = Color.White); Text("Keep the canvas in its current orientation.", color = Color(0xFFA9ABB1), fontSize = 12.sp) }
             Switch(settings.rotationLocked, { onChange(settings.copy(rotationLocked = it)) })
         }
+        Row(
+            Modifier.fillMaxWidth().padding(top = 9.dp).border(1.dp, Color(0xFF3F4146), RoundedCornerShape(15.dp)).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Focused drawing mode", color = Color.White)
+                Text("Hide the navigation bar while drawing. Swipe once to reveal it temporarily.", color = Color(0xFFA9ABB1), fontSize = 12.sp)
+            }
+            Switch(settings.hideNavigationBarWhileDrawing, { onChange(settings.copy(hideNavigationBarWhileDrawing = it)) })
+        }
     }
 }
 
