@@ -56,9 +56,9 @@ internal class TipStrokeInkBrushes {
             if (pressureBehaviorEnabled(preset.pressureToOpacity)) {
                 add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, rawPressure))
             }
-            add(mapped(TargetNode.Target.WIDTH_MULTIPLIER, 1f, 3.15f, tilt))
-            add(mapped(TargetNode.Target.HEIGHT_MULTIPLIER, 1f, .52f, tilt))
-            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, .64f, tilt))
+            add(mapped(TargetNode.Target.WIDTH_MULTIPLIER, 1f, PENCIL_MAX_TILT_WIDTH_MULTIPLIER, tilt))
+            add(mapped(TargetNode.Target.HEIGHT_MULTIPLIER, 1f, PENCIL_MIN_TILT_HEIGHT_MULTIPLIER, tilt))
+            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, PENCIL_MIN_TILT_OPACITY_MULTIPLIER, tilt))
             add(mapped(TargetNode.Target.ROTATION_OFFSET_IN_RADIANS, (-PI).toFloat(), PI.toFloat(), orientation))
             if (preset.speedTaper > 0f) {
                 add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, 1f - preset.speedTaper * .58f, speed))
@@ -177,6 +177,9 @@ internal class TipStrokeInkBrushes {
 
     companion object {
         const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v3"
+        internal const val PENCIL_MAX_TILT_WIDTH_MULTIPLIER = 4.2f
+        internal const val PENCIL_MIN_TILT_HEIGHT_MULTIPLIER = .42f
+        internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .48f
 
         fun pencilGrainTexture(): Bitmap {
             val size = 256

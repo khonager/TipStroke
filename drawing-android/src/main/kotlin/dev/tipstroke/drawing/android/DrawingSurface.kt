@@ -790,8 +790,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val y = historyIndex?.let { event.getHistoricalY(index, it) } ?: event.getY(index)
         val point = rasterView.screenToDocument(x, y)
         val pressure = historyIndex?.let { event.getHistoricalPressure(index, it) } ?: event.getPressure(index)
+        val tilt = (historyIndex?.let { event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, index, it) }
+            ?: event.getAxisValue(MotionEvent.AXIS_TILT, index)).coerceIn(0f, (Math.PI / 2).toFloat())
+        val orientation = historyIndex?.let { event.getHistoricalAxisValue(MotionEvent.AXIS_ORIENTATION, index, it) }
+            ?: event.getAxisValue(MotionEvent.AXIS_ORIENTATION, index)
         return StrokeSample(event.getPointerId(index), Point(point.x, point.y), pressure.coerceIn(.01f, 1f),
-            event.getAxisValue(MotionEvent.AXIS_TILT, index), event.getAxisValue(MotionEvent.AXIS_ORIENTATION, index),
+            tilt, orientation,
             (((historyIndex?.let { event.getHistoricalEventTime(it) } ?: event.eventTime) - event.downTime) * 1_000_000L).coerceAtLeast(0),
             event.buttonState, pointerKind(event.getToolType(index)))
     }

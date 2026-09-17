@@ -25,6 +25,12 @@ import java.io.File
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TipStrokeInkBrushesTest {
+    @Test fun flatPencilUsesABroadLightSideContact() {
+        assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER >= 4f)
+        assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_HEIGHT_MULTIPLIER < .5f)
+        assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER < .55f)
+    }
+
     @Test fun constantPressureCurveOmitsTheInvalidInkBehavior() {
         assertTrue(!pressureBehaviorEnabled(PressureCurve(1f, 1f, 1f)))
         assertTrue(pressureBehaviorEnabled(BrushPreset.Pencil.pressureToOpacity))
