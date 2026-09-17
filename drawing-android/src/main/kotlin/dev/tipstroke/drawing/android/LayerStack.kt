@@ -2,7 +2,12 @@ package dev.tipstroke.drawing.android
 
 import android.content.ContentResolver
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.ImageDecoder
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -70,6 +75,9 @@ internal class LayerStack(
     fun selectedRaster(): RasterLayerRuntime? = selected() as? RasterLayerRuntime
     fun selectedImage(): ImageLayerRuntime? = selected() as? ImageLayerRuntime
     fun summariesFrontToBack(): List<LayerSummary> = layers.asReversed().map { it.summary() }
+    fun previewsFrontToBack(sizePx: Int): Map<LayerId, Bitmap> = layers.asReversed().associate { layer ->
+        layer.id to renderPreview(layer, sizePx.coerceAtLeast(1))
+    }
     fun allocatedTiles(): Int = layers.sumOf { layer ->
         when (layer) {
             is RasterLayerRuntime -> layer.tiles.allocatedTileCount
@@ -335,6 +343,46 @@ internal class LayerStack(
     private fun indexAboveSelected() = (layers.indexOfFirst { it.id == selectedId } + 1).coerceAtMost(layers.size)
     private fun newRaster(name: String) = RasterLayerRuntime(newId(), name, tiles = TileStore(canvasWidth, canvasHeight))
     private fun newId() = LayerId(UUID.randomUUID().toString())
+
+    private fun renderPreview(layer: CanvasLayerRuntime, sizePx: Int): Bitmap {
+        val preview = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(preview)
+        val scale = minOf(sizePx.toFloat() / canvasWidth, sizePx.toFloat() / canvasHeight)
+        canvas.translate((sizePx - canvasWidth * scale) / 2f, (sizePx - canvasHeight * scale) / 2f)
+        canvas.scale(scale, scale)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        when (layer) {
+            is RasterLayerRuntime -> layer.tiles.draw(canvas, paint)
+            is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { source ->
+                val width = layer.source.width * layer.transform.scale
+                val height = layer.source.height * layer.transform.scale
+                val destination = RectF(
+                    layer.transform.centerX - width / 2f,
+                    layer.transform.centerY - height / 2f,
+                    layer.transform.centerX + width / 2f,
+                    layer.transform.centerY + height / 2f,
+                )
+                canvas.save()
+                canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
+                if (layer.mask.allocatedTileCount == 0) {
+                    canvas.drawBitmap(source, null, destination, paint)
+                } else {
+                    val saved = canvas.saveLayer(destination, paint)
+                    canvas.drawBitmap(source, null, destination, paint)
+                    canvas.save()
+                    canvas.translate(destination.left, destination.top)
+                    canvas.scale(layer.transform.scale, layer.transform.scale)
+                    paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+                    layer.mask.draw(canvas, paint)
+                    paint.xfermode = null
+                    canvas.restore()
+                    canvas.restoreToCount(saved)
+                }
+                canvas.restore()
+            }
+        }
+        return preview
+    }
 
     fun imagePointFromDocument(image: ImageLayerRuntime, point: android.graphics.PointF): android.graphics.PointF {
         val radians = Math.toRadians((-image.transform.rotationDegrees).toDouble())

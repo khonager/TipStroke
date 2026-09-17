@@ -70,7 +70,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var fps = 0f
     var diagnosticsListener: ((CanvasDiagnostics) -> Unit)? = null
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
-    var layersListener: ((List<LayerSummary>, LayerId) -> Unit)? = null
+    var layersListener: ((List<LayerSummary>, LayerId, Map<LayerId, android.graphics.Bitmap>) -> Unit)? = null
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
@@ -118,6 +118,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 liveView.removeFinishedStrokes(strokes.keys)
                 notifyHistory()
                 notifyVisiblePalette()
+                notifyLayers()
             }
         })
     }
@@ -127,8 +128,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
     }
 
-    fun undo() { layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette() } } }
-    fun redo() { layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette() } } }
+    fun undo() { layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
+    fun redo() { layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun resetView() = rasterView.fitCanvas()
     fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
@@ -490,6 +491,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     selectionRegion = selection.translated(deltaX, deltaY)
                     rasterView.selectionRegion = selectionRegion
                     notifyHistory()
+                    notifyLayers()
                 }
                 rasterView.selectionPreviewOffset = Point(0f, 0f)
                 selectionMoveStart = null
@@ -702,7 +704,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
     private fun notifyLayers() {
-        layersListener?.invoke(layerStack.summariesFrontToBack(), layerStack.selectedId)
+        layersListener?.invoke(layerStack.summariesFrontToBack(), layerStack.selectedId, layerStack.previewsFrontToBack(96))
     }
     private fun notifyVisiblePalette() {
         visiblePaletteListener?.invoke(layerStack.visiblePalette(paletteColorCount))

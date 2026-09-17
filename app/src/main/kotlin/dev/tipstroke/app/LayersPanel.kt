@@ -1,5 +1,6 @@
 package dev.tipstroke.app
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -24,6 +26,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun LayersPanel(
     layers: List<LayerSummary>,
+    previews: Map<LayerId, Bitmap>,
     selectedId: LayerId?,
     imageTransforming: Boolean,
     onSelect: (LayerId) -> Unit,
@@ -59,7 +62,7 @@ internal fun LayersPanel(
             Spacer(Modifier.height(10.dp))
             LazyColumn(Modifier.weight(1f, fill = false).heightIn(min = 74.dp, max = 280.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 items(layers, key = { it.id.value }) { layer ->
-                    LayerRow(layer, layer.id == selectedId, { onSelect(layer.id) }, { onToggleVisibility(layer.id) })
+                    LayerRow(layer, previews[layer.id], layer.id == selectedId, { onSelect(layer.id) }, { onToggleVisibility(layer.id) })
                 }
             }
             selected?.let { layer ->
@@ -110,7 +113,7 @@ internal fun LayersPanel(
 }
 
 @Composable
-private fun LayerRow(layer: LayerSummary, selected: Boolean, onSelect: () -> Unit, onVisibility: () -> Unit) {
+private fun LayerRow(layer: LayerSummary, preview: Bitmap?, selected: Boolean, onSelect: () -> Unit, onVisibility: () -> Unit) {
     val shape = RoundedCornerShape(15.dp)
     Row(
         Modifier.fillMaxWidth().clip(shape)
@@ -119,7 +122,7 @@ private fun LayerRow(layer: LayerSummary, selected: Boolean, onSelect: () -> Uni
             .clickable(onClick = onSelect).padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LayerThumbnail(layer.kind)
+        LayerThumbnail(layer.kind, preview)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(layer.name, color = Color(0xFFF1F1EF), fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -136,9 +139,11 @@ private fun LayerRow(layer: LayerSummary, selected: Boolean, onSelect: () -> Uni
 }
 
 @Composable
-private fun LayerThumbnail(kind: LayerKind) {
+private fun LayerThumbnail(kind: LayerKind, preview: Bitmap?) {
     Canvas(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFF2F1ED))) {
-        if (kind == LayerKind.IMAGE) {
+        if (preview != null) {
+            drawImage(preview.asImageBitmap(), dstSize = IntSize(size.width.toInt(), size.height.toInt()))
+        } else if (kind == LayerKind.IMAGE) {
             drawRect(Color(0xFFB7D4DD))
             drawCircle(Color(0xFFFFD786), size.minDimension * .1f, Offset(size.width * .72f, size.height * .27f))
             val mountains = Path().apply {

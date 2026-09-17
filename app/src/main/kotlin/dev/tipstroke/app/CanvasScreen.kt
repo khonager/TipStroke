@@ -2,6 +2,7 @@ package dev.tipstroke.app
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,6 +67,7 @@ fun CanvasScreen(
     var canUndo by remember { mutableStateOf(false) }
     var canRedo by remember { mutableStateOf(false) }
     var layers by remember { mutableStateOf<List<LayerSummary>>(emptyList()) }
+    var layerPreviews by remember { mutableStateOf<Map<LayerId, Bitmap>>(emptyMap()) }
     var selectedLayerId by remember { mutableStateOf<LayerId?>(null) }
     var layersOpen by remember { mutableStateOf(initialLayersOpen) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -208,7 +210,11 @@ fun CanvasScreen(
                 surface = view
                 view.diagnosticsListener = { diagnostics = it }
                 view.historyListener = { undo, redo -> canUndo = undo; canRedo = redo }
-                view.layersListener = { updated, selected -> layers = updated; selectedLayerId = selected }
+                view.layersListener = { updated, selected, previews ->
+                    layers = updated
+                    selectedLayerId = selected
+                    layerPreviews = previews
+                }
                 view.colorPickedListener = { picked -> color = picked }
                 view.visiblePaletteListener = { drawingPalette = it }
                 view.drawnColorListener = { drawn -> colorHistory = colorHistoryPreferences.record(drawn) }
@@ -298,6 +304,7 @@ fun CanvasScreen(
         if (layersOpen) {
             LayersPanel(
                 layers = layers,
+                previews = layerPreviews,
                 selectedId = selectedLayerId,
                 imageTransforming = imageTransforming,
                 onSelect = {

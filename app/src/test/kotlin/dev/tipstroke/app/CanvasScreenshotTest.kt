@@ -137,6 +137,7 @@ class CanvasScreenshotTest {
             val imageId = LayerId("reference")
             LayersPanel(
                 layers = listOf(LayerSummary(imageId, "Reference photo.png", LayerKind.IMAGE, true, .82f, 4032, 3024, .46f)),
+                previews = emptyMap(),
                 selectedId = imageId,
                 imageTransforming = true,
                 onSelect = {}, onToggleVisibility = {}, onOpacity = {}, onImageScale = {},
