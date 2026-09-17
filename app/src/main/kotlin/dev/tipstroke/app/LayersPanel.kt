@@ -43,7 +43,6 @@ internal fun LayersPanel(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val selected = layers.firstOrNull { it.id == selectedId }
     Surface(
         modifier.width(324.dp).fillMaxHeight(.9f).semantics { contentDescription = "Layers panel" },
         color = Color(0xE6202125),
@@ -60,43 +59,21 @@ internal fun LayersPanel(
             }
             Text("Front to back", color = Color(0xFF9B9DA3), fontSize = 11.sp)
             Spacer(Modifier.height(10.dp))
-            LazyColumn(Modifier.weight(1f, fill = false).heightIn(min = 74.dp, max = 280.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 items(layers, key = { it.id.value }) { layer ->
-                    LayerRow(layer, previews[layer.id], layer.id == selectedId, { onSelect(layer.id) }, { onToggleVisibility(layer.id) })
-                }
-            }
-            selected?.let { layer ->
-                HorizontalDivider(Modifier.padding(vertical = 12.dp), color = Color(0xFF3B3D42))
-                ValueHeader("Layer opacity", "${(layer.opacity * 100).roundToInt()}%")
-                Slider(layer.opacity, onOpacity, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth().height(48.dp))
-                if (layer.kind == LayerKind.IMAGE) {
-                    Spacer(Modifier.height(6.dp))
-                    FilledTonalButton(
-                        onClick = { onImageTransforming(!imageTransforming) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (imageTransforming) Color(0xFFED6A5A) else Color(0xFF34363B),
-                            contentColor = Color.White,
-                        ),
-                    ) { Text(if (imageTransforming) "Finish transforming" else "Move & resize on canvas") }
-                    Text(
-                        "Drag to move · pinch to resize · twist to rotate",
-                        color = Color(0xFFAAAEB4), fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 5.dp, bottom = 8.dp),
-                    )
-                    ValueHeader("Image scale", "${((layer.imageScale ?: 1f) * 100).roundToInt()}%")
-                    Slider(layer.imageScale ?: 1f, onImageScale, valueRange = .02f..4f, modifier = Modifier.fillMaxWidth().height(48.dp))
-                    Text(
-                        "Original ${layer.originalWidthPx} × ${layer.originalHeightPx} px · source preserved",
-                        color = Color(0xFFAAAEB4), fontSize = 11.sp,
-                    )
-                    Text(
-                        "Choose Eraser to hide image pixels non-destructively. A selection limits where it erases.",
-                        color = Color(0xFFAAAEB4), fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp),
-                    )
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onFitImage, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Fit canvas") }
-                        FilledTonalButton(onOriginalImageSize, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("100%") }
+                    Column {
+                        LayerRow(layer, previews[layer.id], layer.id == selectedId, { onSelect(layer.id) }, { onToggleVisibility(layer.id) })
+                        if (layer.id == selectedId) {
+                            LayerControls(
+                                layer = layer,
+                                imageTransforming = imageTransforming,
+                                onOpacity = onOpacity,
+                                onImageScale = onImageScale,
+                                onFitImage = onFitImage,
+                                onOriginalImageSize = onOriginalImageSize,
+                                onImageTransforming = onImageTransforming,
+                            )
+                        }
                     }
                 }
             }
@@ -107,6 +84,53 @@ internal fun LayersPanel(
                     PanelButton("Front", onMoveForward)
                 }
                 TextButton(onClick = onDelete, enabled = layers.size > 1, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED6A5A))) { Text("Delete") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LayerControls(
+    layer: LayerSummary,
+    imageTransforming: Boolean,
+    onOpacity: (Float) -> Unit,
+    onImageScale: (Float) -> Unit,
+    onFitImage: () -> Unit,
+    onOriginalImageSize: () -> Unit,
+    onImageTransforming: (Boolean) -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp),
+    ) {
+        ValueHeader("Layer opacity", "${(layer.opacity * 100).roundToInt()}%")
+        Slider(layer.opacity, onOpacity, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth().height(40.dp))
+        if (layer.kind == LayerKind.IMAGE) {
+            FilledTonalButton(
+                onClick = { onImageTransforming(!imageTransforming) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = if (imageTransforming) Color(0xFFED6A5A) else Color(0xFF34363B),
+                    contentColor = Color.White,
+                ),
+            ) { Text(if (imageTransforming) "Finish transforming" else "Move & resize on canvas") }
+            Text(
+                "Drag to move · pinch to resize · twist to rotate",
+                color = Color(0xFFAAAEB4), fontSize = 11.sp,
+                modifier = Modifier.padding(top = 5.dp, bottom = 8.dp),
+            )
+            ValueHeader("Image scale", "${((layer.imageScale ?: 1f) * 100).roundToInt()}%")
+            Slider(layer.imageScale ?: 1f, onImageScale, valueRange = .02f..4f, modifier = Modifier.fillMaxWidth().height(40.dp))
+            Text(
+                "Original ${layer.originalWidthPx} × ${layer.originalHeightPx} px · source preserved",
+                color = Color(0xFFAAAEB4), fontSize = 11.sp,
+            )
+            Text(
+                "Choose Eraser to hide image pixels non-destructively. A selection limits where it erases.",
+                color = Color(0xFFAAAEB4), fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp),
+            )
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onFitImage, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Fit canvas") }
+                FilledTonalButton(onOriginalImageSize, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("100%") }
             }
         }
     }
