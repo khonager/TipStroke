@@ -68,6 +68,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var frameCount = 0
     private var fpsWindowAt = SystemClock.elapsedRealtimeNanos()
     private var fps = 0f
+    private val memoryBudgetAdvisor = MemoryBudgetAdvisor(context)
+    private var lastDiagnostics = CanvasDiagnostics()
     var diagnosticsListener: ((CanvasDiagnostics) -> Unit)? = null
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>) -> Unit)? = null
@@ -185,6 +187,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun moveSelectedLayer(towardFront: Boolean) { layerStack.moveSelected(towardFront); notifyLayers() }
     fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { notifyLayers(); notifyHistory() } }
     fun publishLayers() { notifyLayers(); notifyHistory(); notifyVisiblePalette() }
+    fun publishDiagnostics() {
+        if (!settings.debug) return
+        val memory = memoryBudgetAdvisor.snapshot(
+            layerStack.canvasWidth,
+            layerStack.canvasHeight,
+            layerStack.estimatedDocumentBytes(),
+        )
+        publishDiagnostics(lastDiagnostics.withMemory(memory))
+    }
     fun configureBlank(widthPx: Int, heightPx: Int) {
         require(widthPx in 64..8192 && heightPx in 64..8192)
         layerStack = createLayerStack(widthPx, heightPx)
@@ -727,8 +738,34 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val now = SystemClock.elapsedRealtimeNanos(); frameCount++
         if (now - fpsWindowAt > 500_000_000L) { fps = frameCount * 1_000_000_000f / (now - fpsWindowAt); frameCount = 0; fpsWindowAt = now }
         val delta = now - lastSampleAt; lastSampleAt = now
-        diagnosticsListener?.invoke(CanvasDiagnostics(fps, event.getPressure(index), event.getAxisValue(MotionEvent.AXIS_TILT, index),
+        val input = CanvasDiagnostics(fps, event.getPressure(index), event.getAxisValue(MotionEvent.AXIS_TILT, index),
             pointerKind(event.getToolType(index)).name, if (delta > 0) 1_000_000_000f / delta else 0f,
-            rasterView.transform.scale, layerStack.allocatedTiles(), layerStack.lastDirtyTiles(), layerStack.undoBytes()))
+            rasterView.transform.scale, layerStack.allocatedTiles(), layerStack.lastDirtyTiles(), layerStack.undoBytes())
+        publishDiagnostics(if (settings.debug) input.withMemoryFrom(lastDiagnostics) else input)
     }
+
+    private fun publishDiagnostics(diagnostics: CanvasDiagnostics) {
+        lastDiagnostics = diagnostics
+        diagnosticsListener?.invoke(diagnostics)
+    }
+
+    private fun CanvasDiagnostics.withMemory(memory: MemoryBudgetSnapshot) = copy(
+        processBytes = memory.processBytes,
+        processBudgetBytes = memory.processBudgetBytes,
+        deviceAvailableBytes = memory.deviceAvailableBytes,
+        documentBytes = memory.documentBytes,
+        fullLayerBytes = memory.fullLayerBytes,
+        fullLayersRemaining = memory.fullLayersRemaining,
+        memoryPressure = memory.pressure,
+    )
+
+    private fun CanvasDiagnostics.withMemoryFrom(previous: CanvasDiagnostics) = copy(
+        processBytes = previous.processBytes,
+        processBudgetBytes = previous.processBudgetBytes,
+        deviceAvailableBytes = previous.deviceAvailableBytes,
+        documentBytes = previous.documentBytes,
+        fullLayerBytes = previous.fullLayerBytes,
+        fullLayersRemaining = previous.fullLayersRemaining,
+        memoryPressure = previous.memoryPressure,
+    )
 }

@@ -153,6 +153,12 @@ fun CanvasScreen(
     }
     LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, debug, gestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
+    LaunchedEffect(surface, debug) {
+        while (debug && surface != null) {
+            surface?.publishDiagnostics()
+            delay(2_000)
+        }
+    }
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
     LaunchedEffect(movingSelection, surface) { surface?.setSelectionMoveMode(movingSelection) }
@@ -524,4 +530,26 @@ private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER }
 @Composable private fun LayersIcon(color: Color) { Canvas(Modifier.size(23.dp)) { val stroke = Stroke(1.7.dp.toPx(), join = StrokeJoin.Round); val radius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()); drawRoundRect(color, Offset(2.dp.toPx(), 3.dp.toPx()), androidx.compose.ui.geometry.Size(17.dp.toPx(), 14.dp.toPx()), radius, style = stroke); drawRoundRect(color.copy(alpha = .7f), Offset(5.dp.toPx(), 7.dp.toPx()), androidx.compose.ui.geometry.Size(17.dp.toPx(), 14.dp.toPx()), radius, style = stroke) } }
 @Composable private fun BackIcon() { Canvas(Modifier.size(22.dp)) { val width = 2.dp.toPx(); drawLine(Color.White, Offset(size.width * .78f, size.height * .5f), Offset(size.width * .22f, size.height * .5f), width, StrokeCap.Round); drawLine(Color.White, Offset(size.width * .22f, size.height * .5f), Offset(size.width * .46f, size.height * .24f), width, StrokeCap.Round); drawLine(Color.White, Offset(size.width * .22f, size.height * .5f), Offset(size.width * .46f, size.height * .76f), width, StrokeCap.Round) } }
 
-@Composable private fun DebugOverlay(d: CanvasDiagnostics, modifier: Modifier = Modifier) { Text("${d.fps.roundToInt()} fps  •  ${d.tool.lowercase()}  •  p ${"%.2f".format(d.pressure)}  •  tilt ${"%.2f".format(d.tiltRadians)}\n${d.sampleRateHz.roundToInt()} Hz  •  ${d.allocatedTiles} tiles  •  ${d.dirtyTiles} dirty  •  ${d.undoBytes / 1024} KiB undo", modifier.background(Color(0xE617181B), RoundedCornerShape(10.dp)).padding(10.dp), color = Color(0xFFD8D9DC), fontSize = 11.sp, lineHeight = 16.sp) }
+@Composable private fun DebugOverlay(d: CanvasDiagnostics, modifier: Modifier = Modifier) {
+    val accent = when (d.memoryPressure) {
+        MemoryPressure.NORMAL -> Color(0xFF91C7A3)
+        MemoryPressure.ELEVATED -> Color(0xFFFFC66D)
+        MemoryPressure.CRITICAL -> Color(0xFFFF7D72)
+    }
+    val memory = if (d.processBudgetBytes > 0L) {
+        "mem ${formatBytes(d.processBytes)} / ${formatBytes(d.processBudgetBytes)}  •  doc ${formatBytes(d.documentBytes)}\n" +
+            "~${d.fullLayersRemaining} full layers left  •  ${formatBytes(d.fullLayerBytes)} each  •  device ${formatBytes(d.deviceAvailableBytes)} available"
+    } else "memory sampling…"
+    Column(modifier.background(Color(0xE617181B), RoundedCornerShape(10.dp)).padding(10.dp)) {
+        Text("${d.fps.roundToInt()} fps  •  ${d.tool.lowercase()}  •  p ${"%.2f".format(d.pressure)}  •  tilt ${"%.2f".format(d.tiltRadians)}", color = Color(0xFFD8D9DC), fontSize = 11.sp, lineHeight = 16.sp)
+        Text("${d.sampleRateHz.roundToInt()} Hz  •  ${d.allocatedTiles} tiles  •  ${d.dirtyTiles} dirty  •  ${formatBytes(d.undoBytes)} undo", color = Color(0xFFD8D9DC), fontSize = 11.sp, lineHeight = 16.sp)
+        Text(memory, color = accent, fontSize = 11.sp, lineHeight = 16.sp)
+        Text("Advisory: sparse layers vary with painted area and undo history", color = Color(0xFF92959B), fontSize = 9.sp, lineHeight = 13.sp)
+    }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024 * 1024 -> "%.1f GiB".format(bytes / (1024.0 * 1024 * 1024))
+    bytes >= 1024L * 1024 -> "%.0f MiB".format(bytes / (1024.0 * 1024))
+    else -> "${bytes / 1024} KiB"
+}

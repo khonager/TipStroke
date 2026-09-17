@@ -23,4 +23,11 @@ data class CanvasDiagnostics(
     val allocatedTiles: Int = 0,
     val dirtyTiles: Int = 0,
     val undoBytes: Long = 0,
+    val processBytes: Long = 0,
+    val processBudgetBytes: Long = 0,
+    val deviceAvailableBytes: Long = 0,
+    val documentBytes: Long = 0,
+    val fullLayerBytes: Long = 0,
+    val fullLayersRemaining: Int = 0,
+    val memoryPressure: MemoryPressure = MemoryPressure.NORMAL,
 )

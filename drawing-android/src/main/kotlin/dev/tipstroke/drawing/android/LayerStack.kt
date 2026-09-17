@@ -96,6 +96,12 @@ internal class LayerStack(
             is ImageLayerRuntime -> layer.mask.history.estimatedBytes
         }
     }
+    fun estimatedDocumentBytes(): Long = undoBytes() + layers.sumOf { layer ->
+        when (layer) {
+            is RasterLayerRuntime -> layer.tiles.allocatedTileBytes
+            is ImageLayerRuntime -> layer.mask.allocatedTileBytes + layer.source.cachedBitmapBytes()
+        }
+    }
 
     fun selectedStore(): TileStore? = when (val layer = selected()) {
         is RasterLayerRuntime -> layer.tiles
@@ -494,6 +500,8 @@ internal class OriginalImageSource(
         }
         return null
     }
+
+    fun cachedBitmapBytes(): Long = bitmap?.allocationByteCount?.toLong() ?: 0L
 
     fun close() { closed = true; bitmap?.recycle(); bitmap = null }
 

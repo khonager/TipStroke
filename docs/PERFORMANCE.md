@@ -15,7 +15,7 @@ Current safeguards:
 - Camera navigation is a matrix; artwork is not transformed or resampled.
 - No storage, networking, database, DI framework, or serialization exists in the hot path.
 
-The debug overlay reports approximate FPS/event rate, tool, pressure, tilt, zoom, allocated tiles, last dirty tile count, and undo bytes. It is off by default.
+The debug overlay reports approximate FPS/event rate, tool, pressure, tilt, zoom, allocated tiles, last dirty tile count, undo bytes, process memory, estimated document bytes, device-available memory, and an advisory count of fully painted raster layers remaining at the current canvas resolution. Android's managed-heap class is not an absolute PSS limit: process PSS also includes code, shared pages, EGL buffers, and other graphics allocations. The advisory budget therefore preserves the observed non-document process baseline and adds 75% of the app heap class as a conservative growing-document allowance, while also respecting Android's current system low-memory threshold. It never prevents layer creation: empty and partially painted layers remain sparse, so the displayed capacity is deliberately a conservative comparison unit rather than a hard layer limit. Process memory is sampled at most once every two seconds to keep it off the input hot path. The overlay is off by default.
 
 ## Benchmark next
 

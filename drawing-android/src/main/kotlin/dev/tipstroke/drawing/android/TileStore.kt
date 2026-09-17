@@ -19,6 +19,7 @@ class TileStore(
     val history = UndoHistory(historyBudgetBytes)
     var lastDirtyTiles: Set<TileCoordinate> = emptySet(); private set
     val allocatedTileCount get() = tiles.size
+    val allocatedTileBytes: Long get() = allocatedTileCount.toLong() * tileSize * tileSize * 4L
     private var smudgeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
     private val smudgeTouched = mutableSetOf<TileCoordinate>()
     private var liveStrokeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
