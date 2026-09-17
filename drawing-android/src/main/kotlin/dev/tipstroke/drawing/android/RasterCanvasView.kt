@@ -44,6 +44,24 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         rebuildMatrix(); invalidate(); transformChangedListener?.invoke(transform)
     }
 
+    fun updateTransformAround(
+        documentX: Float,
+        documentY: Float,
+        screenX: Float,
+        screenY: Float,
+        scale: Float,
+        rotation: Float,
+    ) {
+        val anchor = floatArrayOf(documentX, documentY)
+        Matrix().apply {
+            postTranslate(-layerStack.canvasWidth / 2f, -layerStack.canvasHeight / 2f)
+            postScale(scale, scale)
+            postRotate(rotation)
+            mapPoints(anchor)
+        }
+        updateTransform(screenX - anchor[0], screenY - anchor[1], scale, rotation)
+    }
+
     fun fitCanvas() {
         if (width == 0 || height == 0) return
         val scale = minOf(width * .76f / layerStack.canvasWidth, height * .83f / layerStack.canvasHeight)

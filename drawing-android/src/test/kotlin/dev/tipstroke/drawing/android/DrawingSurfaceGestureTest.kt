@@ -13,6 +13,35 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class DrawingSurfaceGestureTest {
+    @Test fun pinchKeepsTheDocumentPointUnderItsCentroidFixed() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            configureBlank(512, 512)
+            measure(exactly(1000), exactly(1000))
+            layout(0, 0, 1000, 1000)
+        }
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        val downTime = 1_000L
+
+        surface.dispatchTouchEvent(event(downTime, downTime, MotionEvent.ACTION_DOWN, listOf(0 to (200f to 200f))))
+        surface.dispatchTouchEvent(event(
+            downTime, downTime + 10,
+            MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+            listOf(0 to (200f to 200f), 1 to (400f to 200f)),
+        ))
+        val anchorBefore = raster.screenToDocument(300f, 200f)
+        val scaleBefore = raster.transform.scale
+
+        surface.dispatchTouchEvent(event(
+            downTime, downTime + 20, MotionEvent.ACTION_MOVE,
+            listOf(0 to (140f to 240f), 1 to (540f to 240f)),
+        ))
+
+        val anchorAfter = raster.screenToDocument(340f, 240f)
+        assertEquals(anchorBefore.x, anchorAfter.x, .001f)
+        assertEquals(anchorBefore.y, anchorAfter.y, .001f)
+        assertEquals(scaleBefore * 2f, raster.transform.scale, .001f)
+    }
+
     @Test fun remainingFingerIsRebasedAfterTwoFingerNavigation() {
         val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
             configureBlank(512, 512)

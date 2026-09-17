@@ -654,7 +654,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             )
         } else {
             val old = rasterView.transform
-            rasterView.updateTransform(old.panX + dx, old.panY + dy, (old.scale * scaleFactor).coerceIn(.08f, 12f), old.rotationDegrees + Math.toDegrees(angleDelta.toDouble()).toFloat())
+            val anchor = rasterView.screenToDocument(lastGestureCentroid.x, lastGestureCentroid.y)
+            rasterView.updateTransformAround(
+                anchor.x,
+                anchor.y,
+                center.x,
+                center.y,
+                (old.scale * scaleFactor).coerceIn(.08f, 12f),
+                old.rotationDegrees + Math.toDegrees(angleDelta.toDouble()).toFloat(),
+            )
             liveView.motionEventToViewTransform = Matrix()
         }
         gestureMoved = gestureMoved || hypot(dx, dy) > 4f || abs(scaleFactor - 1f) > .015f || abs(angleDelta) > .02f
