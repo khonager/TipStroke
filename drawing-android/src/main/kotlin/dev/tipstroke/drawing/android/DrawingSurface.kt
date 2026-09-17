@@ -109,7 +109,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     val stroke = pending.stroke
                     val store = pending.target.store
                     if (stroke.style.blend == BlendBehavior.PAINT) {
-                        store.commitInk(stroke, inkStroke, inkRenderer)
+                        val rasterStroke = if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
+                            Stroke(createInkBrush(stroke.style, includePressureOpacity = false), inkStroke.inputs)
+                        } else inkStroke
+                        store.commitInk(stroke, rasterStroke, inkRenderer)
                     } else {
                         store.commit(stroke)
                     }
@@ -329,7 +332,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     airbrushPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId).toList(), style)
                 } else {
-                    liveView.startStroke(event, pointerId, createInkBrush(), rasterView.viewToDocumentMatrix(), Matrix())
+                    liveView.startStroke(event, pointerId, createInkBrush(style), rasterView.viewToDocumentMatrix(), Matrix())
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -361,11 +364,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
                 if (index >= 0) pendingSamples[pointerId]?.let { list ->
                     pendingTargets[pointerId]?.let { target ->
-                        appendSamples(pointerId, list, listOf(sample(event, index).copy(pressure = terminalPressure).forTarget(target)))
+                        appendSamples(pointerId, list, listOf(sample(event, index).copy(opacityPressure = terminalPressure).forTarget(target)))
                     }
                 }
                 val target = pendingTargets.remove(pointerId)
-                pendingSamples.remove(pointerId)?.let { samples ->
+                pendingSamples.remove(pointerId)?.let { rawSamples ->
+                    val samples = stabilizeLiftOffOpacity(rawSamples)
                     val style = customPreviewStyle ?: airbrushPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
                     if (target != null) {
                         if (customPreviewStyle != null) {
@@ -390,14 +394,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     customPreviewStyle = null
                 } else if (airbrushPreviewStyle != null) {
                     airbrushPreviewStyle = null
-                } else {
-                    val finishEvent = if (index >= 0) event.withPointerPressure(pointerId, terminalPressure) else event
-                    try {
-                        liveView.finishStroke(finishEvent, pointerId)
-                    } finally {
-                        if (finishEvent !== event) finishEvent.recycle()
-                    }
-                }
+                } else liveView.finishStroke(event, pointerId)
                 activeStylusId = null
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -733,20 +730,23 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (target.image == null) rasterView.invalidateTiles(dirty) else rasterView.invalidate()
     }
 
-    private fun createInkBrush(): Brush {
-        val c = settings.color
-        val alpha = (settings.opacity * c.alpha * 255).roundToInt().coerceIn(1, 255)
+    private fun createInkBrush(style: StrokeStyle, includePressureOpacity: Boolean = true): Brush {
+        val c = style.color
+        val alpha = (style.opacity * c.alpha * 255).roundToInt().coerceIn(1, 255)
         val argb = Color.argb(alpha, (c.red * 255).roundToInt(), (c.green * 255).roundToInt(), (c.blue * 255).roundToInt())
-        val family = tipStrokeInkBrushes.familyFor(settings.brush)
-        val liveColor = if (settings.erasing) Color.WHITE else argb
-        val epsilon = when (settings.brush.engine) {
+        val brushPreset = if (includePressureOpacity) style.brush else {
+            style.brush.copy(pressureToOpacity = PressureCurve(1f, 1f, 1f))
+        }
+        val family = tipStrokeInkBrushes.familyFor(brushPreset)
+        val liveColor = if (style.blend == BlendBehavior.ERASE) Color.WHITE else argb
+        val epsilon = when (style.brush.engine) {
             // At 1200% zoom these remain below one screen pixel, while avoiding
             // needlessly dense meshes that cannot add detail to the raster canvas.
             BrushEngine.PENCIL -> .04f
             BrushEngine.AIRBRUSH -> .08f
             BrushEngine.INK -> .1f
         }
-        return Brush.createWithColorIntArgb(family, liveColor, settings.sizePx.coerceAtLeast(1f), epsilon)
+        return Brush.createWithColorIntArgb(family, liveColor, style.sizePx.coerceAtLeast(1f), epsilon)
     }
 
     private fun sample(event: MotionEvent, index: Int, historyIndex: Int? = null): StrokeSample {
@@ -758,22 +758,6 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             event.getAxisValue(MotionEvent.AXIS_TILT, index), event.getAxisValue(MotionEvent.AXIS_ORIENTATION, index),
             (((historyIndex?.let { event.getHistoricalEventTime(it) } ?: event.eventTime) - event.downTime) * 1_000_000L).coerceAtLeast(0),
             event.buttonState, pointerKind(event.getToolType(index)))
-    }
-
-    private fun MotionEvent.withPointerPressure(pointerId: Int, pressure: Float): MotionEvent {
-        val properties = Array(pointerCount) { pointerIndex ->
-            MotionEvent.PointerProperties().also { getPointerProperties(pointerIndex, it) }
-        }
-        val coordinates = Array(pointerCount) { pointerIndex ->
-            MotionEvent.PointerCoords().also { coords ->
-                getPointerCoords(pointerIndex, coords)
-                if (getPointerId(pointerIndex) == pointerId) coords.pressure = pressure
-            }
-        }
-        return MotionEvent.obtain(
-            downTime, eventTime, action, pointerCount, properties, coordinates,
-            metaState, buttonState, xPrecision, yPrecision, deviceId, edgeFlags, source, flags,
-        )
     }
 
     private fun isStylus(event: MotionEvent, index: Int) = event.getToolType(index) in intArrayOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)
@@ -837,3 +821,26 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 /** ACTION_UP pressure describes loss of contact, not an intentional final paint sample. */
 internal fun stabilizedTerminalPressure(previousPressure: Float?, reportedUpPressure: Float): Float =
     (previousPressure ?: reportedUpPressure).coerceIn(.01f, 1f)
+
+/**
+ * Stabilizes only opacity when pressure rapidly collapses as the pen leaves the digitizer.
+ * The raw pressure remains available for a natural size taper at the end of the stroke.
+ */
+internal fun stabilizeLiftOffOpacity(samples: List<StrokeSample>): List<StrokeSample> {
+    if (samples.size < 3) return samples
+    val windowStart = samples.last().elapsedNanos - 120_000_000L
+    val firstInWindow = samples.indexOfFirst { it.elapsedNanos >= windowStart }.coerceAtLeast(0)
+    val peakIndex = (firstInWindow..samples.lastIndex).maxBy { samples[it].opacityPressure }
+    val peak = samples[peakIndex].opacityPressure
+    val terminal = samples.last().opacityPressure
+    if (terminal > .35f || peak - terminal < .25f || peakIndex == samples.lastIndex) return samples
+
+    val upwardSteps = samples.subList(peakIndex, samples.size).zipWithNext().count { (before, after) ->
+        after.opacityPressure > before.opacityPressure + .06f
+    }
+    if (upwardSteps > 1) return samples
+
+    return samples.mapIndexed { index, sample ->
+        if (index > peakIndex) sample.copy(opacityPressure = peak) else sample
+    }
+}

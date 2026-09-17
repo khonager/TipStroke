@@ -19,6 +19,8 @@ data class StrokeSample(
     val elapsedNanos: Long,
     val buttonState: Int,
     val kind: PointerKind,
+    /** Pressure used only for opacity; may be stabilized without changing size taper. */
+    val opacityPressure: Float = pressure,
 )
 data class StrokeStyle(
     val brush: BrushPreset,

@@ -3,6 +3,9 @@ package dev.tipstroke.drawing.android
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
+import dev.tipstroke.core.drawing.PointerKind
+import dev.tipstroke.core.drawing.StrokeSample
+import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.BrushPreset
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
@@ -23,6 +26,34 @@ class DrawingSurfaceAirbrushTest {
     @Test fun penUpPressureUsesTheLastDrawingPressure() {
         assertEquals(.72f, stabilizedTerminalPressure(.72f, .01f), .001f)
         assertEquals(.4f, stabilizedTerminalPressure(null, .4f), .001f)
+    }
+
+    @Test fun rapidLiftOffStabilizesOpacityButKeepsSizePressure() {
+        val samples = listOf(
+            pressureSample(.82f, 0L),
+            pressureSample(.76f, 25L),
+            pressureSample(.43f, 45L),
+            pressureSample(.09f, 60L),
+            pressureSample(.09f, 61L),
+        )
+
+        val stabilized = stabilizeLiftOffOpacity(samples)
+
+        assertEquals(samples.map { it.pressure }, stabilized.map { it.pressure })
+        assertEquals(.82f, stabilized.last().opacityPressure, .001f)
+    }
+
+    @Test fun sustainedLowPressureEndingIsNotChanged() {
+        val samples = listOf(
+            pressureSample(.8f, 0L),
+            pressureSample(.2f, 250L),
+            pressureSample(.12f, 430L),
+            pressureSample(.08f, 500L),
+        )
+
+        val stabilized = stabilizeLiftOffOpacity(samples)
+
+        assertEquals(samples.map { it.opacityPressure }, stabilized.map { it.opacityPressure })
     }
 
     @Test fun airbrushUsesTransientUnifiedPreviewThenOneTileCommit() {
@@ -82,4 +113,15 @@ class DrawingSurfaceAirbrushTest {
             0,
         )
     }
+
+    private fun pressureSample(pressure: Float, elapsedMillis: Long) = StrokeSample(
+        pointerId = 0,
+        position = Point(elapsedMillis.toFloat(), 0f),
+        pressure = pressure,
+        tiltRadians = 0f,
+        orientationRadians = 0f,
+        elapsedNanos = elapsedMillis * 1_000_000L,
+        buttonState = 0,
+        kind = PointerKind.STYLUS,
+    )
 }

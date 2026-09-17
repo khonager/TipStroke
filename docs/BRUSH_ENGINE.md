@@ -18,7 +18,7 @@ Erasing paint is `BlendBehavior.ERASE` and uses `PorterDuff.CLEAR`, never the ba
 
 Brush Studio deliberately exposes only edge hardness where supported, pressure affecting size, pressure affecting opacity, and optional faster-stroke taper. Disabling a pressure response omits that Jetpack Ink behavior node entirely; a constant start/end mapping is invalid in the Ink brush API. Size and overall opacity remain direct canvas controls. Tuning, size, and opacity persist locally per built-in brush, while the eraser has an independent remembered setup. These local preferences avoid expanding the document format with a large brush library prematurely.
 
-The terminal `ACTION_UP` sample reuses the last in-contact pressure. Stylus hardware commonly reports near-zero pressure while lifting at the final position; treating that lifecycle value as paint would create an unintended translucent tail on every pressure-opacity stroke. Genuine low-pressure movement before pen-up remains unchanged.
+Opacity uses a separate pressure channel from size. At pen-up, a rapid collapse toward zero across the final 120 ms is treated as lift-off noise and its opacity reuses the last stable pressure; raw pressure remains unchanged so size can still taper naturally. Sustained low-pressure drawing before pen-up remains unchanged. Pencil and Ink finalization rebuilds the temporary Ink mesh without its experimental opacity modifier, then applies the corrected bounded raster pressure mask, preventing the faded mesh from leaking into permanent pixels.
 
 ## Experimental dependency
 

@@ -214,7 +214,7 @@ internal object StrokeCanvasPainter {
     }
 
     private fun StrokeSample.pressureSize(stroke: CompletedStroke) = stroke.style.brush.pressureToSize.map(pressure)
-    private fun StrokeSample.pressureOpacity(stroke: CompletedStroke) = stroke.style.brush.pressureToOpacity.map(pressure)
+    private fun StrokeSample.pressureOpacity(stroke: CompletedStroke) = stroke.style.brush.pressureToOpacity.map(opacityPressure)
     private fun StrokeSample.speedSize(stroke: CompletedStroke, previous: StrokeSample): Float {
         val taper = stroke.style.brush.speedTaper
         if (taper <= 0f) return 1f
