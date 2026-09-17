@@ -62,10 +62,15 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         updateTransform(screenX - anchor[0], screenY - anchor[1], scale, rotation)
     }
 
-    fun fitCanvas() {
+    fun fitCanvas(rotationDegrees: Float = 0f) {
         if (width == 0 || height == 0) return
-        val scale = minOf(width * .76f / layerStack.canvasWidth, height * .83f / layerStack.canvasHeight)
-        updateTransform(width / 2f, height / 2f, scale, 0f)
+        val radians = Math.toRadians(rotationDegrees.toDouble())
+        val rotatedWidth = kotlin.math.abs(kotlin.math.cos(radians)) * layerStack.canvasWidth +
+            kotlin.math.abs(kotlin.math.sin(radians)) * layerStack.canvasHeight
+        val rotatedHeight = kotlin.math.abs(kotlin.math.sin(radians)) * layerStack.canvasWidth +
+            kotlin.math.abs(kotlin.math.cos(radians)) * layerStack.canvasHeight
+        val scale = minOf(width * .76f / rotatedWidth.toFloat(), height * .83f / rotatedHeight.toFloat())
+        updateTransform(width / 2f, height / 2f, scale, rotationDegrees)
     }
 
     private fun rebuildMatrix() {
@@ -101,7 +106,9 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         )
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { if (w > 0 && h > 0 && (w != oldw || h != oldh)) fitCanvas() }
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        if (w > 0 && h > 0 && (w != oldw || h != oldh)) fitCanvas(transform.rotationDegrees)
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)

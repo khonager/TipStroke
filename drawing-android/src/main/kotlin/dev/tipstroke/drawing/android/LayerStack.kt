@@ -290,7 +290,7 @@ internal class LayerStack(
         return true
     }
 
-    fun snapshot(): DrawingSnapshot = DrawingSnapshot(
+    fun snapshot(galleryRotationQuarterTurns: Int = 0): DrawingSnapshot = DrawingSnapshot(
         canvasWidth, canvasHeight, selectedId,
         layers.map { layer ->
             when (layer) {
@@ -303,7 +303,7 @@ internal class LayerStack(
                     layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(),
                 )
             }
-        },
+        }, galleryRotationQuarterTurns.mod(4),
     )
 
     fun replaceWith(loaded: LoadedProject) {

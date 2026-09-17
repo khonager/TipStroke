@@ -13,6 +13,14 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class DrawingSurfaceGestureTest {
+    @Test fun galleryOrientationSnapsToTheNearestQuarterTurn() {
+        assertEquals(0, galleryQuarterTurns(44f))
+        assertEquals(1, galleryQuarterTurns(46f))
+        assertEquals(2, galleryQuarterTurns(181f))
+        assertEquals(3, galleryQuarterTurns(-100f))
+        assertEquals(0, galleryQuarterTurns(359f))
+    }
+
     @Test fun pinchKeepsTheDocumentPointUnderItsCentroidFixed() {
         val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
             configureBlank(512, 512)

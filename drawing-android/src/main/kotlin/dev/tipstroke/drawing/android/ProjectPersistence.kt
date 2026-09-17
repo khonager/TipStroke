@@ -25,6 +25,7 @@ data class DrawingSummary(
     val heightPx: Int,
     val modifiedAtMillis: Long,
     val thumbnailFile: File,
+    val galleryRotationQuarterTurns: Int = 0,
 )
 
 sealed interface GalleryItem { val key: String }
@@ -51,6 +52,7 @@ class DrawingLibrary(context: Context) {
                 widthPx = json.getInt("widthPx"), heightPx = json.getInt("heightPx"),
                 modifiedAtMillis = json.getLong("modifiedAtMillis"),
                 thumbnailFile = File(directory, THUMBNAIL),
+                galleryRotationQuarterTurns = json.optInt("galleryRotationQuarterTurns", 0).mod(4),
             )
         }.getOrNull()
     }.sortedByDescending { it.modifiedAtMillis }
@@ -182,7 +184,7 @@ class DrawingLibrary(context: Context) {
             }
             DrawingSummary(
                 newId, name, json.getInt("widthPx"), json.getInt("heightPx"), modifiedAt,
-                File(target, THUMBNAIL),
+                File(target, THUMBNAIL), json.optInt("galleryRotationQuarterTurns", 0).mod(4),
             )
         } catch (failure: Throwable) {
             temporary.deleteRecursively()
@@ -312,6 +314,7 @@ internal data class DrawingSnapshot(
     val heightPx: Int,
     val selectedId: LayerId,
     val layers: List<SavedLayerSnapshot>,
+    val galleryRotationQuarterTurns: Int = 0,
 ) {
     fun recycle() = layers.flatMap { layer ->
         when (layer) {
@@ -326,6 +329,7 @@ internal data class LoadedProject(
     val heightPx: Int,
     val selectedId: LayerId,
     val layers: List<LoadedLayer>,
+    val galleryRotationQuarterTurns: Int = 0,
 )
 
 internal sealed interface LoadedLayer {
@@ -408,16 +412,22 @@ internal object ProjectPersistence {
                 .put("widthPx", snapshot.widthPx).put("heightPx", snapshot.heightPx)
                 .put("modifiedAtMillis", modifiedAt)
                 .put("selectedLayerId", snapshot.selectedId.value)
+                .put("galleryRotationQuarterTurns", snapshot.galleryRotationQuarterTurns.mod(4))
                 .put("layers", layersJson)
                 .also { File(temporary, DrawingLibrary.MANIFEST).writeText(it.toString(2)) }
 
-            val thumbnailScale = minOf(1f, 640f / snapshot.widthPx, 420f / snapshot.heightPx)
-            render(snapshot, resolver, thumbnailScale, transparent = false).also { thumbnail ->
+            val quarterTurns = snapshot.galleryRotationQuarterTurns.mod(4)
+            val orientedWidth = if (quarterTurns % 2 == 0) snapshot.widthPx else snapshot.heightPx
+            val orientedHeight = if (quarterTurns % 2 == 0) snapshot.heightPx else snapshot.widthPx
+            val thumbnailScale = minOf(1f, 640f / orientedWidth, 420f / orientedHeight)
+            render(snapshot, resolver, thumbnailScale, transparent = false).also { rendered ->
+                val thumbnail = rotateQuarterTurns(rendered, quarterTurns)
                 File(temporary, DrawingLibrary.THUMBNAIL).outputStream().use { thumbnail.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                if (thumbnail !== rendered) rendered.recycle()
                 thumbnail.recycle()
             }
             replaceDirectoryAtomically(temporary, target)
-            DrawingSummary(id, name, snapshot.widthPx, snapshot.heightPx, modifiedAt, File(target, DrawingLibrary.THUMBNAIL))
+            DrawingSummary(id, name, snapshot.widthPx, snapshot.heightPx, modifiedAt, File(target, DrawingLibrary.THUMBNAIL), quarterTurns)
         } catch (failure: Throwable) {
             temporary.deleteRecursively()
             throw failure
@@ -477,7 +487,7 @@ internal object ProjectPersistence {
         val selected = LayerId(json.optString("selectedLayerId", layers.last().id.value)).let { wanted ->
             if (layers.any { it.id == wanted }) wanted else layers.last().id
         }
-        LoadedProject(width, height, selected, layers)
+        LoadedProject(width, height, selected, layers, json.optInt("galleryRotationQuarterTurns", 0).mod(4))
     }
 
     fun export(resolver: ContentResolver, uri: Uri, snapshot: DrawingSnapshot, format: ExportFormat, quality: Int, scale: Float, transparent: Boolean): Result<Unit> = runCatching {
@@ -544,6 +554,15 @@ internal object ProjectPersistence {
             }
         }
         return output
+    }
+
+    private fun rotateQuarterTurns(source: Bitmap, quarterTurns: Int): Bitmap {
+        val normalized = quarterTurns.mod(4)
+        if (normalized == 0) return source
+        return Bitmap.createBitmap(
+            source, 0, 0, source.width, source.height,
+            Matrix().apply { postRotate(normalized * 90f) }, true,
+        )
     }
 
     private fun decodeBitmap(resolver: ContentResolver, uri: Uri): Bitmap =

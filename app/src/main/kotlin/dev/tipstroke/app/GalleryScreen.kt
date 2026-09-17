@@ -324,7 +324,11 @@ private fun DrawingCard(
         val image = remember(drawing.thumbnailFile.absolutePath, drawing.modifiedAtMillis) {
             BitmapFactory.decodeFile(drawing.thumbnailFile.absolutePath)?.asImageBitmap()
         }
-        val documentAspect = (drawing.widthPx.toFloat() / drawing.heightPx).coerceIn(.125f, 8f)
+        val documentAspect = (if (drawing.galleryRotationQuarterTurns % 2 == 0) {
+            drawing.widthPx.toFloat() / drawing.heightPx
+        } else {
+            drawing.heightPx.toFloat() / drawing.widthPx
+        }).coerceIn(.125f, 8f)
         Box(Modifier.fillMaxWidth().aspectRatio(documentAspect).clip(RoundedCornerShape(12.dp)).background(Color.White)) {
             image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
         }

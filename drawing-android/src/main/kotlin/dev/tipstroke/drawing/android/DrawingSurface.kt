@@ -25,6 +25,8 @@ import kotlin.math.*
 
 enum class SelectionTool { RECTANGLE, LASSO }
 
+internal fun galleryQuarterTurns(rotationDegrees: Float): Int = (rotationDegrees / 90f).roundToInt().mod(4)
+
 @OptIn(androidx.ink.brush.ExperimentalInkCustomBrushApi::class)
 class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.util.AttributeSet? = null) : FrameLayout(context, attrs) {
     val settings = CanvasSettings()
@@ -274,7 +276,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     clearSelection()
                     rasterView.layerStack = replacement
                     replacement.replaceWith(project)
-                    rasterView.fitCanvas()
+                    rasterView.fitCanvas(project.galleryRotationQuarterTurns * 90f)
                     publishLayers()
                 }
                 onComplete(result)
@@ -283,7 +285,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     fun saveProject(library: DrawingLibrary, id: String, name: String, onComplete: (Result<DrawingSummary>) -> Unit = {}) {
-        val snapshot = layerStack.snapshot()
+        val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees))
         ProjectPersistence.executor.execute {
             val result = try { ProjectPersistence.save(context.contentResolver, library, id, name, snapshot) }
             finally { snapshot.recycle() }
@@ -292,7 +294,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     fun exportDrawing(uri: android.net.Uri, format: ExportFormat, quality: Int, scale: Float, transparent: Boolean, onComplete: (Result<Unit>) -> Unit) {
-        val snapshot = layerStack.snapshot()
+        val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees))
         ProjectPersistence.executor.execute {
             val result = try { ProjectPersistence.export(context.contentResolver, uri, snapshot, format, quality, scale, transparent) }
             finally { snapshot.recycle() }

@@ -86,14 +86,21 @@ class ProjectPersistenceTest {
                 layerId, "Paint 1", true, .65f, mapOf(TileCoordinate(0, 0) to tile),
                 mapOf(Color.RED to 12_345L),
             )),
+            galleryRotationQuarterTurns = 1,
         )
 
         val saved = ProjectPersistence.save(context.contentResolver, library, id, "Persistence test", snapshot).getOrThrow()
         assertTrue(saved.thumbnailFile.isFile)
+        assertEquals(1, saved.galleryRotationQuarterTurns)
+        BitmapFactory.decodeFile(saved.thumbnailFile.absolutePath).also { thumbnail ->
+            assertTrue(thumbnail.height > thumbnail.width)
+            thumbnail.recycle()
+        }
         assertEquals(id, library.list().first { it.id == id }.id)
 
         val loaded = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
         assertEquals(640, loaded.widthPx)
+        assertEquals(1, loaded.galleryRotationQuarterTurns)
         assertEquals(layerId, loaded.selectedId)
         val raster = loaded.layers.single() as LoadedRaster
         assertEquals(.65f, raster.opacity, .001f)
