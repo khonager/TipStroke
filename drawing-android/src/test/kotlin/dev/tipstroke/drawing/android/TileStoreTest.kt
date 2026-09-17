@@ -83,7 +83,29 @@ class TileStoreTest {
 
         val alphaAfter = totalAlpha(store, 512, 256)
         assertTrue("Smudge created alpha: before=$alphaBefore after=$alphaAfter", alphaAfter <= alphaBefore * 1.01)
-        assertNotEquals(0, Color.alpha(store.colorAt(250, 128)))
+        assertTrue("Smudge did not move the mark", (80..350).any { Color.alpha(store.colorAt(it, 128)) != 0 })
+    }
+
+    @Test fun smudgeBlendsAnOpaqueRainbowWithoutErasingItToWhite() {
+        val store = TileStore(256, 256)
+        val rainbow = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        val pixels = IntArray(256 * 256) { index ->
+            Color.HSVToColor(floatArrayOf((index % 256) * 360f / 256f, 1f, 1f))
+        }
+        rainbow.setPixels(pixels, 0, 256, 0, 0, 256, 256)
+        store.replaceTiles(mapOf(TileCoordinate(0, 0) to rainbow))
+        val destinationBefore = store.colorAt(155, 128)
+
+        store.beginSmudge()
+        store.smudge(90f, 128f, 150f, 128f, 42f, .8f)
+        store.finishSmudge()
+
+        for (x in 50..192 step 4) {
+            val color = store.colorAt(x, 128)
+            assertEquals("Smudge changed opaque coverage at x=$x", 255, Color.alpha(color))
+            assertFalse("Smudge produced white at x=$x", Color.red(color) > 245 && Color.green(color) > 245 && Color.blue(color) > 245)
+        }
+        assertNotEquals(destinationBefore, store.colorAt(155, 128))
     }
 
     @Test fun airbrushWetPainterMatchesCommittedPixels() {

@@ -172,58 +172,122 @@ class TileStore(
 
     internal fun smudge(fromX: Float, fromY: Float, toX: Float, toY: Float, radius: Float, strength: Float) {
         val before = smudgeBefore ?: return
-        val safeRadius = radius.coerceIn(4f, 96f)
+        val safeRadius = radius.roundToInt().coerceIn(4, 96)
         val safeStrength = strength.coerceIn(.05f, 1f)
-        val diameter = (safeRadius * 2f).roundToInt().coerceAtLeast(2)
-        val patch = Bitmap.createBitmap(diameter, diameter, Bitmap.Config.ARGB_8888)
-        val patchCanvas = Canvas(patch)
-        val sourceLeft = fromX - safeRadius
-        val sourceTop = fromY - safeRadius
-        TileGrid.intersecting(
-            dev.tipstroke.core.geometry.Rect(sourceLeft, sourceTop, sourceLeft + diameter, sourceTop + diameter),
-            canvasWidth, canvasHeight, tileSize,
-        ).forEach { coordinate ->
-            tiles[coordinate]?.let { bitmap ->
-                patchCanvas.drawBitmap(bitmap, coordinate.x * tileSize - sourceLeft, coordinate.y * tileSize - sourceTop, null)
+        val diameter = safeRadius * 2 + 1
+        val sourceLeft = fromX.roundToInt() - safeRadius
+        val sourceTop = fromY.roundToInt() - safeRadius
+        val destinationLeft = toX.roundToInt() - safeRadius
+        val destinationTop = toY.roundToInt() - safeRadius
+        fun capturePatch(left: Int, top: Int): Bitmap =
+            Bitmap.createBitmap(diameter, diameter, Bitmap.Config.ARGB_8888).also { patch ->
+                val patchCanvas = Canvas(patch)
+                TileGrid.intersecting(
+                    dev.tipstroke.core.geometry.Rect(left.toFloat(), top.toFloat(), (left + diameter).toFloat(), (top + diameter).toFloat()),
+                    canvasWidth, canvasHeight, tileSize,
+                ).forEach { coordinate ->
+                    tiles[coordinate]?.let { bitmap ->
+                        patchCanvas.drawBitmap(bitmap, (coordinate.x * tileSize - left).toFloat(), (coordinate.y * tileSize - top).toFloat(), null)
+                    }
+                }
             }
-        }
-        if (patch.isFullyTransparent()) {
-            patch.recycle()
+        val sourcePatch = capturePatch(sourceLeft, sourceTop)
+        if (sourcePatch.isFullyTransparent()) {
+            sourcePatch.recycle()
             return
         }
-        val source = dev.tipstroke.core.geometry.Rect(fromX - safeRadius, fromY - safeRadius, fromX + safeRadius, fromY + safeRadius)
-        val destination = dev.tipstroke.core.geometry.Rect(toX - safeRadius, toY - safeRadius, toX + safeRadius, toY + safeRadius)
+        val destinationPatch = capturePatch(destinationLeft, destinationTop)
+        val source = dev.tipstroke.core.geometry.Rect(sourceLeft.toFloat(), sourceTop.toFloat(), (sourceLeft + diameter).toFloat(), (sourceTop + diameter).toFloat())
+        val destination = dev.tipstroke.core.geometry.Rect(destinationLeft.toFloat(), destinationTop.toFloat(), (destinationLeft + diameter).toFloat(), (destinationTop + diameter).toFloat())
         val dirty = TileGrid.intersecting(source, canvasWidth, canvasHeight, tileSize) +
             TileGrid.intersecting(destination, canvasWidth, canvasHeight, tileSize)
-        val transferAlpha = (safeStrength * 255).roundToInt()
 
-        // A smudge transports existing premultiplied color instead of stamping another
-        // copy. Removing the same fraction from the pickup area before depositing it
-        // prevents a tiny opaque mark from being amplified by repeated passes.
+        // Exchange the source and destination colors rather than clearing the pickup
+        // circle. On fully painted areas this preserves opaque coverage while blending;
+        // at transparent edges it moves the same premultiplied color/alpha outward.
+        val sourcePixels = IntArray(diameter * diameter)
+        val destinationPixels = IntArray(diameter * diameter)
+        sourcePatch.getPixels(sourcePixels, 0, diameter, 0, 0, diameter, diameter)
+        destinationPatch.getPixels(destinationPixels, 0, diameter, 0, 0, diameter, diameter)
+        val deltaAlpha = FloatArray(diameter * diameter)
+        val deltaRed = FloatArray(diameter * diameter)
+        val deltaGreen = FloatArray(diameter * diameter)
+        val deltaBlue = FloatArray(diameter * diameter)
+        val center = safeRadius + .5f
+        for (y in 0 until diameter) for (x in 0 until diameter) {
+            val edgeCoverage = (safeRadius + .5f - hypot(x + .5f - center, y + .5f - center)).coerceIn(0f, 1f)
+            if (edgeCoverage <= 0f) continue
+            val index = y * diameter + x
+            val sourceColor = sourcePixels[index]
+            val destinationColor = destinationPixels[index]
+            // Half strength is the stable maximum for overlapping exchange chains.
+            // Every delta added to the source is subtracted from its destination.
+            val amount = safeStrength * .5f * edgeCoverage
+            val sourceAlpha = Color.alpha(sourceColor).toFloat()
+            val destinationAlpha = Color.alpha(destinationColor).toFloat()
+            deltaAlpha[index] = (destinationAlpha - sourceAlpha) * amount
+            deltaRed[index] = (Color.red(destinationColor) * destinationAlpha / 255f - Color.red(sourceColor) * sourceAlpha / 255f) * amount
+            deltaGreen[index] = (Color.green(destinationColor) * destinationAlpha / 255f - Color.green(sourceColor) * sourceAlpha / 255f) * amount
+            deltaBlue[index] = (Color.blue(destinationColor) * destinationAlpha / 255f - Color.blue(sourceColor) * sourceAlpha / 255f) * amount
+        }
+        fun deltaIndex(globalX: Int, globalY: Int, left: Int, top: Int): Int {
+            val localX = globalX - left
+            val localY = globalY - top
+            return if (localX in 0 until diameter && localY in 0 until diameter) localY * diameter + localX else -1
+        }
+        for (y in 0 until diameter) for (x in 0 until diameter) {
+            val index = y * diameter + x
+            val sourceColor = sourcePixels[index]
+            val destinationColor = destinationPixels[index]
+            val destinationOverlap = deltaIndex(sourceLeft + x, sourceTop + y, destinationLeft, destinationTop)
+            val sourceOverlap = deltaIndex(destinationLeft + x, destinationTop + y, sourceLeft, sourceTop)
+            sourcePixels[index] = colorFromPremultiplied(
+                Color.alpha(sourceColor) + deltaAlpha[index] - destinationOverlap.takeIf { it >= 0 }?.let(deltaAlpha::get).orZero(),
+                Color.red(sourceColor) * Color.alpha(sourceColor) / 255f + deltaRed[index] - destinationOverlap.takeIf { it >= 0 }?.let(deltaRed::get).orZero(),
+                Color.green(sourceColor) * Color.alpha(sourceColor) / 255f + deltaGreen[index] - destinationOverlap.takeIf { it >= 0 }?.let(deltaGreen::get).orZero(),
+                Color.blue(sourceColor) * Color.alpha(sourceColor) / 255f + deltaBlue[index] - destinationOverlap.takeIf { it >= 0 }?.let(deltaBlue::get).orZero(),
+            )
+            destinationPixels[index] = colorFromPremultiplied(
+                Color.alpha(destinationColor) - deltaAlpha[index] + sourceOverlap.takeIf { it >= 0 }?.let(deltaAlpha::get).orZero(),
+                Color.red(destinationColor) * Color.alpha(destinationColor) / 255f - deltaRed[index] + sourceOverlap.takeIf { it >= 0 }?.let(deltaRed::get).orZero(),
+                Color.green(destinationColor) * Color.alpha(destinationColor) / 255f - deltaGreen[index] + sourceOverlap.takeIf { it >= 0 }?.let(deltaGreen::get).orZero(),
+                Color.blue(destinationColor) * Color.alpha(destinationColor) / 255f - deltaBlue[index] + sourceOverlap.takeIf { it >= 0 }?.let(deltaBlue::get).orZero(),
+            )
+        }
+        sourcePatch.setPixels(sourcePixels, 0, diameter, 0, 0, diameter, diameter)
+        destinationPatch.setPixels(destinationPixels, 0, diameter, 0, 0, diameter, diameter)
+
         dirty.forEach { coordinate ->
             if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
         }
-        TileGrid.intersecting(source, canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
-            val bitmap = tiles[coordinate] ?: return@forEach
-            val localX = fromX - coordinate.x * tileSize
-            val localY = fromY - coordinate.y * tileSize
-            Canvas(bitmap).drawCircle(localX, localY, safeRadius, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                alpha = transferAlpha
-                xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-            })
+        val replacePaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
+        fun writePatch(patch: Bitmap, left: Int, top: Int, bounds: dev.tipstroke.core.geometry.Rect) {
+            TileGrid.intersecting(bounds, canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
+                val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+                Canvas(bitmap).apply {
+                    save()
+                    clipPath(Path().apply {
+                        addCircle(
+                            (left + safeRadius - coordinate.x * tileSize).toFloat(),
+                            (top + safeRadius - coordinate.y * tileSize).toFloat(),
+                            safeRadius.toFloat(),
+                            Path.Direction.CW,
+                        )
+                    })
+                    drawBitmap(
+                        patch,
+                        (left - coordinate.x * tileSize).toFloat(),
+                        (top - coordinate.y * tileSize).toFloat(),
+                        replacePaint,
+                    )
+                    restore()
+                }
+            }
         }
-        val depositPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { alpha = transferAlpha }
-        TileGrid.intersecting(destination, canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
-            val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
-            val tileCanvas = Canvas(bitmap)
-            val localX = toX - coordinate.x * tileSize
-            val localY = toY - coordinate.y * tileSize
-            tileCanvas.save()
-            tileCanvas.clipPath(Path().apply { addCircle(localX, localY, safeRadius, Path.Direction.CW) })
-            tileCanvas.drawBitmap(patch, localX - safeRadius, localY - safeRadius, depositPaint)
-            tileCanvas.restore()
-        }
-        patch.recycle()
+        writePatch(sourcePatch, sourceLeft, sourceTop, source)
+        writePatch(destinationPatch, destinationLeft, destinationTop, destination)
+        sourcePatch.recycle()
+        destinationPatch.recycle()
         smudgeTouched += dirty
         lastDirtyTiles = dirty
     }
@@ -302,6 +366,19 @@ class TileStore(
         for (y in 0 until height) { getPixels(row, 0, width, 0, y, width, 1); if (row.any { Color.alpha(it) != 0 }) return false }
         return true
     }
+
+    private fun colorFromPremultiplied(alphaValue: Float, red: Float, green: Float, blue: Float): Int {
+        val alpha = alphaValue.coerceIn(0f, 255f)
+        if (alpha < .5f) return Color.TRANSPARENT
+        return Color.argb(
+            alpha.roundToInt().coerceIn(0, 255),
+            (red.coerceIn(0f, alpha) * 255f / alpha).roundToInt().coerceIn(0, 255),
+            (green.coerceIn(0f, alpha) * 255f / alpha).roundToInt().coerceIn(0, 255),
+            (blue.coerceIn(0f, alpha) * 255f / alpha).roundToInt().coerceIn(0, 255),
+        )
+    }
+
+    private fun Float?.orZero() = this ?: 0f
 
     private fun restore(snapshot: Map<TileCoordinate, Bitmap?>) {
         snapshot.forEach { (coordinate, saved) ->
