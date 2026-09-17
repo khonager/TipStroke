@@ -206,6 +206,7 @@ fun CanvasScreen(
     }
     BackHandler(enabled = onBackToGallery != null, onBack = leaveEditor)
     BackHandler(enabled = colorPickerOpen) { colorPickerOpen = false }
+    BackHandler(enabled = layersOpen) { layersOpen = false }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val portrait = maxHeight > maxWidth
@@ -326,6 +327,13 @@ fun CanvasScreen(
         )
 
         if (layersOpen) {
+            val dismissInteraction = remember { MutableInteractionSource() }
+            Box(
+                Modifier.fillMaxSize().clickable(
+                    interactionSource = dismissInteraction,
+                    indication = null,
+                ) { layersOpen = false },
+            )
             LayersPanel(
                 layers = layers,
                 previews = layerPreviews,
