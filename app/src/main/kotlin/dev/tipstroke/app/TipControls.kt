@@ -30,6 +30,8 @@ internal fun TipControls(
     onOpacity: (Float) -> Unit,
     onColor: (RgbaColor) -> Unit,
     onOpenColorPicker: () -> Unit,
+    onAdjustmentStart: () -> Unit = {},
+    onAdjustmentEnd: () -> Unit = {},
     horizontal: Boolean,
     compactVertical: Boolean = false,
     verticalTrackHeight: Dp = if (compactVertical) 154.dp else 205.dp,
@@ -47,8 +49,8 @@ internal fun TipControls(
                     .background(Color(0xD9202125), RoundedCornerShape(20.dp)).padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                PrecisionSlider("Size", "${size.roundToInt()} px", size, 2f..180f, 1f, onSize, Modifier.weight(1f))
-                PrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, Modifier.weight(1f))
+                PrecisionSlider("Size", "${size.roundToInt()} px", size, 2f..180f, 1f, onSize, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
+                PrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
             }
         } else {
             Column(
@@ -60,6 +62,7 @@ internal fun TipControls(
             ) {
                 VerticalPrecisionSlider(
                     "Size", "${size.roundToInt()} px", size, 2f..180f, 1f, onSize,
+                    onAdjustmentStart, onAdjustmentEnd,
                     trackHeight = verticalTrackHeight,
                     compact = compactVertical,
                 )
@@ -69,6 +72,7 @@ internal fun TipControls(
                 )
                 VerticalPrecisionSlider(
                     "Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity,
+                    onAdjustmentStart, onAdjustmentEnd,
                     trackHeight = verticalTrackHeight,
                     compact = compactVertical,
                 )
@@ -127,14 +131,30 @@ private fun colorKey(color: RgbaColor): Int =
         ((color.green * 255).roundToInt() shl 8) or (color.blue * 255).roundToInt()
 
 @Composable
-private fun PrecisionSlider(label: String, valueLabel: String, value: Float, range: ClosedFloatingPointRange<Float>, step: Float, onValue: (Float) -> Unit, modifier: Modifier = Modifier) {
+private fun PrecisionSlider(
+    label: String,
+    valueLabel: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    step: Float,
+    onValue: (Float) -> Unit,
+    onAdjustmentStart: () -> Unit,
+    onAdjustmentEnd: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, color = Color(0xFFE7E7E5), fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Text(valueLabel, color = Color(0xFFED6A5A), fontSize = 12.sp)
         }
-        Slider(value, onValue, valueRange = range, modifier = Modifier.fillMaxWidth().height(44.dp))
-        StepButtons(value, range, step, onValue)
+        Slider(
+            value = value,
+            onValueChange = { onAdjustmentStart(); onValue(it) },
+            onValueChangeFinished = onAdjustmentEnd,
+            valueRange = range,
+            modifier = Modifier.fillMaxWidth().height(44.dp),
+        )
+        StepButtons(value, range, step, onValue, onAdjustmentStart, onAdjustmentEnd)
     }
 }
 
@@ -146,6 +166,8 @@ private fun VerticalPrecisionSlider(
     range: ClosedFloatingPointRange<Float>,
     step: Float,
     onValue: (Float) -> Unit,
+    onAdjustmentStart: () -> Unit,
+    onAdjustmentEnd: () -> Unit,
     trackHeight: Dp,
     compact: Boolean,
 ) {
@@ -153,14 +175,25 @@ private fun VerticalPrecisionSlider(
         Text(label, color = Color(0xFFE7E7E5), fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium)
         Text(valueLabel, color = Color(0xFFED6A5A), fontSize = if (compact) 10.sp else 12.sp)
         Spacer(Modifier.height(if (compact) 3.dp else 6.dp))
-        SmallStepButton("+", compact) { onValue((value + step).coerceIn(range)) }
-        VerticalDragTrack(value, range, trackHeight, onValue)
-        SmallStepButton("−", compact) { onValue((value - step).coerceIn(range)) }
+        SmallStepButton("+", compact) {
+            onAdjustmentStart(); onValue((value + step).coerceIn(range)); onAdjustmentEnd()
+        }
+        VerticalDragTrack(value, range, trackHeight, onValue, onAdjustmentStart, onAdjustmentEnd)
+        SmallStepButton("−", compact) {
+            onAdjustmentStart(); onValue((value - step).coerceIn(range)); onAdjustmentEnd()
+        }
     }
 }
 
 @Composable
-private fun VerticalDragTrack(value: Float, range: ClosedFloatingPointRange<Float>, height: Dp, onValue: (Float) -> Unit) {
+private fun VerticalDragTrack(
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    height: Dp,
+    onValue: (Float) -> Unit,
+    onAdjustmentStart: () -> Unit,
+    onAdjustmentEnd: () -> Unit,
+) {
     fun valueAt(y: Float, height: Float): Float {
         val fraction = (1f - ((y - 14f) / (height - 28f))).coerceIn(0f, 1f)
         return range.start + fraction * (range.endInclusive - range.start)
@@ -170,7 +203,9 @@ private fun VerticalDragTrack(value: Float, range: ClosedFloatingPointRange<Floa
             .semantics { contentDescription = "Vertical adjustment" }
             .pointerInput(range) {
                 detectDragGestures(
-                    onDragStart = { onValue(valueAt(it.y, size.height.toFloat())) },
+                    onDragStart = { onAdjustmentStart(); onValue(valueAt(it.y, size.height.toFloat())) },
+                    onDragEnd = onAdjustmentEnd,
+                    onDragCancel = onAdjustmentEnd,
                     onDrag = { change, _ -> onValue(valueAt(change.position.y, size.height.toFloat())); change.consume() },
                 )
             },
@@ -188,10 +223,21 @@ private fun VerticalDragTrack(value: Float, range: ClosedFloatingPointRange<Floa
 }
 
 @Composable
-private fun StepButtons(value: Float, range: ClosedFloatingPointRange<Float>, step: Float, onValue: (Float) -> Unit) {
+private fun StepButtons(
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    step: Float,
+    onValue: (Float) -> Unit,
+    onAdjustmentStart: () -> Unit,
+    onAdjustmentEnd: () -> Unit,
+) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SmallStepButton("−") { onValue((value - step).coerceIn(range)) }
-        SmallStepButton("+") { onValue((value + step).coerceIn(range)) }
+        SmallStepButton("−") {
+            onAdjustmentStart(); onValue((value - step).coerceIn(range)); onAdjustmentEnd()
+        }
+        SmallStepButton("+") {
+            onAdjustmentStart(); onValue((value + step).coerceIn(range)); onAdjustmentEnd()
+        }
     }
 }
 

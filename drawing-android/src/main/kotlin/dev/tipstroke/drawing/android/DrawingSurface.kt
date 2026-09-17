@@ -56,6 +56,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var gestureMoved = false
     private var gestureDownAt = 0L
     private val gestureHandler = Handler(Looper.getMainLooper())
+    private val hideBrushPreview = Runnable { rasterView.adjustmentPreviewStroke = null }
     private var holdRunnable: Runnable? = null
     private var holdTriggered = false
     private var colorPicking = false
@@ -130,9 +131,39 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
     }
 
+    override fun onDetachedFromWindow() {
+        gestureHandler.removeCallbacks(hideBrushPreview)
+        super.onDetachedFromWindow()
+    }
+
     fun undo() { layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun redo() { layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun resetView() = rasterView.fitCanvas()
+    fun showBrushAdjustmentPreview() {
+        gestureHandler.removeCallbacks(hideBrushPreview)
+        if (activeStylusId != null || width == 0 || height == 0) return
+        val center = rasterView.screenToDocument(width / 2f, height / 2f)
+        val erasing = settings.erasing
+        val previewBrush = settings.brush.copy(
+            hardness = if (erasing) settings.eraserHardness else settings.brush.hardness,
+        )
+        val previewStyle = StrokeStyle(
+            brush = previewBrush,
+            sizePx = settings.sizePx,
+            opacity = settings.opacity,
+            color = if (erasing) RgbaColor(1f, 1f, 1f) else settings.color,
+            // A neutral paint stamp keeps an eraser preview visible without touching artwork.
+            blend = BlendBehavior.PAINT,
+        )
+        rasterView.adjustmentPreviewStroke = CompletedStroke(
+            listOf(StrokeSample(0, Point(center.x, center.y), 1f, 0f, 0f, 0L, 0, PointerKind.UNKNOWN)),
+            previewStyle,
+        )
+    }
+    fun hideBrushAdjustmentPreview() {
+        gestureHandler.removeCallbacks(hideBrushPreview)
+        gestureHandler.postDelayed(hideBrushPreview, 300L)
+    }
     fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
@@ -242,6 +273,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            gestureHandler.removeCallbacks(hideBrushPreview)
+            rasterView.adjustmentPreviewStroke = null
+        }
         predictor?.record(event)
         if (eventHasStylus(event)) updateStylusButtons(event.buttonState)
         if (selectionMoveMode) return handleSelectionMove(event)

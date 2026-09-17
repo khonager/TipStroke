@@ -280,8 +280,23 @@ fun CanvasScreen(
 
             TipControls(
                 size = size, opacity = opacity, color = color, frequentColors = drawingPalette,
-                onSize = { size = it }, onOpacity = { opacity = it }, onColor = { color = it },
+                onSize = {
+                    size = it
+                    surface?.settings?.sizePx = it
+                    surface?.showBrushAdjustmentPreview()
+                },
+                onOpacity = {
+                    opacity = it
+                    surface?.settings?.opacity = it
+                    surface?.showBrushAdjustmentPreview()
+                },
+                onColor = { color = it },
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
+                onAdjustmentStart = {
+                    sync()
+                    surface?.showBrushAdjustmentPreview()
+                },
+                onAdjustmentEnd = { surface?.hideBrushAdjustmentPreview() },
                 horizontal = portrait,
                 compactVertical = compactLandscape,
                 verticalTrackHeight = when {

@@ -19,6 +19,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(80, 255, 255, 255); style = Paint.Style.STROKE; strokeWidth = 2f }
     private val transformBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(237, 106, 90); style = Paint.Style.STROKE }
     private val transformHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
+    private val previewOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(237, 106, 90); style = Paint.Style.STROKE
         pathEffect = DashPathEffect(floatArrayOf(12f, 8f), 0f)
@@ -32,6 +33,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
     var previewStroke: CompletedStroke? = null
+        set(value) { field = value; postInvalidateOnAnimation() }
+    var adjustmentPreviewStroke: CompletedStroke? = null
         set(value) { field = value; postInvalidateOnAnimation() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
 
@@ -102,6 +105,21 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         bitmapPaint.alpha = 255
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), borderPaint)
         canvas.restore()
+        adjustmentPreviewStroke?.let { stroke ->
+            canvas.save()
+            canvas.concat(transformMatrix)
+            StrokeCanvasPainter.draw(canvas, stroke)
+            val sample = stroke.samples.first()
+            val radius = stroke.style.sizePx / 2f
+            val inverseZoom = 1f / transform.scale.coerceAtLeast(.08f)
+            previewOutlinePaint.color = Color.argb(150, 0, 0, 0)
+            previewOutlinePaint.strokeWidth = 3f * inverseZoom
+            canvas.drawCircle(sample.position.x, sample.position.y, radius, previewOutlinePaint)
+            previewOutlinePaint.color = Color.argb(210, 255, 255, 255)
+            previewOutlinePaint.strokeWidth = 1.25f * inverseZoom
+            canvas.drawCircle(sample.position.x, sample.position.y, radius, previewOutlinePaint)
+            canvas.restore()
+        }
     }
 
     private fun drawImageLayer(canvas: Canvas, layer: ImageLayerRuntime, bitmap: Bitmap) {

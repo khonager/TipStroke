@@ -27,6 +27,7 @@ Before subjective pen testing, run `./tipstroke brushes` with a device attached.
 3. Select an imported image, make a lasso selection, and erase across its edge. Erasing must remain inside the lasso; save, reopen, resize to 100%, and verify the original-resolution mask remains aligned.
 4. Give Pencil, Ink, Airbrush, and Eraser visibly different size/opacity values. Switch among them and relaunch the editor; each tool must restore its own values.
 5. In Brush Studio, change Airbrush hardness and toggle pressure/speed behavior. Confirm the next stroke changes while previous raster marks remain identical. Turn off Pencil pressure-opacity and pressure-size independently and confirm drawing remains stable without a crash.
+6. Drag the size and opacity controls and use their step buttons at 100%, 25%, and 1200% zoom. A transient stamp should remain centered while adjusting, show the selected color/opacity and supported edge softness, scale with zoom exactly like a stroke, disappear after release, and never create pixels or an undo entry. Repeat with Eraser and confirm its neutral preview remains visible.
 
 ## Touch and camera
 
