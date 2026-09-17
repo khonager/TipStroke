@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material3.*
@@ -47,6 +48,7 @@ fun CanvasScreen(
 ) {
     val context = LocalContext.current
     val brushPreferences = remember { BrushPreferences(context) }
+    val colorHistoryPreferences = remember { ColorHistoryPreferences(context) }
     val initialBrushTuning = remember { brushPreferences.load(BrushPreset.Ink) }
     val initialEraserTuning = remember { brushPreferences.loadEraser() }
     var surface by remember { mutableStateOf<DrawingSurface?>(null) }
@@ -55,7 +57,9 @@ fun CanvasScreen(
     var size by remember { mutableFloatStateOf(initialBrushTuning.sizePx) }
     var opacity by remember { mutableFloatStateOf(initialBrushTuning.opacity) }
     var color by remember { mutableStateOf(RgbaColor(.05f, .05f, .06f)) }
-    var frequentColors by remember { mutableStateOf<List<RgbaColor>>(emptyList()) }
+    var drawingPalette by remember { mutableStateOf<List<RgbaColor>>(emptyList()) }
+    var paletteColorCount by remember { mutableIntStateOf(3) }
+    var colorHistory by remember { mutableStateOf(colorHistoryPreferences.load()) }
     var colorPickerOpen by remember { mutableStateOf(initialColorPickerOpen) }
     var debug by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(CanvasDiagnostics()) }
@@ -145,6 +149,7 @@ fun CanvasScreen(
         }
     }
     LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, debug, gestureSettings, surface) { sync() }
+    LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
     LaunchedEffect(movingSelection, surface) { surface?.setSelectionMoveMode(movingSelection) }
@@ -204,7 +209,8 @@ fun CanvasScreen(
                 view.historyListener = { undo, redo -> canUndo = undo; canRedo = redo }
                 view.layersListener = { updated, selected -> layers = updated; selectedLayerId = selected }
                 view.colorPickedListener = { picked -> color = picked }
-                view.frequentColorsListener = { frequentColors = it }
+                view.visiblePaletteListener = { drawingPalette = it }
+                view.drawnColorListener = { drawn -> colorHistory = colorHistoryPreferences.record(drawn) }
                 view.stylusButtonListener = ::performStylusButton
                 view.selectionListener = { active, selected -> selectionMode = active; hasSelection = selected }
                 if (library != null && documentId != null) {
@@ -253,7 +259,7 @@ fun CanvasScreen(
             )
 
             TipControls(
-                size = size, opacity = opacity, color = color, frequentColors = frequentColors,
+                size = size, opacity = opacity, color = color, frequentColors = drawingPalette,
                 onSize = { size = it }, onOpacity = { opacity = it }, onColor = { color = it },
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
                 horizontal = portrait,
@@ -304,12 +310,26 @@ fun CanvasScreen(
         }
 
         if (colorPickerOpen) {
+            val dismissInteraction = remember { MutableInteractionSource() }
+            Box(
+                Modifier.fillMaxSize().clickable(
+                    interactionSource = dismissInteraction,
+                    indication = null,
+                ) { colorPickerOpen = false },
+            )
             ColorPickerPanel(
                 initialColor = color,
-                onDismiss = { colorPickerOpen = false },
-                onColorSelected = { selected -> color = selected; colorPickerOpen = false },
-                compact = maxHeight < 620.dp,
-                modifier = Modifier.align(Alignment.CenterEnd)
+                drawingPalette = drawingPalette,
+                paletteColorCount = paletteColorCount,
+                colorHistory = colorHistory,
+                onColorSelected = { selected -> color = selected },
+                onPaletteColorCountChanged = { paletteColorCount = it.coerceIn(1, 8) },
+                onClearHistory = {
+                    colorHistoryPreferences.clear()
+                    colorHistory = emptyList()
+                },
+                compact = portrait || maxHeight < 620.dp,
+                modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
                     .padding(end = if (portrait) 12.dp else 152.dp, top = 12.dp, bottom = 12.dp),
             )
         }

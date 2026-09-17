@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.view.View
+import android.view.MotionEvent
+import android.os.SystemClock
 import androidx.activity.compose.setContent
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -41,6 +43,49 @@ class CanvasScreenshotTest {
 
     @Test fun renderColorPickerForVisualReview() = render(2560, 1600, "tipstroke-color-picker.png") {
         CanvasScreen(initialColorPickerOpen = true)
+    }
+
+    @Test fun renderPortraitColorPickerForVisualReview() = render(1600, 2560, "tipstroke-color-picker-portrait.png") {
+        CanvasScreen(initialColorPickerOpen = true)
+    }
+
+    @Test fun renderLiveColorPickerSelectionForVisualReview() = render(
+        2560, 1600, "tipstroke-color-picker-live-selection.png",
+        afterLayout = { root -> tap(root, 1780f, 580f) },
+    ) {
+        CanvasScreen(initialColorPickerOpen = true)
+    }
+
+    @Test fun renderDismissedColorPickerForVisualReview() = render(
+        2560, 1600, "tipstroke-color-picker-dismissed.png",
+        afterLayout = { root -> tap(root, 800f, 800f) },
+    ) {
+        CanvasScreen(initialColorPickerOpen = true)
+    }
+
+    @Test fun renderClassicColorPickerForVisualReview() = render(
+        2560, 1600, "tipstroke-color-picker-classic.png",
+        afterLayout = { root -> tap(root, 2000f, 356f) },
+    ) {
+        CanvasScreen(initialColorPickerOpen = true)
+    }
+
+    @Test fun renderPopulatedColorPickerForVisualReview() = render(2560, 1600, "tipstroke-color-picker-populated.png") {
+        Box(Modifier.fillMaxSize().background(Color(0xFF17181B)), contentAlignment = Alignment.Center) {
+            ColorPickerPanel(
+                initialColor = dev.tipstroke.core.model.RgbaColor(.72f, .18f, .5f),
+                drawingPalette = listOf(
+                    dev.tipstroke.core.model.RgbaColor(.12f, .55f, .82f),
+                    dev.tipstroke.core.model.RgbaColor(.88f, .64f, .16f),
+                    dev.tipstroke.core.model.RgbaColor(.28f, .72f, .42f),
+                ),
+                paletteColorCount = 3,
+                colorHistory = List(10) { index ->
+                    dev.tipstroke.core.model.RgbaColor(index / 12f, .25f + index / 30f, .72f - index / 24f)
+                },
+                onColorSelected = {}, onPaletteColorCountChanged = {}, onClearHistory = {},
+            )
+        }
     }
 
     @Test fun renderSelectionControlsForVisualReview() = render(1600, 2560, "tipstroke-selection.png") {
@@ -92,7 +137,13 @@ class CanvasScreenshotTest {
         }
     }
 
-    private fun render(width: Int, height: Int, fileName: String, content: @Composable (ComponentActivity) -> Unit) {
+    private fun render(
+        width: Int,
+        height: Int,
+        fileName: String,
+        afterLayout: (View) -> Unit = {},
+        content: @Composable (ComponentActivity) -> Unit,
+    ) {
         val activity = Robolectric.buildActivity(ScreenshotActivity::class.java).setup().get()
         activity.setContent { TipStrokeTheme { content(activity) } }
         shadowOf(activity.mainLooper).idle()
@@ -100,12 +151,24 @@ class CanvasScreenshotTest {
         root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
         root.layout(0, 0, width, height)
         shadowOf(activity.mainLooper).idle()
+        afterLayout(root)
+        shadowOf(activity.mainLooper).idle()
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         root.draw(Canvas(bitmap))
         val output = File("build/qa/$fileName")
         output.parentFile?.mkdirs()
         FileOutputStream(output).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         check(output.length() > 10_000) { "Screenshot render was unexpectedly empty" }
+    }
+
+    private fun tap(view: View, x: Float, y: Float) {
+        val now = SystemClock.uptimeMillis()
+        view.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0).also {
+            it.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+        })
+        view.dispatchTouchEvent(MotionEvent.obtain(now, now + 16L, MotionEvent.ACTION_UP, x, y, 0).also {
+            it.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+        })
     }
 
     private fun galleryWithExamples(activity: ComponentActivity): DrawingLibrary {

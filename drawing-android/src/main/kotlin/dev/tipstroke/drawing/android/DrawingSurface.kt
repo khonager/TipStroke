@@ -35,6 +35,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun createLayerStack(width: Int, height: Int): LayerStack = LayerStack(context.contentResolver, width, height) {
         if (::rasterView.isInitialized) rasterView.invalidate()
         notifyLayers()
+        notifyVisiblePalette()
     }
     private val liveView = InProgressStrokesView(context)
     private val tipStrokeInkBrushes = TipStrokeInkBrushes()
@@ -71,7 +72,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId) -> Unit)? = null
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
-    var frequentColorsListener: ((List<RgbaColor>) -> Unit)? = null
+    var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
+    var drawnColorListener: ((RgbaColor) -> Unit)? = null
+    private var paletteColorCount = 3
     var stylusButtonListener: ((StylusButton) -> Unit)? = null
     private var pressedStylusButtons = 0
     private var imageTransformMode = false
@@ -107,11 +110,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     } else {
                         store.commit(stroke)
                     }
+                    if (pending.target.image == null && stroke.style.blend == BlendBehavior.PAINT) {
+                        drawnColorListener?.invoke(stroke.style.color)
+                    }
                 }
                 rasterView.invalidate()
                 liveView.removeFinishedStrokes(strokes.keys)
                 notifyHistory()
-                notifyFrequentColors()
+                notifyVisiblePalette()
             }
         })
     }
@@ -121,14 +127,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
     }
 
-    fun undo() { layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyFrequentColors() } } }
-    fun redo() { layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyFrequentColors() } } }
+    fun undo() { layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette() } } }
+    fun redo() { layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette() } } }
     fun resetView() = rasterView.fitCanvas()
     fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
     fun toggleLayerVisibility(id: LayerId) { layerStack.toggleVisible(id); notifyLayers() }
+    fun setPaletteColorCount(count: Int) {
+        val safeCount = count.coerceIn(1, 8)
+        if (paletteColorCount != safeCount) paletteColorCount = safeCount
+        notifyVisiblePalette()
+    }
     fun setSelectedImageScale(value: Float) { layerStack.setImageScale(value); notifyLayers() }
     fun setImageTransformMode(enabled: Boolean) {
         imageTransformMode = enabled && layerStack.selectedImage() != null
@@ -168,8 +179,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
     fun originalSizeSelectedImage() { layerStack.originalSizeSelectedImage(); notifyLayers() }
     fun moveSelectedLayer(towardFront: Boolean) { layerStack.moveSelected(towardFront); notifyLayers() }
-    fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { notifyLayers(); notifyHistory(); notifyFrequentColors() } }
-    fun publishLayers() { notifyLayers(); notifyHistory(); notifyFrequentColors() }
+    fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { notifyLayers(); notifyHistory() } }
+    fun publishLayers() { notifyLayers(); notifyHistory(); notifyVisiblePalette() }
     fun configureBlank(widthPx: Int, heightPx: Int) {
         require(widthPx in 64..8192 && heightPx in 64..8192)
         layerStack = createLayerStack(widthPx, heightPx)
@@ -306,13 +317,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                             target.store.finishLiveStroke(CompletedStroke(samples, style))
                             rasterView.invalidate()
                             notifyHistory()
-                            notifyFrequentColors()
+                            notifyVisiblePalette()
                         } else if (airbrushPreviewStyle != null) {
                             target.store.commit(CompletedStroke(samples, style))
                             rasterView.previewStroke = null
                             rasterView.invalidate()
                             notifyHistory()
-                            notifyFrequentColors()
+                            drawnColorListener?.invoke(style.color)
+                            notifyVisiblePalette()
                         } else finishedSamples += PendingCommit(CompletedStroke(samples, style), target)
                     }
                 }
@@ -692,8 +704,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun notifyLayers() {
         layersListener?.invoke(layerStack.summariesFrontToBack(), layerStack.selectedId)
     }
-    private fun notifyFrequentColors() {
-        frequentColorsListener?.invoke(layerStack.frequentColors())
+    private fun notifyVisiblePalette() {
+        visiblePaletteListener?.invoke(layerStack.visiblePalette(paletteColorCount))
     }
     private fun emitDiagnostics(event: MotionEvent, index: Int) {
         val now = SystemClock.elapsedRealtimeNanos(); frameCount++

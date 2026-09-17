@@ -89,21 +89,30 @@ internal class LayerStack(
         is ImageLayerRuntime -> layer.mask
     }
 
-    fun frequentColors(limit: Int = 4): List<RgbaColor> {
-        val combined = mutableMapOf<Int, Long>()
-        layers.filterIsInstance<RasterLayerRuntime>().forEach { layer ->
-            layer.tiles.snapshotColorUsage().forEach { (argb, weight) ->
-                combined[argb] = combined.getOrDefault(argb, 0L) + weight
+    /**
+     * Samples the composited, visible artwork and groups nearby pixels into the requested
+     * number of weighted average colors. Transparent canvas pixels are ignored so the paper
+     * color does not overwhelm a sparse drawing.
+     */
+    fun visiblePalette(limit: Int): List<RgbaColor> {
+        val colorCount = limit.coerceIn(1, 8)
+        val columns = minOf(canvasWidth, 72)
+        val rows = minOf(canvasHeight, 72)
+        val histogram = mutableMapOf<Int, Long>()
+        for (row in 0 until rows) {
+            val y = ((row + .5f) * canvasHeight / rows).toInt().coerceIn(0, canvasHeight - 1)
+            for (column in 0 until columns) {
+                val x = ((column + .5f) * canvasWidth / columns).toInt().coerceIn(0, canvasWidth - 1)
+                val argb = compositedColorAt(x.toFloat(), y.toFloat(), transparentBackground = true)
+                val alpha = android.graphics.Color.alpha(argb)
+                if (alpha < 20) continue
+                val key = ((android.graphics.Color.red(argb) shr 4) shl 8) or
+                    ((android.graphics.Color.green(argb) shr 4) shl 4) or
+                    (android.graphics.Color.blue(argb) shr 4)
+                histogram[key] = histogram.getOrDefault(key, 0L) + alpha
             }
         }
-        return combined.entries.sortedByDescending { it.value }.take(limit).map { (argb) ->
-            RgbaColor(
-                android.graphics.Color.red(argb) / 255f,
-                android.graphics.Color.green(argb) / 255f,
-                android.graphics.Color.blue(argb) / 255f,
-                android.graphics.Color.alpha(argb) / 255f,
-            )
-        }
+        return averagePalette(histogram, colorCount)
     }
 
     fun addRaster(): LayerId {
@@ -229,7 +238,17 @@ internal class LayerStack(
     }
 
     fun colorAt(x: Float, y: Float): RgbaColor {
-        var result = android.graphics.Color.WHITE
+        val result = compositedColorAt(x, y, transparentBackground = false)
+        return RgbaColor(
+            android.graphics.Color.red(result) / 255f,
+            android.graphics.Color.green(result) / 255f,
+            android.graphics.Color.blue(result) / 255f,
+            android.graphics.Color.alpha(result) / 255f,
+        )
+    }
+
+    private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean): Int {
+        var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else android.graphics.Color.WHITE
         layers.forEach { layer ->
             if (!layer.visible || layer.opacity <= 0f) return@forEach
             val source = when (layer) {
@@ -250,12 +269,67 @@ internal class LayerStack(
             }
             result = sourceOver(source, result, layer.opacity)
         }
-        return RgbaColor(
-            android.graphics.Color.red(result) / 255f,
-            android.graphics.Color.green(result) / 255f,
-            android.graphics.Color.blue(result) / 255f,
-            android.graphics.Color.alpha(result) / 255f,
-        )
+        return result
+    }
+
+    private data class PalettePoint(val red: Float, val green: Float, val blue: Float, val weight: Long)
+
+    private fun averagePalette(histogram: Map<Int, Long>, limit: Int): List<RgbaColor> {
+        val points = histogram.map { (key, weight) ->
+            PalettePoint(
+                (((key shr 8) and 0xF) * 17) / 255f,
+                (((key shr 4) and 0xF) * 17) / 255f,
+                ((key and 0xF) * 17) / 255f,
+                weight,
+            )
+        }
+        if (points.isEmpty()) return emptyList()
+        val clusterCount = minOf(limit, points.size)
+        val centers = mutableListOf(points.maxBy { it.weight }.let { floatArrayOf(it.red, it.green, it.blue) })
+        while (centers.size < clusterCount) {
+            val next = points.maxBy { point ->
+                val distance = centers.minOf { center -> colorDistance(point, center) }
+                distance * kotlin.math.sqrt(point.weight.toDouble()).toFloat()
+            }
+            centers += floatArrayOf(next.red, next.green, next.blue)
+        }
+
+        val assignments = IntArray(points.size)
+        repeat(7) {
+            points.forEachIndexed { index, point ->
+                assignments[index] = centers.indices.minBy { colorDistance(point, centers[it]) }
+            }
+            for (cluster in centers.indices) {
+                var red = 0.0; var green = 0.0; var blue = 0.0; var weight = 0L
+                points.forEachIndexed { index, point ->
+                    if (assignments[index] == cluster) {
+                        red += point.red * point.weight
+                        green += point.green * point.weight
+                        blue += point.blue * point.weight
+                        weight += point.weight
+                    }
+                }
+                if (weight > 0L) centers[cluster] = floatArrayOf(
+                    (red / weight).toFloat(), (green / weight).toFloat(), (blue / weight).toFloat(),
+                )
+            }
+        }
+        points.forEachIndexed { index, point ->
+            assignments[index] = centers.indices.minBy { colorDistance(point, centers[it]) }
+        }
+        val weights = LongArray(centers.size)
+        points.forEachIndexed { index, point -> weights[assignments[index]] += point.weight }
+        return centers.indices.sortedByDescending { weights[it] }.filter { weights[it] > 0L }.map { index ->
+            val center = centers[index]
+            RgbaColor(center[0].coerceIn(0f, 1f), center[1].coerceIn(0f, 1f), center[2].coerceIn(0f, 1f))
+        }
+    }
+
+    private fun colorDistance(point: PalettePoint, center: FloatArray): Float {
+        val red = point.red - center[0]
+        val green = point.green - center[1]
+        val blue = point.blue - center[2]
+        return red * red * .3f + green * green * .59f + blue * blue * .11f
     }
 
     private fun indexAboveSelected() = (layers.indexOfFirst { it.id == selectedId } + 1).coerceAtMost(layers.size)
