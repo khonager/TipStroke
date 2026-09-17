@@ -83,6 +83,7 @@ class CanvasScreenshotTest {
         Box(Modifier.fillMaxSize().background(Color(0xFF17181B)), contentAlignment = Alignment.Center) {
             ColorPickerPanel(
                 initialColor = dev.tipstroke.core.model.RgbaColor(.72f, .18f, .5f),
+                mode = ColorPickerMode.HSV_WHEEL,
                 drawingPalette = listOf(
                     dev.tipstroke.core.model.RgbaColor(.12f, .55f, .82f),
                     dev.tipstroke.core.model.RgbaColor(.88f, .64f, .16f),
@@ -92,7 +93,7 @@ class CanvasScreenshotTest {
                 colorHistory = List(10) { index ->
                     dev.tipstroke.core.model.RgbaColor(index / 12f, .25f + index / 30f, .72f - index / 24f)
                 },
-                onColorSelected = {}, onPaletteColorCountChanged = {}, onClearHistory = {},
+                onColorSelected = {}, onModeChanged = {}, onPaletteColorCountChanged = {}, onClearHistory = {},
             )
         }
     }

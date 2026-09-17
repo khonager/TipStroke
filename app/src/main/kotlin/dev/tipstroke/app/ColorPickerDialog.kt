@@ -61,7 +61,7 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private enum class ColorPickerMode(val label: String) {
+internal enum class ColorPickerMode(val label: String) {
     HSV_WHEEL("Wheel"),
     HSV_SLIDERS("Sliders"),
     VALUES("Values"),
@@ -70,10 +70,12 @@ private enum class ColorPickerMode(val label: String) {
 @Composable
 internal fun ColorPickerPanel(
     initialColor: RgbaColor,
+    mode: ColorPickerMode,
     drawingPalette: List<RgbaColor>,
     paletteColorCount: Int,
     colorHistory: List<RgbaColor>,
     onColorSelected: (RgbaColor) -> Unit,
+    onModeChanged: (ColorPickerMode) -> Unit,
     onPaletteColorCountChanged: (Int) -> Unit,
     onClearHistory: () -> Unit,
     compact: Boolean = false,
@@ -84,7 +86,6 @@ internal fun ColorPickerPanel(
     var hue by remember { mutableFloatStateOf(initialHsv[0]) }
     var saturation by remember { mutableFloatStateOf(initialHsv[1]) }
     var value by remember { mutableFloatStateOf(initialHsv[2]) }
-    var mode by remember { mutableStateOf(ColorPickerMode.HSV_WHEEL) }
     val selected = remember(hue, saturation, value) { hsvColor(hue, saturation, value) }
     val panelInteraction = remember { MutableInteractionSource() }
 
@@ -119,7 +120,7 @@ internal fun ColorPickerPanel(
             }
 
             Spacer(Modifier.height(14.dp))
-            PickerModeTabs(mode, onMode = { mode = it })
+            PickerModeTabs(mode, onMode = onModeChanged)
             Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
 
             when (mode) {

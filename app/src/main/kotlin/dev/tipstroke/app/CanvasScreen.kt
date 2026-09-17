@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -62,6 +63,7 @@ fun CanvasScreen(
     var paletteColorCount by remember { mutableIntStateOf(3) }
     var colorHistory by remember { mutableStateOf(colorHistoryPreferences.load()) }
     var colorPickerOpen by remember { mutableStateOf(initialColorPickerOpen) }
+    var colorPickerModeName by rememberSaveable { mutableStateOf(ColorPickerMode.HSV_WHEEL.name) }
     var debug by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(CanvasDiagnostics()) }
     var canUndo by remember { mutableStateOf(false) }
@@ -373,10 +375,12 @@ fun CanvasScreen(
             )
             ColorPickerPanel(
                 initialColor = color,
+                mode = ColorPickerMode.valueOf(colorPickerModeName),
                 drawingPalette = drawingPalette,
                 paletteColorCount = paletteColorCount,
                 colorHistory = colorHistory,
                 onColorSelected = { selected -> color = selected },
+                onModeChanged = { colorPickerModeName = it.name },
                 onPaletteColorCountChanged = { paletteColorCount = it.coerceIn(1, 8) },
                 onClearHistory = {
                     colorHistoryPreferences.clear()
