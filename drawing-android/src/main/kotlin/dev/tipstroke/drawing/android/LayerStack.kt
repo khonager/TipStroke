@@ -77,6 +77,7 @@ internal class LayerStack(
     fun selectedRaster(): RasterLayerRuntime? = selected() as? RasterLayerRuntime
     fun selectedRasters(): List<RasterLayerRuntime> = layers.filterIsInstance<RasterLayerRuntime>().filter { it.id in selectedIds }
     fun selectedImage(): ImageLayerRuntime? = selected() as? ImageLayerRuntime
+    fun selectedImages(): List<ImageLayerRuntime> = layers.filterIsInstance<ImageLayerRuntime>().filter { it.id in selectedIds }
     fun selectedLayerIds(): Set<LayerId> = selectedIds.toSet()
     fun summariesFrontToBack(): List<LayerSummary> = layers.asReversed().map { it.summary() }
     fun previewsFrontToBack(sizePx: Int): Map<LayerId, Bitmap> = layers.asReversed().associate { layer ->
@@ -204,6 +205,14 @@ internal class LayerStack(
             image.transform = image.transform.changedBy(deltaX, deltaY, scaleFactor, rotationDeltaDegrees)
             invalidate()
         }
+    }
+
+    fun translateSelectedImages(deltaX: Float, deltaY: Float) {
+        val images = selectedImages()
+        images.forEach { image ->
+            image.transform = image.transform.changedBy(deltaX, deltaY)
+        }
+        if (images.isNotEmpty()) invalidate()
     }
 
     fun fitSelectedImage() {

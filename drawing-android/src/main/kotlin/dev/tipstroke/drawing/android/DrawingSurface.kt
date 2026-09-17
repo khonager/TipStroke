@@ -160,7 +160,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(true, selectionRegion != null)
     }
     fun setSelectionMoveMode(enabled: Boolean) {
-        selectionMoveMode = enabled && selectionRegion != null && layerStack.selectedRasters().isNotEmpty()
+        selectionMoveMode = enabled && selectionRegion != null &&
+            (layerStack.selectedRasters().isNotEmpty() || layerStack.selectedImages().isNotEmpty())
         if (selectionMoveMode) selectionMode = false
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
@@ -491,9 +492,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val deltaX = point.x - start.x
                 val deltaY = point.y - start.y
                 val stores = layerStack.selectedRasters().map { it.tiles }
-                if (stores.isNotEmpty()) {
+                val images = layerStack.selectedImages()
+                if (stores.isNotEmpty() || images.isNotEmpty()) {
                     val dirty = stores.flatMapTo(mutableSetOf()) { it.moveSelection(selection, deltaX, deltaY) }
                     rasterView.invalidateTiles(dirty)
+                    layerStack.translateSelectedImages(deltaX, deltaY)
                     selectionRegion = selection.translated(deltaX, deltaY)
                     rasterView.selectionRegion = selectionRegion
                     notifyHistory()

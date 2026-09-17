@@ -294,7 +294,7 @@ fun CanvasScreen(
             hasSelection = hasSelection,
             tool = selectionTool,
             moving = movingSelection,
-            canMove = layers.any { it.id in selectedLayerIds && it.kind == LayerKind.RASTER },
+            canMove = selectedLayerIds.isNotEmpty(),
             selectedLayerCount = selectedLayerIds.size,
             onTool = { tool -> selectionTool = tool; movingSelection = false; selectionMode = true; surface?.setSelectionTool(tool) },
             onMove = { movingSelection = !movingSelection; selectionMode = false },
@@ -485,7 +485,7 @@ private fun EditorChrome(
     Surface(modifier.fillMaxWidth(.94f).widthIn(max = 620.dp), color = Color(0xED202125), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (moving) "Drag to move paint on $selectedLayerCount selected layer${if (selectedLayerCount == 1) "" else "s"}" else if (selecting) "Draw a selection" else "Selection active", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                Text(if (moving) "Drag to move content on $selectedLayerCount selected layer${if (selectedLayerCount == 1) "" else "s"}" else if (selecting) "Draw a selection" else "Selection active", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
                 TextButton(onClick = onDone) { Text("Done") }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
