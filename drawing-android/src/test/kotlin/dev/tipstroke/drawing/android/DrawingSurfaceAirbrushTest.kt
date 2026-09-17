@@ -5,6 +5,7 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import dev.tipstroke.core.model.BrushPreset
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -19,6 +20,11 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DrawingSurfaceAirbrushTest {
+    @Test fun penUpPressureUsesTheLastDrawingPressure() {
+        assertEquals(.72f, stabilizedTerminalPressure(.72f, .01f), .001f)
+        assertEquals(.4f, stabilizedTerminalPressure(null, .4f), .001f)
+    }
+
     @Test fun airbrushUsesTransientUnifiedPreviewThenOneTileCommit() {
         val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
             layout(0, 0, 800, 800)

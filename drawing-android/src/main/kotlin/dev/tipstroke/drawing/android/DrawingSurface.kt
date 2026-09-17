@@ -316,12 +316,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val index = event.findPointerIndex(pointerId)
+                val terminalPressure = stabilizedTerminalPressure(
+                    pendingSamples[pointerId]?.lastOrNull()?.pressure,
+                    if (index >= 0) event.getPressure(index) else 0f,
+                )
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && event.flags and MotionEvent.FLAG_CANCELED != 0) {
                     cancelActiveStroke(event, pointerId)
                     return true
                 }
                 if (index >= 0) pendingSamples[pointerId]?.let { list ->
-                    pendingTargets[pointerId]?.let { target -> appendSamples(pointerId, list, listOf(sample(event, index).forTarget(target))) }
+                    pendingTargets[pointerId]?.let { target ->
+                        appendSamples(pointerId, list, listOf(sample(event, index).copy(pressure = terminalPressure).forTarget(target)))
+                    }
                 }
                 val target = pendingTargets.remove(pointerId)
                 pendingSamples.remove(pointerId)?.let { samples ->
@@ -349,7 +355,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     customPreviewStyle = null
                 } else if (airbrushPreviewStyle != null) {
                     airbrushPreviewStyle = null
-                } else liveView.finishStroke(event, pointerId)
+                } else {
+                    val finishEvent = if (index >= 0) event.withPointerPressure(pointerId, terminalPressure) else event
+                    try {
+                        liveView.finishStroke(finishEvent, pointerId)
+                    } finally {
+                        if (finishEvent !== event) finishEvent.recycle()
+                    }
+                }
                 activeStylusId = null
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -712,6 +725,22 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             event.buttonState, pointerKind(event.getToolType(index)))
     }
 
+    private fun MotionEvent.withPointerPressure(pointerId: Int, pressure: Float): MotionEvent {
+        val properties = Array(pointerCount) { pointerIndex ->
+            MotionEvent.PointerProperties().also { getPointerProperties(pointerIndex, it) }
+        }
+        val coordinates = Array(pointerCount) { pointerIndex ->
+            MotionEvent.PointerCoords().also { coords ->
+                getPointerCoords(pointerIndex, coords)
+                if (getPointerId(pointerIndex) == pointerId) coords.pressure = pressure
+            }
+        }
+        return MotionEvent.obtain(
+            downTime, eventTime, action, pointerCount, properties, coordinates,
+            metaState, buttonState, xPrecision, yPrecision, deviceId, edgeFlags, source, flags,
+        )
+    }
+
     private fun isStylus(event: MotionEvent, index: Int) = event.getToolType(index) in intArrayOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)
     private fun pointerKind(type: Int) = when (type) { MotionEvent.TOOL_TYPE_STYLUS -> PointerKind.STYLUS; MotionEvent.TOOL_TYPE_ERASER -> PointerKind.ERASER_STYLUS; MotionEvent.TOOL_TYPE_FINGER -> PointerKind.FINGER; MotionEvent.TOOL_TYPE_MOUSE -> PointerKind.MOUSE; else -> PointerKind.UNKNOWN }
     private fun centroid(e: MotionEvent) = android.graphics.PointF((0 until e.pointerCount).sumOf { e.getX(it).toDouble() }.toFloat() / e.pointerCount, (0 until e.pointerCount).sumOf { e.getY(it).toDouble() }.toFloat() / e.pointerCount)
@@ -769,3 +798,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         memoryPressure = previous.memoryPressure,
     )
 }
+
+/** ACTION_UP pressure describes loss of contact, not an intentional final paint sample. */
+internal fun stabilizedTerminalPressure(previousPressure: Float?, reportedUpPressure: Float): Float =
+    (previousPressure ?: reportedUpPressure).coerceIn(.01f, 1f)

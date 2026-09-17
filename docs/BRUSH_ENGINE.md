@@ -18,6 +18,8 @@ Erasing paint is `BlendBehavior.ERASE` and uses `PorterDuff.CLEAR`, never the ba
 
 Brush Studio deliberately exposes only edge hardness where supported, pressure affecting size, pressure affecting opacity, and optional faster-stroke taper. Disabling a pressure response omits that Jetpack Ink behavior node entirely; a constant start/end mapping is invalid in the Ink brush API. Size and overall opacity remain direct canvas controls. Tuning, size, and opacity persist locally per built-in brush, while the eraser has an independent remembered setup. These local preferences avoid expanding the document format with a large brush library prematurely.
 
+The terminal `ACTION_UP` sample reuses the last in-contact pressure. Stylus hardware commonly reports near-zero pressure while lifting at the final position; treating that lifecycle value as paint would create an unintended translucent tail on every pressure-opacity stroke. Genuine low-pressure movement before pen-up remains unchanged.
+
 ## Experimental dependency
 
 Jetpack Ink 1.1 custom brushes are alpha API. TipStroke accepts that source-compatibility risk during the pre-release period and pins an exact version. Upgrades require device checks for family construction, texture rendering, live/final handoff, and project reopening. Project files contain raster pixels and versioned TipStroke brush settings—not serialized Ink objects—so an Ink API migration cannot invalidate existing artwork.
