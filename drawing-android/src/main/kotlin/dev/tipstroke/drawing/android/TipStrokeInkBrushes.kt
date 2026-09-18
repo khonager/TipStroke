@@ -182,29 +182,27 @@ internal class TipStrokeInkBrushes {
 
     companion object {
         const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v4"
-        internal const val PENCIL_BASE_TIP_SCALE = .58f
+        internal const val PENCIL_BASE_TIP_SCALE = .18f
         internal const val PENCIL_TILT_DEAD_ZONE_RADIANS = .04f
-        internal const val PENCIL_TILT_FULL_RESPONSE_RADIANS = .65f
+        internal const val PENCIL_TILT_FULL_RESPONSE_RADIANS = .55f
         internal const val PENCIL_MAX_TILT_WIDTH_MULTIPLIER = 10f
-        internal const val PENCIL_MAX_TILT_HEIGHT_MULTIPLIER = 5.5f
+        internal const val PENCIL_MAX_TILT_HEIGHT_MULTIPLIER = 6.5f
         internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .62f
 
         fun pencilGrainTexture(): Bitmap {
             val size = 256
             val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
             val pixels = IntArray(size * size)
-            val coarse = valueNoiseGrid(size, 19, 0x71F3)
-            val medium = valueNoiseGrid(size, 7, 0x32B1)
-            val tooth = valueNoiseGrid(size, 3, 0x19D7)
+            val fineRandom = Random(0x19D7)
+            val fine = FloatArray(size * size) { fineRandom.nextFloat() * 2f - 1f }
+            val tooth = valueNoiseGrid(size, 5, 0x32B1)
             for (y in 0 until size) for (x in 0 until size) {
                 val index = y * size + x
-                val fiber = sin(y * .24f + sin(x * .041f) * 1.9f) * .035f
-                val paper = .74f + coarse[index] * .08f + medium[index] * .13f + tooth[index] * .1f + fiber
-                // Broad, smoothly clustered valleys leave paper showing through. Continuous
-                // coverage produces the fine, soft grain of graphite instead of white confetti.
-                val valley = ((-.3f - medium[index]) / .7f).coerceIn(0f, 1f)
-                val graphiteCoverage = paper - valley * valley * .4f
-                val alpha = (((graphiteCoverage - .42f) / .42f).coerceIn(0f, 1f) * 255f).roundToInt()
+                val fiber = sin(y * .31f + sin(x * .047f) * 1.4f) * .015f
+                // Fine paper tooth varies coverage locally without broad light/dark blotches.
+                // Large shade areas should look even from a distance and granular up close.
+                val graphiteCoverage = .7f + fine[index] * .18f + tooth[index] * .025f + fiber
+                val alpha = (((graphiteCoverage - .42f) / .48f).coerceIn(0f, 1f) * 255f).roundToInt()
                 pixels[y * size + x] = Color.argb(alpha, 255, 255, 255)
             }
             bitmap.setPixels(pixels, 0, size, 0, 0, size, size)
@@ -242,5 +240,5 @@ internal fun pencilTiltResponse(tiltRadians: Float): Float {
             (TipStrokeInkBrushes.PENCIL_TILT_FULL_RESPONSE_RADIANS -
                 TipStrokeInkBrushes.PENCIL_TILT_DEAD_ZONE_RADIANS)
         ).coerceIn(0f, 1f)
-    return 1f - (1f - normalized) * (1f - normalized)
+    return 1f - (1f - normalized) * (1f - normalized) * (1f - normalized)
 }

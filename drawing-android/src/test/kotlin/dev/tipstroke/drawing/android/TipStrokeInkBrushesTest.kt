@@ -49,6 +49,8 @@ class TipStrokeInkBrushesTest {
         assertTrue("upright=$upright tilted=$tilted", tilted.width > upright.width * 9f)
         assertTrue("upright=$upright tilted=$tilted", tilted.height > upright.height * 5f)
         assertTrue("upright=$upright tilted=$tilted", tilted.alpha < upright.alpha * .7f)
+        assertTrue("size=${style.sizePx} upright=$upright", upright.width < style.sizePx * .25f)
+        assertTrue("size=${style.sizePx} tilted=$tilted", tilted.height > style.sizePx)
 
         // Some Android pens report only ~0.2 rad even when held at a clear shading angle.
         // That range must already be visually distinct instead of waiting for an unreachable π/2.
@@ -59,6 +61,7 @@ class TipStrokeInkBrushesTest {
         )
         assertTrue("upright=$upright moderate=$moderateTilt", moderateTilt.width > upright.width * 4f)
         assertTrue("upright=$upright moderate=$moderateTilt", moderateTilt.height > upright.height * 2.5f)
+        assertTrue("size=${style.sizePx} moderate=$moderateTilt", moderateTilt.height > style.sizePx * .45f)
 
         val bitmap = Bitmap.createBitmap(256, 96, Bitmap.Config.ARGB_8888)
         val samples = listOf(sample(32f, .05f), sample(80f, .05f), sample(176f, 1f), sample(224f, 1f))
@@ -79,11 +82,21 @@ class TipStrokeInkBrushesTest {
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         val alphaLevels = pixels.map(Color::alpha).toSet()
+        val blockMeans = (0 until bitmap.height step 16).flatMap { top ->
+            (0 until bitmap.width step 16).map { left ->
+                var total = 0
+                for (y in top until top + 16) for (x in left until left + 16) {
+                    total += Color.alpha(pixels[y * bitmap.width + x])
+                }
+                total / 256
+            }
+        }
         assertEquals(256, bitmap.width)
         assertEquals(256, bitmap.height)
         assertTrue("levels=${alphaLevels.size}", alphaLevels.size > 100)
-        assertTrue(alphaLevels.min() < 32)
+        assertTrue("min=${alphaLevels.min()}", alphaLevels.min() in 32..96)
         assertEquals(255, alphaLevels.max())
+        assertTrue("blockRange=${blockMeans.max() - blockMeans.min()}", blockMeans.max() - blockMeans.min() < 40)
         writeReviewTexture("pencil-grain.png", bitmap)
         bitmap.recycle()
     }

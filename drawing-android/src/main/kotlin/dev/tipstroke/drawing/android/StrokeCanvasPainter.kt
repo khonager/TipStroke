@@ -396,14 +396,20 @@ internal object StrokeCanvasPainter {
         val widthMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * tiltResponse
         val heightMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * tiltResponse
         val tiltOpacity = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER - 1f) * tiltResponse
-        val pressureSize = sample.pressureSize(stroke)
+        val rawPressureSize = sample.pressureSize(stroke)
+        // The exposed side of a real pencil remains broad under light pressure; pressure mostly
+        // controls how much graphite it deposits. Keep pressure sizing for the upright point,
+        // then progressively decouple contact width as the barrel approaches the paper.
+        val pressureDecoupling = sqrt(tiltResponse) * .95f
+        val pressureSize = rawPressureSize + (1f - rawPressureSize) * pressureDecoupling
         val edgeVariation = 1f +
-            sin(sample.position.x * .071f + sample.position.y * .113f) * .035f +
-            sin(sample.position.x * .029f - sample.position.y * .053f) * .018f
-        val densityVariation = 1f + sin(sample.position.x * .047f + sample.position.y * .031f) * .045f
+            sin(sample.position.x * .071f + sample.position.y * .113f) * .006f +
+            sin(sample.position.x * .029f - sample.position.y * .053f) * .003f
+        val densityVariation = 1f + sin(sample.position.x * .047f + sample.position.y * .031f) * .015f
+        val baseDiameter = (stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE).coerceAtLeast(.5f)
         return PencilTipDynamics(
-            width = stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * pressureSize * speedScale * widthMultiplier * edgeVariation,
-            height = stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * pressureSize * speedScale * heightMultiplier * edgeVariation,
+            width = baseDiameter * pressureSize * speedScale * widthMultiplier * edgeVariation,
+            height = baseDiameter * pressureSize * speedScale * heightMultiplier * edgeVariation,
             alpha = (stroke.style.opacity * stroke.style.color.alpha * sample.pressureOpacity(stroke) * tiltOpacity * densityVariation * 255f)
                 .roundToInt().coerceIn(0, 255),
         )
