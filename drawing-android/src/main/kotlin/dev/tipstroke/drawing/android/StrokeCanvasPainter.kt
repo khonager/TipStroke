@@ -1,12 +1,16 @@
 package dev.tipstroke.drawing.android
 
 import android.graphics.BlurMaskFilter
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.Shader
 import dev.tipstroke.core.drawing.CompletedStroke
 import dev.tipstroke.core.drawing.StrokeSample
 import dev.tipstroke.core.geometry.Point
@@ -17,6 +21,30 @@ import kotlin.math.*
 
 /** Shared painter for custom wet previews and their byte-for-byte-equivalent tile commit. */
 internal object StrokeCanvasPainter {
+    private val pencilGrainMasks by lazy {
+        val source = TipStrokeInkBrushes.pencilGrainTexture()
+        val sourcePixels = IntArray(source.width * source.height)
+        source.getPixels(sourcePixels, 0, source.width, 0, 0, source.width, source.height)
+        // An upright HB point deposits a fairly continuous dark line. A tilted side contact
+        // catches much less graphite in the paper valleys, which exposes stronger tooth.
+        intArrayOf(230, 190, 145, 100).map { valleyAlpha ->
+            Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888).apply {
+                val pixels = sourcePixels.map { pixel ->
+                    Color.argb(if (Color.alpha(pixel) == 0) valleyAlpha else 255, 255, 255, 255)
+                }.toIntArray()
+                setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+            }
+        }.also { source.recycle() }
+    }
+    private val pencilGrainShaders by lazy {
+        pencilGrainMasks.map { mask ->
+            BitmapShader(mask, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT).apply {
+                // Paper tooth should read at graphite scale, not as conspicuous white chunks.
+                setLocalMatrix(Matrix().apply { setScale(.38f, .38f) })
+            }
+        }
+    }
+
     /**
      * Applies a spatial pressure mask to an already-rendered Ink tile. Ink still supplies the
      * nib geometry and Pencil texture; this makes final raster alpha deterministic on devices
@@ -190,6 +218,14 @@ internal object StrokeCanvasPainter {
                 }
             }
         }
+        val averageTilt = samples.sumOf { it.tiltRadians.toDouble() }.toFloat() / samples.size
+        val tiltAmount = (averageTilt / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
+        val grainIndex = (tiltAmount * pencilGrainMasks.lastIndex).roundToInt()
+        val grainPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = pencilGrainShaders[grainIndex]
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        }
+        canvas.drawRect(stroke.bounds.left, stroke.bounds.top, stroke.bounds.right, stroke.bounds.bottom, grainPaint)
         paint.xfermode = null
         canvas.restoreToCount(layer)
     }
@@ -203,10 +239,14 @@ internal object StrokeCanvasPainter {
         val heightMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_HEIGHT_MULTIPLIER - 1f) * tiltResponse
         val tiltOpacity = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER - 1f) * tiltResponse
         val pressureSize = sample.pressureSize(stroke)
+        val edgeVariation = 1f +
+            sin(sample.position.x * .071f + sample.position.y * .113f) * .035f +
+            sin(sample.position.x * .029f - sample.position.y * .053f) * .018f
+        val densityVariation = 1f + sin(sample.position.x * .047f + sample.position.y * .031f) * .045f
         return PencilTipDynamics(
-            width = stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * pressureSize * speedScale * widthMultiplier,
-            height = stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * pressureSize * speedScale * heightMultiplier,
-            alpha = (stroke.style.opacity * stroke.style.color.alpha * sample.pressureOpacity(stroke) * tiltOpacity * 255f)
+            width = stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * pressureSize * speedScale * widthMultiplier * edgeVariation,
+            height = stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * pressureSize * speedScale * heightMultiplier * edgeVariation,
+            alpha = (stroke.style.opacity * stroke.style.color.alpha * sample.pressureOpacity(stroke) * tiltOpacity * densityVariation * 255f)
                 .roundToInt().coerceIn(0, 255),
         )
     }

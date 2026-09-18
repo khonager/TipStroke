@@ -32,18 +32,27 @@ import kotlin.math.sin
 @OptIn(ExperimentalInkCustomBrushApi::class)
 internal object BrushVisualHarness {
     const val WIDTH = 1200
-    const val HEIGHT = 540
+    const val HEIGHT = 760
 
-    fun render(preset: BrushPreset): Bitmap {
+    fun render(preset: BrushPreset, nativePencil: Boolean = true): Bitmap {
         val families = TipStrokeInkBrushes()
         val renderer = CanvasStrokeRenderer.create(families.textureStore)
         val bitmap = Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.WHITE)
 
-        drawStroke(canvas, renderer, families, preset, 105f, .22f, .12f, 0f)
-        drawStroke(canvas, renderer, families, preset, 270f, .68f, .58f, (PI / 5).toFloat())
-        drawStroke(canvas, renderer, families, preset, 435f, 1f, 1.12f, (PI * .78).toFloat())
+        // Upright pressure ramp, steady fine line, and a low-angle side contact.
+        drawStroke(canvas, renderer, families, preset, 90f, .08f, 1f, .05f, 0f, 18f, nativePencil)
+        drawStroke(canvas, renderer, families, preset, 225f, .48f, .48f, .1f, 0f, 12f, nativePencil)
+        drawStroke(canvas, renderer, families, preset, 390f, .2f, .8f, 1.25f, (PI / 2).toFloat(), 14f, nativePencil)
+        // Repeated side passes expose whether shading layers smoothly instead of looking like
+        // a translucent marker ribbon.
+        for (row in 0..28) {
+            drawStroke(
+                canvas, renderer, families, preset,
+                520f + row * 4f, .12f, .22f, 1.3f, (PI / 2).toFloat(), 2f, nativePencil,
+            )
+        }
         return bitmap
     }
 
@@ -53,18 +62,21 @@ internal object BrushVisualHarness {
         families: TipStrokeInkBrushes,
         preset: BrushPreset,
         centerY: Float,
+        startPressure: Float,
         endPressure: Float,
         tilt: Float,
         orientation: Float,
+        waveHeight: Float,
+        nativePencil: Boolean,
     ) {
         val samples = List(121) { index ->
             val progress = index / 120f
-            val pressure = .08f + (endPressure - .08f) * progress
+            val pressure = startPressure + (endPressure - startPressure) * progress
             StrokeSample(
                 pointerId = 0,
                 position = Point(
                     60f + progress * (WIDTH - 120f),
-                    centerY + sin(progress * PI.toFloat() * 4f) * 24f,
+                    centerY + sin(progress * PI.toFloat() * 4f) * waveHeight,
                 ),
                 pressure = pressure,
                 tiltRadians = tilt,
@@ -74,7 +86,7 @@ internal object BrushVisualHarness {
                 kind = PointerKind.STYLUS,
             )
         }
-        if (preset.engine == BrushEngine.AIRBRUSH) {
+        if (preset.engine == BrushEngine.AIRBRUSH || preset.engine == BrushEngine.PENCIL && nativePencil) {
             StrokeCanvasPainter.draw(
                 canvas,
                 CompletedStroke(

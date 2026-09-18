@@ -34,9 +34,14 @@ class BrushVisualInstrumentedTest {
             val minimumDarkness = if (preset.engine == BrushEngine.AIRBRUSH) 500_000L else 1_000_000L
             assertTrue("${preset.displayName} rendered too little final coverage: $metrics", metrics.changedPixels > minimumChanged)
             assertTrue("${preset.displayName} final output is too faint: $metrics", metrics.darkness > minimumDarkness)
-            assertTrue("${preset.displayName} has no fully covering pixels at 100% opacity: $metrics", metrics.darkest <= 35)
+            assertTrue("${preset.displayName} has no dark core at 100% opacity: $metrics", metrics.darkest <= 45)
             bitmap.recycle()
         }
+        val inkPencilReference = BrushVisualHarness.render(BrushPreset.Pencil.copy(opacity = 1f), nativePencil = false)
+        TestStorage().openOutputFile("brush-qa/pencil-ink-reference.png").use { stream ->
+            check(inkPencilReference.compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+        inkPencilReference.recycle()
     }
 
     private fun metrics(bitmap: Bitmap): Metrics {

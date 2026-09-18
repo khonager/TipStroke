@@ -180,7 +180,7 @@ internal class TipStrokeInkBrushes {
         internal const val PENCIL_BASE_TIP_SCALE = .58f
         internal const val PENCIL_MAX_TILT_WIDTH_MULTIPLIER = 4.2f
         internal const val PENCIL_MIN_TILT_HEIGHT_MULTIPLIER = .42f
-        internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .48f
+        internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .72f
 
         fun pencilGrainTexture(): Bitmap {
             val size = 256
