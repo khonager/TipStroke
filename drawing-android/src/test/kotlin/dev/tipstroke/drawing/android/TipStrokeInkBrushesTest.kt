@@ -27,9 +27,9 @@ import kotlin.math.PI
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TipStrokeInkBrushesTest {
     @Test fun flatPencilUsesABroadLightSideContact() {
-        assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER >= 5f)
-        assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER >= 2.5f)
-        assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER < .9f)
+        assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER >= 9f)
+        assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER >= 5f)
+        assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER < .7f)
     }
 
     @Test fun pencilPreviewRespondsToTiltAndPressureBeforeCommit() {
@@ -46,9 +46,19 @@ class TipStrokeInkBrushesTest {
         val upright = StrokeCanvasPainter.pencilTipDynamics(CompletedStroke(listOf(sample(48f, 1f)), style), sample(48f, 1f))
         val tiltedSample = sample(48f, 1f, (PI / 2).toFloat())
         val tilted = StrokeCanvasPainter.pencilTipDynamics(CompletedStroke(listOf(tiltedSample), style), tiltedSample)
-        assertTrue("upright=$upright tilted=$tilted", tilted.width > upright.width * 5f)
-        assertTrue("upright=$upright tilted=$tilted", tilted.height > upright.height * 2.5f)
-        assertTrue("upright=$upright tilted=$tilted", tilted.alpha < upright.alpha * .9f)
+        assertTrue("upright=$upright tilted=$tilted", tilted.width > upright.width * 9f)
+        assertTrue("upright=$upright tilted=$tilted", tilted.height > upright.height * 5f)
+        assertTrue("upright=$upright tilted=$tilted", tilted.alpha < upright.alpha * .7f)
+
+        // Some Android pens report only ~0.2 rad even when held at a clear shading angle.
+        // That range must already be visually distinct instead of waiting for an unreachable π/2.
+        val moderateTiltSample = sample(48f, 1f, .2f)
+        val moderateTilt = StrokeCanvasPainter.pencilTipDynamics(
+            CompletedStroke(listOf(moderateTiltSample), style),
+            moderateTiltSample,
+        )
+        assertTrue("upright=$upright moderate=$moderateTilt", moderateTilt.width > upright.width * 4f)
+        assertTrue("upright=$upright moderate=$moderateTilt", moderateTilt.height > upright.height * 2.5f)
 
         val bitmap = Bitmap.createBitmap(256, 96, Bitmap.Config.ARGB_8888)
         val samples = listOf(sample(32f, .05f), sample(80f, .05f), sample(176f, 1f), sample(224f, 1f))
@@ -64,16 +74,25 @@ class TipStrokeInkBrushesTest {
         assertTrue(pressureBehaviorEnabled(BrushPreset.Pencil.pressureToOpacity))
     }
 
-    @Test fun generatedPencilGrainUsesOpaqueGraphiteAndExposedPaper() {
+    @Test fun generatedPencilGrainUsesContinuousGraphiteCoverage() {
         val bitmap = TipStrokeInkBrushes.pencilGrainTexture()
         val pixels = IntArray(bitmap.width * bitmap.height)
         bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        val opaqueRatio = pixels.count { Color.alpha(it) == 255 } / pixels.size.toFloat()
+        val alphaLevels = pixels.map(Color::alpha).toSet()
         assertEquals(256, bitmap.width)
         assertEquals(256, bitmap.height)
-        assertTrue(pixels.all { Color.alpha(it) == 0 || Color.alpha(it) == 255 })
-        assertTrue(opaqueRatio in .8f..9f)
+        assertTrue("levels=${alphaLevels.size}", alphaLevels.size > 100)
+        assertTrue(alphaLevels.min() < 32)
+        assertEquals(255, alphaLevels.max())
         writeReviewTexture("pencil-grain.png", bitmap)
+        bitmap.recycle()
+    }
+
+    @Test fun pencilTiltCalibrationSheetIsReviewable() {
+        val bitmap = BrushVisualHarness.renderPencilTiltCalibration(BrushPreset.Pencil)
+        assertEquals(1200, bitmap.width)
+        assertEquals(760, bitmap.height)
+        writeReviewBitmap("pencil-tilt-calibration.png", bitmap)
         bitmap.recycle()
     }
 
@@ -182,5 +201,13 @@ class TipStrokeInkBrushesTest {
         }.toIntArray(), 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
         output.outputStream().use { check(alphaPreview.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
         alphaPreview.recycle()
+    }
+
+    private fun writeReviewBitmap(name: String, bitmap: android.graphics.Bitmap) {
+        val output = File("build/qa/brush-textures/$name")
+        output.parentFile?.mkdirs()
+        output.outputStream().use {
+            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
+        }
     }
 }

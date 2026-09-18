@@ -9,6 +9,7 @@ import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.core.model.PressureCurve
 import java.util.LinkedHashMap
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -44,7 +45,11 @@ internal class TipStrokeInkBrushes {
     private fun pencilFamily(preset: BrushPreset): BrushFamily {
         val rawPressure = SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f)
         val pressure = eased(rawPressure)
-        val tilt = eased(SourceNode(SourceNode.Source.TILT_IN_RADIANS, 0f, (PI / 2).toFloat()))
+        val tilt = eased(SourceNode(
+            SourceNode.Source.TILT_IN_RADIANS,
+            PENCIL_TILT_DEAD_ZONE_RADIANS,
+            PENCIL_TILT_FULL_RESPONSE_RADIANS,
+        ))
         val orientation = SourceNode(SourceNode.Source.ORIENTATION_ABOUT_ZERO_IN_RADIANS, (-PI).toFloat(), PI.toFloat())
         val speed = eased(SourceNode(SourceNode.Source.SPEED_IN_MULTIPLES_OF_BRUSH_SIZE_PER_SECOND, 0f, 18f))
         val edgeWidthNoise = NoiseNode(0x51A7, ProgressDomain.DISTANCE_IN_MULTIPLES_OF_BRUSH_SIZE, .34f)
@@ -176,11 +181,13 @@ internal class TipStrokeInkBrushes {
     private fun eased(source: ValueNode): ValueNode = ResponseNode(EasingFunction.Predefined.EASE_OUT, source)
 
     companion object {
-        const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v3"
+        const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v4"
         internal const val PENCIL_BASE_TIP_SCALE = .58f
-        internal const val PENCIL_MAX_TILT_WIDTH_MULTIPLIER = 5.5f
-        internal const val PENCIL_MAX_TILT_HEIGHT_MULTIPLIER = 3f
-        internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .85f
+        internal const val PENCIL_TILT_DEAD_ZONE_RADIANS = .04f
+        internal const val PENCIL_TILT_FULL_RESPONSE_RADIANS = .65f
+        internal const val PENCIL_MAX_TILT_WIDTH_MULTIPLIER = 10f
+        internal const val PENCIL_MAX_TILT_HEIGHT_MULTIPLIER = 5.5f
+        internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .62f
 
         fun pencilGrainTexture(): Bitmap {
             val size = 256
@@ -193,14 +200,11 @@ internal class TipStrokeInkBrushes {
                 val index = y * size + x
                 val fiber = sin(y * .24f + sin(x * .041f) * 1.9f) * .035f
                 val paper = .74f + coarse[index] * .08f + medium[index] * .13f + tooth[index] * .1f + fiber
-                // Broad, smoothly clustered valleys leave paper showing through. This reads as
-                // graphite tooth rather than independent black/white television-static pixels.
+                // Broad, smoothly clustered valleys leave paper showing through. Continuous
+                // coverage produces the fine, soft grain of graphite instead of white confetti.
                 val valley = ((-.3f - medium[index]) / .7f).coerceIn(0f, 1f)
                 val graphiteCoverage = paper - valley * valley * .4f
-                // Graphite either catches on the paper tooth or leaves it exposed. Encoding
-                // partial alpha throughout the texture made a 100% pencil look washed out;
-                // binary coverage keeps deposited graphite fully opaque while preserving gaps.
-                val alpha = if (graphiteCoverage >= .62f) 255 else 0
+                val alpha = (((graphiteCoverage - .42f) / .42f).coerceIn(0f, 1f) * 255f).roundToInt()
                 pixels[y * size + x] = Color.argb(alpha, 255, 255, 255)
             }
             bitmap.setPixels(pixels, 0, size, 0, 0, size, size)
@@ -231,3 +235,12 @@ internal class TipStrokeInkBrushes {
 }
 
 internal fun pressureBehaviorEnabled(curve: PressureCurve): Boolean = curve.start != curve.end
+
+internal fun pencilTiltResponse(tiltRadians: Float): Float {
+    val normalized = (
+        (tiltRadians - TipStrokeInkBrushes.PENCIL_TILT_DEAD_ZONE_RADIANS) /
+            (TipStrokeInkBrushes.PENCIL_TILT_FULL_RESPONSE_RADIANS -
+                TipStrokeInkBrushes.PENCIL_TILT_DEAD_ZONE_RADIANS)
+        ).coerceIn(0f, 1f)
+    return 1f - (1f - normalized) * (1f - normalized)
+}

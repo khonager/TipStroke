@@ -34,7 +34,13 @@ internal object StrokeCanvasPainter {
         intArrayOf(230, 190, 145, 100).map { valleyAlpha ->
             Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888).apply {
                 val pixels = sourcePixels.map { pixel ->
-                    Color.argb(if (Color.alpha(pixel) == 0) valleyAlpha else 255, 255, 255, 255)
+                    val coverage = Color.alpha(pixel) / 255f
+                    Color.argb(
+                        (valleyAlpha + (255 - valleyAlpha) * coverage).roundToInt(),
+                        255,
+                        255,
+                        255,
+                    )
                 }.toIntArray()
                 setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
             }
@@ -215,7 +221,7 @@ internal object StrokeCanvasPainter {
         paint.colorFilter = PorterDuffColorFilter(stroke.style.color.toOpaqueRgb(), PorterDuff.Mode.SRC_IN)
 
         fun configureGrain(sample: StrokeSample) {
-            val tiltAmount = (sample.tiltRadians / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
+            val tiltAmount = pencilTiltResponse(sample.tiltRadians)
             paint.shader = pencilGrainShaders[(tiltAmount * pencilGrainShaders.lastIndex).roundToInt()]
         }
 
@@ -332,7 +338,7 @@ internal object StrokeCanvasPainter {
                     Shader.TileMode.CLAMP,
                 )
                 val averageTilt = (samples[index - 1].tiltRadians + samples[index].tiltRadians) * .5f
-                val tiltAmount = (averageTilt / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
+                val tiltAmount = pencilTiltResponse(averageTilt)
                 val grain = pencilGrainShaders[(tiltAmount * pencilGrainShaders.lastIndex).roundToInt()]
                 paint.alpha = 255
                 paint.colorFilter = null
@@ -365,7 +371,7 @@ internal object StrokeCanvasPainter {
                         close()
                     }
                     paint.shader = pencilGrainShaders[
-                        ((joint.tiltRadians / (PI.toFloat() / 2f)).coerceIn(0f, 1f) * pencilGrainShaders.lastIndex)
+                        (pencilTiltResponse(joint.tiltRadians) * pencilGrainShaders.lastIndex)
                             .roundToInt()
                     ]
                     paint.colorFilter = PorterDuffColorFilter(rgb, PorterDuff.Mode.SRC_IN)
@@ -386,8 +392,7 @@ internal object StrokeCanvasPainter {
     internal data class PencilTipDynamics(val width: Float, val height: Float, val alpha: Int)
 
     internal fun pencilTipDynamics(stroke: CompletedStroke, sample: StrokeSample, speedScale: Float = 1f): PencilTipDynamics {
-        val normalizedTilt = (sample.tiltRadians / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
-        val tiltResponse = 1f - (1f - normalizedTilt) * (1f - normalizedTilt)
+        val tiltResponse = pencilTiltResponse(sample.tiltRadians)
         val widthMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * tiltResponse
         val heightMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * tiltResponse
         val tiltOpacity = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER - 1f) * tiltResponse

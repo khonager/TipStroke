@@ -44,8 +44,8 @@ class CoreTests {
             listOf(sample),
             StrokeStyle(BrushPreset.Airbrush, 20f, 1f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT),
         )
-        assertEquals(65f, pencil.bounds.left)
-        assertEquals(135f, pencil.bounds.right)
+        assertEquals(36f, pencil.bounds.left)
+        assertEquals(164f, pencil.bounds.right)
         assertEquals(73f, airbrush.bounds.left)
         assertEquals(127f, airbrush.bounds.right)
     }

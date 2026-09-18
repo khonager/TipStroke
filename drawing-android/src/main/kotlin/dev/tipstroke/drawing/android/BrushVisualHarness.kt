@@ -119,6 +119,41 @@ internal object BrushVisualHarness {
         return bitmap
     }
 
+    /** Upright-to-side calibration using the low tilt values reported by real Android pens. */
+    fun renderPencilTiltCalibration(preset: BrushPreset): Bitmap {
+        val width = 1200
+        val height = 760
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap).apply { drawColor(Color.WHITE) }
+        val style = StrokeStyle(
+            preset,
+            20f,
+            .66f,
+            RgbaColor(28f / 255f, 30f / 255f, 34f / 255f),
+            BlendBehavior.PAINT,
+        )
+        listOf(0f, .1f, .2f, .4f, .65f).forEachIndexed { row, tilt ->
+            val samples = List(161) { index ->
+                val progress = index / 160f
+                StrokeSample(
+                    0,
+                    Point(
+                        70f + progress * 1060f,
+                        90f + row * 145f + sin(progress * PI.toFloat() * 6f) * 22f,
+                    ),
+                    .65f,
+                    tilt,
+                    0f,
+                    index * 5_000_000L,
+                    0,
+                    PointerKind.STYLUS,
+                )
+            }
+            drawNativePencil(canvas, samples, style, width, height)
+        }
+        return bitmap
+    }
+
     private fun drawNativePencil(
         canvas: Canvas,
         samples: List<StrokeSample>,

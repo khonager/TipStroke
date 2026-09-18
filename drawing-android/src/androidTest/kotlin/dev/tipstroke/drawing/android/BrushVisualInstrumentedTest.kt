@@ -47,6 +47,11 @@ class BrushVisualInstrumentedTest {
             check(tiltStress.compress(Bitmap.CompressFormat.PNG, 100, stream))
         }
         tiltStress.recycle()
+        val tiltCalibration = BrushVisualHarness.renderPencilTiltCalibration(BrushPreset.Pencil)
+        TestStorage().openOutputFile("brush-qa/pencil-tilt-calibration.png").use { stream ->
+            check(tiltCalibration.compress(Bitmap.CompressFormat.PNG, 100, stream))
+        }
+        tiltCalibration.recycle()
     }
 
     private fun metrics(bitmap: Bitmap): Metrics {
