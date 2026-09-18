@@ -169,6 +169,50 @@ class TileStoreTest {
         dry.recycle()
     }
 
+    @Test fun pencilGrainIsContinuousAcrossSparseTileSeams() {
+        val pencil = StrokeStyle(
+            BrushPreset.Pencil,
+            36f,
+            .85f,
+            RgbaColor(.08f, .09f, .1f),
+            BlendBehavior.PAINT,
+        )
+        val samples = (0..60).map { index ->
+            sample(Point(100f + index * 5f, 128f), index * 8_000_000L).copy(
+                pressure = .72f,
+                opacityPressure = .72f,
+                tiltRadians = 1.15f,
+                orientationRadians = (Math.PI / 2).toFloat(),
+            )
+        }
+        val completed = CompletedStroke(samples, pencil)
+        val direct = Bitmap.createBitmap(512, 256, Bitmap.Config.ARGB_8888)
+        StrokeCanvasPainter.draw(Canvas(direct), completed)
+        val store = TileStore(512, 256)
+        store.commit(completed)
+        val tiled = Bitmap.createBitmap(512, 256, Bitmap.Config.ARGB_8888)
+        store.draw(Canvas(tiled), Paint())
+        val directPixels = IntArray(512 * 256)
+        val tiledPixels = IntArray(512 * 256)
+        direct.getPixels(directPixels, 0, 512, 0, 0, 512, 256)
+        tiled.getPixels(tiledPixels, 0, 512, 0, 0, 512, 256)
+        val differing = directPixels.indices.count { directPixels[it] != tiledPixels[it] }
+        val seamDiffering = (0 until 256).sumOf { y ->
+            (252..259).count { x -> directPixels[y * 512 + x] != tiledPixels[y * 512 + x] }
+        }
+        val maximumAlphaDifference = directPixels.indices.maxOf { index ->
+            kotlin.math.abs(Color.alpha(directPixels[index]) - Color.alpha(tiledPixels[index]))
+        }
+        // Separate tile clips can round a handful of antialiased boundary pixels differently;
+        // a texture-coordinate reset would alter hundreds of pixels along the seam.
+        assertTrue(
+            "different=$differing seam=$seamDiffering alphaDelta=$maximumAlphaDifference",
+            differing <= 16 && seamDiffering <= 12 && maximumAlphaDifference <= 20,
+        )
+        direct.recycle()
+        tiled.recycle()
+    }
+
     @Test fun canceledLiveEraserRestoresPixelsAndDoesNotAddHistory() {
         val store = TileStore(256, 256)
         store.commit(stroke(Point(30f, 80f), Point(220f, 80f), ink))
