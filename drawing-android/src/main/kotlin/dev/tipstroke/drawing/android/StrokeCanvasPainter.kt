@@ -178,10 +178,10 @@ internal object StrokeCanvasPainter {
     }
 
     /**
-     * Builds a continuous anisotropic ribbon from Pencil samples. Input points define shared
-     * cross-sections, so neighboring segments meet on one edge instead of revealing a chain of
-     * overlapping oval stamps. [replaceExisting] is used only on the isolated live-stroke tiles;
-     * normal layer commits composite the completed ribbon once.
+     * Builds a continuous anisotropic ribbon from Pencil samples. Segment contact quads overlap
+     * by a subpixel amount and their changing tangents are connected with small corner wedges,
+     * avoiding both oval stamps and antialiased cracks. [replaceExisting] is used only on the
+     * isolated live-stroke tiles; normal layer commits composite the completed ribbon once.
      */
     private fun drawPencil(
         canvas: Canvas,
@@ -295,7 +295,7 @@ internal object StrokeCanvasPainter {
             }
 
             val segments = (1 until samples.size).associateWith(::segment)
-            val firstSegmentIndex = if (skipFirstSegment && samples.size > 2) 2 else 1
+            val firstSegmentIndex = if (skipFirstSegment) 2 else 1
             for (index in firstSegmentIndex until samples.size) {
                 val geometry = segments.getValue(index)
                 // Neighboring quads overlap by less than one pixel. This covers the internal

@@ -59,7 +59,7 @@ internal object BrushVisualHarness {
     }
 
     fun renderPencilTiltStress(preset: BrushPreset): Bitmap {
-        val width = 900
+        val width = 1200
         val height = 900
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap).apply { drawColor(Color.WHITE) }
@@ -86,8 +86,36 @@ internal object BrushVisualHarness {
                 .7f, 1.3f, 1.05f, index * 5_000_000L, 0, PointerKind.STYLUS,
             )
         }
+        val corners = listOf(
+            Point(860f, 70f),
+            Point(1090f, 235f),
+            Point(825f, 420f),
+            Point(1090f, 610f),
+            Point(850f, 825f),
+        )
+        val zigzag = corners.zipWithNext().flatMapIndexed { segmentIndex, (start, end) ->
+            (0..45).mapNotNull { pointIndex ->
+                if (segmentIndex > 0 && pointIndex == 0) return@mapNotNull null
+                val progress = pointIndex / 45f
+                val sampleIndex = segmentIndex * 45 + pointIndex
+                StrokeSample(
+                    0,
+                    Point(
+                        start.x + (end.x - start.x) * progress,
+                        start.y + (end.y - start.y) * progress,
+                    ),
+                    .66f,
+                    1.3f,
+                    .2f + sampleIndex / 180f * 1.05f,
+                    sampleIndex * 5_000_000L,
+                    0,
+                    PointerKind.STYLUS,
+                )
+            }
+        }
         drawNativePencil(canvas, circle, style, width, height)
         drawNativePencil(canvas, verticalCurve, style, width, height)
+        drawNativePencil(canvas, zigzag, style, width, height)
         return bitmap
     }
 
@@ -108,7 +136,11 @@ internal object BrushVisualHarness {
             )
             context = (context + batch).takeLast(2)
         }
-        preview.appendPencilPreview(CompletedStroke(listOf(samples.last()), style), capEnd = true)
+        preview.appendPencilPreview(
+            CompletedStroke(samples.takeLast(2), style),
+            capEnd = true,
+            skipFirstSegment = samples.size > 1,
+        )
         preview.draw(canvas, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         preview.discard()
     }

@@ -435,10 +435,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         } else if (pencilPreviewStyle != null) {
                             val completed = CompletedStroke(samples, style)
                             pencilPreviewStore?.let { preview ->
-                                samples.lastOrNull()?.let { last ->
+                                samples.takeLast(2).takeIf { it.isNotEmpty() }?.let { ending ->
                                     preview.appendPencilPreview(
-                                        CompletedStroke(listOf(last), style),
+                                        CompletedStroke(ending, style),
                                         capEnd = true,
+                                        skipFirstSegment = ending.size == 2,
                                     )
                                 }
                                 target.store.commitOverlay(preview, completed)
