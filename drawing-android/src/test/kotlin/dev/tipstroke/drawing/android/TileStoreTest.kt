@@ -126,6 +126,49 @@ class TileStoreTest {
         committed.recycle()
     }
 
+    @Test fun finishingLivePencilKeepsTheExactWetPixels() {
+        val pencil = StrokeStyle(
+            BrushPreset.Pencil,
+            42f,
+            .68f,
+            RgbaColor(.12f, .18f, .24f),
+            BlendBehavior.PAINT,
+        )
+        val first = sample(Point(60f, 80f), 0).copy(pressure = .35f, opacityPressure = .35f)
+        val middle = sample(Point(125f, 115f), 8_000_000).copy(
+            pressure = .7f,
+            opacityPressure = .7f,
+            tiltRadians = .8f,
+            orientationRadians = .45f,
+        )
+        val last = sample(Point(190f, 140f), 16_000_000).copy(
+            pressure = .9f,
+            opacityPressure = .9f,
+            tiltRadians = 1.1f,
+            orientationRadians = .7f,
+        )
+        val completed = CompletedStroke(listOf(first, middle, last), pencil)
+        val store = TileStore(256, 256)
+        store.beginLiveStroke()
+        store.appendLiveStroke(CompletedStroke(listOf(first), pencil))
+        store.appendLiveStroke(CompletedStroke(listOf(first, middle), pencil))
+        store.appendLiveStroke(CompletedStroke(listOf(middle, last), pencil))
+        val wet = store.snapshotTiles().getValue(TileCoordinate(0, 0))
+
+        store.finishLiveStroke(completed)
+
+        val dry = store.snapshotTiles().getValue(TileCoordinate(0, 0))
+        val wetPixels = IntArray(256 * 256)
+        val dryPixels = IntArray(256 * 256)
+        wet.getPixels(wetPixels, 0, 256, 0, 0, 256, 256)
+        dry.getPixels(dryPixels, 0, 256, 0, 0, 256, 256)
+        assertArrayEquals(wetPixels, dryPixels)
+        assertTrue(store.history.undo())
+        assertEquals(0, store.allocatedTileCount)
+        wet.recycle()
+        dry.recycle()
+    }
+
     @Test fun canceledLiveEraserRestoresPixelsAndDoesNotAddHistory() {
         val store = TileStore(256, 256)
         store.commit(stroke(Point(30f, 80f), Point(220f, 80f), ink))

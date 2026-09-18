@@ -15,7 +15,6 @@ import kotlin.math.floor
 internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : View(context) {
     val transformMatrix = Matrix()
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val previewPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val canvasPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(80, 255, 255, 255); style = Paint.Style.STROKE; strokeWidth = 2f }
     private val transformBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(237, 106, 90); style = Paint.Style.STROKE }
@@ -34,8 +33,6 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
     var previewStroke: CompletedStroke? = null
-        set(value) { field = value; postInvalidateOnAnimation() }
-    var pencilPreviewStore: TileStore? = null
         set(value) { field = value; postInvalidateOnAnimation() }
     var adjustmentPreviewStroke: CompletedStroke? = null
         set(value) { field = value; postInvalidateOnAnimation() }
@@ -128,7 +125,6 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                 }
             }
         }
-        pencilPreviewStore?.draw(canvas, previewPaint)
         previewStroke?.let { StrokeCanvasPainter.draw(canvas, it) }
         if (showImageTransformBounds) drawSelectedImageBounds(canvas)
         drawSelection(canvas)
