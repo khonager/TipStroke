@@ -148,14 +148,15 @@ class TileStoreTest {
             orientationRadians = .7f,
         )
         val completed = CompletedStroke(listOf(first, middle, last), pencil)
-        val store = TileStore(256, 256)
-        store.beginLiveStroke()
-        store.appendLiveStroke(CompletedStroke(listOf(first), pencil))
-        store.appendLiveStroke(CompletedStroke(listOf(first, middle), pencil))
-        store.appendLiveStroke(CompletedStroke(listOf(middle, last), pencil))
-        val wet = store.snapshotTiles().getValue(TileCoordinate(0, 0))
+        val preview = TileStore(256, 256)
+        preview.appendPencilPreview(CompletedStroke(listOf(first), pencil), capStart = true)
+        preview.appendPencilPreview(CompletedStroke(listOf(first, middle), pencil))
+        preview.appendPencilPreview(CompletedStroke(listOf(middle, last), pencil))
+        preview.appendPencilPreview(CompletedStroke(listOf(last), pencil), capEnd = true)
+        val wet = preview.snapshotTiles().getValue(TileCoordinate(0, 0))
 
-        store.finishLiveStroke(completed)
+        val store = TileStore(256, 256)
+        store.commitOverlay(preview, completed)
 
         val dry = store.snapshotTiles().getValue(TileCoordinate(0, 0))
         val wetPixels = IntArray(256 * 256)
@@ -203,14 +204,69 @@ class TileStoreTest {
         val maximumAlphaDifference = directPixels.indices.maxOf { index ->
             kotlin.math.abs(Color.alpha(directPixels[index]) - Color.alpha(tiledPixels[index]))
         }
-        // Separate tile clips can round a handful of antialiased boundary pixels differently;
-        // a texture-coordinate reset would alter hundreds of pixels along the seam.
+        // Separate tile clips can round the outer antialiased contour differently. The central
+        // seam itself must remain limited to a few low-alpha edge pixels; a texture-coordinate
+        // reset or clipped ribbon would alter hundreds of pixels there.
         assertTrue(
             "different=$differing seam=$seamDiffering alphaDelta=$maximumAlphaDifference",
-            differing <= 16 && seamDiffering <= 12 && maximumAlphaDifference <= 20,
+            differing <= 200 && seamDiffering <= 12 && maximumAlphaDifference <= 10,
         )
         direct.recycle()
         tiled.recycle()
+    }
+
+    @Test fun tiltedPencilPreviewDoesNotDependOnInputBatching() {
+        val pencil = StrokeStyle(
+            BrushPreset.Pencil,
+            28f,
+            .9f,
+            RgbaColor(.06f, .07f, .08f),
+            BlendBehavior.PAINT,
+        )
+        val samples = (0..84).map { index ->
+            sample(Point(28f + index * 2.4f, 128f), index * 4_000_000L).copy(
+                pressure = .68f,
+                opacityPressure = .68f,
+                tiltRadians = 1.28f,
+                orientationRadians = .35f,
+            )
+        }
+        fun render(batchSize: Int): Bitmap {
+            val preview = TileStore(256, 256)
+            preview.appendPencilPreview(CompletedStroke(listOf(samples.first()), pencil), capStart = true)
+            var context = listOf(samples.first())
+            samples.drop(1).chunked(batchSize).forEach { batch ->
+                preview.appendPencilPreview(
+                    CompletedStroke(context + batch, pencil),
+                    skipFirstSegment = context.size == 2,
+                )
+                context = (context + batch).takeLast(2)
+            }
+            preview.appendPencilPreview(CompletedStroke(listOf(samples.last()), pencil), capEnd = true)
+            return Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).also { bitmap ->
+                preview.draw(Canvas(bitmap), Paint())
+                preview.discard()
+            }
+        }
+        val singleSampleBatches = render(1)
+        val sevenSampleBatches = render(7)
+        val singlePixels = IntArray(256 * 256)
+        val sevenPixels = IntArray(256 * 256)
+        singleSampleBatches.getPixels(singlePixels, 0, 256, 0, 0, 256, 256)
+        sevenSampleBatches.getPixels(sevenPixels, 0, 256, 0, 0, 256, 256)
+        val differing = singlePixels.indices.count { singlePixels[it] != sevenPixels[it] }
+        val maximumAlphaDifference = singlePixels.indices.maxOf { index ->
+            kotlin.math.abs(Color.alpha(singlePixels[index]) - Color.alpha(sevenPixels[index]))
+        }
+        val alphaDifference = singlePixels.indices.sumOf { index ->
+            kotlin.math.abs(Color.alpha(singlePixels[index]) - Color.alpha(sevenPixels[index])).toLong()
+        }
+        assertTrue(
+            "different=$differing alphaDelta=$maximumAlphaDifference totalAlphaDelta=$alphaDifference",
+            differing == 0,
+        )
+        singleSampleBatches.recycle()
+        sevenSampleBatches.recycle()
     }
 
     @Test fun canceledLiveEraserRestoresPixelsAndDoesNotAddHistory() {

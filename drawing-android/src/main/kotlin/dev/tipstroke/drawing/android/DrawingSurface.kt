@@ -54,6 +54,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var customPreviewStyle: StrokeStyle? = null
     private var airbrushPreviewStyle: StrokeStyle? = null
     private var pencilPreviewStyle: StrokeStyle? = null
+    private var pencilPreviewStore: TileStore? = null
     private val finishedSamples = ArrayDeque<PendingCommit>()
     private var activeStylusId: Int? = null
     private var gestureStart = emptyMap<Int, android.graphics.PointF>()
@@ -370,11 +371,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId).toList(), style)
                 } else if (style.brush.engine == BrushEngine.PENCIL) {
                     pencilPreviewStyle = style
-                    target.store.beginLiveStroke()
-                    invalidateTarget(
-                        target,
-                        target.store.appendLiveStroke(CompletedStroke(pendingSamples.getValue(pointerId).toList(), style)),
-                    )
+                    startPencilPreview(CompletedStroke(pendingSamples.getValue(pointerId).toList(), style))
                     // Ink still authors the stroke, but its alpha/tilt preview is unreliable in
                     // 1.1.0-alpha08. Keep that mesh effectively transparent; the native live
                     // pixels become the permanent raster at pen-up, so the appearance cannot jump.
@@ -437,7 +434,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                             notifyLayers()
                         } else if (pencilPreviewStyle != null) {
                             val completed = CompletedStroke(samples, style)
-                            target.store.finishLiveStroke(completed)
+                            pencilPreviewStore?.let { preview ->
+                                samples.lastOrNull()?.let { last ->
+                                    preview.appendPencilPreview(
+                                        CompletedStroke(listOf(last), style),
+                                        capEnd = true,
+                                    )
+                                }
+                                target.store.commitOverlay(preview, completed)
+                            }
+                            clearPencilPreview()
                             finishedSamples += PendingCommit(completed, target, rasterizedLive = true)
                             rasterView.invalidate()
                             notifyHistory()
@@ -722,19 +728,23 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun appendSamples(pointerId: Int, samples: MutableList<StrokeSample>, additions: List<StrokeSample>) {
         if (additions.isEmpty()) return
         val previous = samples.lastOrNull()
+        val pencilContext = if (pencilPreviewStyle != null) samples.takeLast(2) else emptyList()
         samples += additions
         airbrushPreviewStyle?.let { style ->
             rasterView.previewStroke = CompletedStroke(samples.toList(), style)
             return
         }
         pencilPreviewStyle?.let { style ->
-            val target = pendingTargets[pointerId] ?: return
+            val preview = pencilPreviewStore ?: return
             if (previous != null) {
-                val segment = ArrayList<StrokeSample>(additions.size + 1).apply {
-                    add(previous)
+                val segment = ArrayList<StrokeSample>(additions.size + pencilContext.size).apply {
+                    addAll(pencilContext)
                     addAll(additions)
                 }
-                invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(segment, style)))
+                rasterView.invalidateTiles(preview.appendPencilPreview(
+                    CompletedStroke(segment, style),
+                    skipFirstSegment = pencilContext.size == 2,
+                ))
             }
             return
         }
@@ -764,12 +774,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (customPreviewStyle == null && airbrushPreviewStyle == null) {
             liveView.cancelStroke(event, pointerId)
         }
-        if (customPreviewStyle != null || pencilPreviewStyle != null) {
+        if (customPreviewStyle != null) {
             pendingTargets[pointerId]?.let { target -> invalidateTarget(target, target.store.cancelLiveStroke()) }
         }
         customPreviewStyle = null
         airbrushPreviewStyle = null
         pencilPreviewStyle = null
+        clearPencilPreview()
         rasterView.previewStroke = null
         pendingSamples.remove(pointerId)
         pendingTargets.remove(pointerId)
@@ -829,6 +840,20 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             BrushEngine.INK -> .1f
         }
         return Brush.createWithColorIntArgb(family, liveColor, style.sizePx.coerceAtLeast(1f), epsilon)
+    }
+
+    private fun startPencilPreview(stroke: CompletedStroke) {
+        clearPencilPreview()
+        pencilPreviewStore = TileStore(layerStack.canvasWidth, layerStack.canvasHeight).also { preview ->
+            preview.appendPencilPreview(stroke, capStart = true)
+            rasterView.setPencilPreview(preview, layerStack.selectedId)
+        }
+    }
+
+    private fun clearPencilPreview() {
+        pencilPreviewStore?.discard()
+        pencilPreviewStore = null
+        rasterView.setPencilPreview(null, null)
     }
 
     private fun sample(event: MotionEvent, index: Int, historyIndex: Int? = null): StrokeSample {

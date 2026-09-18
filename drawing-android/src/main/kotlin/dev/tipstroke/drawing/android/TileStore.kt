@@ -83,6 +83,60 @@ class TileStore(
         return dirty
     }
 
+    /** Adds a Pencil segment to an isolated transparent preview using source replacement. */
+    internal fun appendPencilPreview(
+        stroke: CompletedStroke,
+        capStart: Boolean = false,
+        capEnd: Boolean = false,
+        skipFirstSegment: Boolean = false,
+    ): Set<TileCoordinate> {
+        val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
+        dirty.forEach { coordinate ->
+            val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            Canvas(bitmap).apply {
+                save()
+                translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+                StrokeCanvasPainter.drawPencilOverlay(this, stroke, capStart, capEnd, skipFirstSegment)
+                restore()
+            }
+        }
+        lastDirtyTiles = dirty
+        return dirty
+    }
+
+    /** Composites an isolated sparse preview once and records the result as one undo step. */
+    internal fun commitOverlay(overlay: TileStore, stroke: CompletedStroke): Set<TileCoordinate> {
+        val dirty = overlay.tiles.keys.toSet()
+        if (dirty.isEmpty()) return emptySet()
+        val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        dirty.forEach { coordinate ->
+            val source = overlay.tiles[coordinate] ?: return@forEach
+            val destination = tiles.getOrPut(coordinate) {
+                Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888)
+            }
+            Canvas(destination).drawBitmap(source, 0f, 0f, null)
+            if (destination.isFullyTransparent()) {
+                destination.recycle()
+                tiles.remove(coordinate)
+            }
+        }
+        val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke)))
+        lastDirtyTiles = dirty
+        return dirty
+    }
+
+    /** Releases all pixels owned by a transient preview store. */
+    internal fun discard() {
+        tiles.values.forEach(Bitmap::recycle)
+        tiles.clear()
+        tileContentBounds.clear()
+        dirtyContentBoundsTiles.clear()
+        contentBoundsInitialized = false
+        lastDirtyTiles = emptySet()
+        history.clear()
+    }
+
     internal fun finishLiveStroke(stroke: CompletedStroke? = null): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null

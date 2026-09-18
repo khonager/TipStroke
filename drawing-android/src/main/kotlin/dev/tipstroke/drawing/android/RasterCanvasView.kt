@@ -9,12 +9,14 @@ import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.geometry.TileGrid
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.SelectionRegion
+import dev.tipstroke.core.model.LayerId
 import kotlin.math.ceil
 import kotlin.math.floor
 
 internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : View(context) {
     val transformMatrix = Matrix()
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val layerOpacityPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val canvasPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(80, 255, 255, 255); style = Paint.Style.STROKE; strokeWidth = 2f }
     private val transformBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(237, 106, 90); style = Paint.Style.STROKE }
@@ -34,10 +36,18 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         set(value) { field = value; invalidate() }
     var previewStroke: CompletedStroke? = null
         set(value) { field = value; postInvalidateOnAnimation() }
+    private var pencilPreviewStore: TileStore? = null
+    private var pencilPreviewLayerId: LayerId? = null
     var adjustmentPreviewStroke: CompletedStroke? = null
         set(value) { field = value; postInvalidateOnAnimation() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
     var transformChangedListener: ((CanvasTransform) -> Unit)? = null
+
+    fun setPencilPreview(store: TileStore?, layerId: LayerId?) {
+        pencilPreviewStore = store
+        pencilPreviewLayerId = layerId
+        postInvalidateOnAnimation()
+    }
 
     fun updateTransform(panX: Float, panY: Float, scale: Float, rotation: Float) {
         transform = CanvasTransform(panX, panY, scale, rotation)
@@ -117,10 +127,32 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         canvas.clipRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
         layerStack.layers.forEach { layer ->
             if (!layer.visible || layer.opacity <= 0f) return@forEach
-            bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
             when (layer) {
-                is RasterLayerRuntime -> layer.tiles.draw(canvas, bitmapPaint)
+                is RasterLayerRuntime -> {
+                    val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
+                    if (preview == null) {
+                        bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
+                        layer.tiles.draw(canvas, bitmapPaint)
+                    } else if (layer.opacity >= .999f) {
+                        bitmapPaint.alpha = 255
+                        layer.tiles.draw(canvas, bitmapPaint)
+                        preview.draw(canvas, bitmapPaint)
+                    } else {
+                        layerOpacityPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
+                        val visible = canvas.clipBounds
+                        val group = canvas.saveLayer(
+                            visible.left.toFloat(), visible.top.toFloat(),
+                            visible.right.toFloat(), visible.bottom.toFloat(),
+                            layerOpacityPaint,
+                        )
+                        bitmapPaint.alpha = 255
+                        layer.tiles.draw(canvas, bitmapPaint)
+                        preview.draw(canvas, bitmapPaint)
+                        canvas.restoreToCount(group)
+                    }
+                }
                 is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { bitmap ->
+                    bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
                     drawImageLayer(canvas, layer, bitmap)
                 }
             }

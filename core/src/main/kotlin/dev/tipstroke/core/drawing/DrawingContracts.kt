@@ -38,7 +38,7 @@ data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeSty
         // conservative so a rotated, tilted pencil or scattered airbrush particle
         // can never be clipped at a sparse-tile boundary.
         val radius = style.sizePx * when (style.brush.engine) {
-            BrushEngine.PENCIL -> 1.35f
+            BrushEngine.PENCIL -> 1.75f
             BrushEngine.AIRBRUSH -> 1.35f
             BrushEngine.INK -> .55f
         }

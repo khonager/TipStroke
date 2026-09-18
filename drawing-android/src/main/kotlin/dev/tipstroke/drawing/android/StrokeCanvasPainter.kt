@@ -5,11 +5,15 @@ import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ComposeShader
+import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
 import android.graphics.Shader
 import dev.tipstroke.core.drawing.CompletedStroke
 import dev.tipstroke.core.drawing.StrokeSample
@@ -118,7 +122,7 @@ internal object StrokeCanvasPainter {
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
         val samples = stroke.samples
         if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine == BrushEngine.PENCIL) {
-            drawPencilPreview(canvas, stroke, paint)
+            drawPencil(canvas, stroke, paint, replaceExisting = false, capStart = true, capEnd = true)
             canvas.restoreToCount(saveCount)
             return
         }
@@ -151,83 +155,232 @@ internal object StrokeCanvasPainter {
         canvas.restoreToCount(saveCount)
     }
 
+    /** Draws a Pencil segment directly into its isolated sparse preview tiles. */
+    internal fun drawPencilOverlay(
+        canvas: Canvas,
+        stroke: CompletedStroke,
+        capStart: Boolean = false,
+        capEnd: Boolean = false,
+        skipFirstSegment: Boolean = false,
+    ) {
+        val saveCount = canvas.save()
+        stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
+        drawPencil(
+            canvas,
+            stroke,
+            preparePaint(stroke),
+            replaceExisting = true,
+            capStart,
+            capEnd,
+            skipFirstSegment,
+        )
+        canvas.restoreToCount(saveCount)
+    }
+
     /**
-     * Wet Pencil fallback for Ink 1.1.0-alpha08, whose live opacity and tilt targets are not
-     * dependable on all devices. The finalized mark is still rebuilt and rasterized from the
-     * Jetpack Ink family; this preview mirrors its pressure, tilt, and barrel-orientation inputs.
+     * Builds a continuous anisotropic ribbon from Pencil samples. Input points define shared
+     * cross-sections, so neighboring segments meet on one edge instead of revealing a chain of
+     * overlapping oval stamps. [replaceExisting] is used only on the isolated live-stroke tiles;
+     * normal layer commits composite the completed ribbon once.
      */
-    private fun drawPencilPreview(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
-        val samples = stroke.samples
+    private fun drawPencil(
+        canvas: Canvas,
+        stroke: CompletedStroke,
+        paint: Paint,
+        replaceExisting: Boolean,
+        capStart: Boolean,
+        capEnd: Boolean,
+        skipFirstSegment: Boolean = false,
+    ) {
+        val samples = buildList<StrokeSample> {
+            stroke.samples.forEach { sample ->
+                val previous = lastOrNull()
+                if (previous == null || hypot(
+                        sample.position.x - previous.position.x,
+                        sample.position.y - previous.position.y,
+                    ) >= .05f
+                ) {
+                    add(sample)
+                } else {
+                    this[lastIndex] = sample
+                }
+            }
+        }
         if (samples.isEmpty()) return
-        val layer = canvas.saveLayer(
-            stroke.bounds.left,
-            stroke.bounds.top,
-            stroke.bounds.right,
-            stroke.bounds.bottom,
-            null,
+        val layer = if (replaceExisting) null else canvas.saveLayer(
+            stroke.bounds.left, stroke.bounds.top, stroke.bounds.right, stroke.bounds.bottom, null,
         )
         paint.style = Paint.Style.FILL
         paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+        paint.colorFilter = PorterDuffColorFilter(stroke.style.color.toOpaqueRgb(), PorterDuff.Mode.SRC_IN)
 
-        fun drawTip(sample: StrokeSample, speedScale: Float = 1f) {
+        fun configureGrain(sample: StrokeSample) {
+            val tiltAmount = (sample.tiltRadians / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
+            paint.shader = pencilGrainShaders[(tiltAmount * pencilGrainShaders.lastIndex).roundToInt()]
+        }
+
+        fun drawCap(sample: StrokeSample, speedScale: Float = 1f) {
             val dynamics = pencilTipDynamics(stroke, sample, speedScale)
             paint.alpha = dynamics.alpha
+            configureGrain(sample)
             val halfWidth = dynamics.width / 2f
             val halfHeight = dynamics.height / 2f
-            canvas.save()
-            canvas.rotate(Math.toDegrees(sample.orientationRadians.toDouble()).toFloat(), sample.position.x, sample.position.y)
-            canvas.drawOval(
+            val cap = Path().apply { addOval(RectF(
                 sample.position.x - halfWidth,
                 sample.position.y - halfHeight,
                 sample.position.x + halfWidth,
                 sample.position.y + halfHeight,
-                paint,
-            )
-            canvas.restore()
+            ), Path.Direction.CW) }
+            cap.transform(Matrix().apply {
+                setRotate(Math.toDegrees(sample.orientationRadians.toDouble()).toFloat(), sample.position.x, sample.position.y)
+            })
+            canvas.drawPath(cap, paint)
         }
 
         if (samples.size == 1) {
-            drawTip(samples.first())
+            if (capStart || capEnd) drawCap(samples.first())
         } else {
-            for (index in 1 until samples.size) {
-                val previous = samples[index - 1]
-                val current = samples[index]
-                val distance = hypot(current.position.x - previous.position.x, current.position.y - previous.position.y)
-                val minimumTip = minOf(
-                    pencilTipDynamics(stroke, previous).height,
-                    pencilTipDynamics(stroke, current).height,
-                ).coerceAtLeast(.75f)
-                val steps = ceil(distance / (minimumTip * .35f)).toInt().coerceIn(1, 96)
-                val orientationDelta = atan2(
-                    sin(current.orientationRadians - previous.orientationRadians),
-                    cos(current.orientationRadians - previous.orientationRadians),
+            data class Section(val left: Point, val right: Point)
+            data class Segment(
+                val tangentX: Float,
+                val tangentY: Float,
+                val normalX: Float,
+                val normalY: Float,
+                val start: Section,
+                val end: Section,
+            )
+
+            val dynamics = samples.mapIndexed { index, sample ->
+                val speedScale = if (index == 0) {
+                    samples[1].speedSize(stroke, sample)
+                } else {
+                    sample.speedSize(stroke, samples[index - 1])
+                }
+                pencilTipDynamics(stroke, sample, speedScale)
+            }
+
+            fun section(sample: StrokeSample, tip: PencilTipDynamics, normalX: Float, normalY: Float): Section {
+                val majorX = cos(sample.orientationRadians)
+                val majorY = sin(sample.orientationRadians)
+                val normalOnMajor = normalX * majorX + normalY * majorY
+                val normalOnMinor = normalX * -majorY + normalY * majorX
+                val radius = sqrt(
+                    (tip.width * .5f * normalOnMajor).pow(2) +
+                        (tip.height * .5f * normalOnMinor).pow(2),
+                ).coerceAtLeast(.25f)
+                return Section(
+                    Point(sample.position.x + normalX * radius, sample.position.y + normalY * radius),
+                    Point(sample.position.x - normalX * radius, sample.position.y - normalY * radius),
                 )
-                for (step in 1..steps) {
-                    val amount = step / steps.toFloat()
-                    val interpolated = current.copy(
-                        position = Point(
-                            previous.position.x + (current.position.x - previous.position.x) * amount,
-                            previous.position.y + (current.position.y - previous.position.y) * amount,
-                        ),
-                        pressure = previous.pressure + (current.pressure - previous.pressure) * amount,
-                        opacityPressure = previous.opacityPressure + (current.opacityPressure - previous.opacityPressure) * amount,
-                        tiltRadians = previous.tiltRadians + (current.tiltRadians - previous.tiltRadians) * amount,
-                        orientationRadians = previous.orientationRadians + orientationDelta * amount,
+            }
+
+            fun segment(index: Int): Segment {
+                val previousPosition = samples[index - 1].position
+                val currentPosition = samples[index].position
+                val segmentX = currentPosition.x - previousPosition.x
+                val segmentY = currentPosition.y - previousPosition.y
+                val segmentLength = hypot(segmentX, segmentY).coerceAtLeast(.0001f)
+                val tangentX = segmentX / segmentLength
+                val tangentY = segmentY / segmentLength
+                val normalX = -tangentY
+                val normalY = tangentX
+                return Segment(
+                    tangentX,
+                    tangentY,
+                    normalX,
+                    normalY,
+                    section(samples[index - 1], dynamics[index - 1], normalX, normalY),
+                    section(samples[index], dynamics[index], normalX, normalY),
+                )
+            }
+
+            val segments = (1 until samples.size).associateWith(::segment)
+            val firstSegmentIndex = if (skipFirstSegment && samples.size > 2) 2 else 1
+            for (index in firstSegmentIndex until samples.size) {
+                val geometry = segments.getValue(index)
+                // Neighboring quads overlap by less than one pixel. This covers the internal
+                // antialias fringe without creating the large protruding stamp shapes that a
+                // full ellipse at every input sample would leave behind.
+                val overlap = .75f
+                val quad = Path().apply {
+                    moveTo(
+                        geometry.start.left.x - geometry.tangentX * overlap,
+                        geometry.start.left.y - geometry.tangentY * overlap,
                     )
-                    drawTip(interpolated, current.speedSize(stroke, previous))
+                    lineTo(
+                        geometry.end.left.x + geometry.tangentX * overlap,
+                        geometry.end.left.y + geometry.tangentY * overlap,
+                    )
+                    lineTo(
+                        geometry.end.right.x + geometry.tangentX * overlap,
+                        geometry.end.right.y + geometry.tangentY * overlap,
+                    )
+                    lineTo(
+                        geometry.start.right.x - geometry.tangentX * overlap,
+                        geometry.start.right.y - geometry.tangentY * overlap,
+                    )
+                    close()
+                }
+                val rgb = stroke.style.color.toOpaqueRgb()
+                val gradient = LinearGradient(
+                    samples[index - 1].position.x,
+                    samples[index - 1].position.y,
+                    samples[index].position.x,
+                    samples[index].position.y,
+                    Color.argb(dynamics[index - 1].alpha, Color.red(rgb), Color.green(rgb), Color.blue(rgb)),
+                    Color.argb(dynamics[index].alpha, Color.red(rgb), Color.green(rgb), Color.blue(rgb)),
+                    Shader.TileMode.CLAMP,
+                )
+                val averageTilt = (samples[index - 1].tiltRadians + samples[index].tiltRadians) * .5f
+                val tiltAmount = (averageTilt / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
+                val grain = pencilGrainShaders[(tiltAmount * pencilGrainShaders.lastIndex).roundToInt()]
+                paint.alpha = 255
+                paint.colorFilter = null
+                paint.shader = ComposeShader(gradient, grain, PorterDuff.Mode.DST_IN)
+                canvas.drawPath(quad, paint)
+
+                if (index >= 2) {
+                    val previousGeometry = segments.getValue(index - 1)
+                    val joint = samples[index - 1]
+                    val join = Path().apply {
+                        moveTo(
+                            previousGeometry.end.left.x - previousGeometry.tangentX * overlap,
+                            previousGeometry.end.left.y - previousGeometry.tangentY * overlap,
+                        )
+                        lineTo(
+                            geometry.start.left.x + geometry.tangentX * overlap,
+                            geometry.start.left.y + geometry.tangentY * overlap,
+                        )
+                        lineTo(joint.position.x, joint.position.y)
+                        close()
+                        moveTo(
+                            previousGeometry.end.right.x - previousGeometry.tangentX * overlap,
+                            previousGeometry.end.right.y - previousGeometry.tangentY * overlap,
+                        )
+                        lineTo(joint.position.x, joint.position.y)
+                        lineTo(
+                            geometry.start.right.x + geometry.tangentX * overlap,
+                            geometry.start.right.y + geometry.tangentY * overlap,
+                        )
+                        close()
+                    }
+                    paint.shader = pencilGrainShaders[
+                        ((joint.tiltRadians / (PI.toFloat() / 2f)).coerceIn(0f, 1f) * pencilGrainShaders.lastIndex)
+                            .roundToInt()
+                    ]
+                    paint.colorFilter = PorterDuffColorFilter(rgb, PorterDuff.Mode.SRC_IN)
+                    paint.alpha = dynamics[index - 1].alpha
+                    canvas.drawPath(join, paint)
                 }
             }
+            paint.colorFilter = PorterDuffColorFilter(stroke.style.color.toOpaqueRgb(), PorterDuff.Mode.SRC_IN)
+            if (capStart) drawCap(samples.first(), samples[1].speedSize(stroke, samples.first()))
+            if (capEnd) drawCap(samples.last(), samples.last().speedSize(stroke, samples[samples.lastIndex - 1]))
         }
-        val averageTilt = samples.sumOf { it.tiltRadians.toDouble() }.toFloat() / samples.size
-        val tiltAmount = (averageTilt / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
-        val grainIndex = (tiltAmount * pencilGrainMasks.lastIndex).roundToInt()
-        val grainPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = pencilGrainShaders[grainIndex]
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-        }
-        canvas.drawRect(stroke.bounds.left, stroke.bounds.top, stroke.bounds.right, stroke.bounds.bottom, grainPaint)
+        paint.shader = null
+        paint.colorFilter = null
         paint.xfermode = null
-        canvas.restoreToCount(layer)
+        layer?.let(canvas::restoreToCount)
     }
 
     internal data class PencilTipDynamics(val width: Float, val height: Float, val alpha: Int)
@@ -236,7 +389,7 @@ internal object StrokeCanvasPainter {
         val normalizedTilt = (sample.tiltRadians / (PI.toFloat() / 2f)).coerceIn(0f, 1f)
         val tiltResponse = 1f - (1f - normalizedTilt) * (1f - normalizedTilt)
         val widthMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * tiltResponse
-        val heightMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_HEIGHT_MULTIPLIER - 1f) * tiltResponse
+        val heightMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * tiltResponse
         val tiltOpacity = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER - 1f) * tiltResponse
         val pressureSize = sample.pressureSize(stroke)
         val edgeVariation = 1f +
@@ -358,6 +511,11 @@ internal object StrokeCanvasPainter {
     }
     private fun RgbaColor.toArgb() = Color.argb(
         (alpha * 255).roundToInt(),
+        (red * 255).roundToInt(),
+        (green * 255).roundToInt(),
+        (blue * 255).roundToInt(),
+    )
+    private fun RgbaColor.toOpaqueRgb() = Color.rgb(
         (red * 255).roundToInt(),
         (green * 255).roundToInt(),
         (blue * 255).roundToInt(),

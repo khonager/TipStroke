@@ -27,9 +27,9 @@ import kotlin.math.PI
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TipStrokeInkBrushesTest {
     @Test fun flatPencilUsesABroadLightSideContact() {
-        assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER >= 4f)
-        assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_HEIGHT_MULTIPLIER < .5f)
-        assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER < .8f)
+        assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER >= 5f)
+        assertTrue(TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER >= 2.5f)
+        assertTrue(TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER < .9f)
     }
 
     @Test fun pencilPreviewRespondsToTiltAndPressureBeforeCommit() {
@@ -46,9 +46,9 @@ class TipStrokeInkBrushesTest {
         val upright = StrokeCanvasPainter.pencilTipDynamics(CompletedStroke(listOf(sample(48f, 1f)), style), sample(48f, 1f))
         val tiltedSample = sample(48f, 1f, (PI / 2).toFloat())
         val tilted = StrokeCanvasPainter.pencilTipDynamics(CompletedStroke(listOf(tiltedSample), style), tiltedSample)
-        assertTrue("upright=$upright tilted=$tilted", tilted.width > upright.width * 4f)
-        assertTrue("upright=$upright tilted=$tilted", tilted.height < upright.height * .5f)
-        assertTrue("upright=$upright tilted=$tilted", tilted.alpha < upright.alpha * .8f)
+        assertTrue("upright=$upright tilted=$tilted", tilted.width > upright.width * 5f)
+        assertTrue("upright=$upright tilted=$tilted", tilted.height > upright.height * 2.5f)
+        assertTrue("upright=$upright tilted=$tilted", tilted.alpha < upright.alpha * .9f)
 
         val bitmap = Bitmap.createBitmap(256, 96, Bitmap.Config.ARGB_8888)
         val samples = listOf(sample(32f, .05f), sample(80f, .05f), sample(176f, 1f), sample(224f, 1f))
