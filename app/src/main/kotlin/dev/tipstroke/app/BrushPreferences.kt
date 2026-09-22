@@ -10,6 +10,11 @@ internal data class BrushTuning(
     val pressureSize: Boolean,
     val pressureOpacity: Boolean,
     val speedTaper: Boolean,
+    val pencilPointSize: Float = 1f,
+    val pencilTiltSensitivity: Float = BrushPreset.DEFAULT_PENCIL_TILT_SENSITIVITY,
+    val pencilShadeSize: Float = 1f,
+    val pencilShadeOpacity: Float = .62f,
+    val pencilGrain: Float = 1f,
 )
 
 internal class BrushPreferences(context: Context) {
@@ -19,6 +24,11 @@ internal class BrushPreferences(context: Context) {
         val prefix = "brush_${brush.id.value}_"
         return load(prefix, BrushTuning(
             brush.baseSizePx, brush.opacity, brush.hardness, true, true, brush.speedTaper > 0f,
+            brush.pencilPointSize,
+            brush.pencilTiltSensitivity,
+            brush.pencilShadeSize,
+            brush.pencilShadeOpacity,
+            brush.pencilGrain,
         ))
     }
 
@@ -31,6 +41,11 @@ internal class BrushPreferences(context: Context) {
             .putBoolean(prefix + "pressure_size", tuning.pressureSize)
             .putBoolean(prefix + "pressure_opacity", tuning.pressureOpacity)
             .putBoolean(prefix + "speed_taper", tuning.speedTaper)
+            .putFloat(prefix + "pencil_point_size", tuning.pencilPointSize)
+            .putFloat(prefix + "pencil_tilt_sensitivity", tuning.pencilTiltSensitivity)
+            .putFloat(prefix + "pencil_shade_size", tuning.pencilShadeSize)
+            .putFloat(prefix + "pencil_shade_opacity", tuning.pencilShadeOpacity)
+            .putFloat(prefix + "pencil_grain", tuning.pencilGrain)
             .apply()
     }
 
@@ -53,5 +68,10 @@ internal class BrushPreferences(context: Context) {
         preferences.getBoolean(prefix + "pressure_size", fallback.pressureSize),
         preferences.getBoolean(prefix + "pressure_opacity", fallback.pressureOpacity),
         preferences.getBoolean(prefix + "speed_taper", fallback.speedTaper),
+        preferences.getFloat(prefix + "pencil_point_size", fallback.pencilPointSize).coerceIn(.5f, 2f),
+        preferences.getFloat(prefix + "pencil_tilt_sensitivity", fallback.pencilTiltSensitivity).coerceIn(0f, 1f),
+        preferences.getFloat(prefix + "pencil_shade_size", fallback.pencilShadeSize).coerceIn(.4f, 1.6f),
+        preferences.getFloat(prefix + "pencil_shade_opacity", fallback.pencilShadeOpacity).coerceIn(.2f, 1f),
+        preferences.getFloat(prefix + "pencil_grain", fallback.pencilGrain).coerceIn(0f, 1f),
     )
 }

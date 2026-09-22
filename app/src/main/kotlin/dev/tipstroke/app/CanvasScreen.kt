@@ -90,6 +90,11 @@ fun CanvasScreen(
     var pressureSize by remember { mutableStateOf(initialBrushTuning.pressureSize) }
     var pressureOpacity by remember { mutableStateOf(initialBrushTuning.pressureOpacity) }
     var speedTaper by remember { mutableStateOf(initialBrushTuning.speedTaper) }
+    var pencilPointSize by remember { mutableFloatStateOf(initialBrushTuning.pencilPointSize) }
+    var pencilTiltSensitivity by remember { mutableFloatStateOf(initialBrushTuning.pencilTiltSensitivity) }
+    var pencilShadeSize by remember { mutableFloatStateOf(initialBrushTuning.pencilShadeSize) }
+    var pencilShadeOpacity by remember { mutableFloatStateOf(initialBrushTuning.pencilShadeOpacity) }
+    var pencilGrain by remember { mutableFloatStateOf(initialBrushTuning.pencilGrain) }
     val lastStylusButtonAt = remember { longArrayOf(Long.MIN_VALUE, Long.MIN_VALUE) }
 
     val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -124,6 +129,11 @@ fun CanvasScreen(
             pressureToSize = if (pressureSize) brush.pressureToSize else PressureCurve(1f, 1f, 1f),
             pressureToOpacity = if (pressureOpacity) brush.pressureToOpacity else PressureCurve(1f, 1f, 1f),
             speedTaper = if (speedTaper) .55f else 0f,
+            pencilPointSize = pencilPointSize,
+            pencilTiltSensitivity = pencilTiltSensitivity,
+            pencilShadeSize = pencilShadeSize,
+            pencilShadeOpacity = pencilShadeOpacity,
+            pencilGrain = pencilGrain,
         )
         sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing
         this.eraserHardness = eraserHardness; this.debug = debug; gestures = gestureSettings
@@ -131,6 +141,9 @@ fun CanvasScreen(
     fun applyTuning(tuning: BrushTuning) {
         size = tuning.sizePx; opacity = tuning.opacity; brushHardness = tuning.hardness
         pressureSize = tuning.pressureSize; pressureOpacity = tuning.pressureOpacity; speedTaper = tuning.speedTaper
+        pencilPointSize = tuning.pencilPointSize; pencilTiltSensitivity = tuning.pencilTiltSensitivity
+        pencilShadeSize = tuning.pencilShadeSize; pencilShadeOpacity = tuning.pencilShadeOpacity
+        pencilGrain = tuning.pencilGrain
     }
     fun toggleEraser() {
         erasing = !erasing
@@ -153,7 +166,7 @@ fun CanvasScreen(
             StylusButtonAction.DISABLED -> Unit
         }
     }
-    LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, debug, gestureSettings, surface) { sync() }
+    LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, debug, gestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(surface, debug) {
         while (debug && surface != null) {
@@ -164,8 +177,11 @@ fun CanvasScreen(
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
     LaunchedEffect(movingSelection, surface) { surface?.setSelectionMoveMode(movingSelection) }
-    LaunchedEffect(brush.id, erasing, size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper) {
-        val tuning = BrushTuning(size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper)
+    LaunchedEffect(brush.id, erasing, size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain) {
+        val tuning = BrushTuning(
+            size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper,
+            pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain,
+        )
         if (erasing) brushPreferences.saveEraser(tuning) else brushPreferences.save(brush, tuning)
     }
     LaunchedEffect(surface, ready, library, documentId) {
@@ -422,13 +438,36 @@ fun CanvasScreen(
         pressureSize = pressureSize,
         pressureOpacity = pressureOpacity,
         speedTaper = speedTaper,
+        supportsPencilTilt = !erasing && brush.engine == BrushEngine.PENCIL,
+        pencilPointSize = pencilPointSize,
+        pencilTiltSensitivity = pencilTiltSensitivity,
+        pencilShadeSize = pencilShadeSize,
+        pencilShadeOpacity = pencilShadeOpacity,
+        pencilGrain = pencilGrain,
         onHardness = { if (erasing) eraserHardness = it else brushHardness = it },
         onPressureSize = { pressureSize = it },
         onPressureOpacity = { pressureOpacity = it },
         onSpeedTaper = { speedTaper = it },
+        onPencilPointSize = { pencilPointSize = it },
+        onPencilTiltSensitivity = { pencilTiltSensitivity = it },
+        onPencilShadeSize = { pencilShadeSize = it },
+        onPencilShadeOpacity = { pencilShadeOpacity = it },
+        onPencilGrain = { pencilGrain = it },
         onReset = {
             applyTuning(if (erasing) BrushTuning(32f, 1f, .35f, true, true, false)
-                else BrushTuning(brush.baseSizePx, brush.opacity, brush.hardness, true, true, brush.speedTaper > 0f))
+                else BrushTuning(
+                    brush.baseSizePx,
+                    brush.opacity,
+                    brush.hardness,
+                    true,
+                    true,
+                    brush.speedTaper > 0f,
+                    brush.pencilPointSize,
+                    brush.pencilTiltSensitivity,
+                    brush.pencilShadeSize,
+                    brush.pencilShadeOpacity,
+                    brush.pencilGrain,
+                ))
         },
         onDismiss = { brushStudioOpen = false },
     )

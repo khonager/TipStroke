@@ -29,11 +29,30 @@ data class BrushPreset(
     val pressureToOpacity: PressureCurve,
     /** 0 disables speed response; 1 produces the strongest everyday-use taper. */
     val speedTaper: Float = 0f,
+    /** Pencil-only local tuning. Other engines retain these defaults without using them. */
+    val pencilPointSize: Float = 1f,
+    val pencilTiltSensitivity: Float = DEFAULT_PENCIL_TILT_SENSITIVITY,
+    val pencilShadeSize: Float = 1f,
+    val pencilShadeOpacity: Float = .62f,
+    val pencilGrain: Float = 1f,
 ) {
-    init { require(speedTaper in 0f..1f) }
+    init {
+        require(speedTaper in 0f..1f)
+        require(pencilPointSize in .5f..2f)
+        require(pencilTiltSensitivity in 0f..1f)
+        require(pencilShadeSize in .4f..1.6f)
+        require(pencilShadeOpacity in .2f..1f)
+        require(pencilGrain in 0f..1f)
+    }
 
     companion object {
         const val CURRENT_SCHEMA_VERSION = 2
+        const val MIN_PENCIL_FULL_TILT_RADIANS = .08f
+        const val MAX_PENCIL_FULL_TILT_RADIANS = 1.2f
+        const val DEFAULT_PENCIL_FULL_TILT_RADIANS = .55f
+        const val DEFAULT_PENCIL_TILT_SENSITIVITY =
+            (MAX_PENCIL_FULL_TILT_RADIANS - DEFAULT_PENCIL_FULL_TILT_RADIANS) /
+                (MAX_PENCIL_FULL_TILT_RADIANS - MIN_PENCIL_FULL_TILT_RADIANS)
         val Pencil = BrushPreset(id = BrushId("pencil-v1"), displayName = "Pencil", engine = BrushEngine.PENCIL,
             baseSizePx = 9f, opacity = .82f, hardness = .72f, spacing = .09f, stabilization = .24f,
             pressureToSize = PressureCurve(.14f, 1f, .72f), pressureToOpacity = PressureCurve(.1f, 1f, .72f),
@@ -48,3 +67,12 @@ data class BrushPreset(
         val builtIns = listOf(Pencil, Ink, Airbrush)
     }
 }
+
+fun BrushPreset.pencilFullTiltRadians(): Float =
+    BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS -
+        (BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS - BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS) * pencilTiltSensitivity
+
+fun pencilTiltSensitivityForFullAngle(tiltRadians: Float): Float =
+    ((BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS - tiltRadians) /
+        (BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS - BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS))
+        .coerceIn(0f, 1f)

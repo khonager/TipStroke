@@ -72,6 +72,26 @@ class TipStrokeInkBrushesTest {
         bitmap.recycle()
     }
 
+    @Test fun pencilTuningControlsPointTiltWidthAndShadeOpacity() {
+        val sample = StrokeSample(0, Point(48f, 48f), 1f, .2f, 0f, 0L, 0, PointerKind.STYLUS)
+        fun dynamics(brush: BrushPreset) = StrokeCanvasPainter.pencilTipDynamics(
+            CompletedStroke(
+                listOf(sample),
+                StrokeStyle(brush, 32f, 1f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT),
+            ),
+            sample,
+        )
+        val insensitive = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f))
+        val sensitive = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f))
+        val broad = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 1.6f))
+        val light = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeOpacity = .2f))
+        val largePoint = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f, pencilPointSize = 2f))
+        assertTrue("insensitive=$insensitive sensitive=$sensitive", sensitive.height > insensitive.height * 2f)
+        assertTrue("sensitive=$sensitive broad=$broad", broad.height > sensitive.height * 1.4f)
+        assertTrue("sensitive=$sensitive light=$light", light.alpha < sensitive.alpha * .5f)
+        assertTrue("insensitive=$insensitive largePoint=$largePoint", largePoint.height > insensitive.height * 1.8f)
+    }
+
     @Test fun constantPressureCurveOmitsTheInvalidInkBehavior() {
         assertTrue(!pressureBehaviorEnabled(PressureCurve(1f, 1f, 1f)))
         assertTrue(pressureBehaviorEnabled(BrushPreset.Pencil.pressureToOpacity))

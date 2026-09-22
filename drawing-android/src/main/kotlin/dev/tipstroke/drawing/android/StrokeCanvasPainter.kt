@@ -221,7 +221,7 @@ internal object StrokeCanvasPainter {
         paint.colorFilter = PorterDuffColorFilter(stroke.style.color.toOpaqueRgb(), PorterDuff.Mode.SRC_IN)
 
         fun configureGrain(sample: StrokeSample) {
-            val tiltAmount = pencilTiltResponse(sample.tiltRadians)
+            val tiltAmount = pencilTiltResponse(sample.tiltRadians, stroke.style.brush) * stroke.style.brush.pencilGrain
             paint.shader = pencilGrainShaders[(tiltAmount * pencilGrainShaders.lastIndex).roundToInt()]
         }
 
@@ -338,7 +338,7 @@ internal object StrokeCanvasPainter {
                     Shader.TileMode.CLAMP,
                 )
                 val averageTilt = (samples[index - 1].tiltRadians + samples[index].tiltRadians) * .5f
-                val tiltAmount = pencilTiltResponse(averageTilt)
+                val tiltAmount = pencilTiltResponse(averageTilt, stroke.style.brush) * stroke.style.brush.pencilGrain
                 val grain = pencilGrainShaders[(tiltAmount * pencilGrainShaders.lastIndex).roundToInt()]
                 paint.alpha = 255
                 paint.colorFilter = null
@@ -371,7 +371,8 @@ internal object StrokeCanvasPainter {
                         close()
                     }
                     paint.shader = pencilGrainShaders[
-                        (pencilTiltResponse(joint.tiltRadians) * pencilGrainShaders.lastIndex)
+                        (pencilTiltResponse(joint.tiltRadians, stroke.style.brush) *
+                            stroke.style.brush.pencilGrain * pencilGrainShaders.lastIndex)
                             .roundToInt()
                     ]
                     paint.colorFilter = PorterDuffColorFilter(rgb, PorterDuff.Mode.SRC_IN)
@@ -392,10 +393,13 @@ internal object StrokeCanvasPainter {
     internal data class PencilTipDynamics(val width: Float, val height: Float, val alpha: Int)
 
     internal fun pencilTipDynamics(stroke: CompletedStroke, sample: StrokeSample, speedScale: Float = 1f): PencilTipDynamics {
-        val tiltResponse = pencilTiltResponse(sample.tiltRadians)
-        val widthMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * tiltResponse
-        val heightMultiplier = 1f + (TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * tiltResponse
-        val tiltOpacity = 1f + (TipStrokeInkBrushes.PENCIL_MIN_TILT_OPACITY_MULTIPLIER - 1f) * tiltResponse
+        val brush = stroke.style.brush
+        val tiltResponse = pencilTiltResponse(sample.tiltRadians, brush)
+        val widthMultiplier = 1f +
+            (TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * brush.pencilShadeSize * tiltResponse
+        val heightMultiplier = 1f +
+            (TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * brush.pencilShadeSize * tiltResponse
+        val tiltOpacity = 1f + (brush.pencilShadeOpacity - 1f) * tiltResponse
         val rawPressureSize = sample.pressureSize(stroke)
         // The exposed side of a real pencil remains broad under light pressure; pressure mostly
         // controls how much graphite it deposits. Keep pressure sizing for the upright point,
@@ -406,7 +410,9 @@ internal object StrokeCanvasPainter {
             sin(sample.position.x * .071f + sample.position.y * .113f) * .006f +
             sin(sample.position.x * .029f - sample.position.y * .053f) * .003f
         val densityVariation = 1f + sin(sample.position.x * .047f + sample.position.y * .031f) * .015f
-        val baseDiameter = (stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE).coerceAtLeast(.5f)
+        val baseDiameter = (
+            stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * brush.pencilPointSize
+            ).coerceAtLeast(.5f)
         return PencilTipDynamics(
             width = baseDiameter * pressureSize * speedScale * widthMultiplier * edgeVariation,
             height = baseDiameter * pressureSize * speedScale * heightMultiplier * edgeVariation,

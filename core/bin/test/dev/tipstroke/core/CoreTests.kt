@@ -34,6 +34,14 @@ class CoreTests {
         val curve = PressureCurve(.2f, 1f, .7f)
         assertEquals(.2f, curve.map(-1f)); assertEquals(1f, curve.map(2f)); assertTrue(curve.map(.7f) > curve.map(.3f))
     }
+    @Test fun pencilTiltCalibrationMapsCapturedAngleToSensitivity() {
+        val capturedAngle = .27f
+        val sensitivity = pencilTiltSensitivityForFullAngle(capturedAngle)
+        val calibrated = BrushPreset.Pencil.copy(pencilTiltSensitivity = sensitivity)
+        assertEquals(capturedAngle, calibrated.pencilFullTiltRadians(), .001f)
+        assertEquals(BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS, BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f).pencilFullTiltRadians(), .001f)
+        assertEquals(BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS, BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f).pencilFullTiltRadians(), .001f)
+    }
     @Test fun customBrushBoundsCoverTiltAndParticleScatter() {
         val sample = StrokeSample(1, Point(100f, 100f), 1f, 1f, 0f, 0L, 0, PointerKind.STYLUS)
         val pencil = CompletedStroke(

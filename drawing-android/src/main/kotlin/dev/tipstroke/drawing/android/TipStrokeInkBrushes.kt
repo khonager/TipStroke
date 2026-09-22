@@ -7,6 +7,7 @@ import androidx.ink.brush.behavior.*
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.core.model.PressureCurve
+import dev.tipstroke.core.model.pencilFullTiltRadians
 import java.util.LinkedHashMap
 import kotlin.math.PI
 import kotlin.math.roundToInt
@@ -48,7 +49,7 @@ internal class TipStrokeInkBrushes {
         val tilt = eased(SourceNode(
             SourceNode.Source.TILT_IN_RADIANS,
             PENCIL_TILT_DEAD_ZONE_RADIANS,
-            PENCIL_TILT_FULL_RESPONSE_RADIANS,
+            preset.pencilFullTiltRadians(),
         ))
         val orientation = SourceNode(SourceNode.Source.ORIENTATION_ABOUT_ZERO_IN_RADIANS, (-PI).toFloat(), PI.toFloat())
         val speed = eased(SourceNode(SourceNode.Source.SPEED_IN_MULTIPLES_OF_BRUSH_SIZE_PER_SECOND, 0f, 18f))
@@ -61,9 +62,19 @@ internal class TipStrokeInkBrushes {
             if (pressureBehaviorEnabled(preset.pressureToOpacity)) {
                 add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, rawPressure))
             }
-            add(mapped(TargetNode.Target.WIDTH_MULTIPLIER, 1f, PENCIL_MAX_TILT_WIDTH_MULTIPLIER, tilt))
-            add(mapped(TargetNode.Target.HEIGHT_MULTIPLIER, 1f, PENCIL_MAX_TILT_HEIGHT_MULTIPLIER, tilt))
-            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, PENCIL_MIN_TILT_OPACITY_MULTIPLIER, tilt))
+            add(mapped(
+                TargetNode.Target.WIDTH_MULTIPLIER,
+                1f,
+                1f + (PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * preset.pencilShadeSize,
+                tilt,
+            ))
+            add(mapped(
+                TargetNode.Target.HEIGHT_MULTIPLIER,
+                1f,
+                1f + (PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * preset.pencilShadeSize,
+                tilt,
+            ))
+            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, preset.pencilShadeOpacity, tilt))
             add(mapped(TargetNode.Target.ROTATION_OFFSET_IN_RADIANS, (-PI).toFloat(), PI.toFloat(), orientation))
             if (preset.speedTaper > 0f) {
                 add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, 1f - preset.speedTaper * .58f, speed))
@@ -76,8 +87,8 @@ internal class TipStrokeInkBrushes {
             add(mapped(TargetNode.Target.POSITION_OFFSET_LATERAL_IN_MULTIPLES_OF_BRUSH_SIZE, -.012f, .012f, edgePositionNoise))
         }
         val tip = BrushTip.builder()
-            .setScaleX(PENCIL_BASE_TIP_SCALE)
-            .setScaleY(PENCIL_BASE_TIP_SCALE)
+            .setScaleX(PENCIL_BASE_TIP_SCALE * preset.pencilPointSize)
+            .setScaleY(PENCIL_BASE_TIP_SCALE * preset.pencilPointSize)
             .setCornerRounding(1f)
             .setBehaviors(behaviors.map(::BrushBehavior))
             .build()
@@ -183,8 +194,7 @@ internal class TipStrokeInkBrushes {
     companion object {
         const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v4"
         internal const val PENCIL_BASE_TIP_SCALE = .18f
-        internal const val PENCIL_TILT_DEAD_ZONE_RADIANS = .04f
-        internal const val PENCIL_TILT_FULL_RESPONSE_RADIANS = .55f
+        internal const val PENCIL_TILT_DEAD_ZONE_RADIANS = .02f
         internal const val PENCIL_MAX_TILT_WIDTH_MULTIPLIER = 10f
         internal const val PENCIL_MAX_TILT_HEIGHT_MULTIPLIER = 6.5f
         internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .62f
@@ -234,10 +244,10 @@ internal class TipStrokeInkBrushes {
 
 internal fun pressureBehaviorEnabled(curve: PressureCurve): Boolean = curve.start != curve.end
 
-internal fun pencilTiltResponse(tiltRadians: Float): Float {
+internal fun pencilTiltResponse(tiltRadians: Float, brush: BrushPreset): Float {
     val normalized = (
         (tiltRadians - TipStrokeInkBrushes.PENCIL_TILT_DEAD_ZONE_RADIANS) /
-            (TipStrokeInkBrushes.PENCIL_TILT_FULL_RESPONSE_RADIANS -
+            (brush.pencilFullTiltRadians() -
                 TipStrokeInkBrushes.PENCIL_TILT_DEAD_ZONE_RADIANS)
         ).coerceIn(0f, 1f)
     return 1f - (1f - normalized) * (1f - normalized) * (1f - normalized)
