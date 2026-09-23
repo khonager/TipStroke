@@ -8,6 +8,8 @@
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
+The Linux development target runs the same APK in a tablet-sized Android Emulator. Mouse, trackpad, and emulator-touch adaptation stay in `DrawingSurface`, so laptop tests exercise the production Android Canvas, Jetpack Ink, sparse tiles, persistence, and Compose shell rather than a parallel desktop renderer. Physical Android hardware remains required for authoritative latency, palm-rejection, and OEM stylus validation.
+
 Selections are transient platform-neutral polygons. Rectangle selection is the four-point case and freehand lasso retains its sampled boundary. Moving selected raster content reads only intersecting source-tile snapshots, clears the polygon from those tiles, composites it into intersecting destination tiles, and records the combined before/after set as one bounded undo transaction. It never copies a full layer or canvas.
 
 The app shell owns three destinations: local gallery, editor, and settings. `DrawingLibrary` and `ProjectPersistence` live in `:drawing-android` because decoding/encoding tiles and imported assets requires Android bitmap/content-resolver types. Gallery order and stacks are stored in a separate root `gallery.json`; stack operations never move or rewrite project directories. The Compose gallery supplies long-press drag hit-testing, edge auto-scroll, stack previews, and stack management. Gesture choices remain platform-neutral values in `:core` and are persisted by the app with local preferences.

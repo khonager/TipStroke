@@ -19,14 +19,20 @@ The short commands are intentionally similar to Flutter/npm workflows:
 ```sh
 ./tipstroke build    # APK → app/build/outputs/apk/debug/app-debug.apk
 ./tipstroke install  # connected Android phone or running emulator
+./tipstroke laptop-setup # one-time Linux tablet emulator setup
+./tipstroke laptop   # build, install, and launch on the laptop
 ./tipstroke test
 ./tipstroke check
 ./tipstroke brushes  # native brush regression sheets on a connected device
 ```
 
-Android Studio is optional. To install manually, enable USB debugging on your phone, connect it, confirm it appears in `adb devices`, then run `./tipstroke install`. On a laptop, run the APK in an Android emulator; TipStroke is not a native Linux desktop app yet.
+Android Studio is optional. To install manually, enable USB debugging on your phone, connect it, confirm it appears in `adb devices`, then run `./tipstroke install`.
 
-On NixOS, `nix develop` now provides the JDK without pulling the unfree Android Studio package that caused the earlier evaluation error. Keep using your existing Android SDK through `ANDROID_HOME`/`ANDROID_SDK_ROOT` or `local.properties`; Gradle also finds that SDK's platform tools when installing. The flake is optional.
+On x86-64 Linux, `./tipstroke laptop-setup` installs a tablet-sized Android 15 emulator image and creates the `TipStroke_Tablet_API_35` virtual device. Then `./tipstroke laptop` starts it if necessary, installs the current APK, and opens TipStroke. On the canvas, primary click/drag paints at full pressure, secondary or middle drag pans, wheel/two-finger scroll pans, and Ctrl/Meta+wheel zooms around the pointer. The emulator maps its ordinary host click to a touch contact; TipStroke detects that environment and treats the single contact as a mouse while still allowing the emulator's Ctrl+drag two-finger gesture to navigate.
+
+An external drawing tablet can be used as a pointer in this setup. If the Android runtime exposes it as `TOOL_TYPE_STYLUS`, TipStroke also consumes pressure, tilt, orientation, eraser, and side-button data. The stock emulator commonly reduces host tablet input to mouse/touch, however, so pressure-sensitive feel, palm rejection, hardware buttons, and input-to-photon latency still need a real Android tablet. This is deliberately an Android runtime target rather than a second Linux renderer, so everyday laptop testing exercises the production Jetpack Ink and sparse-tile paths.
+
+On NixOS, the laptop commands automatically enter `nix develop`, which provides the JDK and host libraries required by the Android Emulator without pulling the unfree Android Studio package. Keep using your existing Android SDK through `ANDROID_HOME`/`ANDROID_SDK_ROOT` or `local.properties`; Gradle also finds that SDK's platform tools when installing. The flake remains optional on conventional Linux distributions.
 
 ### GitHub releases
 

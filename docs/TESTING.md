@@ -1,5 +1,11 @@
 # Xiaomi Pad 6 + Smart Pen manual checklist
 
+## Linux laptop loop
+
+Run `./tipstroke laptop-setup` once, then use `./tipstroke laptop` after changes. The latter starts the `TipStroke_Tablet_API_35` AVD if needed, assembles and installs the debug APK, and opens the app.
+
+For fast functional checks, primary-drag with a mouse, trackpad, or pen tablet to paint; secondary/middle-drag to pan; scroll to pan; Ctrl/Meta+scroll to zoom; and use the emulator's Ctrl+drag gesture for two-finger navigation. Confirm selection, layer, gallery, persistence, and export flows here. A host pen tablet may be reduced to full-pressure mouse input by the emulator. Always return to the physical-device checklist below for pressure/tilt response, hover/buttons, palm rejection, stroke latency, and wet/final handoff.
+
 Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable the debug overlay, and test in both landscape and portrait.
 
 Before subjective pen testing, run `./tipstroke brushes` with a device attached. It renders the exact production Pencil and Airbrush paths, fails on empty/near-invisible output, and writes review PNGs under `drawing-android/build/outputs/connected_android_test_additional_output/`. Inspect those images whenever a brush renderer or Ink version changes; ordinary JVM tests cannot load Ink's native implementation.

@@ -1,9 +1,12 @@
 package dev.tipstroke.drawing.android
 
+import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
@@ -13,6 +16,17 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class DrawingSurfaceGestureTest {
+    @Test fun detectsTheAospEmulatorUsedByTheLaptopTarget() {
+        assertTrue(isAndroidEmulator(
+            fingerprint = "Android/sdk_phone64_x86_64/emu64x:15/test-keys",
+            model = "Android SDK built for x86_64",
+            product = "sdk_phone64_x86_64",
+            hardware = "ranchu",
+            device = "emu64x",
+            manufacturer = "unknown",
+        ))
+    }
+
     @Test fun galleryOrientationSnapsToTheNearestQuarterTurn() {
         assertEquals(0, galleryQuarterTurns(44f))
         assertEquals(1, galleryQuarterTurns(46f))
@@ -102,6 +116,56 @@ class DrawingSurfaceGestureTest {
         assertNotEquals(1f, reportedZoom)
     }
 
+    @Test fun secondaryMouseDragPansWithoutPainting() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            measure(exactly(1000), exactly(800))
+            layout(0, 0, 1000, 800)
+            configureBlank(512, 512)
+        }
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        val before = raster.transform
+        val downTime = 1_000L
+
+        surface.dispatchTouchEvent(mouseEvent(downTime, downTime, MotionEvent.ACTION_DOWN, 300f, 300f, MotionEvent.BUTTON_SECONDARY))
+        surface.dispatchTouchEvent(mouseEvent(downTime, downTime + 10, MotionEvent.ACTION_MOVE, 360f, 340f, MotionEvent.BUTTON_SECONDARY))
+        surface.dispatchTouchEvent(mouseEvent(downTime, downTime + 20, MotionEvent.ACTION_UP, 360f, 340f, 0))
+
+        assertEquals(before.panX + 60f, raster.transform.panX, .001f)
+        assertEquals(before.panY + 40f, raster.transform.panY, .001f)
+    }
+
+    @Test fun controlMouseWheelZoomsAroundThePointer() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            measure(exactly(1000), exactly(800))
+            layout(0, 0, 1000, 800)
+            configureBlank(512, 512)
+        }
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        val anchorBefore = raster.screenToDocument(320f, 280f)
+        val scaleBefore = raster.transform.scale
+        val coords = MotionEvent.PointerCoords().apply {
+            x = 320f
+            y = 280f
+            setAxisValue(MotionEvent.AXIS_VSCROLL, 1f)
+        }
+        val properties = MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = MotionEvent.TOOL_TYPE_MOUSE
+        }
+        val scroll = MotionEvent.obtain(
+            1_000L, 1_000L, MotionEvent.ACTION_SCROLL, 1,
+            arrayOf(properties), arrayOf(coords), KeyEvent.META_CTRL_ON, 0,
+            1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0,
+        )
+
+        surface.dispatchGenericMotionEvent(scroll)
+
+        val anchorAfter = raster.screenToDocument(320f, 280f)
+        assertEquals(anchorBefore.x, anchorAfter.x, .001f)
+        assertEquals(anchorBefore.y, anchorAfter.y, .001f)
+        assertTrue(raster.transform.scale > scaleBefore)
+    }
+
     private fun event(
         downTime: Long,
         eventTime: Long,
@@ -125,6 +189,30 @@ class DrawingSurfaceGestureTest {
         return MotionEvent.obtain(
             downTime, eventTime, action, pointers.size, properties, coordinates,
             0, 0, 1f, 1f, 0, 0, 0, 0,
+        )
+    }
+
+    private fun mouseEvent(
+        downTime: Long,
+        eventTime: Long,
+        action: Int,
+        x: Float,
+        y: Float,
+        buttons: Int,
+    ): MotionEvent {
+        val properties = MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = MotionEvent.TOOL_TYPE_MOUSE
+        }
+        val coordinates = MotionEvent.PointerCoords().apply {
+            this.x = x
+            this.y = y
+            pressure = 1f
+            size = 1f
+        }
+        return MotionEvent.obtain(
+            downTime, eventTime, action, 1, arrayOf(properties), arrayOf(coordinates),
+            0, buttons, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0,
         )
     }
 

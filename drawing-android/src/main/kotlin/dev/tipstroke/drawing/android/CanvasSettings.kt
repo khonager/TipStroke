@@ -1,5 +1,6 @@
 package dev.tipstroke.drawing.android
 
+import android.os.Build
 import dev.tipstroke.core.model.*
 
 class CanvasSettings {
@@ -11,7 +12,27 @@ class CanvasSettings {
     @Volatile var eraserHardness: Float = .35f
     @Volatile var debug: Boolean = false
     @Volatile var gestures: GestureSettings = GestureSettings()
+    /** The Android Emulator presents its host pointer as a single touchscreen contact. */
+    @Volatile var emulateMouseWithTouch: Boolean = isAndroidEmulator()
 }
+
+internal fun isAndroidEmulator(
+    fingerprint: String = Build.FINGERPRINT,
+    model: String = Build.MODEL,
+    product: String = Build.PRODUCT,
+    hardware: String = Build.HARDWARE,
+    device: String = Build.DEVICE,
+    manufacturer: String = Build.MANUFACTURER,
+): Boolean =
+    fingerprint.startsWith("generic") ||
+        fingerprint.contains("emulator", ignoreCase = true) ||
+        model.contains("Emulator", ignoreCase = true) ||
+        model.contains("sdk_gphone", ignoreCase = true) ||
+        product.startsWith("sdk_") ||
+        hardware.contains("ranchu", ignoreCase = true) ||
+        hardware.contains("goldfish", ignoreCase = true) ||
+        device.startsWith("emu") ||
+        manufacturer.contains("Genymotion", ignoreCase = true)
 
 data class CanvasDiagnostics(
     val fps: Float = 0f,

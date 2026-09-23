@@ -11,6 +11,12 @@ case "${1:-help}" in
   install)
     ./gradlew installDebug
     ;;
+  laptop-setup)
+    sh tools/laptop-emulator.sh setup
+    ;;
+  laptop)
+    sh tools/laptop-emulator.sh run
+    ;;
   test)
     ./gradlew test
     ;;
@@ -29,6 +35,8 @@ case "${1:-help}" in
       'TipStroke developer commands:' \
       '  ./tipstroke build    Build a debug APK' \
       '  ./tipstroke install  Build and install on a connected phone/emulator' \
+      '  ./tipstroke laptop-setup  Create the Linux tablet emulator (once)' \
+      '  ./tipstroke laptop   Build and run in the Linux tablet emulator' \
       '  ./tipstroke test     Run local tests' \
       '  ./tipstroke brushes  Render and verify production brushes on a connected device' \
       '  ./tipstroke check    Test, lint, and build' \

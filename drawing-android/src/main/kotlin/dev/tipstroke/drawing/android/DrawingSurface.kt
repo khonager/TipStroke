@@ -56,7 +56,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var pencilPreviewStyle: StrokeStyle? = null
     private var pencilPreviewStore: TileStore? = null
     private val finishedSamples = ArrayDeque<PendingCommit>()
-    private var activeStylusId: Int? = null
+    private var activeDrawingPointerId: Int? = null
+    private var activeMousePan = false
+    private var lastMousePan = android.graphics.PointF()
     private var gestureStart = emptyMap<Int, android.graphics.PointF>()
     private var lastGestureCentroid = android.graphics.PointF()
     private var lastGestureSpan = 0f
@@ -170,7 +172,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun resetView() = rasterView.fitCanvas()
     fun showBrushAdjustmentPreview() {
         gestureHandler.removeCallbacks(hideBrushPreview)
-        if (activeStylusId != null || width == 0 || height == 0) return
+        if (activeDrawingPointerId != null || width == 0 || height == 0) return
         val center = rasterView.screenToDocument(width / 2f, height / 2f)
         val erasing = settings.erasing
         val previewBrush = settings.brush.copy(
@@ -320,18 +322,34 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
         predictor?.record(event)
         if (eventHasStylus(event)) updateStylusButtons(event.buttonState)
+        val actionIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        if (handleMousePan(event, actionIndex)) return true
         if (selectionMoveMode) return handleSelectionMove(event)
         if (selectionMode) return handleSelection(event)
-        val actionIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
-        val toolType = event.getToolType(actionIndex)
-        val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
-        return if (stylus || activeStylusId != null) handleStylus(event) else handleTouchGesture(event)
+        if (isTransformingImage() && !isStylus(event, actionIndex)) return handleTouchGesture(event)
+
+        // The emulator maps a host click to a finger. If a simulated second finger is
+        // added for pinch, cancel the provisional mark and hand the full event to the
+        // normal multi-touch navigation path.
+        if (settings.emulateMouseWithTouch && activeDrawingPointerId != null &&
+            event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && event.pointerCount >= 2
+        ) {
+            cancelActiveStroke(event, activeDrawingPointerId!!)
+            return handleTouchGesture(event)
+        }
+
+        val startsDrawing = event.actionMasked in intArrayOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN) &&
+            isDrawingPointer(event, actionIndex)
+        return if (activeDrawingPointerId != null || startsDrawing) handleStylus(event) else handleTouchGesture(event)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (eventHasStylus(event)) {
             updateStylusButtons(event.buttonState)
             if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS || event.actionMasked == MotionEvent.ACTION_BUTTON_RELEASE) return true
+        }
+        if (event.actionMasked == MotionEvent.ACTION_SCROLL && event.isFromSource(InputDevice.SOURCE_CLASS_POINTER)) {
+            return handlePointerScroll(event)
         }
         return super.dispatchGenericMotionEvent(event)
     }
@@ -348,10 +366,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun handleStylus(event: MotionEvent): Boolean {
-        val pointerId = activeStylusId ?: event.getPointerId(event.actionIndex)
+        val pointerId = activeDrawingPointerId ?: event.getPointerId(event.actionIndex)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                if (!isStylus(event, event.actionIndex)) return true
+                if (!isDrawingPointer(event, event.actionIndex)) return true
                 cancelColorPick()
                 val baseStyle = currentStyle(event, event.actionIndex)
                 val target = when (val selected = layerStack.selected()) {
@@ -359,7 +377,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     is ImageLayerRuntime -> if (baseStyle.blend == BlendBehavior.ERASE) StrokeTarget(selected.mask, selected) else return true
                 }
                 requestUnbufferedDispatch(event)
-                activeStylusId = pointerId
+                activeDrawingPointerId = pointerId
                 pendingTargets[pointerId] = target
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
                 val style = styleForTarget(baseStyle, target)
@@ -462,13 +480,69 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     liveView.finishStroke(event, pointerId)
                     pencilPreviewStyle = null
                 }
-                activeStylusId = null
+                activeDrawingPointerId = null
             }
             MotionEvent.ACTION_CANCEL -> {
                 cancelActiveStroke(event, pointerId)
             }
         }
         emitDiagnostics(event, event.actionIndex.coerceIn(0, event.pointerCount - 1))
+        return true
+    }
+
+    private fun handleMousePan(event: MotionEvent, index: Int): Boolean {
+        val mouse = event.getToolType(index) == MotionEvent.TOOL_TYPE_MOUSE
+        val panButton = event.buttonState and (MotionEvent.BUTTON_SECONDARY or MotionEvent.BUTTON_TERTIARY) != 0
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> if (mouse && panButton) {
+                activeMousePan = true
+                lastMousePan = android.graphics.PointF(event.getX(index), event.getY(index))
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> if (activeMousePan) {
+                val x = event.getX(index)
+                val y = event.getY(index)
+                val old = rasterView.transform
+                rasterView.updateTransform(
+                    old.panX + x - lastMousePan.x,
+                    old.panY + y - lastMousePan.y,
+                    old.scale,
+                    old.rotationDegrees,
+                )
+                lastMousePan.set(x, y)
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (activeMousePan) {
+                activeMousePan = false
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun handlePointerScroll(event: MotionEvent): Boolean {
+        var horizontal = event.getAxisValue(MotionEvent.AXIS_HSCROLL)
+        var vertical = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
+        val shiftPressed = event.metaState and KeyEvent.META_SHIFT_ON != 0
+        val zoomModifier = event.metaState and (KeyEvent.META_CTRL_ON or KeyEvent.META_META_ON) != 0
+        if (shiftPressed && horizontal == 0f) {
+            horizontal = vertical
+            vertical = 0f
+        }
+        val old = rasterView.transform
+        if (zoomModifier) {
+            val anchor = rasterView.screenToDocument(event.x, event.y)
+            val scale = (old.scale * exp(vertical * .12f)).coerceIn(.08f, 12f)
+            rasterView.updateTransformAround(anchor.x, anchor.y, event.x, event.y, scale, old.rotationDegrees)
+        } else {
+            val scrollPixels = 48f * resources.displayMetrics.density
+            rasterView.updateTransform(
+                old.panX + horizontal * scrollPixels,
+                old.panY + vertical * scrollPixels,
+                old.scale,
+                old.rotationDegrees,
+            )
+        }
         return true
     }
 
@@ -785,7 +859,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.previewStroke = null
         pendingSamples.remove(pointerId)
         pendingTargets.remove(pointerId)
-        activeStylusId = null
+        activeDrawingPointerId = null
     }
 
     private fun currentStyle(event: MotionEvent, index: Int): StrokeStyle {
@@ -861,7 +935,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val x = historyIndex?.let { event.getHistoricalX(index, it) } ?: event.getX(index)
         val y = historyIndex?.let { event.getHistoricalY(index, it) } ?: event.getY(index)
         val point = rasterView.screenToDocument(x, y)
-        val pressure = historyIndex?.let { event.getHistoricalPressure(index, it) } ?: event.getPressure(index)
+        val kind = pointerKind(event.getToolType(index)).let {
+            if (it == PointerKind.FINGER && settings.emulateMouseWithTouch) PointerKind.MOUSE else it
+        }
+        val reportedPressure = historyIndex?.let { event.getHistoricalPressure(index, it) } ?: event.getPressure(index)
+        val pressure = if (kind == PointerKind.MOUSE) 1f else reportedPressure
         val tilt = (historyIndex?.let { event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, index, it) }
             ?: event.getAxisValue(MotionEvent.AXIS_TILT, index)).coerceIn(0f, (Math.PI / 2).toFloat())
         val orientation = historyIndex?.let { event.getHistoricalAxisValue(MotionEvent.AXIS_ORIENTATION, index, it) }
@@ -869,10 +947,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return StrokeSample(event.getPointerId(index), Point(point.x, point.y), pressure.coerceIn(.01f, 1f),
             tilt, orientation,
             (((historyIndex?.let { event.getHistoricalEventTime(it) } ?: event.eventTime) - event.downTime) * 1_000_000L).coerceAtLeast(0),
-            event.buttonState, pointerKind(event.getToolType(index)))
+            event.buttonState, kind)
     }
 
     private fun isStylus(event: MotionEvent, index: Int) = event.getToolType(index) in intArrayOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)
+    private fun isDrawingPointer(event: MotionEvent, index: Int): Boolean = when (event.getToolType(index)) {
+        MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER -> true
+        MotionEvent.TOOL_TYPE_MOUSE -> event.buttonState and MotionEvent.BUTTON_PRIMARY != 0
+        MotionEvent.TOOL_TYPE_FINGER -> settings.emulateMouseWithTouch && event.pointerCount == 1
+        else -> false
+    }
     private fun pointerKind(type: Int) = when (type) { MotionEvent.TOOL_TYPE_STYLUS -> PointerKind.STYLUS; MotionEvent.TOOL_TYPE_ERASER -> PointerKind.ERASER_STYLUS; MotionEvent.TOOL_TYPE_FINGER -> PointerKind.FINGER; MotionEvent.TOOL_TYPE_MOUSE -> PointerKind.MOUSE; else -> PointerKind.UNKNOWN }
     private fun centroid(e: MotionEvent) = android.graphics.PointF((0 until e.pointerCount).sumOf { e.getX(it).toDouble() }.toFloat() / e.pointerCount, (0 until e.pointerCount).sumOf { e.getY(it).toDouble() }.toFloat() / e.pointerCount)
     private fun span(e: MotionEvent): Float { val a = 0; val b = 1; return hypot(e.getX(b) - e.getX(a), e.getY(b) - e.getY(a)) }
@@ -898,8 +982,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val now = SystemClock.elapsedRealtimeNanos(); frameCount++
         if (now - fpsWindowAt > 500_000_000L) { fps = frameCount * 1_000_000_000f / (now - fpsWindowAt); frameCount = 0; fpsWindowAt = now }
         val delta = now - lastSampleAt; lastSampleAt = now
-        val input = CanvasDiagnostics(fps, event.getPressure(index), event.getAxisValue(MotionEvent.AXIS_TILT, index),
-            pointerKind(event.getToolType(index)).name, if (delta > 0) 1_000_000_000f / delta else 0f,
+        val kind = pointerKind(event.getToolType(index)).let {
+            if (it == PointerKind.FINGER && settings.emulateMouseWithTouch) PointerKind.MOUSE else it
+        }
+        val pressure = if (kind == PointerKind.MOUSE) 1f else event.getPressure(index)
+        val input = CanvasDiagnostics(fps, pressure, event.getAxisValue(MotionEvent.AXIS_TILT, index),
+            kind.name, if (delta > 0) 1_000_000_000f / delta else 0f,
             rasterView.transform.scale, layerStack.allocatedTiles(), layerStack.lastDirtyTiles(), layerStack.undoBytes())
         publishDiagnostics(if (settings.debug) input.withMemoryFrom(lastDiagnostics) else input)
     }

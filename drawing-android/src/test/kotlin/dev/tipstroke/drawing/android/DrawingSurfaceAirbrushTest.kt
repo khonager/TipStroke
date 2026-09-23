@@ -79,6 +79,28 @@ class DrawingSurfaceAirbrushTest {
         assertTrue(canUndo)
     }
 
+    @Test fun primaryMouseDragPaintsAtFullPressure() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            layout(0, 0, 800, 800)
+            configureBlank(512, 512)
+            settings.brush = BrushPreset.Airbrush.copy(hardness = 1f)
+            settings.sizePx = 32f
+        }
+        var canUndo = false
+        var diagnostics = CanvasDiagnostics()
+        surface.historyListener = { undo, _ -> canUndo = undo }
+        surface.diagnosticsListener = { diagnostics = it }
+        val downTime = SystemClock.uptimeMillis()
+
+        surface.dispatchTouchEvent(mouseEvent(downTime, downTime, MotionEvent.ACTION_DOWN, 300f, 400f, MotionEvent.BUTTON_PRIMARY))
+        surface.dispatchTouchEvent(mouseEvent(downTime, downTime + 8L, MotionEvent.ACTION_MOVE, 400f, 400f, MotionEvent.BUTTON_PRIMARY))
+        surface.dispatchTouchEvent(mouseEvent(downTime, downTime + 16L, MotionEvent.ACTION_UP, 500f, 400f, 0))
+
+        assertTrue(canUndo)
+        assertEquals("MOUSE", diagnostics.tool)
+        assertEquals(1f, diagnostics.pressure, .001f)
+    }
+
     private fun stylusEvent(
         downTime: Long,
         eventTime: Long,
@@ -111,6 +133,30 @@ class DrawingSurfaceAirbrushTest {
             0,
             InputDevice.SOURCE_STYLUS,
             0,
+        )
+    }
+
+    private fun mouseEvent(
+        downTime: Long,
+        eventTime: Long,
+        action: Int,
+        x: Float,
+        y: Float,
+        buttons: Int,
+    ): MotionEvent {
+        val properties = MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = MotionEvent.TOOL_TYPE_MOUSE
+        }
+        val coordinates = MotionEvent.PointerCoords().apply {
+            this.x = x
+            this.y = y
+            pressure = 0f
+            size = 1f
+        }
+        return MotionEvent.obtain(
+            downTime, eventTime, action, 1, arrayOf(properties), arrayOf(coordinates),
+            0, buttons, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0,
         )
     }
 
