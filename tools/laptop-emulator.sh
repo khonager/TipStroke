@@ -74,20 +74,20 @@ setup_avd() {
     printf 'Creating %s...\n' "$AVD_NAME"
     printf 'no\n' | "$AVDMANAGER" create avd --force --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --device pixel_tablet
   fi
-  printf 'Laptop emulator ready. Run ./tipstroke laptop.\n'
+  printf 'Android emulator ready. Run ./tipstroke emulator.\n'
 }
 
 run_app() {
   ADB=$(find_sdk_tool adb "$SDK_ROOT") || {
-    printf 'adb was not found under %s. Run ./tipstroke laptop-setup first.\n' "$SDK_ROOT" >&2
+    printf 'adb was not found under %s. Run ./tipstroke emulator-setup first.\n' "$SDK_ROOT" >&2
     exit 1
   }
   EMULATOR=$(find_sdk_tool emulator "$SDK_ROOT") || {
-    printf 'Android Emulator was not found under %s. Run ./tipstroke laptop-setup first.\n' "$SDK_ROOT" >&2
+    printf 'Android Emulator was not found under %s. Run ./tipstroke emulator-setup first.\n' "$SDK_ROOT" >&2
     exit 1
   }
   if ! "$EMULATOR" -list-avds | grep -qx "$AVD_NAME"; then
-    printf 'AVD %s does not exist. Run ./tipstroke laptop-setup first.\n' "$AVD_NAME" >&2
+    printf 'AVD %s does not exist. Run ./tipstroke emulator-setup first.\n' "$AVD_NAME" >&2
     exit 1
   fi
 

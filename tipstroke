@@ -11,10 +11,25 @@ case "${1:-help}" in
   install)
     ./gradlew installDebug
     ;;
-  laptop-setup)
+  laptop|desktop)
+    if [ -e /etc/NIXOS ] && [ "${TIPSTROKE_NIX_SHELL:-}" != 1 ] && command -v nix >/dev/null 2>&1; then
+      exec nix develop --command ./gradlew :desktop:run
+    fi
+    exec ./gradlew :desktop:run
+    ;;
+  desktop-package)
+    if [ -e /etc/NIXOS ] && [ "${TIPSTROKE_NIX_SHELL:-}" != 1 ] && command -v nix >/dev/null 2>&1; then
+      exec nix develop --command ./gradlew :desktop:createDistributable
+    fi
+    exec ./gradlew :desktop:createDistributable
+    ;;
+  emulator-setup|laptop-setup)
+    if [ "${1:-}" = laptop-setup ]; then
+      printf 'The native desktop app needs no setup. This legacy command sets up the optional Android emulator.\n'
+    fi
     sh tools/laptop-emulator.sh setup
     ;;
-  laptop)
+  emulator|android-emulator)
     sh tools/laptop-emulator.sh run
     ;;
   test)
@@ -25,7 +40,7 @@ case "${1:-help}" in
     printf '\nBrush review images: drawing-android/build/outputs/connected_android_test_additional_output/\n'
     ;;
   check)
-    ./gradlew test lint assembleDebug
+    ./gradlew test lint assembleDebug :desktop:jar
     ;;
   clean)
     ./gradlew clean
@@ -35,8 +50,10 @@ case "${1:-help}" in
       'TipStroke developer commands:' \
       '  ./tipstroke build    Build a debug APK' \
       '  ./tipstroke install  Build and install on a connected phone/emulator' \
-      '  ./tipstroke laptop-setup  Create the Linux tablet emulator (once)' \
-      '  ./tipstroke laptop   Build and run in the Linux tablet emulator' \
+      '  ./tipstroke laptop   Run the native Linux desktop app' \
+      '  ./tipstroke desktop-package  Build a self-contained desktop distribution' \
+      '  ./tipstroke emulator-setup  Create the optional Android tablet emulator' \
+      '  ./tipstroke emulator Build and run the Android app in that emulator' \
       '  ./tipstroke test     Run local tests' \
       '  ./tipstroke brushes  Render and verify production brushes on a connected device' \
       '  ./tipstroke check    Test, lint, and build' \

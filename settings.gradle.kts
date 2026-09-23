@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "TipStroke"
-include(":app", ":core", ":drawing-android")
+include(":app", ":core", ":desktop", ":drawing-android")

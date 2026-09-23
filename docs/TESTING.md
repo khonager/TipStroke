@@ -2,9 +2,9 @@
 
 ## Linux laptop loop
 
-Run `./tipstroke laptop-setup` once, then use `./tipstroke laptop` after changes. The latter starts the `TipStroke_Tablet_API_35` AVD if needed, assembles and installs the debug APK, and opens the app.
+Run `./tipstroke laptop` after changes. It opens TipStroke as a regular Linux desktop application; it does not start Android or require an SDK. Primary-drag with a mouse, trackpad, or pen tablet to paint; secondary/middle/Space-drag to pan; scroll to pan; and Ctrl/Meta+scroll to zoom. Check all four tools, undo/redo, fit, PNG open/export, canvas-edge clipping, and drawing across 256 px tile boundaries.
 
-For fast functional checks, primary-drag with a mouse, trackpad, or pen tablet to paint; secondary/middle-drag to pan; scroll to pan; Ctrl/Meta+scroll to zoom; and use the emulator's Ctrl+drag gesture for two-finger navigation. Confirm selection, layer, gallery, persistence, and export flows here. A host pen tablet may be reduced to full-pressure mouse input by the emulator. Always return to the physical-device checklist below for pressure/tilt response, hover/buttons, palm rejection, stroke latency, and wet/final handoff.
+The desktop renderer is intentionally smaller than Android: it uses constant-pressure JVM pointer input and does not currently load TipStroke project packages, layers, selections, or Jetpack Ink. Run `./tipstroke emulator-setup` once and `./tipstroke emulator` when a test needs the complete Android UI without a physical device. Always return to the physical-device checklist below for pressure/tilt response, hover/buttons, palm rejection, stroke latency, and wet/final handoff.
 
 Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable the debug overlay, and test in both landscape and portrait.
 

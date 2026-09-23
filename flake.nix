@@ -1,5 +1,5 @@
 {
-  description = "TipStroke Android development shell";
+  description = "TipStroke Android and desktop development shell";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   outputs = { self, nixpkgs }:
     let system = "x86_64-linux"; pkgs = import nixpkgs { inherit system; };
@@ -18,7 +18,7 @@
             alsa-lib dbus glib gtk3 nss nspr zlib
           ])}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           export QT_XKB_CONFIG_ROOT="${pkgs.xkeyboard_config}/share/X11/xkb"
-          echo "TipStroke shell ready. Run ./tipstroke build."
+          echo "TipStroke shell ready. Run ./tipstroke laptop or ./tipstroke build."
         '';
       };
     };

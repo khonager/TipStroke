@@ -1,6 +1,6 @@
 # TipStroke
 
-An Android-first raster drawing experiment focused on excellent stylus feel and an architecture that can later add vector layers and animation without weakening the Android hot path.
+An Android-first, local-first raster drawing app with a lightweight Linux desktop companion. Android remains the high-fidelity stylus target; the desktop app provides a fast native-window development loop without an emulator.
 
 [![Get it on Obtainium](https://img.shields.io/badge/Get_it_on-Obtainium-5c2d91?logo=android&logoColor=white)](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/khonager/TipStroke)
 
@@ -19,8 +19,10 @@ The short commands are intentionally similar to Flutter/npm workflows:
 ```sh
 ./tipstroke build    # APK → app/build/outputs/apk/debug/app-debug.apk
 ./tipstroke install  # connected Android phone or running emulator
-./tipstroke laptop-setup # one-time Linux tablet emulator setup
-./tipstroke laptop   # build, install, and launch on the laptop
+./tipstroke laptop   # real Linux desktop app (no emulator)
+./tipstroke desktop-package # self-contained desktop distribution
+./tipstroke emulator-setup  # optional Android tablet AVD, one time
+./tipstroke emulator # production Android app in that AVD
 ./tipstroke test
 ./tipstroke check
 ./tipstroke brushes  # native brush regression sheets on a connected device
@@ -28,11 +30,11 @@ The short commands are intentionally similar to Flutter/npm workflows:
 
 Android Studio is optional. To install manually, enable USB debugging on your phone, connect it, confirm it appears in `adb devices`, then run `./tipstroke install`.
 
-On x86-64 Linux, `./tipstroke laptop-setup` installs a tablet-sized Android 15 emulator image and creates the `TipStroke_Tablet_API_35` virtual device. Then `./tipstroke laptop` starts it if necessary, installs the current APK, and opens TipStroke. On the canvas, primary click/drag paints at full pressure, secondary or middle drag pans, wheel/two-finger scroll pans, and Ctrl/Meta+wheel zooms around the pointer. The emulator maps its ordinary host click to a touch contact; TipStroke detects that environment and treats the single contact as a mouse while still allowing the emulator's Ctrl+drag two-finger gesture to navigate.
+`./tipstroke laptop` starts a normal JVM desktop process in its own Linux window using Compose Multiplatform. Its canvas is a direct AWT drawing component backed by sparse 256 px raster tiles, so samples do not flow through Compose state and a stroke does not copy the whole canvas. It supports Pencil, Ink, Airbrush, Eraser, bounded undo/redo, PNG open/export, mouse drawing, tablet-pointer drawing, middle/right/Space drag panning, trackpad or wheel panning, and Ctrl/Meta+scroll zooming. The desktop defaults come from the same `:core` brush models as Android.
 
-An external drawing tablet can be used as a pointer in this setup. If the Android runtime exposes it as `TOOL_TYPE_STYLUS`, TipStroke also consumes pressure, tilt, orientation, eraser, and side-button data. The stock emulator commonly reduces host tablet input to mouse/touch, however, so pressure-sensitive feel, palm rejection, hardware buttons, and input-to-photon latency still need a real Android tablet. This is deliberately an Android runtime target rather than a second Linux renderer, so everyday laptop testing exercises the production Jetpack Ink and sparse-tile paths.
+This is intentionally a useful compatibility renderer rather than a claim that Java2D reproduces Jetpack Ink. Standard JVM pointer events do not expose Linux tablet pressure, tilt, eraser ends, or pad buttons consistently, so tablets currently draw at constant pressure on desktop. Use the desktop target for quick tool/UI/workflow checks and a physical Android tablet for final brush shape, pressure/tilt, palm rejection, and input-to-photon checks. The optional `./tipstroke emulator` path remains available when a test specifically needs the complete Android UI or project format.
 
-On NixOS, the laptop commands automatically enter `nix develop`, which provides the JDK and host libraries required by the Android Emulator without pulling the unfree Android Studio package. Keep using your existing Android SDK through `ANDROID_HOME`/`ANDROID_SDK_ROOT` or `local.properties`; Gradle also finds that SDK's platform tools when installing. The flake remains optional on conventional Linux distributions.
+`./tipstroke desktop-package` creates a self-contained app under `desktop/build/compose/binaries/main/app/`, including the required runtime. On NixOS, desktop and emulator commands automatically enter `nix develop` for host libraries. The flake remains optional on conventional Linux distributions.
 
 ### GitHub releases
 

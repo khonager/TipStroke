@@ -8,7 +8,9 @@
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
-The Linux development target runs the same APK in a tablet-sized Android Emulator. Mouse, trackpad, and emulator-touch adaptation stay in `DrawingSurface`, so laptop tests exercise the production Android Canvas, Jetpack Ink, sparse tiles, persistence, and Compose shell rather than a parallel desktop renderer. Physical Android hardware remains required for authoritative latency, palm-rejection, and OEM stylus validation.
+`:desktop` is a deliberately smaller Linux/JVM companion. Compose Multiplatform owns its window and controls, while a direct AWT `JComponent` owns input and rasterization so pointer samples never enter Compose state. It reuses `:core` brush defaults, allocates the same 256×256 sparse tile size, repaints only dirty/visible regions, and bounds tile-local undo snapshots to 128 MiB. It can open and export PNGs, but it does not yet implement Android project packages, layers, selections, or Jetpack Ink. The desktop path never changes or abstracts the production Android hot path.
+
+The optional tablet-sized Android Emulator remains a separate integration-test target. Use it when the complete Android UI, persistence, layers, or selection flows matter. Physical Android hardware remains required for authoritative latency, palm-rejection, pressure/tilt, and OEM stylus validation.
 
 Selections are transient platform-neutral polygons. Rectangle selection is the four-point case and freehand lasso retains its sampled boundary. Moving selected raster content reads only intersecting source-tile snapshots, clears the polygon from those tiles, composites it into intersecting destination tiles, and records the combined before/after set as one bounded undo transaction. It never copies a full layer or canvas.
 

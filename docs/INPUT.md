@@ -15,6 +15,14 @@
 - The Android Emulator presents an ordinary host click as a touchscreen contact. On emulator builds, a single such contact is treated as a full-pressure mouse stroke; adding a second simulated contact cancels the provisional stroke and switches to normal multi-touch navigation.
 - Pen tablets use full pressure, tilt, orientation, eraser, and side-button data whenever Android reports `TOOL_TYPE_STYLUS`/`TOOL_TYPE_ERASER`. A host or emulator that reduces the tablet to mouse events can still draw, but only at full pressure.
 
+## Linux desktop
+
+- Primary mouse or tablet-pointer drag draws. The desktop JVM receives these as pointer events and currently uses constant pressure.
+- Middle drag, secondary drag, or Space + primary drag pans.
+- Wheel and two-finger trackpad scroll pan. Shift + wheel pans horizontally. Ctrl/Meta + wheel zooms around the pointer.
+- Ctrl/Meta+Z undoes, Ctrl/Meta+Shift+Z or Ctrl/Meta+Y redoes, and Ctrl/Meta+0 fits the canvas.
+- Linux tablet pressure, tilt, eraser-end identification, and pad buttons require a future native input bridge; AWT does not expose those fields consistently. Their authoritative behavior remains in Android's `MotionEvent` route.
+
 Stylus has priority. Once a stylus stroke is active, touch cannot navigate or corrupt it. `ACTION_CANCEL` cancels the active wet renderer and drops pending samples. `requestUnbufferedDispatch` and Jetpack motion prediction are used for lower latency.
 
 The camera matrix transforms screen events to document coordinates once at input. Navigation changes the view matrix only and never resamples document pixels.
