@@ -8,7 +8,6 @@ import java.awt.Dimension
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.Point
-import java.awt.RadialGradientPaint
 import java.awt.RenderingHints
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -20,6 +19,7 @@ import java.awt.event.MouseEvent
 import java.awt.event.MouseMotionAdapter
 import java.awt.event.MouseWheelEvent
 import java.awt.geom.Point2D
+import java.awt.geom.Rectangle2D
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.ArrayDeque
@@ -27,9 +27,9 @@ import javax.imageio.ImageIO
 import javax.swing.JComponent
 import kotlin.math.ceil
 import kotlin.math.floor
-import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 
 internal enum class DesktopTool(val label: String) {
     PENCIL("Pencil"),
@@ -69,6 +69,7 @@ internal class DesktopDrawingCanvas : JComponent() {
     private var previousDocumentPoint: Point2D.Double? = null
     private var previousScreenPoint: Point? = null
     private var strokeBefore = linkedMapOf<TileKey, BufferedImage?>()
+    private var activeAirbrush: DesktopAirbrushStroke? = null
 
     init {
         isFocusable = true
@@ -168,6 +169,16 @@ internal class DesktopDrawingCanvas : JComponent() {
                 val y = key.y * TILE_SIZE
                 if (clip == null || clip.intersects(x.toDouble(), y.toDouble(), TILE_SIZE.toDouble(), TILE_SIZE.toDouble())) {
                     g.drawImage(tile, x, y, null)
+                }
+            }
+
+            activeAirbrush?.let { stroke ->
+                val preview = g.create() as Graphics2D
+                try {
+                    preview.clip(Rectangle2D.Double(0.0, 0.0, documentWidth.toDouble(), documentHeight.toDouble()))
+                    paintAirbrushStroke(preview, stroke)
+                } finally {
+                    preview.dispose()
                 }
             }
 
@@ -278,18 +289,44 @@ internal class DesktopDrawingCanvas : JComponent() {
         drawing = true
         strokeBefore = linkedMapOf()
         previousDocumentPoint = point
-        drawSegment(point, point)
+        if (selectedTool == DesktopTool.AIRBRUSH) {
+            activeAirbrush = DesktopAirbrushStroke(
+                start = point,
+                size = brushSize.coerceAtLeast(1f),
+                opacity = brushOpacity.coerceIn(0f, 1f),
+                color = brushColor,
+            )
+            repaintAirbrushSegment(point, point, activeAirbrush!!)
+        } else {
+            drawSegment(point, point)
+        }
     }
 
     private fun continueStroke(point: Point2D.Double) {
         val previous = previousDocumentPoint ?: point
-        drawSegment(previous, point)
+        val airbrush = activeAirbrush
+        if (airbrush != null) {
+            airbrush.append(point)
+            repaintAirbrushSegment(previous, point, airbrush)
+        } else {
+            drawSegment(previous, point)
+        }
         previousDocumentPoint = point
     }
 
     private fun finishStroke() {
         drawing = false
         previousDocumentPoint = null
+        activeAirbrush?.let { stroke ->
+            commitAirbrushStroke(stroke)
+            activeAirbrush = null
+            repaintDocumentRect(
+                stroke.minX.toInt().coerceAtLeast(0),
+                stroke.minY.toInt().coerceAtLeast(0),
+                (stroke.maxX - stroke.minX).toInt().coerceAtLeast(1),
+                (stroke.maxY - stroke.minY).toInt().coerceAtLeast(1),
+            )
+        }
         if (strokeBefore.isEmpty()) return
 
         val after = linkedMapOf<TileKey, BufferedImage?>()
@@ -304,6 +341,36 @@ internal class DesktopDrawingCanvas : JComponent() {
         }
         pushUndo(TileEdit(before = strokeBefore, after = after))
         strokeBefore = linkedMapOf()
+    }
+
+    /**
+     * Keeps the airbrush as one path while the pointer is down. Rendering a radial stamp for
+     * every mouse event made sparse desktop input visibly read as a row of circles. A nested set
+     * of continuous strokes gives the same soft falloff without accumulating at sample joins.
+     */
+    private fun commitAirbrushStroke(stroke: DesktopAirbrushStroke) {
+        val minX = floor(stroke.minX).toInt().coerceAtLeast(0)
+        val minY = floor(stroke.minY).toInt().coerceAtLeast(0)
+        val maxX = ceil(stroke.maxX).toInt().coerceAtMost(documentWidth - 1)
+        val maxY = ceil(stroke.maxY).toInt().coerceAtMost(documentHeight - 1)
+        if (minX > maxX || minY > maxY) return
+
+        for (tileY in minY / TILE_SIZE..maxY / TILE_SIZE) {
+            for (tileX in minX / TILE_SIZE..maxX / TILE_SIZE) {
+                val key = TileKey(tileX, tileY)
+                val existing = tiles[key]
+                if (!strokeBefore.containsKey(key)) strokeBefore[key] = existing?.let(::copyImage)
+                val tile = existing ?: newTile().also { tiles[key] = it }
+                val g = tile.createGraphics()
+                try {
+                    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                    g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+                    paintAirbrushStroke(g, stroke, tileX * TILE_SIZE, tileY * TILE_SIZE)
+                } finally {
+                    g.dispose()
+                }
+            }
+        }
     }
 
     private fun drawSegment(from: Point2D.Double, to: Point2D.Double) {
@@ -347,8 +414,6 @@ internal class DesktopDrawingCanvas : JComponent() {
                     (from.x - offsetX).toInt(), (from.y - offsetY).toInt(),
                     (to.x - offsetX).toInt(), (to.y - offsetY).toInt(),
                 )
-            } else if (selectedTool == DesktopTool.AIRBRUSH) {
-                paintAirbrush(g, offsetX, offsetY, from, to)
             } else {
                 val width = if (selectedTool == DesktopTool.PENCIL) brushSize * .72f else brushSize
                 val alpha = if (selectedTool == DesktopTool.PENCIL) brushOpacity * .82f else brushOpacity
@@ -365,31 +430,55 @@ internal class DesktopDrawingCanvas : JComponent() {
         }
     }
 
-    private fun paintAirbrush(
-        g: Graphics2D,
-        offsetX: Int,
-        offsetY: Int,
+    private fun paintAirbrushStroke(
+        target: Graphics2D,
+        stroke: DesktopAirbrushStroke,
+        offsetX: Int = 0,
+        offsetY: Int = 0,
+    ) {
+        val g = target.create() as Graphics2D
+        try {
+            g.translate(-offsetX, -offsetY)
+            g.color = stroke.color
+            val bands = ceil(stroke.size / AIRBRUSH_BAND_PIXELS).toInt().coerceIn(MIN_AIRBRUSH_BANDS, MAX_AIRBRUSH_BANDS)
+            val weightTotal = (1..bands).sumOf { it * it }.toFloat()
+            val targetAlpha = stroke.opacity * AIRBRUSH_CENTER_OPACITY
+
+            for (band in 0 until bands) {
+                val weight = (band + 1f).pow(2) / weightTotal
+                val alpha = 1f - (1f - targetAlpha).pow(weight)
+                g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha)
+                val width = (stroke.size * (bands - band) / bands).coerceAtLeast(.75f)
+                if (stroke.hasSegment) {
+                    g.stroke = BasicStroke(width, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+                    g.draw(stroke.path)
+                } else {
+                    val radius = width / 2f
+                    g.fillOval(
+                        floor(stroke.start.x - radius).toInt(),
+                        floor(stroke.start.y - radius).toInt(),
+                        ceil(radius * 2).toInt(),
+                        ceil(radius * 2).toInt(),
+                    )
+                }
+            }
+        } finally {
+            g.dispose()
+        }
+    }
+
+    private fun repaintAirbrushSegment(
         from: Point2D.Double,
         to: Point2D.Double,
+        stroke: DesktopAirbrushStroke,
     ) {
-        val radius = max(1f, brushSize / 2f)
-        val distance = hypot(to.x - from.x, to.y - from.y)
-        val steps = max(1, ceil(distance / max(1.0, radius * .22)).toInt())
-        val center = Color(brushColor.red, brushColor.green, brushColor.blue, (brushOpacity * 76).toInt().coerceIn(1, 255))
-        val edge = Color(brushColor.red, brushColor.green, brushColor.blue, 0)
-        g.composite = AlphaComposite.SrcOver
-        for (step in 0..steps) {
-            val amount = step / steps.toFloat()
-            val x = (from.x + (to.x - from.x) * amount - offsetX).toFloat()
-            val y = (from.y + (to.y - from.y) * amount - offsetY).toFloat()
-            g.paint = RadialGradientPaint(
-                x,
-                y,
-                radius,
-                floatArrayOf(0f, .22f, 1f),
-                arrayOf(center, center, edge),
-            )
-            g.fillOval((x - radius).toInt(), (y - radius).toInt(), ceil(radius * 2).toInt(), ceil(radius * 2).toInt())
+        val radius = stroke.size / 2f + 2f
+        val minX = floor(min(from.x, to.x) - radius).toInt().coerceAtLeast(0)
+        val minY = floor(min(from.y, to.y) - radius).toInt().coerceAtLeast(0)
+        val maxX = ceil(max(from.x, to.x) + radius).toInt().coerceAtMost(documentWidth - 1)
+        val maxY = ceil(max(from.y, to.y) + radius).toInt().coerceAtMost(documentHeight - 1)
+        if (minX <= maxX && minY <= maxY) {
+            repaintDocumentRect(minX, minY, maxX - minX + 1, maxY - minY + 1)
         }
     }
 
@@ -456,6 +545,35 @@ internal class DesktopDrawingCanvas : JComponent() {
 
     private data class TileKey(val x: Int, val y: Int)
 
+    private class DesktopAirbrushStroke(
+        val start: Point2D.Double,
+        val size: Float,
+        val opacity: Float,
+        val color: Color,
+    ) {
+        val path = java.awt.geom.Path2D.Double().apply { moveTo(start.x, start.y) }
+        var hasSegment = false
+            private set
+        private val radius = size / 2f + 2f
+        var minX = start.x - radius
+            private set
+        var minY = start.y - radius
+            private set
+        var maxX = start.x + radius
+            private set
+        var maxY = start.y + radius
+            private set
+
+        fun append(point: Point2D.Double) {
+            path.lineTo(point.x, point.y)
+            hasSegment = true
+            minX = min(minX, point.x - radius)
+            minY = min(minY, point.y - radius)
+            maxX = max(maxX, point.x + radius)
+            maxY = max(maxY, point.y + radius)
+        }
+    }
+
     private data class TileEdit(
         val before: Map<TileKey, BufferedImage?>,
         val after: Map<TileKey, BufferedImage?>,
@@ -472,6 +590,10 @@ internal class DesktopDrawingCanvas : JComponent() {
         private const val MIN_ZOOM = .04
         private const val MAX_ZOOM = 16.0
         private const val MAX_UNDO_BYTES = 128L * 1024 * 1024
+        private const val AIRBRUSH_BAND_PIXELS = 5f
+        private const val MIN_AIRBRUSH_BANDS = 8
+        private const val MAX_AIRBRUSH_BANDS = 32
+        private const val AIRBRUSH_CENTER_OPACITY = .75f
         private val WORKSPACE_COLOR = Color(22, 23, 26)
 
         private fun newTile() = BufferedImage(TILE_SIZE, TILE_SIZE, BufferedImage.TYPE_INT_ARGB)

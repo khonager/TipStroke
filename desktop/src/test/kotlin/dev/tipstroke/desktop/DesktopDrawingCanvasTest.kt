@@ -5,6 +5,7 @@ import java.io.File
 import javax.imageio.ImageIO
 import javax.swing.SwingUtilities
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -43,6 +44,34 @@ class DesktopDrawingCanvasTest {
         assertFalse(ImageIO.read(undone).hasVisiblePixel())
     }
 
+    @Test
+    fun airbrushDoesNotDarkenAtSparseMouseSampleJoins() {
+        val output = File.createTempFile("tipstroke-desktop-airbrush", ".png")
+        output.deleteOnExit()
+
+        SwingUtilities.invokeAndWait {
+            DesktopDrawingCanvas().apply {
+                setSize(900, 700)
+                fitToView()
+                selectedTool = DesktopTool.AIRBRUSH
+                brushSize = 100f
+                brushOpacity = .45f
+                dispatchMouse(MouseEvent.MOUSE_PRESSED, 300, 350, MouseEvent.BUTTON1)
+                dispatchMouse(MouseEvent.MOUSE_DRAGGED, 400, 350, MouseEvent.NOBUTTON)
+                dispatchMouse(MouseEvent.MOUSE_DRAGGED, 500, 350, MouseEvent.NOBUTTON)
+                dispatchMouse(MouseEvent.MOUSE_DRAGGED, 600, 350, MouseEvent.NOBUTTON)
+                dispatchMouse(MouseEvent.MOUSE_RELEASED, 600, 350, MouseEvent.BUTTON1)
+                assertTrue(exportPng(output))
+            }
+        }
+
+        val image = ImageIO.read(output)
+        // At this fitted size, these document coordinates are the centers of the mouse samples.
+        val centerAlpha = image.alphaAt(1024, 1024)
+        assertEquals(centerAlpha, image.alphaAt(855, 1024), "a sample join must not build up darker")
+        assertEquals(centerAlpha, image.alphaAt(1194, 1024), "a sample join must not build up darker")
+    }
+
     private fun DesktopDrawingCanvas.dispatchMouse(id: Int, x: Int, y: Int, button: Int) {
         val event = MouseEvent(this, id, System.currentTimeMillis(), 0, x, y, 1, false, button)
         when (id) {
@@ -60,4 +89,6 @@ class DesktopDrawingCanvasTest {
         }
         return false
     }
+
+    private fun java.awt.image.BufferedImage.alphaAt(x: Int, y: Int): Int = getRGB(x, y) ushr 24
 }
