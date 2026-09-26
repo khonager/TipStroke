@@ -74,7 +74,7 @@ internal fun BrushStudioDialog(
                     Text("Pencil point and shading", style = MaterialTheme.typography.titleSmall)
                     StudioSlider("Point size", "${(pencilPointSize * 100).roundToInt()}%", pencilPointSize, .5f..2f, onPencilPointSize)
                     StudioSlider("Tilt sensitivity", "${(pencilTiltSensitivity * 100).roundToInt()}%", pencilTiltSensitivity, 0f..1f, onPencilTiltSensitivity)
-                    StudioSlider("Side width", "${(pencilShadeSize * 100).roundToInt()}%", pencilShadeSize, .4f..1.6f, onPencilShadeSize)
+                    StudioSlider("Tilted size boost", "${(pencilShadeSize * 100).roundToInt()}%", pencilShadeSize, 0f..1.6f, onPencilShadeSize)
                     StudioSlider("Side opacity", "${(pencilShadeOpacity * 100).roundToInt()}%", pencilShadeOpacity, .2f..1f, onPencilShadeOpacity)
                     StudioSlider("Graphite grain", "${(pencilGrain * 100).roundToInt()}%", pencilGrain, 0f..1f, onPencilGrain)
                     TiltCalibrationPad(
@@ -136,9 +136,9 @@ private fun TiltCalibrationPad(
     val measuredDegrees = Math.toDegrees(measuredTilt.toDouble()).roundToInt()
     val fullDegrees = Math.toDegrees(fullTilt.toDouble()).roundToInt()
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Tilt calibration", style = MaterialTheme.typography.titleSmall, modifier = Modifier.fillMaxWidth())
+        Text("Hover tilt calibration", style = MaterialTheme.typography.titleSmall, modifier = Modifier.fillMaxWidth())
         Text(
-            "Draw in the square while holding the pencil at your preferred shading angle.",
+            "Hover the pencil over the square at your preferred shading angle. You do not need to touch the screen.",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -148,7 +148,7 @@ private fun TiltCalibrationPad(
                 .size(148.dp)
                 .background(Color(0xFFFAFAFA), RoundedCornerShape(14.dp))
                 .border(1.dp, Color(0xFF777A82), RoundedCornerShape(14.dp))
-                .semantics { contentDescription = "Pencil tilt calibration pad" }
+                .semantics { contentDescription = "Pencil hover tilt calibration pad" }
                 .pointerInteropFilter { event ->
                     val index = (0 until event.pointerCount).firstOrNull { pointerIndex ->
                         event.getToolType(pointerIndex) == MotionEvent.TOOL_TYPE_STYLUS ||
@@ -185,7 +185,7 @@ private fun TiltCalibrationPad(
                 samples.zipWithNext().forEachIndexed { sampleIndex, (start, end) ->
                     val response = (end.tilt / fullTilt.coerceAtLeast(.01f)).coerceIn(0f, 1f)
                     val pointWidth = 2.5f * pointSize
-                    val shadeWidth = 30f * shadeSize
+                    val shadeWidth = pointWidth * (1f + 9f * shadeSize)
                     val strokeWidth = pointWidth + (shadeWidth - pointWidth) * response
                     val alpha = .9f + (shadeOpacity - .9f) * response
                     drawLine(
@@ -219,7 +219,7 @@ private fun TiltCalibrationPad(
             }
             if (!hasStylusSample) {
                 Text(
-                    "Touch with pencil",
+                    "Hover pencil here",
                     color = Color(0xFF202125),
                     style = MaterialTheme.typography.labelMedium,
                 )

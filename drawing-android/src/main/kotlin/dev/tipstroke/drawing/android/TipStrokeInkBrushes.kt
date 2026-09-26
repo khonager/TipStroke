@@ -62,19 +62,23 @@ internal class TipStrokeInkBrushes {
             if (pressureBehaviorEnabled(preset.pressureToOpacity)) {
                 add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, rawPressure))
             }
-            add(mapped(
-                TargetNode.Target.WIDTH_MULTIPLIER,
-                1f,
-                1f + (PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * preset.pencilShadeSize,
-                tilt,
-            ))
-            add(mapped(
-                TargetNode.Target.HEIGHT_MULTIPLIER,
-                1f,
-                1f + (PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * preset.pencilShadeSize,
-                tilt,
-            ))
-            add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, preset.pencilShadeOpacity, tilt))
+            if (pencilShadeSizeBehaviorEnabled(preset)) {
+                add(mapped(
+                    TargetNode.Target.WIDTH_MULTIPLIER,
+                    1f,
+                    1f + (PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * preset.pencilShadeSize,
+                    tilt,
+                ))
+                add(mapped(
+                    TargetNode.Target.HEIGHT_MULTIPLIER,
+                    1f,
+                    1f + (PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * preset.pencilShadeSize,
+                    tilt,
+                ))
+            }
+            if (pencilShadeOpacityBehaviorEnabled(preset)) {
+                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, preset.pencilShadeOpacity, tilt))
+            }
             add(mapped(TargetNode.Target.ROTATION_OFFSET_IN_RADIANS, (-PI).toFloat(), PI.toFloat(), orientation))
             if (preset.speedTaper > 0f) {
                 add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, 1f, 1f - preset.speedTaper * .58f, speed))
@@ -243,6 +247,12 @@ internal class TipStrokeInkBrushes {
 }
 
 internal fun pressureBehaviorEnabled(curve: PressureCurve): Boolean = curve.start != curve.end
+
+/** A zero boost intentionally keeps upright and tilted Pencil contacts the same size. */
+internal fun pencilShadeSizeBehaviorEnabled(preset: BrushPreset): Boolean = preset.pencilShadeSize != 0f
+
+/** Ink rejects target modifier ranges whose endpoints are equal, including the valid 100% UI setting. */
+internal fun pencilShadeOpacityBehaviorEnabled(preset: BrushPreset): Boolean = preset.pencilShadeOpacity != 1f
 
 internal fun pencilTiltResponse(tiltRadians: Float, brush: BrushPreset): Float {
     val normalized = (

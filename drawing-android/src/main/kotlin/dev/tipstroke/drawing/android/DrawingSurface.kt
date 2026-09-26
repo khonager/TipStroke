@@ -164,6 +164,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     override fun onDetachedFromWindow() {
         gestureHandler.removeCallbacks(hideBrushPreview)
+        rasterView.stylusHoverPreview = null
         super.onDetachedFromWindow()
     }
 
@@ -319,6 +320,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             gestureHandler.removeCallbacks(hideBrushPreview)
             rasterView.adjustmentPreviewStroke = null
+            rasterView.stylusHoverPreview = null
         }
         predictor?.record(event)
         if (eventHasStylus(event)) updateStylusButtons(event.buttonState)
@@ -343,6 +345,25 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return if (activeDrawingPointerId != null || startsDrawing) handleStylus(event) else handleTouchGesture(event)
     }
 
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean {
+        if (handleStylusHoverEvent(event)) return true
+        return super.dispatchHoverEvent(event)
+    }
+
+    internal fun handleStylusHoverEvent(event: MotionEvent): Boolean {
+        val stylusIndex = (0 until event.pointerCount).firstOrNull { isStylus(event, it) }
+        if (stylusIndex == null) {
+            rasterView.stylusHoverPreview = null
+            return false
+        }
+        updateStylusButtons(event.buttonState)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> updateStylusHoverPreview(event, stylusIndex)
+            MotionEvent.ACTION_HOVER_EXIT, MotionEvent.ACTION_CANCEL -> rasterView.stylusHoverPreview = null
+        }
+        return true
+    }
+
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (eventHasStylus(event)) {
             updateStylusButtons(event.buttonState)
@@ -356,6 +377,32 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun eventHasStylus(event: MotionEvent): Boolean =
         (0 until event.pointerCount).any { isStylus(event, it) }
+
+    private fun updateStylusHoverPreview(event: MotionEvent, index: Int) {
+        if (!settings.gestures.showStylusHoverPreview || activeDrawingPointerId != null ||
+            selectionMode || selectionMoveMode || isTransformingImage()
+        ) {
+            rasterView.stylusHoverPreview = null
+            return
+        }
+        val hoverSample = sample(event, index).copy(pressure = 1f, opacityPressure = 1f)
+        if (hoverSample.position.x !in 0f..layerStack.canvasWidth.toFloat() ||
+            hoverSample.position.y !in 0f..layerStack.canvasHeight.toFloat()
+        ) {
+            rasterView.stylusHoverPreview = null
+            return
+        }
+        val style = currentStyle(event, index)
+        val pencilTip = if (style.blend == BlendBehavior.PAINT && style.brush.engine == BrushEngine.PENCIL) {
+            StrokeCanvasPainter.pencilTipDynamics(CompletedStroke(listOf(hoverSample), style), hoverSample)
+        } else null
+        rasterView.stylusHoverPreview = StylusHoverPreview(
+            position = hoverSample.position,
+            width = pencilTip?.width ?: style.sizePx,
+            height = pencilTip?.height ?: style.sizePx,
+            rotationRadians = if (pencilTip == null) 0f else hoverSample.orientationRadians,
+        )
+    }
 
     private fun updateStylusButtons(buttonState: Int) {
         val pressed = StylusButtons.pressed(buttonState)

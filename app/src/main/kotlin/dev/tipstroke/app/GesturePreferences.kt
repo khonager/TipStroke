@@ -15,6 +15,7 @@ class GesturePreferences(context: Context) {
         smudgeStrength = preferences.getFloat("smudge_strength", .45f).coerceIn(0f, 1f),
         rotationLocked = preferences.getBoolean("rotation_locked", false),
         hideNavigationBarWhileDrawing = preferences.getBoolean("hide_navigation_bar", true),
+        showStylusHoverPreview = preferences.getBoolean("show_stylus_hover_preview", true),
         stylusPrimaryButton = stylusAction("stylus_primary", StylusButtonAction.TOGGLE_ERASER),
         stylusSecondaryButton = stylusAction("stylus_secondary", StylusButtonAction.UNDO),
     )
@@ -29,6 +30,7 @@ class GesturePreferences(context: Context) {
             .putFloat("smudge_strength", settings.smudgeStrength)
             .putBoolean("rotation_locked", settings.rotationLocked)
             .putBoolean("hide_navigation_bar", settings.hideNavigationBarWhileDrawing)
+            .putBoolean("show_stylus_hover_preview", settings.showStylusHoverPreview)
             .putString("stylus_primary", settings.stylusPrimaryButton.name)
             .putString("stylus_secondary", settings.stylusSecondaryButton.name)
             .apply()

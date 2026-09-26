@@ -22,6 +22,7 @@ class GesturePreferencesTest {
             smudgeStrength = .72f,
             rotationLocked = true,
             hideNavigationBarWhileDrawing = false,
+            showStylusHoverPreview = false,
             stylusPrimaryButton = StylusButtonAction.REDO,
             stylusSecondaryButton = StylusButtonAction.DISABLED,
         )

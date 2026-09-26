@@ -40,7 +40,7 @@ data class BrushPreset(
         require(speedTaper in 0f..1f)
         require(pencilPointSize in .5f..2f)
         require(pencilTiltSensitivity in 0f..1f)
-        require(pencilShadeSize in .4f..1.6f)
+        require(pencilShadeSize in 0f..1.6f)
         require(pencilShadeOpacity in .2f..1f)
         require(pencilGrain in 0f..1f)
     }

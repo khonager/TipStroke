@@ -95,5 +95,6 @@ class CoreTests {
         assertEquals(FingerAction.PICK_COLOR, settings.oneFingerHold)
         assertEquals(FingerAction.UNDO, settings.twoFingerTap)
         assertEquals(FingerAction.REDO, settings.threeFingerTap)
+        assertTrue(settings.showStylusHoverPreview)
     }
 }

@@ -25,6 +25,7 @@ data class GestureSettings(
     val smudgeStrength: Float = .45f,
     val rotationLocked: Boolean = false,
     val hideNavigationBarWhileDrawing: Boolean = true,
+    val showStylusHoverPreview: Boolean = true,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.TOGGLE_ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.UNDO,
 ) {

@@ -86,15 +86,66 @@ class TipStrokeInkBrushesTest {
         val broad = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 1.6f))
         val light = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeOpacity = .2f))
         val largePoint = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f, pencilPointSize = 2f))
+        val noTiltSizeDifference = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f))
+        val uprightSample = sample.copy(tiltRadians = 0f)
+        val uprightNoTiltSizeDifference = StrokeCanvasPainter.pencilTipDynamics(
+            CompletedStroke(
+                listOf(uprightSample),
+                StrokeStyle(
+                    BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f),
+                    32f,
+                    1f,
+                    RgbaColor(0f, 0f, 0f),
+                    BlendBehavior.PAINT,
+                ),
+            ),
+            uprightSample,
+        )
         assertTrue("insensitive=$insensitive sensitive=$sensitive", sensitive.height > insensitive.height * 2f)
         assertTrue("sensitive=$sensitive broad=$broad", broad.height > sensitive.height * 1.4f)
         assertTrue("sensitive=$sensitive light=$light", light.alpha < sensitive.alpha * .5f)
         assertTrue("insensitive=$insensitive largePoint=$largePoint", largePoint.height > insensitive.height * 1.8f)
+        assertEquals(uprightNoTiltSizeDifference.width, noTiltSizeDifference.width, .001f)
+        assertEquals(uprightNoTiltSizeDifference.height, noTiltSizeDifference.height, .001f)
+        val lightPressureTilted = sample.copy(pressure = .2f)
+        val lightPressureUpright = lightPressureTilted.copy(tiltRadians = 0f)
+        val zeroBoostStyle = StrokeStyle(
+            BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f),
+            32f,
+            1f,
+            RgbaColor(0f, 0f, 0f),
+            BlendBehavior.PAINT,
+        )
+        val lightTiltedDynamics = StrokeCanvasPainter.pencilTipDynamics(
+            CompletedStroke(listOf(lightPressureTilted), zeroBoostStyle), lightPressureTilted,
+        )
+        val lightUprightDynamics = StrokeCanvasPainter.pencilTipDynamics(
+            CompletedStroke(listOf(lightPressureUpright), zeroBoostStyle), lightPressureUpright,
+        )
+        assertEquals(lightUprightDynamics.width, lightTiltedDynamics.width, .001f)
+        assertEquals(lightUprightDynamics.height, lightTiltedDynamics.height, .001f)
     }
 
     @Test fun constantPressureCurveOmitsTheInvalidInkBehavior() {
         assertTrue(!pressureBehaviorEnabled(PressureCurve(1f, 1f, 1f)))
         assertTrue(pressureBehaviorEnabled(BrushPreset.Pencil.pressureToOpacity))
+    }
+
+    @Test fun fullyOpaquePencilSideOmitsTheInvalidInkBehavior() {
+        val boundaryPreset = BrushPreset.Pencil.copy(
+            pencilPointSize = .5f,
+            pencilTiltSensitivity = 0f,
+            pencilShadeSize = 1.6f,
+            pencilShadeOpacity = 1f,
+            pencilGrain = 1f,
+        )
+        assertTrue(!pencilShadeOpacityBehaviorEnabled(boundaryPreset))
+        assertTrue(pencilShadeOpacityBehaviorEnabled(BrushPreset.Pencil))
+    }
+
+    @Test fun zeroTiltedSizeBoostOmitsInvalidInkBehaviors() {
+        assertTrue(!pencilShadeSizeBehaviorEnabled(BrushPreset.Pencil.copy(pencilShadeSize = 0f)))
+        assertTrue(pencilShadeSizeBehaviorEnabled(BrushPreset.Pencil))
     }
 
     @Test fun generatedPencilGrainUsesContinuousGraphiteCoverage() {

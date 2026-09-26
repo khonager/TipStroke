@@ -13,6 +13,13 @@ import dev.tipstroke.core.model.LayerId
 import kotlin.math.ceil
 import kotlin.math.floor
 
+internal data class StylusHoverPreview(
+    val position: Point,
+    val width: Float,
+    val height: Float,
+    val rotationRadians: Float,
+)
+
 internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : View(context) {
     val transformMatrix = Matrix()
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -39,6 +46,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     private var pencilPreviewStore: TileStore? = null
     private var pencilPreviewLayerId: LayerId? = null
     var adjustmentPreviewStroke: CompletedStroke? = null
+        set(value) { field = value; postInvalidateOnAnimation() }
+    var stylusHoverPreview: StylusHoverPreview? = null
         set(value) { field = value; postInvalidateOnAnimation() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
     var transformChangedListener: ((CanvasTransform) -> Unit)? = null
@@ -158,6 +167,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             }
         }
         previewStroke?.let { StrokeCanvasPainter.draw(canvas, it) }
+        stylusHoverPreview?.let { preview -> drawStylusHoverPreview(canvas, preview) }
         if (showImageTransformBounds) drawSelectedImageBounds(canvas)
         drawSelection(canvas)
         bitmapPaint.alpha = 255
@@ -178,6 +188,31 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             canvas.drawCircle(sample.position.x, sample.position.y, radius, previewOutlinePaint)
             canvas.restore()
         }
+    }
+
+    private fun drawStylusHoverPreview(canvas: Canvas, preview: StylusHoverPreview) {
+        val halfWidth = preview.width.coerceAtLeast(.5f) / 2f
+        val halfHeight = preview.height.coerceAtLeast(.5f) / 2f
+        val bounds = RectF(
+            preview.position.x - halfWidth,
+            preview.position.y - halfHeight,
+            preview.position.x + halfWidth,
+            preview.position.y + halfHeight,
+        )
+        val inverseZoom = 1f / transform.scale.coerceAtLeast(.08f)
+        canvas.save()
+        canvas.rotate(
+            Math.toDegrees(preview.rotationRadians.toDouble()).toFloat(),
+            preview.position.x,
+            preview.position.y,
+        )
+        previewOutlinePaint.color = Color.argb(175, 0, 0, 0)
+        previewOutlinePaint.strokeWidth = 3f * inverseZoom
+        canvas.drawOval(bounds, previewOutlinePaint)
+        previewOutlinePaint.color = Color.argb(235, 255, 255, 255)
+        previewOutlinePaint.strokeWidth = 1.25f * inverseZoom
+        canvas.drawOval(bounds, previewOutlinePaint)
+        canvas.restore()
     }
 
     private fun drawImageLayer(canvas: Canvas, layer: ImageLayerRuntime, bitmap: Bitmap) {

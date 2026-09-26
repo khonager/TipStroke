@@ -4,6 +4,7 @@
 
 - `TOOL_TYPE_STYLUS` draws and captures pressure, tilt, orientation, timestamps, button state, pointer ID, and cancellation.
 - `TOOL_TYPE_ERASER` uses the same brush engine with clear blending.
+- Stylus hover shows the current brush footprint in document pixels, including Pencil tilt and barrel orientation when the device reports them. **Brush preview while hovering** in Settings can disable it.
 - The primary and secondary stylus buttons are edge-triggered and configurable. Defaults are **Switch brush / eraser** for the primary button (normally nearest the tip) and **Undo** for the secondary button. Mappings are stored locally and can also be set to redo or disabled.
 - Button input accepts Android's standard stylus `MotionEvent` bits, legacy primary/secondary/tertiary mappings from stylus-class devices, and Android 14's dedicated stylus `KeyEvent` codes. Xiaomi Pad 6 compatibility additionally recognizes the Smart Pen 2's observed `KEYCODE_PAGE_UP`/`KEYCODE_PAGE_DOWN` events while the editor is active. Duplicate motion/key delivery within one physical press is suppressed.
 - Finger behavior comes from local `GestureSettings`. Defaults are one-finger drag to navigate, one-finger hold to pick color, two-finger tap to undo, and three-finger tap to redo.
@@ -32,6 +33,8 @@ Color picking opens a native magnifying loupe after the configured hold delay. T
 ## Brush controls
 
 Brush size and opacity use drag tracks with persistent numeric readouts. While either value is adjusted, the canvas center shows a live stamp with the current brush color, edge softness, and opacity; its diameter is expressed in document pixels and passes through the active canvas transform, so zooming changes its on-screen size exactly like a drawn stroke. Eraser adjustments use a neutral light stamp so the preview remains visible without changing artwork. In landscape the controls are stacked as narrow vertical controls: plus sits at the maximum end and minus at the minimum end. Portrait keeps the wider horizontal controls. The buttons apply 1 px and 1 percentage-point adjustments for precise tuning without requiring pixel-perfect slider motion.
+
+Pencil tilt calibration is hover-based on devices that report stylus hover. Hold the pen above the calibration square at the intended shading angle; touching and drawing is not required. The pad keeps the latest reported tilt so it can be mapped to full shade.
 
 Drawing mode hides the Android navigation bar by default and uses transient-bar swipe behavior, preventing an ordinary canvas stroke at the bottom edge from immediately navigating away. The focused drawing mode setting can keep the navigation bar visible; gallery and settings screens always restore it.
 

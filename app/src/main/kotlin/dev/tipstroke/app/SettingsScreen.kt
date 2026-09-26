@@ -96,6 +96,16 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
             }
             Switch(settings.hideNavigationBarWhileDrawing, { onChange(settings.copy(hideNavigationBarWhileDrawing = it)) })
         }
+        Row(
+            Modifier.fillMaxWidth().padding(top = 9.dp).border(1.dp, Color(0xFF3F4146), RoundedCornerShape(15.dp)).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Brush preview while hovering", color = Color.White)
+                Text("Show the current brush footprint when a stylus is detected above the canvas.", color = Color(0xFFA9ABB1), fontSize = 12.sp)
+            }
+            Switch(settings.showStylusHoverPreview, { onChange(settings.copy(showStylusHoverPreview = it)) })
+        }
     }
 }
 

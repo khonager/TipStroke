@@ -16,6 +16,21 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class BrushVisualInstrumentedTest {
+    @Test fun boundaryPencilTuningBuildsNativeInkFamilies() {
+        val brushes = TipStrokeInkBrushes()
+        brushes.familyFor(BrushPreset.Pencil.copy(
+            pencilPointSize = .5f,
+            pencilTiltSensitivity = 0f,
+            pencilShadeSize = 1.6f,
+            pencilShadeOpacity = 1f,
+            pencilGrain = 1f,
+        ))
+        brushes.familyFor(BrushPreset.Pencil.copy(
+            pencilShadeSize = 0f,
+            pencilShadeOpacity = 1f,
+        ))
+    }
+
     @Test fun productionBrushesRenderReviewableReferenceSheets() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val output = File(requireNotNull(context.getExternalFilesDir(null)), "brush-qa").apply { mkdirs() }

@@ -404,7 +404,7 @@ internal object StrokeCanvasPainter {
         // The exposed side of a real pencil remains broad under light pressure; pressure mostly
         // controls how much graphite it deposits. Keep pressure sizing for the upright point,
         // then progressively decouple contact width as the barrel approaches the paper.
-        val pressureDecoupling = sqrt(tiltResponse) * .95f
+        val pressureDecoupling = sqrt(tiltResponse) * .95f * brush.pencilShadeSize.coerceIn(0f, 1f)
         val pressureSize = rawPressureSize + (1f - rawPressureSize) * pressureDecoupling
         val edgeVariation = 1f +
             sin(sample.position.x * .071f + sample.position.y * .113f) * .006f +
