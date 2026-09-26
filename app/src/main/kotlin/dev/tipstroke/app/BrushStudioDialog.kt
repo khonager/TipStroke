@@ -100,17 +100,22 @@ internal fun BrushStudioDialog(
                     if (pencilTiltMode == PencilTiltMode.SHADING_SWITCH) {
                         val shadeEnd = (pencilShadeStartRadians + pencilShadeTransitionRadians)
                             .coerceAtMost(BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS)
+                        val shadeStartUpper = pencilShadeStartUpperBound(shadeEnd)
                         StudioSlider(
                             "Shading starts",
                             "${degrees(pencilShadeStartRadians)}°",
-                            pencilShadeStartRadians.coerceAtMost(
-                                shadeEnd - BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS,
+                            pencilShadeStartRadians.coerceIn(
+                                BrushPreset.MIN_PENCIL_SHADE_START_RADIANS,
+                                shadeStartUpper,
                             ),
-                            BrushPreset.MIN_PENCIL_SHADE_START_RADIANS..
-                                (shadeEnd - BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS),
+                            BrushPreset.MIN_PENCIL_SHADE_START_RADIANS..shadeStartUpper,
                         ) { start ->
-                            onPencilShadeStartRadians(start)
-                            onPencilShadeTransitionRadians(shadeEnd - start)
+                            val safeStart = start.coerceIn(
+                                BrushPreset.MIN_PENCIL_SHADE_START_RADIANS,
+                                shadeStartUpper,
+                            )
+                            onPencilShadeStartRadians(safeStart)
+                            onPencilShadeTransitionRadians(pencilShadeTransition(safeStart, shadeEnd))
                         }
                         StudioSlider(
                             "Full shading",
@@ -118,7 +123,11 @@ internal fun BrushStudioDialog(
                             shadeEnd,
                             (pencilShadeStartRadians + BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS)..
                                 BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
-                        ) { end -> onPencilShadeTransitionRadians(end - pencilShadeStartRadians) }
+                        ) { end ->
+                            onPencilShadeTransitionRadians(
+                                pencilShadeTransition(pencilShadeStartRadians, end),
+                            )
+                        }
                         Text(
                             "Normal point drawing stays stable until the start angle, then changes to side shading.",
                             style = MaterialTheme.typography.bodySmall,
@@ -216,10 +225,16 @@ private fun PencilTiltStrokePreview(
 ) {
     val brush = remember(sensitivity, tiltMode, shadeStartRadians, shadeTransitionRadians) {
         BrushPreset.Pencil.copy(
-            pencilTiltSensitivity = sensitivity,
+            pencilTiltSensitivity = sensitivity.coerceIn(0f, 1f),
             pencilTiltMode = tiltMode,
-            pencilShadeStartRadians = shadeStartRadians,
-            pencilShadeTransitionRadians = shadeTransitionRadians,
+            pencilShadeStartRadians = shadeStartRadians.coerceIn(
+                BrushPreset.MIN_PENCIL_SHADE_START_RADIANS,
+                BrushPreset.MAX_PENCIL_SHADE_START_RADIANS,
+            ),
+            pencilShadeTransitionRadians = shadeTransitionRadians.coerceIn(
+                BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS,
+                BrushPreset.MAX_PENCIL_SHADE_TRANSITION_RADIANS,
+            ),
         )
     }
     val markerAngles = if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
@@ -315,10 +330,16 @@ private fun TiltCalibrationPad(
     val samples = remember { mutableStateListOf<PencilPreviewSample>() }
     val previewBrush = remember(sensitivity, tiltMode, shadeStartRadians, shadeTransitionRadians) {
         BrushPreset.Pencil.copy(
-            pencilTiltSensitivity = sensitivity,
+            pencilTiltSensitivity = sensitivity.coerceIn(0f, 1f),
             pencilTiltMode = tiltMode,
-            pencilShadeStartRadians = shadeStartRadians,
-            pencilShadeTransitionRadians = shadeTransitionRadians,
+            pencilShadeStartRadians = shadeStartRadians.coerceIn(
+                BrushPreset.MIN_PENCIL_SHADE_START_RADIANS,
+                BrushPreset.MAX_PENCIL_SHADE_START_RADIANS,
+            ),
+            pencilShadeTransitionRadians = shadeTransitionRadians.coerceIn(
+                BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS,
+                BrushPreset.MAX_PENCIL_SHADE_TRANSITION_RADIANS,
+            ),
         )
     }
     val fullTilt = if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
@@ -476,6 +497,17 @@ private fun previewNoise(seed: Int): Float {
 private const val MAX_PREVIEW_SAMPLES = 400
 
 private fun degrees(radians: Float): Int = Math.toDegrees(radians.toDouble()).roundToInt()
+
+internal fun pencilShadeStartUpperBound(fullShadeRadians: Float): Float = minOf(
+    BrushPreset.MAX_PENCIL_SHADE_START_RADIANS,
+    fullShadeRadians - BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS,
+).coerceAtLeast(BrushPreset.MIN_PENCIL_SHADE_START_RADIANS)
+
+internal fun pencilShadeTransition(startRadians: Float, fullShadeRadians: Float): Float =
+    (fullShadeRadians - startRadians).coerceIn(
+        BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS,
+        BrushPreset.MAX_PENCIL_SHADE_TRANSITION_RADIANS,
+    )
 
 @Composable
 private fun StudioSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
