@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.services.storage.TestStorage
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.core.model.BrushEngine
+import dev.tipstroke.core.model.PencilTiltMode
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,6 +20,7 @@ class BrushVisualInstrumentedTest {
     @Test fun boundaryPencilTuningBuildsNativeInkFamilies() {
         val brushes = TipStrokeInkBrushes()
         brushes.familyFor(BrushPreset.Pencil.copy(
+            pencilTiltMode = PencilTiltMode.GRADUAL,
             pencilPointSize = .5f,
             pencilTiltSensitivity = 0f,
             pencilShadeSize = BrushPreset.MAX_PENCIL_SHADE_SIZE,

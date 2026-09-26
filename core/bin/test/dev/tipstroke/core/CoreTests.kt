@@ -42,6 +42,30 @@ class CoreTests {
         assertEquals(BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS, BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f).pencilFullTiltRadians(), .001f)
         assertEquals(BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS, BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f).pencilFullTiltRadians(), .001f)
     }
+    @Test fun pencilTiltModesProvideStableSwitchAndContinuousGradualResponses() {
+        val switched = BrushPreset.Pencil.copy(
+            pencilTiltMode = PencilTiltMode.SHADING_SWITCH,
+            pencilShadeStartRadians = .7f,
+            pencilShadeTransitionRadians = .1f,
+        )
+        assertEquals(0f, switched.pencilTiltResponse(.69f), .001f)
+        assertEquals(.5f, switched.pencilTiltResponse(.75f), .001f)
+        assertEquals(1f, switched.pencilTiltResponse(.81f), .001f)
+        val cappedSwitch = switched.copy(
+            pencilShadeStartRadians = 1.1f,
+            pencilShadeTransitionRadians = BrushPreset.MAX_PENCIL_SHADE_TRANSITION_RADIANS,
+        )
+        assertEquals(BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS, cappedSwitch.pencilShadeEndRadians(), .001f)
+        assertEquals(1f, cappedSwitch.pencilTiltResponse(BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS), .001f)
+
+        val gradual = BrushPreset.Pencil.copy(
+            pencilTiltMode = PencilTiltMode.GRADUAL,
+            pencilTiltSensitivity = 0f,
+        )
+        val middleResponse = gradual.pencilTiltResponse(.4f)
+        assertTrue(middleResponse >= .6f && middleResponse <= .8f)
+        assertEquals(1f, gradual.pencilTiltResponse(BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS), .001f)
+    }
     @Test fun customBrushBoundsCoverTiltAndParticleScatter() {
         val sample = StrokeSample(1, Point(100f, 100f), 1f, 1f, 0f, 0L, 0, PointerKind.STYLUS)
         val pencil = CompletedStroke(

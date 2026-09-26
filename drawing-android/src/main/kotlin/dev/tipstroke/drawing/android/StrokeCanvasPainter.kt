@@ -21,6 +21,7 @@ import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.RgbaColor
+import dev.tipstroke.core.model.pencilTiltResponse
 import kotlin.math.*
 
 /** Shared painter for custom wet previews and their byte-for-byte-equivalent tile commit. */
@@ -221,7 +222,7 @@ internal object StrokeCanvasPainter {
         paint.colorFilter = PorterDuffColorFilter(stroke.style.color.toOpaqueRgb(), PorterDuff.Mode.SRC_IN)
 
         fun configureGrain(sample: StrokeSample) {
-            val tiltAmount = pencilTiltResponse(sample.tiltRadians, stroke.style.brush) * stroke.style.brush.pencilGrain
+            val tiltAmount = stroke.style.brush.pencilTiltResponse(sample.tiltRadians) * stroke.style.brush.pencilGrain
             paint.shader = pencilGrainShaders[(tiltAmount * pencilGrainShaders.lastIndex).roundToInt()]
         }
 
@@ -338,7 +339,7 @@ internal object StrokeCanvasPainter {
                     Shader.TileMode.CLAMP,
                 )
                 val averageTilt = (samples[index - 1].tiltRadians + samples[index].tiltRadians) * .5f
-                val tiltAmount = pencilTiltResponse(averageTilt, stroke.style.brush) * stroke.style.brush.pencilGrain
+                val tiltAmount = stroke.style.brush.pencilTiltResponse(averageTilt) * stroke.style.brush.pencilGrain
                 val grain = pencilGrainShaders[(tiltAmount * pencilGrainShaders.lastIndex).roundToInt()]
                 paint.alpha = 255
                 paint.colorFilter = null
@@ -371,7 +372,7 @@ internal object StrokeCanvasPainter {
                         close()
                     }
                     paint.shader = pencilGrainShaders[
-                        (pencilTiltResponse(joint.tiltRadians, stroke.style.brush) *
+                        (stroke.style.brush.pencilTiltResponse(joint.tiltRadians) *
                             stroke.style.brush.pencilGrain * pencilGrainShaders.lastIndex)
                             .roundToInt()
                     ]
@@ -394,7 +395,7 @@ internal object StrokeCanvasPainter {
 
     internal fun pencilTipDynamics(stroke: CompletedStroke, sample: StrokeSample, speedScale: Float = 1f): PencilTipDynamics {
         val brush = stroke.style.brush
-        val tiltResponse = pencilTiltResponse(sample.tiltRadians, brush)
+        val tiltResponse = brush.pencilTiltResponse(sample.tiltRadians)
         val widthMultiplier = 1f +
             (TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * brush.pencilShadeSize * tiltResponse
         val heightMultiplier = 1f +

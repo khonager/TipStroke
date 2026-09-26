@@ -20,7 +20,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.PencilTiltMode
 import dev.tipstroke.core.model.pencilFullTiltRadians
+import dev.tipstroke.core.model.pencilShadeEndRadians
+import dev.tipstroke.core.model.pencilTiltResponse
 import dev.tipstroke.core.model.pencilTiltSensitivityForFullAngle
 import kotlin.math.PI
 import kotlin.math.roundToInt
@@ -39,6 +42,9 @@ internal fun BrushStudioDialog(
     pencilShadeSize: Float,
     pencilShadeOpacity: Float,
     pencilGrain: Float,
+    pencilTiltMode: PencilTiltMode,
+    pencilShadeStartRadians: Float,
+    pencilShadeTransitionRadians: Float,
     onHardness: (Float) -> Unit,
     onPressureSize: (Boolean) -> Unit,
     onPressureOpacity: (Boolean) -> Unit,
@@ -48,6 +54,9 @@ internal fun BrushStudioDialog(
     onPencilShadeSize: (Float) -> Unit,
     onPencilShadeOpacity: (Float) -> Unit,
     onPencilGrain: (Float) -> Unit,
+    onPencilTiltMode: (PencilTiltMode) -> Unit,
+    onPencilShadeStartRadians: (Float) -> Unit,
+    onPencilShadeTransitionRadians: (Float) -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -73,7 +82,63 @@ internal fun BrushStudioDialog(
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
                     Text("Pencil point and shading", style = MaterialTheme.typography.titleSmall)
                     StudioSlider("Point size", "${(pencilPointSize * 100).roundToInt()}%", pencilPointSize, .5f..2f, onPencilPointSize)
-                    StudioSlider("Tilt sensitivity", "${(pencilTiltSensitivity * 100).roundToInt()}%", pencilTiltSensitivity, 0f..1f, onPencilTiltSensitivity)
+                    Text("Tilt behavior", style = MaterialTheme.typography.bodyMedium)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = pencilTiltMode == PencilTiltMode.SHADING_SWITCH,
+                            onClick = { onPencilTiltMode(PencilTiltMode.SHADING_SWITCH) },
+                            label = { Text("Shading switch") },
+                            modifier = Modifier.weight(1f),
+                        )
+                        FilterChip(
+                            selected = pencilTiltMode == PencilTiltMode.GRADUAL,
+                            onClick = { onPencilTiltMode(PencilTiltMode.GRADUAL) },
+                            label = { Text("Gradual") },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (pencilTiltMode == PencilTiltMode.SHADING_SWITCH) {
+                        val shadeEnd = (pencilShadeStartRadians + pencilShadeTransitionRadians)
+                            .coerceAtMost(BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS)
+                        StudioSlider(
+                            "Shading starts",
+                            "${degrees(pencilShadeStartRadians)}°",
+                            pencilShadeStartRadians.coerceAtMost(
+                                shadeEnd - BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS,
+                            ),
+                            BrushPreset.MIN_PENCIL_SHADE_START_RADIANS..
+                                (shadeEnd - BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS),
+                        ) { start ->
+                            onPencilShadeStartRadians(start)
+                            onPencilShadeTransitionRadians(shadeEnd - start)
+                        }
+                        StudioSlider(
+                            "Full shading",
+                            "${degrees(shadeEnd)}°",
+                            shadeEnd,
+                            (pencilShadeStartRadians + BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS)..
+                                BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
+                        ) { end -> onPencilShadeTransitionRadians(end - pencilShadeStartRadians) }
+                        Text(
+                            "Normal point drawing stays stable until the start angle, then changes to side shading.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    } else {
+                        val fullTilt = BrushPreset.Pencil.copy(
+                            pencilTiltSensitivity = pencilTiltSensitivity,
+                        ).pencilFullTiltRadians()
+                        StudioSlider(
+                            "Full shading",
+                            "${degrees(fullTilt)}°",
+                            fullTilt,
+                            BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS..
+                                BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
+                        ) { onPencilTiltSensitivity(pencilTiltSensitivityForFullAngle(it)) }
+                        Text(
+                            "Contact size changes continuously with the amount of tilt.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     StudioSlider(
                         "Tilted size boost",
                         "${(pencilShadeSize * 100).roundToInt()}%",
@@ -83,13 +148,27 @@ internal fun BrushStudioDialog(
                     )
                     StudioSlider("Side opacity", "${(pencilShadeOpacity * 100).roundToInt()}%", pencilShadeOpacity, .2f..1f, onPencilShadeOpacity)
                     StudioSlider("Graphite grain", "${(pencilGrain * 100).roundToInt()}%", pencilGrain, 0f..1f, onPencilGrain)
+                    PencilTiltStrokePreview(
+                        pointSize = pencilPointSize,
+                        sensitivity = pencilTiltSensitivity,
+                        tiltMode = pencilTiltMode,
+                        shadeStartRadians = pencilShadeStartRadians,
+                        shadeTransitionRadians = pencilShadeTransitionRadians,
+                        shadeSize = pencilShadeSize,
+                        shadeOpacity = pencilShadeOpacity,
+                        grain = pencilGrain,
+                    )
                     TiltCalibrationPad(
                         pointSize = pencilPointSize,
                         sensitivity = pencilTiltSensitivity,
+                        tiltMode = pencilTiltMode,
+                        shadeStartRadians = pencilShadeStartRadians,
+                        shadeTransitionRadians = pencilShadeTransitionRadians,
                         shadeSize = pencilShadeSize,
                         shadeOpacity = pencilShadeOpacity,
                         grain = pencilGrain,
                         onSensitivity = onPencilTiltSensitivity,
+                        onShadeStart = onPencilShadeStartRadians,
                     )
                 }
                 Text(
@@ -125,20 +204,126 @@ private fun StudioSlider(
 }
 
 @Composable
+private fun PencilTiltStrokePreview(
+    pointSize: Float,
+    sensitivity: Float,
+    tiltMode: PencilTiltMode,
+    shadeStartRadians: Float,
+    shadeTransitionRadians: Float,
+    shadeSize: Float,
+    shadeOpacity: Float,
+    grain: Float,
+) {
+    val brush = remember(sensitivity, tiltMode, shadeStartRadians, shadeTransitionRadians) {
+        BrushPreset.Pencil.copy(
+            pencilTiltSensitivity = sensitivity,
+            pencilTiltMode = tiltMode,
+            pencilShadeStartRadians = shadeStartRadians,
+            pencilShadeTransitionRadians = shadeTransitionRadians,
+        )
+    }
+    val markerAngles = if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
+        listOf(shadeStartRadians, brush.pencilShadeEndRadians())
+    } else {
+        listOf(brush.pencilFullTiltRadians())
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Live tilt preview", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "The stroke moves from upright at 0° to the tablet's observed maximum of 69°.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Box(
+            Modifier.fillMaxWidth().height(112.dp)
+                .background(Color(0xFFFAFAFA), RoundedCornerShape(14.dp))
+                .border(1.dp, Color(0xFF777A82), RoundedCornerShape(14.dp))
+                .semantics { contentDescription = "Pencil tilt response preview" },
+        ) {
+            Canvas(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp)) {
+                val left = 4f
+                val right = size.width - 4f
+                val centerY = size.height * .53f
+                markerAngles.forEachIndexed { index, angle ->
+                    val x = left + (right - left) *
+                        (angle / BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS).coerceIn(0f, 1f)
+                    drawLine(
+                        color = if (index == 0) Color(0xFFED6A5A) else Color(0xFF8A6DE9),
+                        start = Offset(x, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = 1.5f,
+                    )
+                }
+                val segmentCount = 90
+                for (index in 0 until segmentCount) {
+                    val progress = index / (segmentCount - 1f)
+                    val nextProgress = (index + 1).coerceAtMost(segmentCount - 1) / (segmentCount - 1f)
+                    val response = brush.pencilTiltResponse(
+                        progress * BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
+                    )
+                    val pointWidth = 2.5f * pointSize
+                    val shadeWidth = (pointWidth * (1f + 9f * shadeSize)).coerceAtMost(size.height * .82f)
+                    val strokeWidth = pointWidth + (shadeWidth - pointWidth) * response
+                    val alpha = (.9f + (shadeOpacity - .9f) * response).coerceIn(0f, 1f)
+                    val start = Offset(left + (right - left) * progress, centerY)
+                    val end = Offset(left + (right - left) * nextProgress, centerY)
+                    drawLine(
+                        color = Color(0xFF3F4147).copy(alpha = alpha),
+                        start = start,
+                        end = end,
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Butt,
+                    )
+                    if (grain > 0f && response > 0f && index % 2 == 0) {
+                        val across = (previewNoise(index + 19) - .5f) * strokeWidth * .72f
+                        drawCircle(
+                            color = Color(0xFFFAFAFA).copy(alpha = grain * response * .68f),
+                            radius = .5f + 1.4f * grain * previewNoise(index + 71),
+                            center = Offset(end.x, centerY + across),
+                        )
+                    }
+                }
+            }
+            Text("0°", style = MaterialTheme.typography.labelSmall, color = Color(0xFF55575D), modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 3.dp))
+            Text("69°", style = MaterialTheme.typography.labelSmall, color = Color(0xFF55575D), modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 3.dp))
+        }
+        Text(
+            if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
+                "Red: starts ${degrees(shadeStartRadians)}° · Purple: full ${degrees(brush.pencilShadeEndRadians())}°"
+            } else {
+                "Purple: full shading at ${degrees(brush.pencilFullTiltRadians())}°"
+            },
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+}
+
+@Composable
 private fun TiltCalibrationPad(
     pointSize: Float,
     sensitivity: Float,
+    tiltMode: PencilTiltMode,
+    shadeStartRadians: Float,
+    shadeTransitionRadians: Float,
     shadeSize: Float,
     shadeOpacity: Float,
     grain: Float,
     onSensitivity: (Float) -> Unit,
+    onShadeStart: (Float) -> Unit,
 ) {
     var measuredTilt by remember { mutableFloatStateOf(0f) }
     var hasStylusSample by remember { mutableStateOf(false) }
     val samples = remember { mutableStateListOf<PencilPreviewSample>() }
-    val fullTilt = remember(sensitivity) {
-        BrushPreset.Pencil.copy(pencilTiltSensitivity = sensitivity).pencilFullTiltRadians()
+    val previewBrush = remember(sensitivity, tiltMode, shadeStartRadians, shadeTransitionRadians) {
+        BrushPreset.Pencil.copy(
+            pencilTiltSensitivity = sensitivity,
+            pencilTiltMode = tiltMode,
+            pencilShadeStartRadians = shadeStartRadians,
+            pencilShadeTransitionRadians = shadeTransitionRadians,
+        )
     }
+    val fullTilt = if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
+        previewBrush.pencilShadeEndRadians()
+    } else previewBrush.pencilFullTiltRadians()
     val measuredDegrees = Math.toDegrees(measuredTilt.toDouble()).roundToInt()
     val fullDegrees = Math.toDegrees(fullTilt.toDouble()).roundToInt()
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -189,7 +374,7 @@ private fun TiltCalibrationPad(
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 samples.zipWithNext().forEachIndexed { sampleIndex, (start, end) ->
-                    val response = (end.tilt / fullTilt.coerceAtLeast(.01f)).coerceIn(0f, 1f)
+                    val response = previewBrush.pencilTiltResponse(end.tilt)
                     val pointWidth = 2.5f * pointSize
                     val shadeWidth = pointWidth * (1f + 9f * shadeSize)
                     val strokeWidth = pointWidth + (shadeWidth - pointWidth) * response
@@ -233,17 +418,47 @@ private fun TiltCalibrationPad(
         }
         Text(
             if (hasStylusSample) {
-                "$measuredDegrees° reported · full shade at $fullDegrees°"
+                if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
+                    "$measuredDegrees° reported · shading starts at ${degrees(shadeStartRadians)}°"
+                } else {
+                    "$measuredDegrees° reported · full shading at $fullDegrees°"
+                }
             } else {
-                "Current full-shade angle: $fullDegrees°"
+                if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
+                    "Shading starts at ${degrees(shadeStartRadians)}° · full at $fullDegrees°"
+                } else {
+                    "Current full-shading angle: $fullDegrees°"
+                }
             },
             style = MaterialTheme.typography.bodySmall,
         )
         TextButton(
-            enabled = hasStylusSample && measuredTilt >= BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS,
-            onClick = { onSensitivity(pencilTiltSensitivityForFullAngle(measuredTilt)) },
+            enabled = hasStylusSample && measuredTilt >= BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS &&
+                measuredTilt <= BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
+            onClick = {
+                if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
+                    onShadeStart(
+                        measuredTilt.coerceIn(
+                            BrushPreset.MIN_PENCIL_SHADE_START_RADIANS,
+                            minOf(
+                                BrushPreset.MAX_PENCIL_SHADE_START_RADIANS,
+                                BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS - shadeTransitionRadians,
+                            ),
+                        ),
+                    )
+                } else {
+                    onSensitivity(pencilTiltSensitivityForFullAngle(measuredTilt))
+                }
+            },
         ) {
-            Text(if (hasStylusSample) "Use $measuredDegrees° as full shade" else "Use measured angle")
+            Text(
+                if (!hasStylusSample) "Use measured angle"
+                else if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
+                    "Use $measuredDegrees° as shading start"
+                } else {
+                    "Use $measuredDegrees° as full shading"
+                },
+            )
         }
     }
 }
@@ -259,6 +474,8 @@ private fun previewNoise(seed: Int): Float {
 }
 
 private const val MAX_PREVIEW_SAMPLES = 400
+
+private fun degrees(radians: Float): Int = Math.toDegrees(radians.toDouble()).roundToInt()
 
 @Composable
 private fun StudioSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {

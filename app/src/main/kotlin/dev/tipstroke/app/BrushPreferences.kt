@@ -2,6 +2,7 @@ package dev.tipstroke.app
 
 import android.content.Context
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.PencilTiltMode
 
 internal data class BrushTuning(
     val sizePx: Float,
@@ -15,6 +16,9 @@ internal data class BrushTuning(
     val pencilShadeSize: Float = 1f,
     val pencilShadeOpacity: Float = .62f,
     val pencilGrain: Float = 1f,
+    val pencilTiltMode: PencilTiltMode = PencilTiltMode.SHADING_SWITCH,
+    val pencilShadeStartRadians: Float = BrushPreset.DEFAULT_PENCIL_SHADE_START_RADIANS,
+    val pencilShadeTransitionRadians: Float = BrushPreset.DEFAULT_PENCIL_SHADE_TRANSITION_RADIANS,
 )
 
 internal class BrushPreferences(context: Context) {
@@ -29,6 +33,9 @@ internal class BrushPreferences(context: Context) {
             brush.pencilShadeSize,
             brush.pencilShadeOpacity,
             brush.pencilGrain,
+            brush.pencilTiltMode,
+            brush.pencilShadeStartRadians,
+            brush.pencilShadeTransitionRadians,
         ))
     }
 
@@ -46,6 +53,9 @@ internal class BrushPreferences(context: Context) {
             .putFloat(prefix + "pencil_shade_size", tuning.pencilShadeSize)
             .putFloat(prefix + "pencil_shade_opacity", tuning.pencilShadeOpacity)
             .putFloat(prefix + "pencil_grain", tuning.pencilGrain)
+            .putString(prefix + "pencil_tilt_mode", tuning.pencilTiltMode.name)
+            .putFloat(prefix + "pencil_shade_start", tuning.pencilShadeStartRadians)
+            .putFloat(prefix + "pencil_shade_transition", tuning.pencilShadeTransitionRadians)
             .apply()
     }
 
@@ -74,5 +84,15 @@ internal class BrushPreferences(context: Context) {
             .coerceIn(0f, BrushPreset.MAX_PENCIL_SHADE_SIZE),
         preferences.getFloat(prefix + "pencil_shade_opacity", fallback.pencilShadeOpacity).coerceIn(.2f, 1f),
         preferences.getFloat(prefix + "pencil_grain", fallback.pencilGrain).coerceIn(0f, 1f),
+        runCatching {
+            PencilTiltMode.valueOf(
+                preferences.getString(prefix + "pencil_tilt_mode", fallback.pencilTiltMode.name)
+                    ?: fallback.pencilTiltMode.name,
+            )
+        }.getOrDefault(fallback.pencilTiltMode),
+        preferences.getFloat(prefix + "pencil_shade_start", fallback.pencilShadeStartRadians)
+            .coerceIn(BrushPreset.MIN_PENCIL_SHADE_START_RADIANS, BrushPreset.MAX_PENCIL_SHADE_START_RADIANS),
+        preferences.getFloat(prefix + "pencil_shade_transition", fallback.pencilShadeTransitionRadians)
+            .coerceIn(BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS, BrushPreset.MAX_PENCIL_SHADE_TRANSITION_RADIANS),
     )
 }

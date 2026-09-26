@@ -4,6 +4,7 @@ package dev.tipstroke.core.model
 
 enum class BrushEngine { PENCIL, INK, AIRBRUSH }
 enum class BlendBehavior { PAINT, ERASE }
+enum class PencilTiltMode { SHADING_SWITCH, GRADUAL }
 
 data class RgbaColor(val red: Float, val green: Float, val blue: Float, val alpha: Float = 1f) {
     init { require(listOf(red, green, blue, alpha).all { it in 0f..1f }) }
@@ -35,6 +36,9 @@ data class BrushPreset(
     val pencilShadeSize: Float = 1f,
     val pencilShadeOpacity: Float = .62f,
     val pencilGrain: Float = 1f,
+    val pencilTiltMode: PencilTiltMode = PencilTiltMode.SHADING_SWITCH,
+    val pencilShadeStartRadians: Float = DEFAULT_PENCIL_SHADE_START_RADIANS,
+    val pencilShadeTransitionRadians: Float = DEFAULT_PENCIL_SHADE_TRANSITION_RADIANS,
 ) {
     init {
         require(speedTaper in 0f..1f)
@@ -43,6 +47,8 @@ data class BrushPreset(
         require(pencilShadeSize in 0f..MAX_PENCIL_SHADE_SIZE)
         require(pencilShadeOpacity in .2f..1f)
         require(pencilGrain in 0f..1f)
+        require(pencilShadeStartRadians in MIN_PENCIL_SHADE_START_RADIANS..MAX_PENCIL_SHADE_START_RADIANS)
+        require(pencilShadeTransitionRadians in MIN_PENCIL_SHADE_TRANSITION_RADIANS..MAX_PENCIL_SHADE_TRANSITION_RADIANS)
     }
 
     companion object {
@@ -50,6 +56,13 @@ data class BrushPreset(
         const val MIN_PENCIL_FULL_TILT_RADIANS = .08f
         const val MAX_PENCIL_FULL_TILT_RADIANS = 1.2f
         const val DEFAULT_PENCIL_FULL_TILT_RADIANS = .55f
+        const val PENCIL_TILT_DEAD_ZONE_RADIANS = .02f
+        const val MIN_PENCIL_SHADE_START_RADIANS = .08f
+        const val MAX_PENCIL_SHADE_START_RADIANS = 1.1f
+        const val MIN_PENCIL_SHADE_TRANSITION_RADIANS = .035f
+        const val MAX_PENCIL_SHADE_TRANSITION_RADIANS = 1.12f
+        const val DEFAULT_PENCIL_SHADE_START_RADIANS = .7853982f
+        const val DEFAULT_PENCIL_SHADE_TRANSITION_RADIANS = .10471976f
         const val MAX_PENCIL_SHADE_SIZE = 4f
         const val DEFAULT_PENCIL_TILT_SENSITIVITY =
             (MAX_PENCIL_FULL_TILT_RADIANS - DEFAULT_PENCIL_FULL_TILT_RADIANS) /
@@ -77,3 +90,24 @@ fun pencilTiltSensitivityForFullAngle(tiltRadians: Float): Float =
     ((BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS - tiltRadians) /
         (BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS - BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS))
         .coerceIn(0f, 1f)
+
+fun BrushPreset.pencilShadeEndRadians(): Float =
+    (pencilShadeStartRadians + pencilShadeTransitionRadians)
+        .coerceAtMost(BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS)
+
+fun BrushPreset.pencilTiltResponse(tiltRadians: Float): Float = when (pencilTiltMode) {
+    PencilTiltMode.GRADUAL -> {
+        val normalized = (
+            (tiltRadians - BrushPreset.PENCIL_TILT_DEAD_ZONE_RADIANS) /
+                (pencilFullTiltRadians() - BrushPreset.PENCIL_TILT_DEAD_ZONE_RADIANS)
+            ).coerceIn(0f, 1f)
+        1f - (1f - normalized) * (1f - normalized) * (1f - normalized)
+    }
+    PencilTiltMode.SHADING_SWITCH -> {
+        val effectiveTransition = pencilShadeEndRadians() - pencilShadeStartRadians
+        val normalized = (
+            (tiltRadians - pencilShadeStartRadians) / effectiveTransition
+            ).coerceIn(0f, 1f)
+        normalized * normalized * (3f - 2f * normalized)
+    }
+}

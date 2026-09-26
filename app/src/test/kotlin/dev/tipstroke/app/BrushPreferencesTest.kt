@@ -1,6 +1,7 @@
 package dev.tipstroke.app
 
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.PencilTiltMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -19,7 +20,22 @@ class BrushPreferencesTest {
         val preferences = BrushPreferences(context)
         preferences.save(
             BrushPreset.Pencil,
-            BrushTuning(41f, .7f, .8f, false, true, true, .8f, .74f, 1.4f, .46f, .35f),
+            BrushTuning(
+                sizePx = 41f,
+                opacity = .7f,
+                hardness = .8f,
+                pressureSize = false,
+                pressureOpacity = true,
+                speedTaper = true,
+                pencilPointSize = .8f,
+                pencilTiltSensitivity = .74f,
+                pencilShadeSize = 1.4f,
+                pencilShadeOpacity = .46f,
+                pencilGrain = .35f,
+                pencilTiltMode = PencilTiltMode.GRADUAL,
+                pencilShadeStartRadians = .7f,
+                pencilShadeTransitionRadians = .12f,
+            ),
         )
         preferences.saveEraser(BrushTuning(63f, .8f, .95f, true, false, false))
 
@@ -35,6 +51,9 @@ class BrushPreferencesTest {
         assertEquals(1.4f, loaded.pencilShadeSize, .001f)
         assertEquals(.46f, loaded.pencilShadeOpacity, .001f)
         assertEquals(.35f, loaded.pencilGrain, .001f)
+        assertEquals(PencilTiltMode.GRADUAL, loaded.pencilTiltMode)
+        assertEquals(.7f, loaded.pencilShadeStartRadians, .001f)
+        assertEquals(.12f, loaded.pencilShadeTransitionRadians, .001f)
         val eraser = preferences.loadEraser()
         assertEquals(63f, eraser.sizePx, .001f)
         assertEquals(.8f, eraser.opacity, .001f)

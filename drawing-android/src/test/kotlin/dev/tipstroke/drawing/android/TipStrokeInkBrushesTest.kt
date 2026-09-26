@@ -11,6 +11,7 @@ import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.core.model.PressureCurve
+import dev.tipstroke.core.model.PencilTiltMode
 import dev.tipstroke.core.model.RgbaColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -34,7 +35,10 @@ class TipStrokeInkBrushesTest {
 
     @Test fun pencilPreviewRespondsToTiltAndPressureBeforeCommit() {
         val style = StrokeStyle(
-            BrushPreset.Pencil.copy(pressureToSize = PressureCurve(1f, 1f, 1f)),
+            BrushPreset.Pencil.copy(
+                pressureToSize = PressureCurve(1f, 1f, 1f),
+                pencilTiltMode = PencilTiltMode.GRADUAL,
+            ),
             32f,
             1f,
             RgbaColor(0f, 0f, 0f),
@@ -81,21 +85,23 @@ class TipStrokeInkBrushesTest {
             ),
             sample,
         )
-        val insensitive = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f))
-        val sensitive = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f))
+        val gradualPencil = BrushPreset.Pencil.copy(pencilTiltMode = PencilTiltMode.GRADUAL)
+        val insensitive = dynamics(gradualPencil.copy(pencilTiltSensitivity = 0f))
+        val sensitive = dynamics(gradualPencil.copy(pencilTiltSensitivity = 1f))
         val broad = dynamics(BrushPreset.Pencil.copy(
+            pencilTiltMode = PencilTiltMode.GRADUAL,
             pencilTiltSensitivity = 1f,
             pencilShadeSize = BrushPreset.MAX_PENCIL_SHADE_SIZE,
         ))
-        val light = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeOpacity = .2f))
-        val largePoint = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f, pencilPointSize = 2f))
-        val noTiltSizeDifference = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f))
+        val light = dynamics(gradualPencil.copy(pencilTiltSensitivity = 1f, pencilShadeOpacity = .2f))
+        val largePoint = dynamics(gradualPencil.copy(pencilTiltSensitivity = 0f, pencilPointSize = 2f))
+        val noTiltSizeDifference = dynamics(gradualPencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f))
         val uprightSample = sample.copy(tiltRadians = 0f)
         val uprightNoTiltSizeDifference = StrokeCanvasPainter.pencilTipDynamics(
             CompletedStroke(
                 listOf(uprightSample),
                 StrokeStyle(
-                    BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f),
+                    gradualPencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f),
                     32f,
                     1f,
                     RgbaColor(0f, 0f, 0f),
@@ -113,7 +119,7 @@ class TipStrokeInkBrushesTest {
         val lightPressureTilted = sample.copy(pressure = .2f)
         val lightPressureUpright = lightPressureTilted.copy(tiltRadians = 0f)
         val zeroBoostStyle = StrokeStyle(
-            BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f),
+            gradualPencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f),
             32f,
             1f,
             RgbaColor(0f, 0f, 0f),

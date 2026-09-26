@@ -6,8 +6,10 @@ import androidx.ink.brush.*
 import androidx.ink.brush.behavior.*
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.PencilTiltMode
 import dev.tipstroke.core.model.PressureCurve
 import dev.tipstroke.core.model.pencilFullTiltRadians
+import dev.tipstroke.core.model.pencilShadeEndRadians
 import java.util.LinkedHashMap
 import kotlin.math.PI
 import kotlin.math.roundToInt
@@ -46,11 +48,18 @@ internal class TipStrokeInkBrushes {
     private fun pencilFamily(preset: BrushPreset): BrushFamily {
         val rawPressure = SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f)
         val pressure = eased(rawPressure)
-        val tilt = eased(SourceNode(
-            SourceNode.Source.TILT_IN_RADIANS,
-            PENCIL_TILT_DEAD_ZONE_RADIANS,
-            preset.pencilFullTiltRadians(),
-        ))
+        val tilt = when (preset.pencilTiltMode) {
+            PencilTiltMode.GRADUAL -> eased(SourceNode(
+                SourceNode.Source.TILT_IN_RADIANS,
+                PENCIL_TILT_DEAD_ZONE_RADIANS,
+                preset.pencilFullTiltRadians(),
+            ))
+            PencilTiltMode.SHADING_SWITCH -> SourceNode(
+                SourceNode.Source.TILT_IN_RADIANS,
+                preset.pencilShadeStartRadians,
+                preset.pencilShadeEndRadians(),
+            )
+        }
         val orientation = SourceNode(SourceNode.Source.ORIENTATION_ABOUT_ZERO_IN_RADIANS, (-PI).toFloat(), PI.toFloat())
         val speed = eased(SourceNode(SourceNode.Source.SPEED_IN_MULTIPLES_OF_BRUSH_SIZE_PER_SECOND, 0f, 18f))
         val edgeWidthNoise = NoiseNode(0x51A7, ProgressDomain.DISTANCE_IN_MULTIPLES_OF_BRUSH_SIZE, .34f)
@@ -198,7 +207,7 @@ internal class TipStrokeInkBrushes {
     companion object {
         const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v4"
         internal const val PENCIL_BASE_TIP_SCALE = .18f
-        internal const val PENCIL_TILT_DEAD_ZONE_RADIANS = .02f
+        internal const val PENCIL_TILT_DEAD_ZONE_RADIANS = BrushPreset.PENCIL_TILT_DEAD_ZONE_RADIANS
         internal const val PENCIL_MAX_TILT_WIDTH_MULTIPLIER = 10f
         internal const val PENCIL_MAX_TILT_HEIGHT_MULTIPLIER = 6.5f
         internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .62f
@@ -253,12 +262,3 @@ internal fun pencilShadeSizeBehaviorEnabled(preset: BrushPreset): Boolean = pres
 
 /** Ink rejects target modifier ranges whose endpoints are equal, including the valid 100% UI setting. */
 internal fun pencilShadeOpacityBehaviorEnabled(preset: BrushPreset): Boolean = preset.pencilShadeOpacity != 1f
-
-internal fun pencilTiltResponse(tiltRadians: Float, brush: BrushPreset): Float {
-    val normalized = (
-        (tiltRadians - TipStrokeInkBrushes.PENCIL_TILT_DEAD_ZONE_RADIANS) /
-            (brush.pencilFullTiltRadians() -
-                TipStrokeInkBrushes.PENCIL_TILT_DEAD_ZONE_RADIANS)
-        ).coerceIn(0f, 1f)
-    return 1f - (1f - normalized) * (1f - normalized) * (1f - normalized)
-}
