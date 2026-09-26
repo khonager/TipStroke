@@ -26,7 +26,7 @@ class DrawingSurfaceHoverPreviewTest {
             settings.brush = BrushPreset.Pencil.copy(
                 pencilPointSize = .5f,
                 pencilTiltSensitivity = 0f,
-                pencilShadeSize = 1.6f,
+                pencilShadeSize = BrushPreset.MAX_PENCIL_SHADE_SIZE,
                 pencilShadeOpacity = 1f,
                 pencilGrain = 1f,
             )

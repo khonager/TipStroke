@@ -74,7 +74,13 @@ internal fun BrushStudioDialog(
                     Text("Pencil point and shading", style = MaterialTheme.typography.titleSmall)
                     StudioSlider("Point size", "${(pencilPointSize * 100).roundToInt()}%", pencilPointSize, .5f..2f, onPencilPointSize)
                     StudioSlider("Tilt sensitivity", "${(pencilTiltSensitivity * 100).roundToInt()}%", pencilTiltSensitivity, 0f..1f, onPencilTiltSensitivity)
-                    StudioSlider("Tilted size boost", "${(pencilShadeSize * 100).roundToInt()}%", pencilShadeSize, 0f..1.6f, onPencilShadeSize)
+                    StudioSlider(
+                        "Tilted size boost",
+                        "${(pencilShadeSize * 100).roundToInt()}%",
+                        pencilShadeSize,
+                        0f..BrushPreset.MAX_PENCIL_SHADE_SIZE,
+                        onPencilShadeSize,
+                    )
                     StudioSlider("Side opacity", "${(pencilShadeOpacity * 100).roundToInt()}%", pencilShadeOpacity, .2f..1f, onPencilShadeOpacity)
                     StudioSlider("Graphite grain", "${(pencilGrain * 100).roundToInt()}%", pencilGrain, 0f..1f, onPencilGrain)
                     TiltCalibrationPad(

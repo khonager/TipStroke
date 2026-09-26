@@ -83,7 +83,10 @@ class TipStrokeInkBrushesTest {
         )
         val insensitive = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f))
         val sensitive = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f))
-        val broad = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 1.6f))
+        val broad = dynamics(BrushPreset.Pencil.copy(
+            pencilTiltSensitivity = 1f,
+            pencilShadeSize = BrushPreset.MAX_PENCIL_SHADE_SIZE,
+        ))
         val light = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeOpacity = .2f))
         val largePoint = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 0f, pencilPointSize = 2f))
         val noTiltSizeDifference = dynamics(BrushPreset.Pencil.copy(pencilTiltSensitivity = 1f, pencilShadeSize = 0f))
@@ -102,7 +105,7 @@ class TipStrokeInkBrushesTest {
             uprightSample,
         )
         assertTrue("insensitive=$insensitive sensitive=$sensitive", sensitive.height > insensitive.height * 2f)
-        assertTrue("sensitive=$sensitive broad=$broad", broad.height > sensitive.height * 1.4f)
+        assertTrue("sensitive=$sensitive broad=$broad", broad.height > sensitive.height * 3.4f)
         assertTrue("sensitive=$sensitive light=$light", light.alpha < sensitive.alpha * .5f)
         assertTrue("insensitive=$insensitive largePoint=$largePoint", largePoint.height > insensitive.height * 1.8f)
         assertEquals(uprightNoTiltSizeDifference.width, noTiltSizeDifference.width, .001f)
@@ -135,7 +138,7 @@ class TipStrokeInkBrushesTest {
         val boundaryPreset = BrushPreset.Pencil.copy(
             pencilPointSize = .5f,
             pencilTiltSensitivity = 0f,
-            pencilShadeSize = 1.6f,
+            pencilShadeSize = BrushPreset.MAX_PENCIL_SHADE_SIZE,
             pencilShadeOpacity = 1f,
             pencilGrain = 1f,
         )

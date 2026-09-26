@@ -40,7 +40,7 @@ data class BrushPreset(
         require(speedTaper in 0f..1f)
         require(pencilPointSize in .5f..2f)
         require(pencilTiltSensitivity in 0f..1f)
-        require(pencilShadeSize in 0f..1.6f)
+        require(pencilShadeSize in 0f..MAX_PENCIL_SHADE_SIZE)
         require(pencilShadeOpacity in .2f..1f)
         require(pencilGrain in 0f..1f)
     }
@@ -50,6 +50,7 @@ data class BrushPreset(
         const val MIN_PENCIL_FULL_TILT_RADIANS = .08f
         const val MAX_PENCIL_FULL_TILT_RADIANS = 1.2f
         const val DEFAULT_PENCIL_FULL_TILT_RADIANS = .55f
+        const val MAX_PENCIL_SHADE_SIZE = 4f
         const val DEFAULT_PENCIL_TILT_SENSITIVITY =
             (MAX_PENCIL_FULL_TILT_RADIANS - DEFAULT_PENCIL_FULL_TILT_RADIANS) /
                 (MAX_PENCIL_FULL_TILT_RADIANS - MIN_PENCIL_FULL_TILT_RADIANS)

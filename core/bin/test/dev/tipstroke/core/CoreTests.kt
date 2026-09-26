@@ -56,6 +56,22 @@ class CoreTests {
         assertEquals(135f, pencil.bounds.right)
         assertEquals(73f, airbrush.bounds.left)
         assertEquals(127f, airbrush.bounds.right)
+
+        val maximumPencil = CompletedStroke(
+            listOf(sample),
+            StrokeStyle(
+                BrushPreset.Pencil.copy(
+                    pencilPointSize = 2f,
+                    pencilShadeSize = BrushPreset.MAX_PENCIL_SHADE_SIZE,
+                ),
+                20f,
+                1f,
+                RgbaColor(0f, 0f, 0f),
+                BlendBehavior.PAINT,
+            ),
+        )
+        assertTrue(maximumPencil.bounds.left <= -48f)
+        assertTrue(maximumPencil.bounds.right >= 248f)
     }
     @Test fun lassoSelectionSupportsContainmentAndTranslation() {
         val lasso = SelectionRegion(listOf(Point(10f, 10f), Point(90f, 10f), Point(50f, 90f)))

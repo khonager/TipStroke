@@ -70,7 +70,8 @@ internal class BrushPreferences(context: Context) {
         preferences.getBoolean(prefix + "speed_taper", fallback.speedTaper),
         preferences.getFloat(prefix + "pencil_point_size", fallback.pencilPointSize).coerceIn(.5f, 2f),
         preferences.getFloat(prefix + "pencil_tilt_sensitivity", fallback.pencilTiltSensitivity).coerceIn(0f, 1f),
-        preferences.getFloat(prefix + "pencil_shade_size", fallback.pencilShadeSize).coerceIn(0f, 1.6f),
+        preferences.getFloat(prefix + "pencil_shade_size", fallback.pencilShadeSize)
+            .coerceIn(0f, BrushPreset.MAX_PENCIL_SHADE_SIZE),
         preferences.getFloat(prefix + "pencil_shade_opacity", fallback.pencilShadeOpacity).coerceIn(.2f, 1f),
         preferences.getFloat(prefix + "pencil_grain", fallback.pencilGrain).coerceIn(0f, 1f),
     )
