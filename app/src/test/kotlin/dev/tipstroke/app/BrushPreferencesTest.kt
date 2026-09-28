@@ -35,6 +35,11 @@ class BrushPreferencesTest {
                 pencilTiltMode = PencilTiltMode.GRADUAL,
                 pencilShadeStartRadians = .7f,
                 pencilShadeTransitionRadians = .12f,
+                pressureSizeStart = .23f,
+                pressureSizeExponent = 1.65f,
+                pressureOpacityStart = .31f,
+                pressureOpacityExponent = .55f,
+                speedTaperAmount = .72f,
             ),
         )
         preferences.saveEraser(BrushTuning(63f, .8f, .95f, true, false, false))
@@ -54,11 +59,28 @@ class BrushPreferencesTest {
         assertEquals(PencilTiltMode.GRADUAL, loaded.pencilTiltMode)
         assertEquals(.7f, loaded.pencilShadeStartRadians, .001f)
         assertEquals(.12f, loaded.pencilShadeTransitionRadians, .001f)
+        assertEquals(.23f, loaded.pressureSizeStart, .001f)
+        assertEquals(1.65f, loaded.pressureSizeExponent, .001f)
+        assertEquals(.31f, loaded.pressureOpacityStart, .001f)
+        assertEquals(.55f, loaded.pressureOpacityExponent, .001f)
+        assertEquals(.72f, loaded.speedTaperAmount, .001f)
         val eraser = preferences.loadEraser()
         assertEquals(63f, eraser.sizePx, .001f)
         assertEquals(.8f, eraser.opacity, .001f)
         assertEquals(.95f, eraser.hardness, .001f)
         assertFalse(eraser.pressureOpacity)
         context.getSharedPreferences("brush-settings", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    @Test fun legacySpeedToggleGetsAUsefulTaperStrength() {
+        val context = RuntimeEnvironment.getApplication()
+        val stored = context.getSharedPreferences("brush-settings", android.content.Context.MODE_PRIVATE)
+        stored.edit().clear().putBoolean("brush_airbrush-v1_speed_taper", true).commit()
+
+        val loaded = BrushPreferences(context).load(BrushPreset.Airbrush)
+
+        assertTrue(loaded.speedTaper)
+        assertEquals(.55f, loaded.speedTaperAmount, .001f)
+        stored.edit().clear().commit()
     }
 }

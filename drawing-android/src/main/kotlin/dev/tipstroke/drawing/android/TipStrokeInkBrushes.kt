@@ -125,7 +125,8 @@ internal class TipStrokeInkBrushes {
 
     private fun inkFamily(preset: BrushPreset): BrushFamily {
         val rawPressure = SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f)
-        val pressure = eased(rawPressure)
+        val sizePressure = pressureResponse(rawPressure, preset.pressureToSize.exponent)
+        val opacityPressure = pressureResponse(rawPressure, preset.pressureToOpacity.exponent)
         val start = ResponseNode(
             EasingFunction.Predefined.EASE_OUT,
             SourceNode(SourceNode.Source.DISTANCE_TRAVELED_IN_MULTIPLES_OF_BRUSH_SIZE, 0f, 1.15f),
@@ -137,10 +138,10 @@ internal class TipStrokeInkBrushes {
         val speed = eased(SourceNode(SourceNode.Source.SPEED_IN_MULTIPLES_OF_BRUSH_SIZE_PER_SECOND, 0f, 16f))
         val behaviors = buildList {
             if (pressureBehaviorEnabled(preset.pressureToSize)) {
-                add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, pressure))
+                add(mapped(TargetNode.Target.SIZE_MULTIPLIER, preset.pressureToSize.start, preset.pressureToSize.end, sizePressure))
             }
             if (pressureBehaviorEnabled(preset.pressureToOpacity)) {
-                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, rawPressure))
+                add(mapped(TargetNode.Target.OPACITY_MULTIPLIER, preset.pressureToOpacity.start, preset.pressureToOpacity.end, opacityPressure))
             }
             // Baskerville-style entry and exit points stay pointed even when pressure is steady.
             add(mapped(TargetNode.Target.SIZE_MULTIPLIER, .07f, 1f, start))
@@ -164,7 +165,10 @@ internal class TipStrokeInkBrushes {
     }
 
     private fun airbrushFamily(preset: BrushPreset): BrushFamily {
-        val pressure = eased(SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f))
+        val pressure = pressureResponse(
+            SourceNode(SourceNode.Source.NORMALIZED_PRESSURE, 0f, 1f),
+            preset.pressureToSize.exponent,
+        )
         val behaviors = if (pressureBehaviorEnabled(preset.pressureToSize)) {
             listOf(BrushBehavior(mapped(
                 TargetNode.Target.SIZE_MULTIPLIER,
@@ -203,6 +207,15 @@ internal class TipStrokeInkBrushes {
         TargetNode(target, start, end, input)
 
     private fun eased(source: ValueNode): ValueNode = ResponseNode(EasingFunction.Predefined.EASE_OUT, source)
+
+    private fun pressureResponse(source: ValueNode, exponent: Float): ValueNode = ResponseNode(
+        when {
+            exponent < .78f -> EasingFunction.Predefined.EASE_OUT
+            exponent < 1.3f -> EasingFunction.Predefined.LINEAR
+            else -> EasingFunction.Predefined.EASE_IN
+        },
+        source,
+    )
 
     companion object {
         const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v4"

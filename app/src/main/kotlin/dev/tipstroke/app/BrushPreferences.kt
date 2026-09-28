@@ -19,6 +19,11 @@ internal data class BrushTuning(
     val pencilTiltMode: PencilTiltMode = PencilTiltMode.SHADING_SWITCH,
     val pencilShadeStartRadians: Float = BrushPreset.DEFAULT_PENCIL_SHADE_START_RADIANS,
     val pencilShadeTransitionRadians: Float = BrushPreset.DEFAULT_PENCIL_SHADE_TRANSITION_RADIANS,
+    val pressureSizeStart: Float = .18f,
+    val pressureSizeExponent: Float = .72f,
+    val pressureOpacityStart: Float = .18f,
+    val pressureOpacityExponent: Float = .72f,
+    val speedTaperAmount: Float = .55f,
 )
 
 internal class BrushPreferences(context: Context) {
@@ -36,6 +41,11 @@ internal class BrushPreferences(context: Context) {
             brush.pencilTiltMode,
             brush.pencilShadeStartRadians,
             brush.pencilShadeTransitionRadians,
+            brush.pressureToSize.start,
+            brush.pressureToSize.exponent,
+            brush.pressureToOpacity.start,
+            brush.pressureToOpacity.exponent,
+            .55f,
         ))
     }
 
@@ -56,6 +66,11 @@ internal class BrushPreferences(context: Context) {
             .putString(prefix + "pencil_tilt_mode", tuning.pencilTiltMode.name)
             .putFloat(prefix + "pencil_shade_start", tuning.pencilShadeStartRadians)
             .putFloat(prefix + "pencil_shade_transition", tuning.pencilShadeTransitionRadians)
+            .putFloat(prefix + "pressure_size_start", tuning.pressureSizeStart)
+            .putFloat(prefix + "pressure_size_exponent", tuning.pressureSizeExponent)
+            .putFloat(prefix + "pressure_opacity_start", tuning.pressureOpacityStart)
+            .putFloat(prefix + "pressure_opacity_exponent", tuning.pressureOpacityExponent)
+            .putFloat(prefix + "speed_taper_amount", tuning.speedTaperAmount)
             .apply()
     }
 
@@ -68,6 +83,11 @@ internal class BrushPreferences(context: Context) {
             .putBoolean("eraser_pressure_size", tuning.pressureSize)
             .putBoolean("eraser_pressure_opacity", tuning.pressureOpacity)
             .putBoolean("eraser_speed_taper", tuning.speedTaper)
+            .putFloat("eraser_pressure_size_start", tuning.pressureSizeStart)
+            .putFloat("eraser_pressure_size_exponent", tuning.pressureSizeExponent)
+            .putFloat("eraser_pressure_opacity_start", tuning.pressureOpacityStart)
+            .putFloat("eraser_pressure_opacity_exponent", tuning.pressureOpacityExponent)
+            .putFloat("eraser_speed_taper_amount", tuning.speedTaperAmount)
             .apply()
     }
 
@@ -94,5 +114,13 @@ internal class BrushPreferences(context: Context) {
             .coerceIn(BrushPreset.MIN_PENCIL_SHADE_START_RADIANS, BrushPreset.MAX_PENCIL_SHADE_START_RADIANS),
         preferences.getFloat(prefix + "pencil_shade_transition", fallback.pencilShadeTransitionRadians)
             .coerceIn(BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS, BrushPreset.MAX_PENCIL_SHADE_TRANSITION_RADIANS),
+        preferences.getFloat(prefix + "pressure_size_start", fallback.pressureSizeStart).coerceIn(.01f, 1f),
+        preferences.getFloat(prefix + "pressure_size_exponent", fallback.pressureSizeExponent).coerceIn(.25f, 2f),
+        preferences.getFloat(prefix + "pressure_opacity_start", fallback.pressureOpacityStart).coerceIn(.01f, 1f),
+        preferences.getFloat(prefix + "pressure_opacity_exponent", fallback.pressureOpacityExponent).coerceIn(.25f, 2f),
+        preferences.getFloat(
+            prefix + "speed_taper_amount",
+            if (preferences.contains(prefix + "speed_taper")) .55f else fallback.speedTaperAmount,
+        ).coerceIn(0f, 1f),
     )
 }

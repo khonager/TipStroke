@@ -34,6 +34,14 @@ class CoreTests {
         val curve = PressureCurve(.2f, 1f, .7f)
         assertEquals(.2f, curve.map(-1f)); assertEquals(1f, curve.map(2f)); assertTrue(curve.map(.7f) > curve.map(.3f))
     }
+    @Test fun pressureResponseProfilesSeparateSoftBalancedAndFirmTips() {
+        val soft = PressureCurve(.1f, 1f, .55f).map(.5f)
+        val balanced = PressureCurve(.1f, 1f, 1f).map(.5f)
+        val firm = PressureCurve(.1f, 1f, 1.65f).map(.5f)
+
+        assertTrue(soft > balanced)
+        assertTrue(balanced > firm)
+    }
     @Test fun pencilTiltCalibrationMapsCapturedAngleToSensitivity() {
         val capturedAngle = .27f
         val sensitivity = pencilTiltSensitivityForFullAngle(capturedAngle)

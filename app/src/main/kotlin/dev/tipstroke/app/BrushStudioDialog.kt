@@ -45,6 +45,11 @@ internal fun BrushStudioDialog(
     pressureSize: Boolean,
     pressureOpacity: Boolean,
     speedTaper: Boolean,
+    pressureSizeStart: Float,
+    pressureSizeExponent: Float,
+    pressureOpacityStart: Float,
+    pressureOpacityExponent: Float,
+    speedTaperAmount: Float,
     supportsPencilTilt: Boolean,
     pencilPointSize: Float,
     pencilTiltSensitivity: Float,
@@ -58,6 +63,11 @@ internal fun BrushStudioDialog(
     onPressureSize: (Boolean) -> Unit,
     onPressureOpacity: (Boolean) -> Unit,
     onSpeedTaper: (Boolean) -> Unit,
+    onPressureSizeStart: (Float) -> Unit,
+    onPressureSizeExponent: (Float) -> Unit,
+    onPressureOpacityStart: (Float) -> Unit,
+    onPressureOpacityExponent: (Float) -> Unit,
+    onSpeedTaperAmount: (Float) -> Unit,
     onPencilPointSize: (Float) -> Unit,
     onPencilTiltSensitivity: (Float) -> Unit,
     onPencilShadeSize: (Float) -> Unit,
@@ -86,6 +96,11 @@ internal fun BrushStudioDialog(
                     pressureSize = pressureSize,
                     pressureOpacity = pressureOpacity,
                     speedTaper = speedTaper,
+                    pressureSizeStart = pressureSizeStart,
+                    pressureSizeExponent = pressureSizeExponent,
+                    pressureOpacityStart = pressureOpacityStart,
+                    pressureOpacityExponent = pressureOpacityExponent,
+                    speedTaperAmount = speedTaperAmount,
                     pencilPointSize = pencilPointSize,
                     pencilTiltSensitivity = pencilTiltSensitivity,
                     pencilShadeSize = pencilShadeSize,
@@ -102,7 +117,7 @@ internal fun BrushStudioDialog(
                 ) {
                     if (supportsHardness) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Edge hardness")
+                            Text(if (!erasing && brush.engine == BrushEngine.AIRBRUSH) "Spray edge hardness" else "Edge hardness")
                             Text("${(hardness * 100).roundToInt()}%")
                         }
                         Slider(hardness, onHardness, valueRange = 0f..1f)
@@ -110,6 +125,55 @@ internal fun BrushStudioDialog(
                     StudioSwitch("Pressure changes size", pressureSize, onPressureSize)
                     StudioSwitch("Pressure changes opacity", pressureOpacity, onPressureOpacity)
                     StudioSwitch("Faster strokes taper", speedTaper, onSpeedTaper)
+                    if (!erasing && brush.engine != BrushEngine.PENCIL) {
+                        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                        val airbrush = brush.engine == BrushEngine.AIRBRUSH
+                        Text(
+                            if (airbrush) "Spray dynamics" else "Ink dynamics",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        if (pressureSize) {
+                            StudioSlider(
+                                if (airbrush) "Minimum spray size" else "Light-pressure size",
+                                "${(pressureSizeStart * 100).roundToInt()}%",
+                                pressureSizeStart,
+                                .01f..1f,
+                                onPressureSizeStart,
+                            )
+                            PressureResponseChips("Size response", pressureSizeExponent, onPressureSizeExponent)
+                        }
+                        if (pressureOpacity) {
+                            StudioSlider(
+                                if (airbrush) "Minimum flow" else "Light-pressure opacity",
+                                "${(pressureOpacityStart * 100).roundToInt()}%",
+                                pressureOpacityStart,
+                                .01f..1f,
+                                onPressureOpacityStart,
+                            )
+                            PressureResponseChips(
+                                if (airbrush) "Flow response" else "Opacity response",
+                                pressureOpacityExponent,
+                                onPressureOpacityExponent,
+                            )
+                        }
+                        if (speedTaper) {
+                            StudioSlider(
+                                "Speed taper strength",
+                                "${(speedTaperAmount * 100).roundToInt()}%",
+                                speedTaperAmount,
+                                0f..1f,
+                                onSpeedTaperAmount,
+                            )
+                        }
+                        Text(
+                            if (airbrush) {
+                                "Tune how quickly spray diameter and flow build as pressure increases."
+                            } else {
+                                "Tune light-pressure line weight, transparency, and fast-stroke taper."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                     if (supportsPencilTilt) {
                         HorizontalDivider(Modifier.padding(vertical = 4.dp))
                         Text("Pencil point and shading", style = MaterialTheme.typography.titleSmall)
@@ -236,6 +300,32 @@ private fun StudioSlider(
 }
 
 @Composable
+private fun PressureResponseChips(
+    label: String,
+    exponent: Float,
+    onExponent: (Float) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("Soft" to .55f, "Balanced" to 1f, "Firm" to 1.65f).forEachIndexed { index, (name, value) ->
+                val selected = when (index) {
+                    0 -> exponent < .78f
+                    1 -> exponent in .78f..<1.3f
+                    else -> exponent >= 1.3f
+                }
+                FilterChip(
+                    selected = selected,
+                    onClick = { onExponent(value) },
+                    label = { Text(name) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun BrushTipPreview(
     toolName: String,
     brush: BrushPreset,
@@ -245,6 +335,11 @@ private fun BrushTipPreview(
     pressureSize: Boolean,
     pressureOpacity: Boolean,
     speedTaper: Boolean,
+    pressureSizeStart: Float,
+    pressureSizeExponent: Float,
+    pressureOpacityStart: Float,
+    pressureOpacityExponent: Float,
+    speedTaperAmount: Float,
     pencilPointSize: Float,
     pencilTiltSensitivity: Float,
     pencilShadeSize: Float,
@@ -256,9 +351,9 @@ private fun BrushTipPreview(
 ) {
     val previewBrush = brush.copy(
         hardness = hardness,
-        pressureToSize = if (pressureSize) brush.pressureToSize else PressureCurve(1f, 1f, 1f),
-        pressureToOpacity = if (pressureOpacity) brush.pressureToOpacity else PressureCurve(1f, 1f, 1f),
-        speedTaper = if (speedTaper) .55f else 0f,
+        pressureToSize = if (pressureSize) PressureCurve(pressureSizeStart, 1f, pressureSizeExponent) else PressureCurve(1f, 1f, 1f),
+        pressureToOpacity = if (pressureOpacity) PressureCurve(pressureOpacityStart, 1f, pressureOpacityExponent) else PressureCurve(1f, 1f, 1f),
+        speedTaper = if (speedTaper) speedTaperAmount else 0f,
         pencilPointSize = pencilPointSize,
         pencilTiltSensitivity = pencilTiltSensitivity,
         pencilShadeSize = pencilShadeSize,

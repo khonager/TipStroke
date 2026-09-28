@@ -92,6 +92,11 @@ fun CanvasScreen(
     var pressureSize by remember { mutableStateOf(initialBrushTuning.pressureSize) }
     var pressureOpacity by remember { mutableStateOf(initialBrushTuning.pressureOpacity) }
     var speedTaper by remember { mutableStateOf(initialBrushTuning.speedTaper) }
+    var pressureSizeStart by remember { mutableFloatStateOf(initialBrushTuning.pressureSizeStart) }
+    var pressureSizeExponent by remember { mutableFloatStateOf(initialBrushTuning.pressureSizeExponent) }
+    var pressureOpacityStart by remember { mutableFloatStateOf(initialBrushTuning.pressureOpacityStart) }
+    var pressureOpacityExponent by remember { mutableFloatStateOf(initialBrushTuning.pressureOpacityExponent) }
+    var speedTaperAmount by remember { mutableFloatStateOf(initialBrushTuning.speedTaperAmount) }
     var pencilPointSize by remember { mutableFloatStateOf(initialBrushTuning.pencilPointSize) }
     var pencilTiltSensitivity by remember { mutableFloatStateOf(initialBrushTuning.pencilTiltSensitivity) }
     var pencilShadeSize by remember { mutableFloatStateOf(initialBrushTuning.pencilShadeSize) }
@@ -146,9 +151,9 @@ fun CanvasScreen(
     fun sync() { surface?.settings?.apply {
         this.brush = brush.copy(
             hardness = brushHardness,
-            pressureToSize = if (pressureSize) brush.pressureToSize else PressureCurve(1f, 1f, 1f),
-            pressureToOpacity = if (pressureOpacity) brush.pressureToOpacity else PressureCurve(1f, 1f, 1f),
-            speedTaper = if (speedTaper) .55f else 0f,
+            pressureToSize = if (pressureSize) PressureCurve(pressureSizeStart, 1f, pressureSizeExponent) else PressureCurve(1f, 1f, 1f),
+            pressureToOpacity = if (pressureOpacity) PressureCurve(pressureOpacityStart, 1f, pressureOpacityExponent) else PressureCurve(1f, 1f, 1f),
+            speedTaper = if (speedTaper) speedTaperAmount else 0f,
             pencilPointSize = pencilPointSize,
             pencilTiltSensitivity = pencilTiltSensitivity,
             pencilShadeSize = pencilShadeSize,
@@ -164,6 +169,9 @@ fun CanvasScreen(
     fun applyTuning(tuning: BrushTuning) {
         size = tuning.sizePx; opacity = tuning.opacity; brushHardness = tuning.hardness
         pressureSize = tuning.pressureSize; pressureOpacity = tuning.pressureOpacity; speedTaper = tuning.speedTaper
+        pressureSizeStart = tuning.pressureSizeStart; pressureSizeExponent = tuning.pressureSizeExponent
+        pressureOpacityStart = tuning.pressureOpacityStart; pressureOpacityExponent = tuning.pressureOpacityExponent
+        speedTaperAmount = tuning.speedTaperAmount
         pencilPointSize = tuning.pencilPointSize; pencilTiltSensitivity = tuning.pencilTiltSensitivity
         pencilShadeSize = tuning.pencilShadeSize; pencilShadeOpacity = tuning.pencilShadeOpacity
         pencilGrain = tuning.pencilGrain
@@ -192,7 +200,7 @@ fun CanvasScreen(
             StylusButtonAction.DISABLED -> Unit
         }
     }
-    LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
+    LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(surface, debug) {
         while (debug && surface != null) {
@@ -203,11 +211,13 @@ fun CanvasScreen(
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
     LaunchedEffect(movingSelection, surface) { surface?.setSelectionMoveMode(movingSelection) }
-    LaunchedEffect(brush.id, erasing, size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians) {
+    LaunchedEffect(brush.id, erasing, size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians) {
         val tuning = BrushTuning(
             size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper,
             pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain,
             pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians,
+            pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent,
+            speedTaperAmount,
         )
         if (erasing) brushPreferences.saveEraser(tuning) else brushPreferences.save(brush, tuning)
     }
@@ -572,6 +582,11 @@ fun CanvasScreen(
         pressureSize = pressureSize,
         pressureOpacity = pressureOpacity,
         speedTaper = speedTaper,
+        pressureSizeStart = pressureSizeStart,
+        pressureSizeExponent = pressureSizeExponent,
+        pressureOpacityStart = pressureOpacityStart,
+        pressureOpacityExponent = pressureOpacityExponent,
+        speedTaperAmount = speedTaperAmount,
         supportsPencilTilt = !erasing && brush.engine == BrushEngine.PENCIL,
         pencilPointSize = pencilPointSize,
         pencilTiltSensitivity = pencilTiltSensitivity,
@@ -585,6 +600,11 @@ fun CanvasScreen(
         onPressureSize = { pressureSize = it },
         onPressureOpacity = { pressureOpacity = it },
         onSpeedTaper = { speedTaper = it },
+        onPressureSizeStart = { pressureSizeStart = it },
+        onPressureSizeExponent = { pressureSizeExponent = it },
+        onPressureOpacityStart = { pressureOpacityStart = it },
+        onPressureOpacityExponent = { pressureOpacityExponent = it },
+        onSpeedTaperAmount = { speedTaperAmount = it },
         onPencilPointSize = { pencilPointSize = it },
         onPencilTiltSensitivity = { pencilTiltSensitivity = it },
         onPencilShadeSize = { pencilShadeSize = it },
@@ -610,6 +630,11 @@ fun CanvasScreen(
                     brush.pencilTiltMode,
                     brush.pencilShadeStartRadians,
                     brush.pencilShadeTransitionRadians,
+                    brush.pressureToSize.start,
+                    brush.pressureToSize.exponent,
+                    brush.pressureToOpacity.start,
+                    brush.pressureToOpacity.exponent,
+                    .55f,
                 ))
         },
         onDismiss = { brushStudioOpen = false },

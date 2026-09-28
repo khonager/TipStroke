@@ -525,7 +525,11 @@ internal object StrokeCanvasPainter {
         val elapsedMillis = ((elapsedNanos - previous.elapsedNanos).coerceAtLeast(1L)) / 1_000_000f
         val distance = kotlin.math.hypot(position.x - previous.position.x, position.y - previous.position.y)
         val normalizedSpeed = (distance / elapsedMillis / 2.5f).coerceIn(0f, 1f)
-        return 1f - normalizedSpeed * taper * .65f
+        val strength = if (
+            stroke.style.blend == BlendBehavior.PAINT &&
+            stroke.style.brush.engine == BrushEngine.INK
+        ) .28f else .65f
+        return 1f - normalizedSpeed * taper * strength
     }
     private fun RgbaColor.toArgb() = Color.argb(
         (alpha * 255).roundToInt(),
