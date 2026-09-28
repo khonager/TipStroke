@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -19,9 +20,13 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import dev.tipstroke.core.model.PressureCurve
+import dev.tipstroke.core.model.RgbaColor
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.PencilTiltMode
+import dev.tipstroke.drawing.android.BrushStrokePreviewView
 import dev.tipstroke.core.model.pencilFullTiltRadians
 import dev.tipstroke.core.model.pencilShadeEndRadians
 import dev.tipstroke.core.model.pencilTiltResponse
@@ -34,6 +39,7 @@ internal fun BrushStudioDialog(
     toolName: String,
     brush: BrushPreset,
     erasing: Boolean,
+    opacity: Float,
     supportsHardness: Boolean,
     hardness: Float,
     pressureSize: Boolean,
@@ -75,6 +81,7 @@ internal fun BrushStudioDialog(
                     toolName = toolName,
                     brush = brush,
                     erasing = erasing,
+                    opacity = opacity,
                     hardness = hardness,
                     pressureSize = pressureSize,
                     pressureOpacity = pressureOpacity,
@@ -233,6 +240,7 @@ private fun BrushTipPreview(
     toolName: String,
     brush: BrushPreset,
     erasing: Boolean,
+    opacity: Float,
     hardness: Float,
     pressureSize: Boolean,
     pressureOpacity: Boolean,
@@ -248,6 +256,9 @@ private fun BrushTipPreview(
 ) {
     val previewBrush = brush.copy(
         hardness = hardness,
+        pressureToSize = if (pressureSize) brush.pressureToSize else PressureCurve(1f, 1f, 1f),
+        pressureToOpacity = if (pressureOpacity) brush.pressureToOpacity else PressureCurve(1f, 1f, 1f),
+        speedTaper = if (speedTaper) .55f else 0f,
         pencilPointSize = pencilPointSize,
         pencilTiltSensitivity = pencilTiltSensitivity,
         pencilShadeSize = pencilShadeSize,
@@ -264,38 +275,27 @@ private fun BrushTipPreview(
         }
         Box(
             Modifier.fillMaxWidth().height(104.dp)
+                .clip(RoundedCornerShape(14.dp))
                 .background(Color(0xFFFAFAFA), RoundedCornerShape(14.dp))
                 .border(1.dp, Color(0xFF777A82), RoundedCornerShape(14.dp))
                 .semantics { contentDescription = "$toolName live tip preview" },
         ) {
-            Canvas(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
-                val left = 5f
-                val right = size.width - 5f
-                val centerY = size.height * .5f
-                val segmentCount = 72
-                val paper = Color(0xFFFAFAFA)
-                val pigment = Color(0xFF3F4147)
-
-                if (erasing) {
-                    drawLine(
-                        color = Color(0xFF62656D),
-                        start = Offset(left, centerY),
-                        end = Offset(right, centerY),
-                        strokeWidth = size.height * .62f,
-                        cap = StrokeCap.Round,
+            AndroidView(
+                factory = { BrushStrokePreviewView(it) },
+                update = { view ->
+                    view.setPreview(
+                        brush = previewBrush,
+                        erasing = erasing,
+                        opacity = opacity,
+                        color = RgbaColor(.25f, .25f, .28f),
                     )
-                    for (index in 0..7) {
-                        val x = left + (right - left) * index / 7f
-                        drawLine(
-                            color = Color.White.copy(alpha = .18f),
-                            start = Offset(x - 18f, centerY - size.height * .31f),
-                            end = Offset(x + 18f, centerY + size.height * .31f),
-                            strokeWidth = 2f,
-                        )
-                    }
-                }
-
-                if (!erasing && previewBrush.engine == BrushEngine.PENCIL) {
+                },
+                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp),
+            )
+            if (!erasing && previewBrush.engine == BrushEngine.PENCIL) {
+                Canvas(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    val left = 5f
+                    val right = size.width - 5f
                     val markerAngles = if (pencilTiltMode == PencilTiltMode.SHADING_SWITCH) {
                         listOf(pencilShadeStartRadians, previewBrush.pencilShadeEndRadians())
                     } else {
@@ -313,78 +313,6 @@ private fun BrushTipPreview(
                             start = Offset(x, 0f),
                             end = Offset(x, size.height),
                             strokeWidth = 1.5f,
-                        )
-                    }
-                }
-
-                for (index in 0 until segmentCount) {
-                    val progress = index / (segmentCount - 1f)
-                    val nextProgress = (index + 1).coerceAtMost(segmentCount - 1) / (segmentCount - 1f)
-                    val pressure = (.16f + .84f * kotlin.math.sin(progress * PI).toFloat()).coerceIn(0f, 1f)
-                    val pressureWidth = if (pressureSize) previewBrush.pressureToSize.map(pressure) else 1f
-                    val pressureAlpha = if (pressureOpacity) previewBrush.pressureToOpacity.map(pressure) else 1f
-                    val taper = if (speedTaper && progress > .72f) {
-                        (1f - (progress - .72f) / .28f * .82f).coerceAtLeast(.18f)
-                    } else {
-                        1f
-                    }
-                    val wave = kotlin.math.sin(progress * PI * 2).toFloat() * size.height * .09f
-                    val nextWave = kotlin.math.sin(nextProgress * PI * 2).toFloat() * size.height * .09f
-                    val start = Offset(left + (right - left) * progress, centerY + wave)
-                    val end = Offset(left + (right - left) * nextProgress, centerY + nextWave)
-                    val baseWidth = when {
-                        erasing -> size.height * .24f
-                        previewBrush.engine == BrushEngine.AIRBRUSH -> size.height * .28f
-                        else -> size.height * .18f
-                    }
-                    var strokeWidth = baseWidth * pressureWidth * taper
-                    var alpha = pressureAlpha.coerceIn(.05f, 1f)
-
-                    if (!erasing && previewBrush.engine == BrushEngine.PENCIL) {
-                        val response = previewBrush.pencilTiltResponse(
-                            progress * BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
-                        )
-                        val pointWidth = size.height * .052f * pencilPointSize * pressureWidth * taper
-                        val shadeWidth = (pointWidth * (1f + 9f * pencilShadeSize))
-                            .coerceAtMost(size.height * .78f)
-                        strokeWidth = pointWidth + (shadeWidth - pointWidth) * response
-                        alpha *= (.9f + (pencilShadeOpacity - .9f) * response).coerceIn(0f, 1f)
-                        drawLine(pigment.copy(alpha = alpha), start, end, strokeWidth, StrokeCap.Butt)
-                        if (pencilGrain > 0f && response > 0f && index % 2 == 0) {
-                            val across = (previewNoise(index + 19) - .5f) * strokeWidth * .72f
-                            drawCircle(
-                                color = paper.copy(alpha = pencilGrain * response * .68f),
-                                radius = .5f + 1.4f * pencilGrain * previewNoise(index + 71),
-                                center = Offset(end.x, end.y + across),
-                            )
-                        }
-                    } else {
-                        val effectiveHardness = hardness.coerceIn(0f, 1f)
-                        val coreColor = if (erasing) paper else pigment
-                        val softness = 1f - effectiveHardness
-                        if (softness > .01f) {
-                            drawLine(
-                                color = coreColor.copy(alpha = alpha * (.08f + .16f * effectiveHardness)),
-                                start = start,
-                                end = end,
-                                strokeWidth = strokeWidth * (1.8f + softness * 1.7f),
-                                cap = StrokeCap.Round,
-                            )
-                            drawLine(
-                                color = coreColor.copy(alpha = alpha * (.18f + .24f * effectiveHardness)),
-                                start = start,
-                                end = end,
-                                strokeWidth = strokeWidth * (1.25f + softness * .65f),
-                                cap = StrokeCap.Round,
-                            )
-                        }
-                        val engineAlpha = if (!erasing && previewBrush.engine == BrushEngine.AIRBRUSH) .42f else 1f
-                        drawLine(
-                            color = coreColor.copy(alpha = alpha * engineAlpha),
-                            start = start,
-                            end = end,
-                            strokeWidth = strokeWidth,
-                            cap = StrokeCap.Round,
                         )
                     }
                 }
