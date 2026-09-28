@@ -14,7 +14,7 @@ class GesturePreferencesTest {
     @Test fun persistsCustomFingerMappingsAndTuning() {
         val preferences = GesturePreferences(RuntimeEnvironment.getApplication())
         val expected = GestureSettings(
-            oneFingerDrag = FingerAction.SMUDGE,
+            oneFingerDrag = FingerAction.DRAW,
             oneFingerHold = FingerAction.UNDO,
             twoFingerTap = FingerAction.REDO,
             threeFingerTap = FingerAction.DISABLED,

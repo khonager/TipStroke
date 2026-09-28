@@ -36,6 +36,7 @@ internal fun TipControls(
     compactVertical: Boolean = false,
     verticalTrackHeight: Dp = if (compactVertical) 154.dp else 205.dp,
     showColorSwitcher: Boolean = true,
+    horizontalWidthFraction: Float = .62f,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -45,7 +46,7 @@ internal fun TipControls(
         }
         if (horizontal) {
             Row(
-                Modifier.widthIn(max = 390.dp).fillMaxWidth(.62f)
+                Modifier.widthIn(max = 390.dp).fillMaxWidth(horizontalWidthFraction)
                     .background(Color(0xD9202125), RoundedCornerShape(20.dp)).padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {

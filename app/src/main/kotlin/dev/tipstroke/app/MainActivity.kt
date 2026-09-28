@@ -132,6 +132,7 @@ private fun TipStrokeApp(
             documentId = current.id, documentName = current.name,
             canvasWidthPx = current.widthPx, canvasHeightPx = current.heightPx,
             loadExisting = current.existing, library = library, gestureSettings = gestures,
+            onGestureSettingsChange = { updated -> gestures = updated; gesturePreferences.save(updated) },
             onBackToGallery = { appState.screen = AppScreen.Gallery },
             onSaveActionChanged = onSaveActionChanged,
             onStylusButtonHandlerChanged = onStylusButtonHandlerChanged,

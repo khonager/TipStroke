@@ -94,6 +94,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
     private var paletteColorCount = 3
     var stylusButtonListener: ((StylusButton) -> Unit)? = null
+    var strokeStartedListener: (() -> Unit)? = null
     private var pressedStylusButtons = 0
     private var imageTransformMode = false
     private var selectionMode = false
@@ -333,7 +334,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         // The emulator maps a host click to a finger. If a simulated second finger is
         // added for pinch, cancel the provisional mark and hand the full event to the
         // normal multi-touch navigation path.
-        if (settings.emulateMouseWithTouch && activeDrawingPointerId != null &&
+        if ((settings.emulateMouseWithTouch || settings.gestures.oneFingerDrag == FingerAction.DRAW) &&
+            activeDrawingPointerId != null &&
             event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && event.pointerCount >= 2
         ) {
             cancelActiveStroke(event, activeDrawingPointerId!!)
@@ -424,6 +426,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     is ImageLayerRuntime -> if (baseStyle.blend == BlendBehavior.ERASE) StrokeTarget(selected.mask, selected) else return true
                 }
                 requestUnbufferedDispatch(event)
+                strokeStartedListener?.invoke()
                 activeDrawingPointerId = pointerId
                 pendingTargets[pointerId] = target
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
@@ -986,7 +989,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             if (it == PointerKind.FINGER && settings.emulateMouseWithTouch) PointerKind.MOUSE else it
         }
         val reportedPressure = historyIndex?.let { event.getHistoricalPressure(index, it) } ?: event.getPressure(index)
-        val pressure = if (kind == PointerKind.MOUSE) 1f else reportedPressure
+        val pressure = if (kind == PointerKind.MOUSE ||
+            (kind == PointerKind.FINGER && settings.gestures.oneFingerDrag == FingerAction.DRAW)
+        ) 1f else reportedPressure
         val tilt = (historyIndex?.let { event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, index, it) }
             ?: event.getAxisValue(MotionEvent.AXIS_TILT, index)).coerceIn(0f, (Math.PI / 2).toFloat())
         val orientation = historyIndex?.let { event.getHistoricalAxisValue(MotionEvent.AXIS_ORIENTATION, index, it) }
@@ -1001,7 +1006,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun isDrawingPointer(event: MotionEvent, index: Int): Boolean = when (event.getToolType(index)) {
         MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER -> true
         MotionEvent.TOOL_TYPE_MOUSE -> event.buttonState and MotionEvent.BUTTON_PRIMARY != 0
-        MotionEvent.TOOL_TYPE_FINGER -> settings.emulateMouseWithTouch && event.pointerCount == 1
+        MotionEvent.TOOL_TYPE_FINGER ->
+            (settings.emulateMouseWithTouch || settings.gestures.oneFingerDrag == FingerAction.DRAW) && event.pointerCount == 1
         else -> false
     }
     private fun pointerKind(type: Int) = when (type) { MotionEvent.TOOL_TYPE_STYLUS -> PointerKind.STYLUS; MotionEvent.TOOL_TYPE_ERASER -> PointerKind.ERASER_STYLUS; MotionEvent.TOOL_TYPE_FINGER -> PointerKind.FINGER; MotionEvent.TOOL_TYPE_MOUSE -> PointerKind.MOUSE; else -> PointerKind.UNKNOWN }
@@ -1032,7 +1038,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val kind = pointerKind(event.getToolType(index)).let {
             if (it == PointerKind.FINGER && settings.emulateMouseWithTouch) PointerKind.MOUSE else it
         }
-        val pressure = if (kind == PointerKind.MOUSE) 1f else event.getPressure(index)
+        val pressure = if (kind == PointerKind.MOUSE ||
+            (kind == PointerKind.FINGER && settings.gestures.oneFingerDrag == FingerAction.DRAW)
+        ) 1f else event.getPressure(index)
         val input = CanvasDiagnostics(fps, pressure, event.getAxisValue(MotionEvent.AXIS_TILT, index),
             kind.name, if (delta > 0) 1_000_000_000f / delta else 0f,
             rasterView.transform.scale, layerStack.allocatedTiles(), layerStack.lastDirtyTiles(), layerStack.undoBytes())

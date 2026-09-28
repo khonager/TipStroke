@@ -39,6 +39,10 @@ class CanvasScreenshotTest {
 
     @Test fun renderPortraitCanvasForVisualReview() = render(1600, 2560, "tipstroke-portrait.png") { CanvasScreen() }
 
+    @Test fun renderPhoneCanvasForVisualReview() = render(720, 1440, "tipstroke-phone-canvas.png") {
+        CanvasScreen(onBackToGallery = {})
+    }
+
     @Test fun renderCompactLandscapeCanvasForVisualReview() = render(1600, 720, "tipstroke-compact-landscape.png") { CanvasScreen() }
 
     @Test fun renderMediumLandscapeCanvasForVisualReview() = render(1600, 1200, "tipstroke-medium-landscape.png") { CanvasScreen() }

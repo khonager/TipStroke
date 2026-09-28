@@ -250,6 +250,7 @@ private fun GestureSettings.withAction(slot: GestureSlot, action: FingerAction) 
 }
 
 private fun actionDescription(action: FingerAction) = when (action) {
+    FingerAction.DRAW -> "Draw at full pressure with a finger or capacitive pen; use two fingers to navigate"
     FingerAction.NAVIGATE -> "Pan around the canvas"
     FingerAction.SMUDGE -> "Smudge and blend paint"
     FingerAction.PICK_COLOR -> "Pick a color from the canvas"

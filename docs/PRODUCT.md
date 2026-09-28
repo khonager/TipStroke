@@ -6,6 +6,8 @@ The product is raster-first, finite-canvas, local-first, account-free, ad-free, 
 
 Drawing mode has no branded or full-width header. Slightly translucent controls are split into small edge clusters, keeping the top center and canvas center clear; expanded tools such as the color picker remain side-attached in landscape.
 
+Tablet ergonomics remain authoritative. Compact phone windows adapt those same tools into a short command strip and bottom dock that disappear when drawing begins; this is a layout adaptation, not a separate drawing engine or reduced document format. Touch drawing is an explicit mode for fingers and passive capacitive pens, with two-finger navigation retained.
+
 The long-term differentiator is a hybrid document that can contain true raster and vector layers plus animation metadata. That future does not change the current painting rule: artwork committed to a raster layer is pixels, not an indefinitely replayed stroke list.
 
 ## Current slice

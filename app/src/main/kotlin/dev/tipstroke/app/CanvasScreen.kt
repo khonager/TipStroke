@@ -44,6 +44,7 @@ fun CanvasScreen(
     loadExisting: Boolean = false,
     library: DrawingLibrary? = null,
     gestureSettings: GestureSettings = GestureSettings(),
+    onGestureSettingsChange: ((GestureSettings) -> Unit)? = null,
     onBackToGallery: (() -> Unit)? = null,
     onSaveActionChanged: (((() -> Unit)?) -> Unit)? = null,
     onStylusButtonHandlerChanged: ((((StylusButton) -> Unit)?) -> Unit)? = null,
@@ -98,7 +99,20 @@ fun CanvasScreen(
     var pencilTiltMode by remember { mutableStateOf(initialBrushTuning.pencilTiltMode) }
     var pencilShadeStartRadians by remember { mutableFloatStateOf(initialBrushTuning.pencilShadeStartRadians) }
     var pencilShadeTransitionRadians by remember { mutableFloatStateOf(initialBrushTuning.pencilShadeTransitionRadians) }
+    var phoneChromeVisible by rememberSaveable { mutableStateOf(true) }
+    var phoneAdjustmentsOpen by rememberSaveable { mutableStateOf(false) }
+    var phoneMenuOpen by remember { mutableStateOf(false) }
+    var touchDrawing by rememberSaveable { mutableStateOf(gestureSettings.oneFingerDrag == FingerAction.DRAW) }
     val lastStylusButtonAt = remember { longArrayOf(Long.MIN_VALUE, Long.MIN_VALUE) }
+    val effectiveGestureSettings = if (touchDrawing == (gestureSettings.oneFingerDrag == FingerAction.DRAW)) {
+        gestureSettings
+    } else {
+        gestureSettings.copy(oneFingerDrag = if (touchDrawing) FingerAction.DRAW else FingerAction.NAVIGATE)
+    }
+
+    LaunchedEffect(gestureSettings.oneFingerDrag) {
+        touchDrawing = gestureSettings.oneFingerDrag == FingerAction.DRAW
+    }
 
     val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -142,7 +156,7 @@ fun CanvasScreen(
             pencilShadeTransitionRadians = pencilShadeTransitionRadians,
         )
         sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing
-        this.eraserHardness = eraserHardness; this.debug = debug; gestures = gestureSettings
+        this.eraserHardness = eraserHardness; this.debug = debug; gestures = effectiveGestureSettings
     } }
     fun applyTuning(tuning: BrushTuning) {
         size = tuning.sizePx; opacity = tuning.opacity; brushHardness = tuning.hardness
@@ -165,8 +179,8 @@ fun CanvasScreen(
         if (lastStylusButtonAt[buttonIndex] != Long.MIN_VALUE && now - lastStylusButtonAt[buttonIndex] < 80L) return
         lastStylusButtonAt[buttonIndex] = now
         val action = when (button) {
-            StylusButton.PRIMARY -> gestureSettings.stylusPrimaryButton
-            StylusButton.SECONDARY -> gestureSettings.stylusSecondaryButton
+            StylusButton.PRIMARY -> effectiveGestureSettings.stylusPrimaryButton
+            StylusButton.SECONDARY -> effectiveGestureSettings.stylusSecondaryButton
         }
         when (action) {
             StylusButtonAction.TOGGLE_ERASER -> toggleEraser()
@@ -175,7 +189,7 @@ fun CanvasScreen(
             StylusButtonAction.DISABLED -> Unit
         }
     }
-    LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, gestureSettings, surface) { sync() }
+    LaunchedEffect(brush, erasing, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(surface, debug) {
         while (debug && surface != null) {
@@ -228,7 +242,7 @@ fun CanvasScreen(
     DisposableEffect(onSaveActionChanged) {
         onDispose { onSaveActionChanged?.invoke(null) }
     }
-    DisposableEffect(onStylusButtonHandlerChanged, gestureSettings, surface) {
+    DisposableEffect(onStylusButtonHandlerChanged, effectiveGestureSettings, surface) {
         onStylusButtonHandlerChanged?.invoke(::performStylusButton)
         onDispose { onStylusButtonHandlerChanged?.invoke(null) }
     }
@@ -239,7 +253,17 @@ fun CanvasScreen(
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val portrait = maxHeight > maxWidth
         val viewportHeight = maxHeight
+        val compactPhone = minOf(maxWidth, maxHeight) < 600.dp
         val compactLandscape = !portrait && maxHeight < 760.dp
+        fun hidePhoneChrome() {
+            if (!compactPhone) return
+            phoneChromeVisible = false
+            phoneAdjustmentsOpen = false
+            phoneMenuOpen = false
+            layersOpen = false
+            colorPickerOpen = false
+        }
+        BackHandler(enabled = compactPhone && !phoneChromeVisible) { phoneChromeVisible = true }
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context -> DrawingSurface(context).also { view ->
@@ -267,30 +291,66 @@ fun CanvasScreen(
                     }
                 } else view.publishLayers()
             } },
+            update = { view ->
+                view.strokeStartedListener = if (compactPhone) ({ hidePhoneChrome() }) else null
+            },
         )
 
-        EditorChrome(
-            canUndo = canUndo, canRedo = canRedo, debug = debug,
-            zoomPercent = (diagnostics.zoom * 100).roundToInt(),
-            onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
-            onReset = { surface?.resetView() }, onDebug = { debug = !debug },
-            selectionActive = selectionMode || hasSelection,
-            onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
-            layersOpen = layersOpen, onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
-            showTopColorSwitcher = !portrait,
-            color = color,
-            frequentColors = drawingPalette,
-            onColor = { color = it },
-            onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
-            onBack = if (onBackToGallery != null) leaveEditor else null,
-            onExport = { if (ready) exportOpen = true },
-            modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        )
+        if (!compactPhone) {
+            EditorChrome(
+                canUndo = canUndo, canRedo = canRedo, debug = debug,
+                zoomPercent = (diagnostics.zoom * 100).roundToInt(),
+                onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
+                onReset = { surface?.resetView() }, onDebug = { debug = !debug },
+                selectionActive = selectionMode || hasSelection,
+                onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
+                layersOpen = layersOpen, onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
+                showTopColorSwitcher = !portrait,
+                color = color,
+                frequentColors = drawingPalette,
+                onColor = { color = it },
+                onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
+                onBack = if (onBackToGallery != null) leaveEditor else null,
+                onExport = { if (ready) exportOpen = true },
+                modifier = Modifier.fillMaxSize().statusBarsPadding(),
+            )
+        } else if (phoneChromeVisible) {
+            PhoneEditorChrome(
+                canUndo = canUndo,
+                canRedo = canRedo,
+                touchDrawing = touchDrawing,
+                layersOpen = layersOpen,
+                selectionActive = selectionMode || hasSelection,
+                color = color,
+                menuOpen = phoneMenuOpen,
+                onMenuOpenChange = { phoneMenuOpen = it },
+                onBack = if (onBackToGallery != null) leaveEditor else null,
+                onUndo = { surface?.undo() },
+                onRedo = { surface?.redo() },
+                onTouchDrawing = { enabled ->
+                    touchDrawing = enabled
+                    onGestureSettingsChange?.invoke(
+                        gestureSettings.copy(oneFingerDrag = if (enabled) FingerAction.DRAW else FingerAction.NAVIGATE),
+                    )
+                },
+                onColorPicker = { layersOpen = false; colorPickerOpen = true },
+                onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
+                onReset = { surface?.resetView() },
+                onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
+                onExport = { if (ready) exportOpen = true },
+                onDebug = { debug = !debug },
+                onHide = ::hidePhoneChrome,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(8.dp),
+            )
+        } else {
+            PhoneChromeHandle(
+                onClick = { phoneChromeVisible = true },
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
+            )
+        }
 
-        Box(
-            Modifier.fillMaxSize().then(
-                if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp),
-            ),
+        if (!compactPhone) Box(
+            Modifier.fillMaxSize().then(if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp)),
         ) {
             BrushRail(
                 selected = brush, erasing = erasing,
@@ -337,6 +397,48 @@ fun CanvasScreen(
                 modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
                     .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
             )
+        } else if (phoneChromeVisible) {
+            Column(
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (phoneAdjustmentsOpen) {
+                    TipControls(
+                        size = size,
+                        opacity = opacity,
+                        color = color,
+                        frequentColors = drawingPalette,
+                        onSize = {
+                            size = it
+                            surface?.settings?.sizePx = it
+                            surface?.showBrushAdjustmentPreview()
+                        },
+                        onOpacity = {
+                            opacity = it
+                            surface?.settings?.opacity = it
+                            surface?.showBrushAdjustmentPreview()
+                        },
+                        onColor = { color = it },
+                        onOpenColorPicker = { colorPickerOpen = true },
+                        onAdjustmentStart = { sync(); surface?.showBrushAdjustmentPreview() },
+                        onAdjustmentEnd = { surface?.hideBrushAdjustmentPreview() },
+                        horizontal = true,
+                        showColorSwitcher = false,
+                        horizontalWidthFraction = 1f,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
+                PhoneBrushDock(
+                    selected = brush,
+                    erasing = erasing,
+                    adjustmentsOpen = phoneAdjustmentsOpen,
+                    onBrush = { preset -> brush = preset; erasing = false; applyTuning(brushPreferences.load(preset)) },
+                    onEraser = ::toggleEraser,
+                    onAdjustments = { phoneAdjustmentsOpen = !phoneAdjustmentsOpen },
+                    onBrushStudio = { brushStudioOpen = true },
+                )
+            }
         }
 
         if (selectionMode || hasSelection) SelectionBar(
@@ -353,7 +455,7 @@ fun CanvasScreen(
             onDuplicate = { surface?.duplicateSelection() },
             onClear = { movingSelection = false; surface?.clearSelection() },
             onDone = { selectionMode = false; movingSelection = false },
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp),
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = if (compactPhone) 66.dp else 72.dp),
         )
 
         if (layersOpen) {
@@ -390,7 +492,11 @@ fun CanvasScreen(
                 onDuplicate = { imageTransforming = false; surface?.duplicateSelectedLayers() },
                 onDelete = { surface?.deleteSelectedLayer() },
                 modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
-                    .padding(top = 66.dp, bottom = if (portrait) 106.dp else 16.dp, end = if (portrait) 0.dp else 116.dp),
+                    .padding(
+                        top = 66.dp,
+                        bottom = if (portrait) (if (compactPhone) 76.dp else 106.dp) else 16.dp,
+                        end = if (portrait) 0.dp else 116.dp,
+                    ),
             )
         }
 
@@ -553,6 +659,144 @@ private fun EditorChrome(
     }
 }
 
+@Composable
+private fun PhoneEditorChrome(
+    canUndo: Boolean,
+    canRedo: Boolean,
+    touchDrawing: Boolean,
+    layersOpen: Boolean,
+    selectionActive: Boolean,
+    color: RgbaColor,
+    menuOpen: Boolean,
+    onMenuOpenChange: (Boolean) -> Unit,
+    onBack: (() -> Unit)?,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onTouchDrawing: (Boolean) -> Unit,
+    onColorPicker: () -> Unit,
+    onLayers: () -> Unit,
+    onReset: () -> Unit,
+    onSelection: () -> Unit,
+    onExport: () -> Unit,
+    onDebug: () -> Unit,
+    onHide: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier.fillMaxWidth().widthIn(max = 520.dp),
+        color = Color(0xE6202125),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, Color(0xB345474D)),
+    ) {
+        Row(
+            Modifier.height(48.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onBack != null) {
+                IconButton(onClick = onBack, modifier = Modifier.size(38.dp).semantics { contentDescription = "Back to gallery" }) { BackIcon() }
+            }
+            PhoneIconAction("Undo", canUndo, onUndo) { UndoIcon() }
+            PhoneIconAction("Redo", canRedo, onRedo) { RedoIcon() }
+            TextButton(
+                onClick = { onTouchDrawing(!touchDrawing) },
+                modifier = Modifier.size(width = 46.dp, height = 36.dp).semantics {
+                    contentDescription = if (touchDrawing) "Touch draws; tap for touch navigation" else "Touch navigates; tap for touch drawing"
+                },
+                colors = ButtonDefaults.textButtonColors(contentColor = if (touchDrawing) Color(0xFFED6A5A) else Color.White),
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                Text(if (touchDrawing) "Draw" else "Pan", fontSize = 10.sp, maxLines = 1)
+            }
+            Box(
+                Modifier.size(30.dp).clip(CircleShape)
+                    .background(Color(color.red, color.green, color.blue, color.alpha))
+                    .border(2.dp, Color.White, CircleShape)
+                    .clickable(onClick = onColorPicker)
+                    .semantics { contentDescription = "Open color picker" },
+            )
+            IconButton(onClick = onLayers, modifier = Modifier.size(38.dp).semantics { contentDescription = "Layers" }) {
+                LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White)
+            }
+            Box {
+                IconButton(
+                    onClick = { onMenuOpenChange(true) },
+                    modifier = Modifier.size(38.dp).semantics { contentDescription = "More canvas actions" },
+                ) { MoreIcon() }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
+                    DropdownMenuItem(text = { Text("Fit canvas") }, onClick = { onMenuOpenChange(false); onReset() })
+                    DropdownMenuItem(
+                        text = { Text(if (selectionActive) "Close selection" else "Select") },
+                        onClick = { onMenuOpenChange(false); onSelection() },
+                    )
+                    DropdownMenuItem(text = { Text("Export") }, onClick = { onMenuOpenChange(false); onExport() })
+                    DropdownMenuItem(text = { Text("Diagnostics") }, onClick = { onMenuOpenChange(false); onDebug() })
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("Hide controls") }, onClick = onHide)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PhoneChromeHandle(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        modifier.size(48.dp).clickable(onClick = onClick).semantics { contentDescription = "Show drawing controls" },
+        color = Color(0xD9202125),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xB345474D)),
+    ) {
+        Box(contentAlignment = Alignment.Center) { MoreIcon() }
+    }
+}
+
+@Composable
+private fun PhoneBrushDock(
+    selected: BrushPreset,
+    erasing: Boolean,
+    adjustmentsOpen: Boolean,
+    onBrush: (BrushPreset) -> Unit,
+    onEraser: () -> Unit,
+    onAdjustments: () -> Unit,
+    onBrushStudio: () -> Unit,
+) {
+    Surface(
+        Modifier.fillMaxWidth().widthIn(max = 520.dp),
+        color = Color(0xE6202125),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color(0xB345474D)),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            BrushPreset.builtIns.forEach { preset ->
+                ToolButton(
+                    preset.displayName,
+                    selected.id == preset.id && !erasing,
+                    { onBrush(preset) },
+                    when (preset.engine) {
+                        BrushEngine.PENCIL -> ToolGlyph.PENCIL
+                        BrushEngine.INK -> ToolGlyph.INK
+                        BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH
+                    },
+                    compact = true,
+                    phone = true,
+                )
+            }
+            ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact = true, phone = true)
+            IconButton(
+                onClick = onAdjustments,
+                modifier = Modifier.size(42.dp).semantics { contentDescription = if (adjustmentsOpen) "Hide size and opacity" else "Show size and opacity" },
+            ) { TuneIcon(if (adjustmentsOpen) Color(0xFFED6A5A) else Color.White) }
+            TextButton(onClick = onBrushStudio, modifier = Modifier.size(width = 42.dp, height = 50.dp), contentPadding = PaddingValues(0.dp)) {
+                Text("Studio", fontSize = 8.sp)
+            }
+        }
+    }
+}
+
 @Composable private fun ChromeGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier.background(Color(0xD9202125), RoundedCornerShape(16.dp))
@@ -598,11 +842,14 @@ private fun EditorChrome(
 
 private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER }
 
-@Composable private fun ToolButton(label: String, selected: Boolean, onClick: () -> Unit, icon: ToolGlyph, compact: Boolean = false) {
+@Composable private fun ToolButton(label: String, selected: Boolean, onClick: () -> Unit, icon: ToolGlyph, compact: Boolean = false, phone: Boolean = false) {
     val bg by animateColorAsState(if (selected) Color(0xFFF4F4F2) else Color.Transparent, label = "tool")
     val fg = if (selected) Color(0xFF17181B) else Color(0xFFF1F1EF)
-    Column(Modifier.size(width = if (compact) 58.dp else 68.dp, height = if (compact) 58.dp else 72.dp).clip(RoundedCornerShape(16.dp)).background(bg).clickable(onClick = onClick).semantics { contentDescription = label }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Canvas(Modifier.size(if (compact) 22.dp else 28.dp)) {
+    val buttonWidth = if (phone) 42.dp else if (compact) 58.dp else 68.dp
+    val buttonHeight = if (phone) 52.dp else if (compact) 58.dp else 72.dp
+    val iconSize = if (phone) 19.dp else if (compact) 22.dp else 28.dp
+    Column(Modifier.size(width = buttonWidth, height = buttonHeight).clip(RoundedCornerShape(if (phone) 13.dp else 16.dp)).background(bg).clickable(onClick = onClick).semantics { contentDescription = label }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Canvas(Modifier.size(iconSize)) {
             when (icon) {
                 ToolGlyph.PENCIL -> { rotate(-40f) { drawRoundRect(fg, Offset(size.width*.42f, 1f), androidx.compose.ui.geometry.Size(size.width*.2f, size.height*.82f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f)); drawPath(Path().apply { moveTo(size.width*.42f, size.height*.82f); lineTo(size.width*.62f, size.height*.82f); lineTo(size.width*.52f, size.height); close() }, fg) } }
                 ToolGlyph.INK -> { drawPath(Path().apply { moveTo(size.width*.18f,size.height*.82f); cubicTo(size.width*.25f,size.height*.35f,size.width*.7f,size.height*.2f,size.width*.82f,size.height*.08f); cubicTo(size.width*.74f,size.height*.5f,size.width*.55f,size.height*.9f,size.width*.18f,size.height*.82f); close() }, fg) }
@@ -610,16 +857,19 @@ private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER }
                 ToolGlyph.ERASER -> { rotate(-40f) { drawRoundRect(fg, Offset(size.width*.25f,size.height*.18f), androidx.compose.ui.geometry.Size(size.width*.5f,size.height*.65f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()), style = Stroke(2.dp.toPx())) } }
             }
         }
-        Spacer(Modifier.height(if (compact) 3.dp else 5.dp)); Text(label, color = fg, fontSize = if (compact) 9.sp else 11.sp, maxLines = 1)
+        Spacer(Modifier.height(if (phone) 2.dp else if (compact) 3.dp else 5.dp)); Text(label, color = fg, fontSize = if (phone) 8.sp else if (compact) 9.sp else 11.sp, maxLines = 1)
     }
 }
 
 @Composable private fun IconAction(label: String, enabled: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) { IconButton(onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { icon() } }
+@Composable private fun PhoneIconAction(label: String, enabled: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) { IconButton(onClick, enabled = enabled, modifier = Modifier.size(38.dp).semantics { contentDescription = label }) { icon() } }
 @Composable private fun UndoIcon() = ArcArrow(false)
 @Composable private fun RedoIcon() = ArcArrow(true)
 @Composable private fun ArcArrow(mirror: Boolean) { Canvas(Modifier.size(23.dp).graphicsLayer { scaleX = if (mirror) -1f else 1f }) { val path = Path().apply { moveTo(size.width*.85f,size.height*.72f); cubicTo(size.width*.85f,size.height*.3f,size.width*.45f,size.height*.22f,size.width*.24f,size.height*.42f); moveTo(size.width*.24f,size.height*.42f); lineTo(size.width*.28f,size.height*.17f); moveTo(size.width*.24f,size.height*.42f); lineTo(size.width*.48f,size.height*.43f) }; drawPath(path, Color.White, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)) } }
 @Composable private fun LayersIcon(color: Color) { Canvas(Modifier.size(23.dp)) { val stroke = Stroke(1.7.dp.toPx(), join = StrokeJoin.Round); val radius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()); drawRoundRect(color, Offset(2.dp.toPx(), 3.dp.toPx()), androidx.compose.ui.geometry.Size(17.dp.toPx(), 14.dp.toPx()), radius, style = stroke); drawRoundRect(color.copy(alpha = .7f), Offset(5.dp.toPx(), 7.dp.toPx()), androidx.compose.ui.geometry.Size(17.dp.toPx(), 14.dp.toPx()), radius, style = stroke) } }
 @Composable private fun BackIcon() { Canvas(Modifier.size(22.dp)) { val width = 2.dp.toPx(); drawLine(Color.White, Offset(size.width * .78f, size.height * .5f), Offset(size.width * .22f, size.height * .5f), width, StrokeCap.Round); drawLine(Color.White, Offset(size.width * .22f, size.height * .5f), Offset(size.width * .46f, size.height * .24f), width, StrokeCap.Round); drawLine(Color.White, Offset(size.width * .22f, size.height * .5f), Offset(size.width * .46f, size.height * .76f), width, StrokeCap.Round) } }
+@Composable private fun MoreIcon() { Canvas(Modifier.size(22.dp)) { repeat(3) { index -> drawCircle(Color.White, 1.8.dp.toPx(), Offset(size.width * (.28f + index * .22f), size.height / 2f)) } } }
+@Composable private fun TuneIcon(color: Color) { Canvas(Modifier.size(23.dp)) { val width = 1.8.dp.toPx(); val xs = listOf(.28f, .5f, .72f); val knobs = listOf(.35f, .68f, .45f); xs.forEachIndexed { index, x -> drawLine(color.copy(alpha = .8f), Offset(size.width*x, size.height*.18f), Offset(size.width*x, size.height*.82f), width, StrokeCap.Round); drawCircle(color, 3.dp.toPx(), Offset(size.width*x, size.height*knobs[index])) } } }
 
 @Composable private fun DebugOverlay(d: CanvasDiagnostics, modifier: Modifier = Modifier) {
     val accent = when (d.memoryPressure) {

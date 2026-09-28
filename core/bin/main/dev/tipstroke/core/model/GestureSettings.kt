@@ -1,6 +1,7 @@
 package dev.tipstroke.core.model
 
 enum class FingerAction(val displayName: String) {
+    DRAW("Draw"),
     NAVIGATE("Navigate canvas"),
     SMUDGE("Smudge"),
     PICK_COLOR("Pick color"),

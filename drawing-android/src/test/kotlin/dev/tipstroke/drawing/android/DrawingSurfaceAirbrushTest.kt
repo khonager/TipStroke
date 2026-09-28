@@ -7,6 +7,7 @@ import dev.tipstroke.core.drawing.PointerKind
 import dev.tipstroke.core.drawing.StrokeSample
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.FingerAction
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -101,6 +102,53 @@ class DrawingSurfaceAirbrushTest {
         assertEquals(1f, diagnostics.pressure, .001f)
     }
 
+    @Test fun touchDrawModePaintsFingerAndCapacitivePenInputAtFullPressure() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            layout(0, 0, 800, 800)
+            configureBlank(512, 512)
+            settings.brush = BrushPreset.Airbrush.copy(hardness = 1f)
+            settings.gestures = settings.gestures.copy(oneFingerDrag = FingerAction.DRAW)
+        }
+        var canUndo = false
+        var diagnostics = CanvasDiagnostics()
+        var strokeStarted = false
+        surface.historyListener = { undo, _ -> canUndo = undo }
+        surface.diagnosticsListener = { diagnostics = it }
+        surface.strokeStartedListener = { strokeStarted = true }
+        val downTime = SystemClock.uptimeMillis()
+
+        surface.dispatchTouchEvent(fingerEvent(downTime, downTime, MotionEvent.ACTION_DOWN, 300f, 400f))
+        surface.dispatchTouchEvent(fingerEvent(downTime, downTime + 8L, MotionEvent.ACTION_MOVE, 400f, 400f))
+        surface.dispatchTouchEvent(fingerEvent(downTime, downTime + 16L, MotionEvent.ACTION_UP, 500f, 400f))
+
+        assertTrue(canUndo)
+        assertTrue(strokeStarted)
+        assertEquals("FINGER", diagnostics.tool)
+        assertEquals(1f, diagnostics.pressure, .001f)
+    }
+
+    @Test fun secondFingerCancelsTouchMarkAndSwitchesToNavigation() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            layout(0, 0, 800, 800)
+            configureBlank(512, 512)
+            settings.brush = BrushPreset.Airbrush.copy(hardness = 1f)
+            settings.gestures = settings.gestures.copy(oneFingerDrag = FingerAction.DRAW)
+        }
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        var canUndo = false
+        surface.historyListener = { undo, _ -> canUndo = undo }
+        val downTime = SystemClock.uptimeMillis()
+
+        surface.dispatchTouchEvent(fingerEvent(downTime, downTime, MotionEvent.ACTION_DOWN, 300f, 400f))
+        surface.dispatchTouchEvent(fingerEvent(downTime, downTime + 8L, MotionEvent.ACTION_MOVE, 350f, 400f))
+        assertNotNull(raster.previewStroke)
+
+        surface.dispatchTouchEvent(twoFingerPointerDown(downTime, downTime + 16L))
+
+        assertNull(raster.previewStroke)
+        assertFalse(canUndo)
+    }
+
     private fun stylusEvent(
         downTime: Long,
         eventTime: Long,
@@ -157,6 +205,45 @@ class DrawingSurfaceAirbrushTest {
         return MotionEvent.obtain(
             downTime, eventTime, action, 1, arrayOf(properties), arrayOf(coordinates),
             0, buttons, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0,
+        )
+    }
+
+    private fun fingerEvent(
+        downTime: Long,
+        eventTime: Long,
+        action: Int,
+        x: Float,
+        y: Float,
+    ): MotionEvent {
+        val properties = MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = MotionEvent.TOOL_TYPE_FINGER
+        }
+        val coordinates = MotionEvent.PointerCoords().apply {
+            this.x = x
+            this.y = y
+            pressure = .2f
+            size = 1f
+        }
+        return MotionEvent.obtain(
+            downTime, eventTime, action, 1, arrayOf(properties), arrayOf(coordinates),
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0,
+        )
+    }
+
+    private fun twoFingerPointerDown(downTime: Long, eventTime: Long): MotionEvent {
+        val properties = Array(2) { index -> MotionEvent.PointerProperties().apply {
+            id = index
+            toolType = MotionEvent.TOOL_TYPE_FINGER
+        } }
+        val coordinates = arrayOf(
+            MotionEvent.PointerCoords().apply { x = 350f; y = 400f; pressure = 1f; size = 1f },
+            MotionEvent.PointerCoords().apply { x = 500f; y = 400f; pressure = 1f; size = 1f },
+        )
+        val action = MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+        return MotionEvent.obtain(
+            downTime, eventTime, action, 2, properties, coordinates,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0,
         )
     }
 
