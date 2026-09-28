@@ -111,10 +111,11 @@ class DrawingSurfaceAirbrushTest {
         }
         var canUndo = false
         var diagnostics = CanvasDiagnostics()
-        var strokeStarted = false
+        val chromeOcclusionChanges = mutableListOf<Boolean>()
         surface.historyListener = { undo, _ -> canUndo = undo }
         surface.diagnosticsListener = { diagnostics = it }
-        surface.strokeStartedListener = { strokeStarted = true }
+        surface.setChromeOcclusionInsets(topPx = 100f, bottomPx = 100f, approachMarginPx = 40f)
+        surface.chromeOcclusionListener = { chromeOcclusionChanges += it }
         val downTime = SystemClock.uptimeMillis()
 
         surface.dispatchTouchEvent(fingerEvent(downTime, downTime, MotionEvent.ACTION_DOWN, 300f, 400f))
@@ -122,9 +123,30 @@ class DrawingSurfaceAirbrushTest {
         surface.dispatchTouchEvent(fingerEvent(downTime, downTime + 16L, MotionEvent.ACTION_UP, 500f, 400f))
 
         assertTrue(canUndo)
-        assertTrue(strokeStarted)
+        assertTrue(chromeOcclusionChanges.isEmpty())
         assertEquals("FINGER", diagnostics.tool)
         assertEquals(1f, diagnostics.pressure, .001f)
+    }
+
+    @Test fun phoneChromeHidesOnlyNearItsRegionAndReturnsAtStrokeEnd() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            layout(0, 0, 800, 800)
+            configureBlank(512, 512)
+            settings.brush = BrushPreset.Airbrush.copy(hardness = 1f)
+            settings.gestures = settings.gestures.copy(oneFingerDrag = FingerAction.DRAW)
+            setChromeOcclusionInsets(topPx = 100f, bottomPx = 100f, approachMarginPx = 40f)
+        }
+        val chromeOcclusionChanges = mutableListOf<Boolean>()
+        surface.chromeOcclusionListener = { chromeOcclusionChanges += it }
+        val downTime = SystemClock.uptimeMillis()
+
+        surface.dispatchTouchEvent(fingerEvent(downTime, downTime, MotionEvent.ACTION_DOWN, 300f, 400f))
+        assertTrue(chromeOcclusionChanges.isEmpty())
+
+        surface.dispatchTouchEvent(fingerEvent(downTime, downTime + 8L, MotionEvent.ACTION_MOVE, 350f, 120f))
+        surface.dispatchTouchEvent(fingerEvent(downTime, downTime + 16L, MotionEvent.ACTION_UP, 350f, 120f))
+
+        assertEquals(listOf(true, false), chromeOcclusionChanges)
     }
 
     @Test fun secondFingerCancelsTouchMarkAndSwitchesToNavigation() {

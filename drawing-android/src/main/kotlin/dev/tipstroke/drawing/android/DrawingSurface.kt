@@ -94,7 +94,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
     private var paletteColorCount = 3
     var stylusButtonListener: ((StylusButton) -> Unit)? = null
-    var strokeStartedListener: (() -> Unit)? = null
+    var chromeOcclusionListener: ((Boolean) -> Unit)? = null
+    private var chromeOccludedByStroke = false
+    private var chromeTopInsetPx = 0f
+    private var chromeBottomInsetPx = 0f
+    private var chromeApproachMarginPx = 0f
     private var pressedStylusButtons = 0
     private var imageTransformMode = false
     private var selectionMode = false
@@ -196,6 +200,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun hideBrushAdjustmentPreview() {
         gestureHandler.removeCallbacks(hideBrushPreview)
         gestureHandler.postDelayed(hideBrushPreview, 300L)
+    }
+    fun setChromeOcclusionInsets(topPx: Float, bottomPx: Float, approachMarginPx: Float) {
+        chromeTopInsetPx = topPx.coerceAtLeast(0f)
+        chromeBottomInsetPx = bottomPx.coerceAtLeast(0f)
+        chromeApproachMarginPx = approachMarginPx.coerceAtLeast(0f)
     }
     fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
     fun duplicateSelectedLayers() {
@@ -426,10 +435,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     is ImageLayerRuntime -> if (baseStyle.blend == BlendBehavior.ERASE) StrokeTarget(selected.mask, selected) else return true
                 }
                 requestUnbufferedDispatch(event)
-                strokeStartedListener?.invoke()
                 activeDrawingPointerId = pointerId
                 pendingTargets[pointerId] = target
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
+                updateChromeOcclusion(event, event.actionIndex)
                 val style = styleForTarget(baseStyle, target)
                 if (target.image != null || style.blend == BlendBehavior.ERASE) {
                     customPreviewStyle = style
@@ -457,6 +466,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         add(sample(event, index).forTarget(pendingTargets.getValue(pointerId)))
                     }
                     appendSamples(pointerId, list, additions)
+                    updateChromeOcclusion(event, index)
                     if (customPreviewStyle != null || airbrushPreviewStyle != null) {
                         Unit
                     } else {
@@ -531,6 +541,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     pencilPreviewStyle = null
                 }
                 activeDrawingPointerId = null
+                setChromeOccludedByStroke(false)
             }
             MotionEvent.ACTION_CANCEL -> {
                 cancelActiveStroke(event, pointerId)
@@ -910,6 +921,22 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         pendingSamples.remove(pointerId)
         pendingTargets.remove(pointerId)
         activeDrawingPointerId = null
+        setChromeOccludedByStroke(false)
+    }
+
+    private fun updateChromeOcclusion(event: MotionEvent, index: Int) {
+        if (chromeOcclusionListener == null || index !in 0 until event.pointerCount || height <= 0) return
+        val y = event.getY(index)
+        setChromeOccludedByStroke(
+            y <= chromeTopInsetPx + chromeApproachMarginPx ||
+                y >= height - chromeBottomInsetPx - chromeApproachMarginPx,
+        )
+    }
+
+    private fun setChromeOccludedByStroke(occluded: Boolean) {
+        if (chromeOccludedByStroke == occluded) return
+        chromeOccludedByStroke = occluded
+        chromeOcclusionListener?.invoke(occluded)
     }
 
     private fun currentStyle(event: MotionEvent, index: Int): StrokeStyle {

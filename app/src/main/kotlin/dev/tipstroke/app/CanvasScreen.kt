@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -99,11 +100,13 @@ fun CanvasScreen(
     var pencilTiltMode by remember { mutableStateOf(initialBrushTuning.pencilTiltMode) }
     var pencilShadeStartRadians by remember { mutableFloatStateOf(initialBrushTuning.pencilShadeStartRadians) }
     var pencilShadeTransitionRadians by remember { mutableFloatStateOf(initialBrushTuning.pencilShadeTransitionRadians) }
-    var phoneChromeVisible by rememberSaveable { mutableStateOf(true) }
+    var phoneChromeManuallyHidden by rememberSaveable { mutableStateOf(false) }
+    var phoneChromeOccludedByStroke by remember { mutableStateOf(false) }
     var phoneAdjustmentsOpen by rememberSaveable { mutableStateOf(false) }
     var phoneMenuOpen by remember { mutableStateOf(false) }
     var touchDrawing by rememberSaveable { mutableStateOf(gestureSettings.oneFingerDrag == FingerAction.DRAW) }
     val lastStylusButtonAt = remember { longArrayOf(Long.MIN_VALUE, Long.MIN_VALUE) }
+    val phoneChromeVisible = !phoneChromeManuallyHidden && !phoneChromeOccludedByStroke
     val effectiveGestureSettings = if (touchDrawing == (gestureSettings.oneFingerDrag == FingerAction.DRAW)) {
         gestureSettings
     } else {
@@ -251,19 +254,24 @@ fun CanvasScreen(
     BackHandler(enabled = layersOpen) { layersOpen = false }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val density = LocalDensity.current
         val portrait = maxHeight > maxWidth
         val viewportHeight = maxHeight
         val compactPhone = minOf(maxWidth, maxHeight) < 600.dp
         val compactLandscape = !portrait && maxHeight < 760.dp
-        fun hidePhoneChrome() {
+        fun manuallyHidePhoneChrome() {
             if (!compactPhone) return
-            phoneChromeVisible = false
+            phoneChromeManuallyHidden = true
+            phoneChromeOccludedByStroke = false
             phoneAdjustmentsOpen = false
             phoneMenuOpen = false
             layersOpen = false
             colorPickerOpen = false
         }
-        BackHandler(enabled = compactPhone && !phoneChromeVisible) { phoneChromeVisible = true }
+        LaunchedEffect(compactPhone) {
+            if (!compactPhone) phoneChromeOccludedByStroke = false
+        }
+        BackHandler(enabled = compactPhone && phoneChromeManuallyHidden) { phoneChromeManuallyHidden = false }
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context -> DrawingSurface(context).also { view ->
@@ -292,7 +300,14 @@ fun CanvasScreen(
                 } else view.publishLayers()
             } },
             update = { view ->
-                view.strokeStartedListener = if (compactPhone) ({ hidePhoneChrome() }) else null
+                view.chromeOcclusionListener = if (compactPhone) ({ occluded ->
+                    phoneChromeOccludedByStroke = occluded
+                }) else null
+                view.setChromeOcclusionInsets(
+                    topPx = with(density) { 72.dp.toPx() },
+                    bottomPx = with(density) { (if (phoneAdjustmentsOpen) 196.dp else 72.dp).toPx() },
+                    approachMarginPx = with(density) { 36.dp.toPx() },
+                )
             },
         )
 
@@ -339,12 +354,12 @@ fun CanvasScreen(
                 onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
                 onExport = { if (ready) exportOpen = true },
                 onDebug = { debug = !debug },
-                onHide = ::hidePhoneChrome,
+                onHide = ::manuallyHidePhoneChrome,
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(8.dp),
             )
-        } else {
+        } else if (phoneChromeManuallyHidden) {
             PhoneChromeHandle(
-                onClick = { phoneChromeVisible = true },
+                onClick = { phoneChromeManuallyHidden = false },
                 modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
             )
         }
