@@ -443,6 +443,8 @@ fun CanvasScreen(
 
     if (brushStudioOpen) BrushStudioDialog(
         toolName = if (erasing) "Eraser" else brush.displayName,
+        brush = brush,
+        erasing = erasing,
         supportsHardness = erasing || brush.engine == BrushEngine.AIRBRUSH,
         hardness = if (erasing) eraserHardness else brushHardness,
         pressureSize = pressureSize,
