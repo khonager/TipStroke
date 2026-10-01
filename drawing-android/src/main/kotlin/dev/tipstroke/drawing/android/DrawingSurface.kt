@@ -282,7 +282,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         publishDiagnostics(lastDiagnostics.withMemory(memory))
     }
     fun configureBlank(widthPx: Int, heightPx: Int) {
-        require(widthPx in 64..8192 && heightPx in 64..8192)
+        require(widthPx in 16..8192 && heightPx in 16..8192)
         layerStack = createLayerStack(widthPx, heightPx)
         clearSelection()
         rasterView.layerStack = layerStack
@@ -593,7 +593,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val old = rasterView.transform
         if (zoomModifier) {
             val anchor = rasterView.screenToDocument(event.x, event.y)
-            val scale = (old.scale * exp(vertical * .12f)).coerceIn(.08f, 12f)
+            val scale = (old.scale * exp(vertical * .12f)).coerceIn(.08f, 256f)
             rasterView.updateTransformAround(anchor.x, anchor.y, event.x, event.y, scale, old.rotationDegrees)
         } else {
             val scrollPixels = 48f * resources.displayMetrics.density
@@ -849,7 +849,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 anchor.y,
                 center.x,
                 center.y,
-                (old.scale * scaleFactor).coerceIn(.08f, 12f),
+                (old.scale * scaleFactor).coerceIn(.08f, 256f),
                 old.rotationDegrees + Math.toDegrees(angleDelta.toDouble()).toFloat(),
             )
             liveView.motionEventToViewTransform = Matrix()

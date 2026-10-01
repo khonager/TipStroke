@@ -4,6 +4,9 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -27,6 +30,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -406,20 +411,72 @@ private fun NewDrawingCard(onClick: () -> Unit) {
 
 @Composable
 private fun NewDrawingDialog(onDismiss: () -> Unit, onCreate: (String, Int, Int) -> Unit) {
+    val context = LocalContext.current
+    val preferences = remember(context) { CanvasPresetPreferences(context) }
+    val builtIns = remember(context) { builtInCanvasPresets(context) }
+    var saved by remember { mutableStateOf(preferences.saved()) }
+    var defaultId by remember { mutableStateOf(preferences.defaultId()) }
+    val initial = (builtIns + saved).firstOrNull { it.id == defaultId } ?: builtIns.first()
+    var selectedId by remember { mutableStateOf<String?>(initial.id) }
     var name by remember { mutableStateOf("Untitled drawing") }
-    var width by remember { mutableStateOf("2048") }
-    var height by remember { mutableStateOf("2048") }
-    val validWidth = width.toIntOrNull()?.takeIf { it in 64..8192 }
-    val validHeight = height.toIntOrNull()?.takeIf { it in 64..8192 }
+    var width by remember { mutableStateOf(initial.widthPx.toString()) }
+    var height by remember { mutableStateOf(initial.heightPx.toString()) }
+    var presetName by remember { mutableStateOf("") }
+    val validWidth = width.toIntOrNull()?.takeIf { it in MIN_CANVAS_SIDE..MAX_CANVAS_SIDE }
+    val validHeight = height.toIntOrNull()?.takeIf { it in MIN_CANVAS_SIDE..MAX_CANVAS_SIDE }
+    fun select(preset: CanvasPreset) {
+        selectedId = preset.id
+        width = preset.widthPx.toString()
+        height = preset.heightPx.toString()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("New drawing") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
+            Column(Modifier.heightIn(max = 540.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
+                (builtIns + saved).groupBy(CanvasPreset::category).forEach { (category, presets) ->
+                    Column {
+                        Text(category, style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            presets.forEach { preset ->
+                                FilterChip(
+                                    selected = selectedId == preset.id,
+                                    onClick = { select(preset) },
+                                    label = { Text("${preset.name} · ${preset.widthPx} × ${preset.heightPx}${if (preset.id == defaultId) " ★" else ""}") },
+                                )
+                            }
+                        }
+                    }
+                }
+                saved.firstOrNull { it.id == selectedId }?.let { selected ->
+                    TextButton(onClick = {
+                        preferences.remove(selected.id)
+                        saved = preferences.saved()
+                        defaultId = preferences.defaultId()
+                        select(builtIns.first())
+                    }) { Text("Remove saved preset") }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(width, { width = it.filter(Char::isDigit) }, Modifier.weight(1f), label = { Text("Width px") }, singleLine = true)
-                    OutlinedTextField(height, { height = it.filter(Char::isDigit) }, Modifier.weight(1f), label = { Text("Height px") }, singleLine = true)
+                    OutlinedTextField(width, { width = it.filter(Char::isDigit); selectedId = null }, Modifier.weight(1f), label = { Text("Width px") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number))
+                    OutlinedTextField(height, { height = it.filter(Char::isDigit); selectedId = null }, Modifier.weight(1f), label = { Text("Height px") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number))
+                }
+                Text("Each side: $MIN_CANVAS_SIDE–$MAX_CANVAS_SIDE px. Drawings use sparse tiles, so empty areas take little space.", style = MaterialTheme.typography.bodySmall)
+                if (selectedId == null) {
+                    OutlinedTextField(presetName, { presetName = it }, Modifier.fillMaxWidth(), label = { Text("Custom preset name") }, singleLine = true)
+                    TextButton(
+                        onClick = {
+                            val preset = preferences.add(presetName, validWidth!!, validHeight!!)
+                            saved = preferences.saved()
+                            select(preset)
+                            presetName = ""
+                        },
+                        enabled = validWidth != null && validHeight != null && presetName.isNotBlank(),
+                    ) { Text("Save custom preset") }
+                }
+                selectedId?.let { id ->
+                    if (id != defaultId) TextButton(onClick = { preferences.setDefault(id); defaultId = id }) { Text("Set as default") }
+                    else Text("★ Default preset", style = MaterialTheme.typography.labelMedium)
                 }
             }
         },

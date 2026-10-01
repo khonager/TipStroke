@@ -12,7 +12,7 @@ The long-term differentiator is a hybrid document that can contain true raster a
 
 ## Current slice
 
-- Local gallery with named custom-size documents, generated thumbnails, drag ordering, named stacks, duplication, deletion, and reopening.
+- Local gallery with named custom-size documents, generated thumbnails, drag ordering, named stacks, duplication, deletion, and reopening. New drawings offer screen-size and device-budgeted maximum square presets, Full HD and 4K, manga page and panel sizes, icon sizes, and 16–128 px pixel-art sizes. Custom sizes from 16 to 8192 px per side can be saved as named presets; any preset can be the default for future drawings. The initial default is the maximum square, which estimates one fully painted 256 px-tile layer using at most half the device's app heap class, capped at 8192 px per side; sparse or additional layers can change actual memory use.
 - Versioned local project directories containing manifests, sparse paint tiles, and copied original image assets.
 - Multiple named paint/image layers with content previews, ordering, duplication, visibility, opacity, direct non-destructive image move/resize/rotation, and original-resolution image masks for erasing without flattening.
 - PNG, JPEG, and WebP export through the layer compositor.
