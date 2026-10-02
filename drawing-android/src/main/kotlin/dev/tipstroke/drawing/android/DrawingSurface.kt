@@ -78,7 +78,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     )
     private val pendingTargets = mutableMapOf<Int, StrokeTarget>()
     private var customPreviewStyle: StrokeStyle? = null
-    private var airbrushPreviewStyle: StrokeStyle? = null
+    private var rasterPreviewStyle: StrokeStyle? = null
     private var pencilPreviewStyle: StrokeStyle? = null
     private var pencilPreviewStore: TileStore? = null
     private val finishedSamples = ArrayDeque<PendingCommit>()
@@ -641,8 +641,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (target.image != null || style.blend == BlendBehavior.ERASE) {
                     customPreviewStyle = style
                     target.store.beginLiveStroke()
-                } else if (style.brush.engine == BrushEngine.AIRBRUSH) {
-                    airbrushPreviewStyle = style
+                } else if (style.pixelArt || style.brush.engine == BrushEngine.AIRBRUSH) {
+                    rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId).toList(), style)
                 } else if (style.brush.engine == BrushEngine.PENCIL) {
                     pencilPreviewStyle = style
@@ -665,7 +665,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     }
                     appendSamples(pointerId, list, additions)
                     updateChromeOcclusion(event, index)
-                    if (customPreviewStyle != null || airbrushPreviewStyle != null) {
+                    if (customPreviewStyle != null || rasterPreviewStyle != null) {
                         Unit
                     } else {
                         val prediction = predictor?.predict()
@@ -691,7 +691,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val target = pendingTargets.remove(pointerId)
                 pendingSamples.remove(pointerId)?.let { rawSamples ->
                     val samples = stabilizeLiftOffOpacity(rawSamples)
-                    val style = customPreviewStyle ?: airbrushPreviewStyle ?: pencilPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
+                    val style = customPreviewStyle ?: rasterPreviewStyle ?: pencilPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
                     val reveal = strokeRecording?.takeIf { target?.image == null &&
                         layerStack.selectedId == it.layerId && style.blend == BlendBehavior.PAINT }
                     strokeRecording = null
@@ -704,7 +704,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                             notifyVisiblePalette()
                             notifyLayers()
                             if (reveal != null) finishStrokeRecording(reveal, CompletedStroke(samples, style))
-                        } else if (airbrushPreviewStyle != null) {
+                        } else if (rasterPreviewStyle != null) {
                             target.store.commit(CompletedStroke(samples, style))
                             rasterView.previewStroke = null
                             rasterView.invalidate()
@@ -739,8 +739,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
                 if (customPreviewStyle != null) {
                     customPreviewStyle = null
-                } else if (airbrushPreviewStyle != null) {
-                    airbrushPreviewStyle = null
+                } else if (rasterPreviewStyle != null) {
+                    rasterPreviewStyle = null
                 } else {
                     liveView.finishStroke(event, pointerId)
                     pencilPreviewStyle = null
@@ -1075,7 +1075,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val previous = samples.lastOrNull()
         val pencilContext = if (pencilPreviewStyle != null) samples.takeLast(2) else emptyList()
         samples += additions
-        airbrushPreviewStyle?.let { style ->
+        rasterPreviewStyle?.let { style ->
             rasterView.previewStroke = CompletedStroke(samples.toList(), style)
             return
         }
@@ -1116,14 +1116,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun cancelActiveStroke(event: MotionEvent, pointerId: Int) {
-        if (customPreviewStyle == null && airbrushPreviewStyle == null) {
+        if (customPreviewStyle == null && rasterPreviewStyle == null) {
             liveView.cancelStroke(event, pointerId)
         }
         if (customPreviewStyle != null) {
             pendingTargets[pointerId]?.let { target -> invalidateTarget(target, target.store.cancelLiveStroke()) }
         }
         customPreviewStyle = null
-        airbrushPreviewStyle = null
+        rasterPreviewStyle = null
         pencilPreviewStyle = null
         clearPencilPreview()
         rasterView.previewStroke = null
@@ -1154,7 +1154,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val erasing = settings.erasing || isHardwareEraser
         val brush = if (erasing) settings.brush.copy(hardness = settings.eraserHardness) else settings.brush
         return StrokeStyle(brush, settings.sizePx, settings.opacity, settings.color,
-            if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion)
+            if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
+            pixelArt = layerStack.canvasWidth <= 128 && layerStack.canvasHeight <= 128)
     }
 
     private fun styleForTarget(style: StrokeStyle, target: StrokeTarget): StrokeStyle {

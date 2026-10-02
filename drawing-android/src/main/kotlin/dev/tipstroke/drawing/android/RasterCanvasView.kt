@@ -54,6 +54,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var stylusHoverPreview: StylusHoverPreview? = null
         set(value) { field = value; postInvalidateOnAnimation() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
+    private val pixelArtCanvas get() = layerStack.canvasWidth <= 128 && layerStack.canvasHeight <= 128
     var transformChangedListener: ((CanvasTransform) -> Unit)? = null
 
     fun setPencilPreview(store: TileStore?, layerId: LayerId?) {
@@ -135,6 +136,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        bitmapPaint.isFilterBitmap = !pixelArtCanvas
         canvas.save(); canvas.concat(transformMatrix)
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), canvasPaint)
         canvas.clipRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())

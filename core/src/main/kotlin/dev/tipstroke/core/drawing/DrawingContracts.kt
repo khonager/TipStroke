@@ -30,6 +30,8 @@ data class StrokeStyle(
     val blend: BlendBehavior,
     /** Optional transient selection clip; it is never persisted as artwork. */
     val selection: SelectionRegion? = null,
+    /** Transient rendering choice for small, pixel-sized documents. */
+    val pixelArt: Boolean = false,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     val bounds: Rect by lazy {

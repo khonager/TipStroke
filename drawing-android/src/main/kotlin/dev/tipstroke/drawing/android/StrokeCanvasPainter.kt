@@ -127,6 +127,11 @@ internal object StrokeCanvasPainter {
     fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke)) {
         val saveCount = canvas.save()
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
+        if (stroke.style.pixelArt) {
+            drawPixelStroke(canvas, stroke, paint)
+            canvas.restoreToCount(saveCount)
+            return
+        }
         val samples = stroke.samples
         if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine == BrushEngine.PENCIL) {
             drawPencil(canvas, stroke, paint, replaceExisting = false, capStart = true, capEnd = true)
@@ -160,6 +165,44 @@ internal object StrokeCanvasPainter {
             }
         }
         canvas.restoreToCount(saveCount)
+    }
+
+    private fun drawPixelStroke(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
+        val width = stroke.style.sizePx.roundToInt().coerceAtLeast(1)
+        val offset = (width - 1) / 2
+        val path = Path()
+        fun stamp(x: Int, y: Int) {
+            path.addRect(
+                (x - offset).toFloat(), (y - offset).toFloat(),
+                (x - offset + width).toFloat(), (y - offset + width).toFloat(),
+                Path.Direction.CW,
+            )
+        }
+        var previous: StrokeSample? = null
+        stroke.samples.forEach { sample ->
+            var x = previous?.position?.x?.let { floor(it).toInt() } ?: floor(sample.position.x).toInt()
+            var y = previous?.position?.y?.let { floor(it).toInt() } ?: floor(sample.position.y).toInt()
+            val endX = floor(sample.position.x).toInt()
+            val endY = floor(sample.position.y).toInt()
+            val dx = abs(endX - x)
+            val dy = abs(endY - y)
+            val stepX = if (x < endX) 1 else -1
+            val stepY = if (y < endY) 1 else -1
+            var error = dx - dy
+            while (true) {
+                stamp(x, y)
+                if (x == endX && y == endY) break
+                val twiceError = 2 * error
+                if (twiceError > -dy) { error -= dy; x += stepX }
+                if (twiceError < dx) { error += dx; y += stepY }
+            }
+            previous = sample
+        }
+        paint.isAntiAlias = false
+        paint.maskFilter = null
+        paint.style = Paint.Style.FILL
+        paint.alpha = (stroke.style.opacity * stroke.style.color.alpha * 255).roundToInt().coerceIn(0, 255)
+        canvas.drawPath(path, paint)
     }
 
     /** Draws a Pencil segment directly into its isolated sparse preview tiles. */
