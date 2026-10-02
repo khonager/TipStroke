@@ -2,6 +2,7 @@ package dev.tipstroke.drawing.android
 
 import android.content.ContentResolver
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ImageDecoder
 import android.graphics.Paint
@@ -26,6 +27,7 @@ internal sealed class CanvasLayerRuntime {
     abstract var name: String
     abstract var visible: Boolean
     abstract var opacity: Float
+    var activeAtFrame: Boolean = true
     abstract fun summary(): LayerSummary
 }
 
@@ -34,7 +36,7 @@ internal class RasterLayerRuntime(
     override var name: String,
     override var visible: Boolean = true,
     override var opacity: Float = 1f,
-    val tiles: TileStore,
+    var tiles: TileStore,
 ) : CanvasLayerRuntime() {
     override fun summary() = LayerSummary(id, name, LayerKind.RASTER, visible, opacity)
 }
@@ -290,20 +292,21 @@ internal class LayerStack(
         return true
     }
 
-    fun snapshot(galleryRotationQuarterTurns: Int = 0): DrawingSnapshot = DrawingSnapshot(
+    fun snapshot(galleryRotationQuarterTurns: Int = 0, animation: AnimationRuntime? = null): DrawingSnapshot = DrawingSnapshot(
         canvasWidth, canvasHeight, selectedId,
         layers.map { layer ->
             when (layer) {
                 is RasterLayerRuntime -> SavedRasterSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity,
-                    layer.tiles.snapshotTiles(), layer.tiles.snapshotColorUsage(),
+                    if (animation == null || animation.isBackground(layer.id)) layer.tiles.snapshotTiles() else emptyMap(),
+                    layer.tiles.snapshotColorUsage(),
                 )
                 is ImageLayerRuntime -> SavedImageSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity, layer.source.uri,
                     layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(),
                 )
             }
-        }, galleryRotationQuarterTurns.mod(4),
+        }, galleryRotationQuarterTurns.mod(4), animation?.snapshot(),
     )
 
     fun replaceWith(loaded: LoadedProject) {
@@ -344,7 +347,7 @@ internal class LayerStack(
     private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean): Int {
         var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else android.graphics.Color.WHITE
         layers.forEach { layer ->
-            if (!layer.visible || layer.opacity <= 0f) return@forEach
+            if (!layer.visible || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
             val source = when (layer) {
                 is RasterLayerRuntime -> layer.tiles.colorAt(x.roundToInt(), y.roundToInt())
                 is ImageLayerRuntime -> {
@@ -443,6 +446,7 @@ internal class LayerStack(
 
     private fun renderPreview(layer: CanvasLayerRuntime, sizePx: Int): Bitmap {
         val preview = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        if (!layer.activeAtFrame) return preview
         val canvas = Canvas(preview)
         val contentBounds = when (layer) {
             is RasterLayerRuntime -> layer.tiles.contentBounds()
@@ -573,16 +577,15 @@ internal class OriginalImageSource(
         private val mainHandler = Handler(Looper.getMainLooper())
 
         private fun probeDimensions(resolver: ContentResolver, uri: Uri): Pair<Int, Int> {
-            var result: Pair<Int, Int>? = null
-            val preview = ImageDecoder.decodeBitmap(decoderSource(resolver, uri)) { decoder, info, _ ->
-                result = info.size.width to info.size.height
-                decoder.setTargetSize(1, 1)
-                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            val stream = if (uri.scheme == ContentResolver.SCHEME_FILE) {
+                File(requireNotNull(uri.path)).inputStream()
+            } else resolver.openInputStream(uri)
+            requireNotNull(stream) { "The selected file cannot be opened" }.use {
+                BitmapFactory.decodeStream(it, null, options)
             }
-            preview.recycle()
-            return requireNotNull(result) { "The selected file is not a supported image" }.also {
-                require(it.first > 0 && it.second > 0) { "The selected image has invalid dimensions" }
-            }
+            require(options.outWidth > 0 && options.outHeight > 0) { "The selected file is not a supported image" }
+            return options.outWidth to options.outHeight
         }
 
         private fun decoderSource(resolver: ContentResolver, uri: Uri): ImageDecoder.Source =

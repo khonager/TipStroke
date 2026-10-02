@@ -47,6 +47,16 @@ An image layer keeps its persisted Android document URI and original pixel dimen
 
 Image decoding runs on a dedicated background executor. Dimension probing occurs once at import. The current milestone caches a full decoded bitmap per imported image, so very large or numerous images may still encounter device memory limits; tiled image pyramids are a future optimization and do not require a project-format change.
 
+## Animation
+
+Animation is optional per drawing. A timeline frame is a time slot with a stable frame ID and an exposure count; it is not a layer. The ordered layer stack keeps stable layer IDs across time. Each raster layer can be shared across every frame or have a sparse `TileStore` cel keyed by frame ID. Each image layer keeps one original asset and mask, with per-frame transform metadata when animated. Switching frames installs the active cel in `LayerStack`; the native raster view composites shared layers, neighboring onion cels, and the active cel without routing samples through Compose.
+
+Duplicate Frame copies only allocated cel tiles so edits to the new frame are independent. Hold changes exposure metadata without copying artwork. The selected paint cel or selection can be copied or moved to a new layer in the current frame. A shared layer can be converted to an animated cel and back from the timeline menu. The timeline normally occupies one compact strip; its editing controls open only on demand.
+
+Image motion recording samples native touch transforms and writes interpolated transforms into the chosen frame range. A shared image is converted to an animated layer when recording begins. Line reveal recording captures one native stroke and materializes progressive sparse raster cels on a new layer above the selected paint layer. Jetpack Ink remains the wet renderer; the recorded cels are permanent raster artwork. `FIT_RANGE` fits the gesture to the selected range, while `REAL_TIME` uses recorded timestamps at the document FPS. Playback uses the timeline exposure counts and loop, ping-pong, or once mode.
+
+Animation export renders one frame at a time through the same layer compositor. MP4 uses Android `MediaCodec` and `MediaMuxer`, GIF uses indexed frames, and a PNG sequence is a ZIP with a `timing.json` file. Rendering and encoding run on the project executor, outside the input path.
+
 ## Replaceable seams
 
 `StrokeRasterizer`, `LiveStrokeRenderer`, and `LayerCompositor` express responsibilities without platform types. A profiled future renderer can replace Android Canvas tiles without changing document APIs. The sealed `Layer` interface permits real future `VectorLayer`/`GroupLayer` implementations without pretending they exist today.

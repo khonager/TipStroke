@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.tipstroke.drawing.android.ExportFormat
+import dev.tipstroke.drawing.android.AnimationExportFormat
 import kotlin.math.roundToInt
 
 data class ExportRequest(
@@ -21,6 +22,75 @@ data class ExportRequest(
     val transparent: Boolean,
     val fileName: String,
 )
+
+data class AnimationExportRequest(
+    val format: AnimationExportFormat,
+    val scale: Float,
+    val fileName: String,
+)
+
+@Composable
+fun AnimationExportDialog(
+    drawingName: String,
+    canvasWidth: Int,
+    canvasHeight: Int,
+    onDismiss: () -> Unit,
+    onStillImage: () -> Unit,
+    onExport: (AnimationExportRequest) -> Unit,
+) {
+    var format by remember { mutableStateOf(AnimationExportFormat.MP4) }
+    var scale by remember { mutableFloatStateOf(.5f) }
+    var fileName by remember(drawingName, format) {
+        mutableStateOf("${drawingName.safeFileName()}.${format.extension}")
+    }
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            Modifier.widthIn(min = 320.dp, max = 580.dp).fillMaxWidth(.9f).verticalScroll(rememberScrollState()),
+            color = Color(0xFF202125), shape = RoundedCornerShape(22.dp),
+            border = BorderStroke(1.dp, Color(0xFF47494F)), shadowElevation = 24.dp,
+        ) {
+            Column(Modifier.padding(24.dp)) {
+                Text("Export animation", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+                ExportLabel("Format")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    AnimationExportFormat.entries.forEach { option ->
+                        ChoiceButton(
+                            when (option) {
+                                AnimationExportFormat.MP4 -> "MP4"
+                                AnimationExportFormat.GIF -> "GIF"
+                                AnimationExportFormat.PNG_SEQUENCE -> "PNG ZIP"
+                            },
+                            option == format,
+                            {
+                                format = option
+                                fileName = "${fileName.substringBeforeLast('.', fileName)}.${option.extension}"
+                            }, Modifier.weight(1f),
+                        )
+                    }
+                }
+                ExportLabel("Size")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    ChoiceButton("Canvas", scale == 1f, { scale = 1f }, Modifier.weight(1f))
+                    ChoiceButton("50%", scale == .5f, { scale = .5f }, Modifier.weight(1f))
+                    ChoiceButton("25%", scale == .25f, { scale = .25f }, Modifier.weight(1f))
+                }
+                Text("${(canvasWidth * scale).roundToInt()} × ${(canvasHeight * scale).roundToInt()} px",
+                    color = Color(0xFF9EA0A6), fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                ExportLabel("Filename")
+                OutlinedTextField(fileName, { fileName = it }, Modifier.fillMaxWidth(), singleLine = true)
+                TextButton(onClick = onStillImage, modifier = Modifier.padding(top = 8.dp)) { Text("Export current frame as an image") }
+                Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onDismiss, Modifier.weight(1f)) { Text("Cancel") }
+                    Button(onClick = {
+                        onExport(AnimationExportRequest(format, scale, fileName.ifBlank { "TipStroke.${format.extension}" }))
+                    }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A))) {
+                        Text("Export")
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun ExportDrawingDialog(drawingName: String, canvasWidth: Int, canvasHeight: Int, onDismiss: () -> Unit, onExport: (ExportRequest) -> Unit) {

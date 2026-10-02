@@ -10,8 +10,9 @@ data class Rect(val left: Float, val top: Float, val right: Float, val bottom: F
 data class TileCoordinate(val x: Int, val y: Int)
 
 /** A transient polygonal editing boundary. Rectangle selections are represented by four points. */
-data class SelectionRegion(val points: List<Point>) {
-    init { require(points.size >= 3) }
+class SelectionRegion(points: List<Point>) {
+    val points: List<Point> = points.toList()
+    init { require(this.points.size >= 3) }
     val bounds: Rect = Rect(
         points.minOf { it.x }, points.minOf { it.y }, points.maxOf { it.x }, points.maxOf { it.y },
     )
@@ -28,6 +29,10 @@ data class SelectionRegion(val points: List<Point>) {
         }
         return inside
     }
+
+    override fun equals(other: Any?) = other is SelectionRegion && points == other.points
+    override fun hashCode() = points.hashCode()
+    override fun toString() = "SelectionRegion(points=$points)"
 
     companion object {
         fun rectangle(rect: Rect): SelectionRegion {

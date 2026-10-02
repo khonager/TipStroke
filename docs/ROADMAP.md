@@ -10,7 +10,7 @@ Validate gallery creation/reopening, drag ordering and stacks, crash-resistant a
 2. Layer renaming, draggable corner handles/non-uniform transforms, blend modes, and tiled image pyramids for extremely large sources. Direct drag/pinch/twist image transforms and non-destructive image erasing are already available.
 3. Resize/rotate/flip for selected raster pixels. Lasso/rectangle selection and move are already available for paint; image selections constrain non-destructive mask editing while whole images retain their own transforms.
 4. Brush duplication, importable brush assets, and broader dynamics. Compact hardness, pressure, and speed controls plus TipStroke-owned Ink custom families are already available.
-5. Animation model, cels, timeline, playback, onion skin, and initial export.
+5. Refine the initial animation workflow: lazy loading for large cel collections, device profiling of live recording and MP4 encoding, richer cel manipulation, and more compact iconography after usability review. The separate frame/cel model, shared backgrounds, holds, onion skins, playback modes, live motion/line recording, and MP4/GIF/PNG-sequence export are in the first Android slice.
 6. Real vector layers and the icon/logo workflow with SVG import/export.
 
 ## LATER

@@ -33,6 +33,31 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private lateinit var rasterView: RasterCanvasView
     private lateinit var colorLoupe: ColorPickerLoupeView
     private var layerStack: LayerStack = createLayerStack(2048, 2048)
+    private var animation: AnimationRuntime? = null
+    private var animationPlaying = false
+    private data class MotionRecording(
+        val layerId: LayerId, val start: Int, val end: Int, val timing: RecordingTiming,
+        val samples: MutableList<Pair<Long, ImageTransform>> = mutableListOf(),
+    )
+    private data class StrokeRecording(val layerId: LayerId, val start: Int, val end: Int, val timing: RecordingTiming)
+    private var motionRecording: MotionRecording? = null
+    private var strokeRecording: StrokeRecording? = null
+    private var playbackStartedAt = 0L
+    private val playbackStep = object : Runnable {
+        override fun run() {
+            val active = animation ?: return
+            if (!animationPlaying) return
+            val tick = ((SystemClock.uptimeMillis() - playbackStartedAt) * active.fps / 1000L)
+            val timeline = active.timeline
+            if (active.playbackMode == PlaybackMode.ONCE && tick >= timeline.totalTicks) {
+                stopAnimationPlayback()
+                return
+            }
+            val index = timeline.frameAtPlaybackTick(tick)
+            if (index != active.selectedIndex) selectAnimationFrame(index, fromPlayback = true)
+            gestureHandler.postDelayed(this, 16L)
+        }
+    }
 
     private fun createLayerStack(width: Int, height: Int): LayerStack = LayerStack(context.contentResolver, width, height) {
         if (::rasterView.isInitialized) rasterView.invalidate()
@@ -49,6 +74,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val stroke: CompletedStroke,
         val target: StrokeTarget,
         val rasterizedLive: Boolean = false,
+        val reveal: StrokeRecording? = null,
     )
     private val pendingTargets = mutableMapOf<Int, StrokeTarget>()
     private var customPreviewStyle: StrokeStyle? = null
@@ -89,6 +115,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>) -> Unit)? = null
+    var animationListener: ((AnimationUiState?) -> Unit)? = null
+        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind())) }
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
@@ -150,6 +178,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     if (pending.target.image == null && stroke.style.blend == BlendBehavior.PAINT) {
                         drawnColorListener?.invoke(stroke.style.color)
                     }
+                    pending.reveal?.let { finishStrokeRecording(it, stroke) }
                 }
                 rasterView.invalidate()
                 liveView.removeFinishedStrokes(strokes.keys)
@@ -168,6 +197,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun onDetachedFromWindow() {
+        stopAnimationPlayback()
         gestureHandler.removeCallbacks(hideBrushPreview)
         rasterView.stylusHoverPreview = null
         super.onDetachedFromWindow()
@@ -206,11 +236,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         chromeBottomInsetPx = bottomPx.coerceAtLeast(0f)
         chromeApproachMarginPx = approachMarginPx.coerceAtLeast(0f)
     }
-    fun addPaintLayer() { layerStack.addRaster(); notifyLayers(); notifyHistory() }
+    fun addPaintLayer() { layerStack.addRaster(); animation?.register(layerStack.selected()); notifyLayers(); notifyHistory(); publishAnimation() }
     fun duplicateSelectedLayers() {
-        if (layerStack.duplicateSelected().isNotEmpty()) { notifyLayers(); notifyHistory(); notifyVisiblePalette() }
+        if (layerStack.duplicateSelected().isNotEmpty()) {
+            layerStack.layers.forEach { animation?.register(it) }
+            notifyLayers(); notifyHistory(); notifyVisiblePalette(); publishAnimation()
+        }
     }
-    fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map { notifyLayers(); notifyHistory() }
+    fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map {
+        animation?.register(layerStack.selected()); notifyLayers(); notifyHistory(); publishAnimation()
+    }
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
     fun toggleLayerSelection(id: LayerId) { layerStack.toggleAdditionalSelection(id); notifyLayers(); notifyHistory() }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
@@ -261,33 +296,181 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun duplicateSelection() {
         val selection = selectionRegion ?: return
         if (layerStack.duplicateSelection(selection).isNotEmpty()) {
+            layerStack.layers.forEach { animation?.register(it) }
             rasterView.invalidate()
             notifyLayers()
             notifyHistory()
             notifyVisiblePalette()
         }
     }
+    fun moveSelectionToNewLayer() {
+        val selection = selectionRegion ?: return
+        val sources = layerStack.selectedRasters().map { it.tiles }
+        if (sources.isEmpty()) return
+        if (layerStack.duplicateSelection(selection).isEmpty()) return
+        layerStack.layers.forEach { animation?.register(it) }
+        sources.forEach { rasterView.invalidateTiles(it.cutSelection(selection)) }
+        rasterView.invalidate(); notifyLayers(); notifyHistory(); notifyVisiblePalette(); publishAnimation()
+    }
     fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
     fun originalSizeSelectedImage() { layerStack.originalSizeSelectedImage(); notifyLayers() }
     fun moveSelectedLayer(towardFront: Boolean) { layerStack.moveSelected(towardFront); notifyLayers() }
-    fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { notifyLayers(); notifyHistory() } }
+    fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { animation?.unregisterMissingLayers(); notifyLayers(); notifyHistory(); publishAnimation() } }
     fun publishLayers() { notifyLayers(); notifyHistory(); notifyVisiblePalette() }
+    fun enableAnimation(existingAsBackground: Boolean) {
+        if (animation != null || activeDrawingPointerId != null) return
+        animation = AnimationRuntime(layerStack, existingAsBackground)
+        rasterView.animation = animation
+        rasterView.invalidate()
+        publishAnimation()
+    }
+    fun selectAnimationFrame(index: Int) = selectAnimationFrame(index, fromPlayback = false)
+    private fun selectAnimationFrame(index: Int, fromPlayback: Boolean) {
+        val active = animation ?: return
+        if (activeDrawingPointerId != null) return
+        if (!fromPlayback) stopAnimationPlayback()
+        if (index !in active.frames.indices) return
+        active.select(index)
+        clearSelection()
+        rasterView.invalidate()
+        notifyLayers(); notifyHistory(); notifyVisiblePalette(); publishAnimation()
+    }
+    fun addAnimationFrame() {
+        val active = animation ?: return
+        stopAnimationPlayback()
+        active.addBlankFrame()
+        rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
+    }
+    fun duplicateAnimationFrame() {
+        val active = animation ?: return
+        stopAnimationPlayback()
+        active.duplicateFrame()
+        rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
+    }
+    fun deleteAnimationFrame() {
+        val active = animation ?: return
+        stopAnimationPlayback()
+        active.deleteFrame()
+        rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
+    }
+    fun moveAnimationFrame(delta: Int) {
+        val active = animation ?: return
+        stopAnimationPlayback()
+        active.moveFrame(active.selectedIndex, active.selectedIndex + delta)
+        rasterView.invalidate(); publishAnimation()
+    }
+    fun setAnimationExposure(value: Int) { animation?.setExposure(value); publishAnimation() }
+    fun setAnimationFps(value: Int) { animation?.fps = value.coerceIn(1, 60); publishAnimation() }
+    fun setAnimationPlaybackMode(mode: PlaybackMode) { animation?.playbackMode = mode; publishAnimation() }
+    fun setOnionSkin(before: Int, after: Int, opacity: Float) {
+        animation?.apply {
+            onionBefore = before.coerceIn(0, 6)
+            onionAfter = after.coerceIn(0, 6)
+            onionOpacity = opacity.coerceIn(0f, 1f)
+        }
+        rasterView.invalidate(); publishAnimation()
+    }
+    fun setAnimationBackground(layerId: LayerId, background: Boolean) {
+        animation?.setBackground(layerId, background)
+        rasterView.invalidate(); notifyLayers(); publishAnimation()
+    }
+    fun copyCelToNewLayer(move: Boolean) {
+        if (animation?.copySelectedRasterCelToNewLayer(move) == null) return
+        rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
+    }
+    fun toggleAnimationPlayback() {
+        val active = animation ?: return
+        if (animationPlaying) { stopAnimationPlayback(); return }
+        if (activeDrawingPointerId != null) return
+        animationPlaying = true
+        rasterView.animationPlaying = true
+        playbackStartedAt = SystemClock.uptimeMillis()
+        gestureHandler.post(playbackStep)
+        publishAnimation()
+    }
+    fun armImageMotionRecording(endIndex: Int, timing: RecordingTiming): Boolean {
+        val active = animation ?: return false
+        val image = layerStack.selectedImage() ?: return false
+        if (endIndex !in (active.selectedIndex + 1)..active.frames.lastIndex || activeDrawingPointerId != null) return false
+        stopAnimationPlayback()
+        active.setBackground(image.id, false)
+        active.makeImageCelAtCurrentFrame(image.id)
+        setImageTransformMode(true)
+        motionRecording = MotionRecording(image.id, active.selectedIndex, endIndex, timing)
+        publishAnimation()
+        return true
+    }
+    fun armStrokeRevealRecording(endIndex: Int, timing: RecordingTiming): Boolean {
+        val active = animation ?: return false
+        if (layerStack.selectedRaster() == null || settings.erasing || activeDrawingPointerId != null ||
+            endIndex !in (active.selectedIndex + 1)..active.frames.lastIndex) return false
+        stopAnimationPlayback()
+        val start = active.selectedIndex
+        val layerId = layerStack.addRaster()
+        layerStack.renameSelected("Draw on")
+        active.register(layerStack.selected())
+        strokeRecording = StrokeRecording(layerId, start, endIndex, timing)
+        notifyLayers(); publishAnimation()
+        return true
+    }
+    fun cancelAnimationRecording() {
+        motionRecording = null
+        strokeRecording?.let {
+            if (layerStack.selectedId == it.layerId && activeDrawingPointerId == null) {
+                layerStack.deleteSelected(); animation?.unregisterMissingLayers()
+            }
+        }
+        strokeRecording = null
+        notifyLayers(); publishAnimation()
+    }
+    private fun recordingKind(): AnimationRecordingKind? = when {
+        motionRecording != null -> AnimationRecordingKind.IMAGE_MOTION
+        strokeRecording != null -> AnimationRecordingKind.STROKE_REVEAL
+        else -> null
+    }
+    private fun recordImageSample(eventTime: Long) {
+        val recording = motionRecording ?: return
+        val image = layerStack.selectedImage() ?: return
+        if (image.id == recording.layerId) recording.samples += eventTime to image.transform
+    }
+    private fun finishImageRecording(eventTime: Long) {
+        val recording = motionRecording ?: return
+        recordImageSample(eventTime)
+        motionRecording = null
+        animation?.recordImageMotion(recording.layerId, recording.start, recording.end, recording.timing, recording.samples)
+        rasterView.invalidate(); notifyLayers(); publishAnimation()
+    }
+    private fun finishStrokeRecording(recording: StrokeRecording, stroke: CompletedStroke) {
+        animation?.recordStrokeReveal(recording.layerId, recording.start, recording.end, recording.timing, stroke)
+        rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
+    }
+    private fun stopAnimationPlayback() {
+        if (!animationPlaying) return
+        animationPlaying = false
+        rasterView.animationPlaying = false
+        gestureHandler.removeCallbacks(playbackStep)
+        publishAnimation()
+    }
+    private fun publishAnimation() { animationListener?.invoke(animation?.state(animationPlaying, recordingKind())) }
     fun publishDiagnostics() {
         if (!settings.debug) return
         val memory = memoryBudgetAdvisor.snapshot(
             layerStack.canvasWidth,
             layerStack.canvasHeight,
-            layerStack.estimatedDocumentBytes(),
+            layerStack.estimatedDocumentBytes() + (animation?.inactiveTileBytes() ?: 0L),
         )
         publishDiagnostics(lastDiagnostics.withMemory(memory))
     }
     fun configureBlank(widthPx: Int, heightPx: Int) {
         require(widthPx in 16..8192 && heightPx in 16..8192)
         layerStack = createLayerStack(widthPx, heightPx)
+        animation = null
+        rasterView.animation = null
         clearSelection()
         rasterView.layerStack = layerStack
         rasterView.fitCanvas()
         publishLayers()
+        publishAnimation()
     }
 
     fun loadProject(library: DrawingLibrary, id: String, onComplete: (Result<Unit>) -> Unit) {
@@ -300,8 +483,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     clearSelection()
                     rasterView.layerStack = replacement
                     replacement.replaceWith(project)
+                    animation = project.animation?.let { saved ->
+                        AnimationRuntime(replacement, true, saved.frames, saved.fps, saved.playbackMode).apply { restore(saved) }
+                    }
+                    rasterView.animation = animation
                     rasterView.fitCanvas(project.galleryRotationQuarterTurns * 90f)
                     publishLayers()
+                    publishAnimation()
                 }
                 onComplete(result)
             }
@@ -309,7 +497,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     fun saveProject(library: DrawingLibrary, id: String, name: String, onComplete: (Result<DrawingSummary>) -> Unit = {}) {
-        val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees))
+        val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation)
         ProjectPersistence.executor.execute {
             val result = try { ProjectPersistence.save(context.contentResolver, library, id, name, snapshot) }
             finally { snapshot.recycle() }
@@ -318,7 +506,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     fun exportDrawing(uri: android.net.Uri, format: ExportFormat, quality: Int, scale: Float, transparent: Boolean, onComplete: (Result<Unit>) -> Unit) {
-        val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees))
+        val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation)
         ProjectPersistence.executor.execute {
             val result = try { ProjectPersistence.export(context.contentResolver, uri, snapshot, format, quality, scale, transparent) }
             finally { snapshot.recycle() }
@@ -326,8 +514,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
     }
 
+    fun exportAnimation(uri: android.net.Uri, format: AnimationExportFormat, scale: Float, onComplete: (Result<Unit>) -> Unit) {
+        val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation)
+        ProjectPersistence.executor.execute {
+            val result = try { ProjectPersistence.exportAnimation(context.contentResolver, uri, snapshot, format, scale) }
+            finally { snapshot.recycle() }
+            ProjectPersistence.mainHandler.post { onComplete(result) }
+        }
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            stopAnimationPlayback()
             gestureHandler.removeCallbacks(hideBrushPreview)
             rasterView.adjustmentPreviewStroke = null
             rasterView.stylusHoverPreview = null
@@ -494,6 +692,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 pendingSamples.remove(pointerId)?.let { rawSamples ->
                     val samples = stabilizeLiftOffOpacity(rawSamples)
                     val style = customPreviewStyle ?: airbrushPreviewStyle ?: pencilPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
+                    val reveal = strokeRecording?.takeIf { target?.image == null &&
+                        layerStack.selectedId == it.layerId && style.blend == BlendBehavior.PAINT }
+                    strokeRecording = null
                     if (target != null) {
                         if (customPreviewStyle != null) {
                             if (samples.size == 1) invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
@@ -502,6 +703,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                             notifyHistory()
                             notifyVisiblePalette()
                             notifyLayers()
+                            if (reveal != null) finishStrokeRecording(reveal, CompletedStroke(samples, style))
                         } else if (airbrushPreviewStyle != null) {
                             target.store.commit(CompletedStroke(samples, style))
                             rasterView.previewStroke = null
@@ -510,6 +712,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                             drawnColorListener?.invoke(style.color)
                             notifyVisiblePalette()
                             notifyLayers()
+                            if (reveal != null) finishStrokeRecording(reveal, CompletedStroke(samples, style))
                         } else if (pencilPreviewStyle != null) {
                             val completed = CompletedStroke(samples, style)
                             pencilPreviewStore?.let { preview ->
@@ -529,8 +732,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                             drawnColorListener?.invoke(style.color)
                             notifyVisiblePalette()
                             notifyLayers()
-                        } else finishedSamples += PendingCommit(CompletedStroke(samples, style), target)
+                            if (reveal != null) finishStrokeRecording(reveal, completed)
+                        } else finishedSamples += PendingCommit(CompletedStroke(samples, style), target, reveal = reveal)
                     }
+                    publishAnimation()
                 }
                 if (customPreviewStyle != null) {
                     customPreviewStyle = null
@@ -620,6 +825,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     smudgeTarget = layerStack.selectedRaster()?.also { it.tiles.beginSmudge() }
                 }
                 if (!isTransformingImage()) scheduleHold(singleLastDocument)
+                if (isTransformingImage()) recordImageSample(event.eventTime)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 cancelHold()
@@ -673,6 +879,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
                 if (isTransformingImage()) {
                     notifyLayers()
+                    if (event.actionMasked == MotionEvent.ACTION_UP) finishImageRecording(event.eventTime)
                 } else if (gestureStart.size >= 2 && !gestureMoved && SystemClock.uptimeMillis() - gestureDownAt < 300) {
                     performFingerAction(if (gestureStart.size >= 3) settings.gestures.threeFingerTap else settings.gestures.twoFingerTap, null)
                 } else if (event.actionMasked == MotionEvent.ACTION_UP && gestureMoved && !holdTriggered) {
@@ -687,8 +894,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             MotionEvent.ACTION_CANCEL -> {
                 cancelHold(); cancelColorPick(); smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null; gestureStart = emptyMap()
+                motionRecording = null; publishAnimation()
             }
         }
+        if (event.actionMasked == MotionEvent.ACTION_MOVE && isTransformingImage()) recordImageSample(event.eventTime)
         return true
     }
 
@@ -722,7 +931,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (selectionTool == SelectionTool.LASSO) {
                     val point = rasterView.screenToDocument(event.x, event.y)
                     selectionPoints += Point(point.x, point.y)
-                    selectionRegion = selectionPoints.takeIf { it.size >= 3 }?.let(::SelectionRegion)
+                    selectionRegion = selectionPoints.takeIf { it.size >= 3 }?.let { SelectionRegion(it.toList()) }
                 }
                 rasterView.selectionDraftPoints = emptyList()
                 rasterView.selectionRegion = selectionRegion
@@ -922,6 +1131,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         pendingTargets.remove(pointerId)
         activeDrawingPointerId = null
         setChromeOccludedByStroke(false)
+        if (strokeRecording != null) cancelAnimationRecording()
     }
 
     private fun updateChromeOcclusion(event: MotionEvent, index: Int) {

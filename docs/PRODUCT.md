@@ -20,4 +20,4 @@ The long-term differentiator is a hybrid document that can contain true raster a
 - Native stylus authoring and tile commits; configurable finger navigation, smudge, color pick, undo/redo, rotation lock, and diagnostics.
 - Freehand lasso and rectangular selection on paint or image layers. Swiping layers right adds them to a multi-layer selection, allowing selected paint pixels and selected image layers to move together. The selection also constrains drawing and erasing. Image-layer selections constrain the source-resolution erase mask; whole images retain their separate non-destructive transform.
 
-Vectors, animation, selected-pixel resize/rotation/warp, filters, and blend modes remain intentionally absent.
+The first Android animation workflow now has time slots separate from layers, shared backgrounds, holds, frame duplication, onion skins, loop/ping-pong/once playback, live image-motion and line-reveal recording, and MP4/GIF/PNG-sequence export. The timeline is a compact contextual strip. Vectors, selected-pixel resize/rotation/warp, filters, and blend modes remain absent.

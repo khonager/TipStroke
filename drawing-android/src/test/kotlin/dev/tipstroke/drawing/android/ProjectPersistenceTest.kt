@@ -7,6 +7,9 @@ import android.net.Uri
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.model.LayerId
 import dev.tipstroke.core.model.ImageTransform
+import dev.tipstroke.core.model.AnimationFrame
+import dev.tipstroke.core.model.FrameId
+import dev.tipstroke.core.model.PlaybackMode
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,6 +23,65 @@ import org.json.JSONObject
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProjectPersistenceTest {
+    @Test fun animatedCelsAndBackgroundSurviveSaveAndExport() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val id = library.newId()
+        val backgroundId = LayerId("background")
+        val actorId = LayerId("actor")
+        val a = FrameId("frame-a")
+        val b = FrameId("frame-b")
+        fun tile(color: Int) = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {
+            setPixel(10, 10, color)
+        }
+        val background = tile(Color.RED)
+        val first = tile(Color.BLUE)
+        val second = tile(Color.GREEN)
+        val snapshot = DrawingSnapshot(
+            32, 32, actorId,
+            listOf(
+                SavedRasterSnapshot(backgroundId, "Background", true, 1f, mapOf(TileCoordinate(0, 0) to background)),
+                SavedRasterSnapshot(actorId, "Actor", true, 1f, emptyMap()),
+            ),
+            animation = SavedAnimationSnapshot(
+                listOf(AnimationFrame(a, 2), AnimationFrame(b)), 0, 12, PlaybackMode.LOOP,
+                1, 1, .3f, setOf(backgroundId),
+                mapOf(actorId to mapOf(a to mapOf(TileCoordinate(0, 0) to first),
+                    b to mapOf(TileCoordinate(0, 0) to second))), emptyMap(),
+            ),
+        )
+        ProjectPersistence.save(context.contentResolver, library, id, "Animation", snapshot).getOrThrow()
+        val loaded = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
+        assertEquals(2, loaded.animation?.frames?.size)
+        assertEquals(2, loaded.animation?.frames?.first()?.exposure)
+        assertEquals(Color.RED, (loaded.layers.first() as LoadedRaster).tiles.getValue(TileCoordinate(0, 0)).getPixel(10, 10))
+        assertEquals(Color.GREEN, loaded.animation?.rasterCels?.get(actorId)?.get(b)?.get(TileCoordinate(0, 0))?.getPixel(10, 10))
+
+        val zipFile = java.io.File.createTempFile("tipstroke-frames", ".zip")
+        ProjectPersistence.exportAnimation(context.contentResolver, Uri.fromFile(zipFile), snapshot,
+            AnimationExportFormat.PNG_SEQUENCE, 1f).getOrThrow()
+        java.util.zip.ZipFile(zipFile).use { zip ->
+            assertNotNull(zip.getEntry("timing.json"))
+            assertNotNull(zip.getEntry("frame_00003.png"))
+            val image = BitmapFactory.decodeStream(zip.getInputStream(zip.getEntry("frame_00003.png")))
+            assertEquals(Color.GREEN, image.getPixel(10, 10))
+            image.recycle()
+        }
+        val gifFile = java.io.File.createTempFile("tipstroke-animation", ".gif")
+        ProjectPersistence.exportAnimation(context.contentResolver, Uri.fromFile(gifFile), snapshot,
+            AnimationExportFormat.GIF, 1f).getOrThrow()
+        assertEquals("GIF89a", gifFile.inputStream().use { String(it.readNBytes(6), Charsets.US_ASCII) })
+        assertEquals(0x3B, gifFile.readBytes().last().toInt() and 255)
+        BitmapFactory.decodeFile(gifFile.absolutePath)?.also { decoded ->
+            assertEquals(32, decoded.width)
+            decoded.recycle()
+        } ?: fail("GIF could not be decoded")
+        loaded.layers.filterIsInstance<LoadedRaster>().flatMap { it.tiles.values }.forEach(Bitmap::recycle)
+        loaded.animation?.rasterCels?.values?.flatMap { it.values.flatMap { tiles -> tiles.values } }?.forEach(Bitmap::recycle)
+        snapshot.recycle()
+        zipFile.delete(); gifFile.delete(); library.delete(id)
+    }
+
     @Test fun duplicatesDrawingIntoAnIndependentProject() {
         val context = RuntimeEnvironment.getApplication()
         val library = DrawingLibrary(context)

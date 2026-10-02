@@ -21,6 +21,10 @@ internal data class StylusHoverPreview(
 )
 
 internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : View(context) {
+    var animation: AnimationRuntime? = null
+        set(value) { field = value; invalidate() }
+    var animationPlaying: Boolean = false
+        set(value) { field = value; invalidate() }
     val transformMatrix = Matrix()
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val layerOpacityPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -135,7 +139,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), canvasPaint)
         canvas.clipRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
         layerStack.layers.forEach { layer ->
-            if (!layer.visible || layer.opacity <= 0f) return@forEach
+            drawOnionForLayer(canvas, layer)
+            if (!layer.visible || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
             when (layer) {
                 is RasterLayerRuntime -> {
                     val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
@@ -190,6 +195,33 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         }
     }
 
+    private fun drawOnionForLayer(canvas: Canvas, layer: CanvasLayerRuntime) {
+        val active = animation ?: return
+        if (animationPlaying || active.isBackground(layer.id) || !layer.visible) return
+        val current = active.selectedIndex
+        fun drawNeighbor(index: Int, distance: Int, tint: Int) {
+            if (index !in active.frames.indices) return
+            bitmapPaint.alpha = (255f * active.onionOpacity * layer.opacity / distance).toInt().coerceIn(0, 255)
+            bitmapPaint.colorFilter = PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_IN)
+            val frameId = active.frames[index].id
+            when (layer) {
+                is RasterLayerRuntime -> active.celRaster(layer.id, frameId)?.draw(canvas, bitmapPaint)
+                is ImageLayerRuntime -> {
+                    val transform = active.celImageTransform(layer.id, frameId)
+                    val bitmap = layer.source.bitmapOrRequest()
+                    if (transform != null && bitmap != null) drawImageLayer(canvas, layer, bitmap, transform)
+                }
+            }
+            bitmapPaint.colorFilter = null
+        }
+        for (distance in active.onionBefore.coerceAtMost(current) downTo 1) {
+            drawNeighbor(current - distance, distance, Color.rgb(239, 98, 108))
+        }
+        for (distance in active.onionAfter.coerceAtMost(active.frames.lastIndex - current) downTo 1) {
+            drawNeighbor(current + distance, distance, Color.rgb(78, 149, 239))
+        }
+    }
+
     private fun drawStylusHoverPreview(canvas: Canvas, preview: StylusHoverPreview) {
         val halfWidth = preview.width.coerceAtLeast(.5f) / 2f
         val halfHeight = preview.height.coerceAtLeast(.5f) / 2f
@@ -215,17 +247,17 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         canvas.restore()
     }
 
-    private fun drawImageLayer(canvas: Canvas, layer: ImageLayerRuntime, bitmap: Bitmap) {
-        val displayedWidth = layer.source.width * layer.transform.scale
-        val displayedHeight = layer.source.height * layer.transform.scale
+    private fun drawImageLayer(canvas: Canvas, layer: ImageLayerRuntime, bitmap: Bitmap, imageTransform: dev.tipstroke.core.model.ImageTransform = layer.transform) {
+        val displayedWidth = layer.source.width * imageTransform.scale
+        val displayedHeight = layer.source.height * imageTransform.scale
         val destination = RectF(
-            layer.transform.centerX - displayedWidth / 2f,
-            layer.transform.centerY - displayedHeight / 2f,
-            layer.transform.centerX + displayedWidth / 2f,
-            layer.transform.centerY + displayedHeight / 2f,
+            imageTransform.centerX - displayedWidth / 2f,
+            imageTransform.centerY - displayedHeight / 2f,
+            imageTransform.centerX + displayedWidth / 2f,
+            imageTransform.centerY + displayedHeight / 2f,
         )
         val outerSave = canvas.save()
-        canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
+        canvas.rotate(imageTransform.rotationDegrees, imageTransform.centerX, imageTransform.centerY)
         if (layer.mask.allocatedTileCount == 0) {
             canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
         } else {
@@ -234,7 +266,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
             canvas.save()
             canvas.translate(destination.left, destination.top)
-            canvas.scale(layer.transform.scale, layer.transform.scale)
+            canvas.scale(imageTransform.scale, imageTransform.scale)
             bitmapPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
             layer.mask.draw(canvas, bitmapPaint)
             bitmapPaint.xfermode = null

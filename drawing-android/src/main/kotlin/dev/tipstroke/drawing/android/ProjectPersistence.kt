@@ -281,6 +281,10 @@ enum class ExportFormat(val extension: String, val mimeType: String) {
     PNG("png", "image/png"), JPEG("jpg", "image/jpeg"), WEBP("webp", "image/webp")
 }
 
+enum class AnimationExportFormat(val extension: String, val mimeType: String) {
+    MP4("mp4", "video/mp4"), GIF("gif", "image/gif"), PNG_SEQUENCE("zip", "application/zip"),
+}
+
 internal sealed interface SavedLayerSnapshot {
     val id: LayerId
     val name: String
@@ -315,14 +319,29 @@ internal data class DrawingSnapshot(
     val selectedId: LayerId,
     val layers: List<SavedLayerSnapshot>,
     val galleryRotationQuarterTurns: Int = 0,
+    val animation: SavedAnimationSnapshot? = null,
 ) {
-    fun recycle() = layers.flatMap { layer ->
+    fun recycle() = (layers.flatMap { layer ->
         when (layer) {
             is SavedRasterSnapshot -> layer.tiles.values
             is SavedImageSnapshot -> layer.maskTiles.values
         }
-    }.forEach { if (!it.isRecycled) it.recycle() }
+    } + animation?.rasterCels.orEmpty().values.flatMap { cels -> cels.values.flatMap { it.values } })
+        .forEach { if (!it.isRecycled) it.recycle() }
 }
+
+internal data class SavedAnimationSnapshot(
+    val frames: List<AnimationFrame>,
+    val selectedIndex: Int,
+    val fps: Int,
+    val playbackMode: PlaybackMode,
+    val onionBefore: Int,
+    val onionAfter: Int,
+    val onionOpacity: Float,
+    val backgroundLayerIds: Set<LayerId>,
+    val rasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, Bitmap>>>,
+    val imageCels: Map<LayerId, Map<FrameId, ImageTransform>>,
+)
 
 internal data class LoadedProject(
     val widthPx: Int,
@@ -330,6 +349,7 @@ internal data class LoadedProject(
     val selectedId: LayerId,
     val layers: List<LoadedLayer>,
     val galleryRotationQuarterTurns: Int = 0,
+    val animation: SavedAnimationSnapshot? = null,
 )
 
 internal sealed interface LoadedLayer {
@@ -351,7 +371,7 @@ internal data class LoadedImage(
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    private const val SCHEMA_VERSION = 2
+    private const val SCHEMA_VERSION = 3
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -406,6 +426,39 @@ internal object ProjectPersistence {
                 }
                 layersJson.put(json)
             }
+            val animationJson = snapshot.animation?.let { animation ->
+                animation.rasterCels.forEach { (layerId, cels) ->
+                    cels.forEach { (frameId, tiles) ->
+                        if (tiles.isNotEmpty()) {
+                            val directory = File(temporary, "animation/cels/${layerId.value}/${frameId.value}").apply { mkdirs() }
+                            tiles.forEach { (coordinate, bitmap) ->
+                                File(directory, "${coordinate.x}_${coordinate.y}.png").outputStream().use {
+                                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                                }
+                            }
+                        }
+                    }
+                }
+                JSONObject()
+                    .put("fps", animation.fps)
+                    .put("playbackMode", animation.playbackMode.name)
+                    .put("selectedIndex", animation.selectedIndex)
+                    .put("onionBefore", animation.onionBefore)
+                    .put("onionAfter", animation.onionAfter)
+                    .put("onionOpacity", animation.onionOpacity)
+                    .put("frames", JSONArray().apply { animation.frames.forEach { frame ->
+                        put(JSONObject().put("id", frame.id.value).put("exposure", frame.exposure))
+                    } })
+                    .put("backgroundLayerIds", JSONArray().apply { animation.backgroundLayerIds.forEach { put(it.value) } })
+                    .put("imageCels", JSONArray().apply { animation.imageCels.forEach { (layerId, cels) ->
+                        put(JSONObject().put("layerId", layerId.value).put("frames", JSONArray().apply {
+                            cels.forEach { (frameId, transform) -> put(JSONObject()
+                                .put("frameId", frameId.value)
+                                .put("centerX", transform.centerX).put("centerY", transform.centerY)
+                                .put("scale", transform.scale).put("rotationDegrees", transform.rotationDegrees)) }
+                        }))
+                    } })
+            }
             val modifiedAt = System.currentTimeMillis()
             JSONObject()
                 .put("schemaVersion", SCHEMA_VERSION).put("id", id).put("name", name)
@@ -414,6 +467,7 @@ internal object ProjectPersistence {
                 .put("selectedLayerId", snapshot.selectedId.value)
                 .put("galleryRotationQuarterTurns", snapshot.galleryRotationQuarterTurns.mod(4))
                 .put("layers", layersJson)
+                .also { if (animationJson != null) it.put("animation", animationJson) }
                 .also { File(temporary, DrawingLibrary.MANIFEST).writeText(it.toString(2)) }
 
             val quarterTurns = snapshot.galleryRotationQuarterTurns.mod(4)
@@ -487,7 +541,53 @@ internal object ProjectPersistence {
         val selected = LayerId(json.optString("selectedLayerId", layers.last().id.value)).let { wanted ->
             if (layers.any { it.id == wanted }) wanted else layers.last().id
         }
-        LoadedProject(width, height, selected, layers, json.optInt("galleryRotationQuarterTurns", 0).mod(4))
+        val animation = json.optJSONObject("animation")?.let { saved ->
+            val framesJson = saved.getJSONArray("frames")
+            val frames = (0 until framesJson.length()).map { index ->
+                val frame = framesJson.getJSONObject(index)
+                val id = frame.getString("id")
+                require(id.matches(Regex("[A-Za-z0-9_-]+"))) { "Invalid frame ID" }
+                AnimationFrame(FrameId(id), frame.optInt("exposure", 1))
+            }
+            val timeline = AnimationTimeline(
+                frames,
+                saved.optInt("fps", 12),
+                PlaybackMode.valueOf(saved.optString("playbackMode", PlaybackMode.LOOP.name)),
+            )
+            val backgroundJson = saved.optJSONArray("backgroundLayerIds") ?: JSONArray()
+            val backgrounds = (0 until backgroundJson.length()).mapTo(mutableSetOf()) {
+                LayerId(backgroundJson.getString(it))
+            }
+            val imagesJson = saved.optJSONArray("imageCels") ?: JSONArray()
+            val imageCels = buildMap<LayerId, Map<FrameId, ImageTransform>> {
+                for (index in 0 until imagesJson.length()) {
+                    val entry = imagesJson.getJSONObject(index)
+                    val frameEntries = entry.getJSONArray("frames")
+                    put(LayerId(entry.getString("layerId")), buildMap {
+                        for (frameIndex in 0 until frameEntries.length()) {
+                            val item = frameEntries.getJSONObject(frameIndex)
+                            put(FrameId(item.getString("frameId")), ImageTransform(
+                                item.getDouble("centerX").toFloat(), item.getDouble("centerY").toFloat(),
+                                item.getDouble("scale").toFloat(), item.optDouble("rotationDegrees", 0.0).toFloat(),
+                            ))
+                        }
+                    })
+                }
+            }
+            val rasterCels = layers.filterIsInstance<LoadedRaster>().associate { layer ->
+                layer.id to frames.associate { frame ->
+                    frame.id to loadTiles(File(directory, "animation/cels/${layer.id.value}/${frame.id.value}"))
+                }
+            }
+            SavedAnimationSnapshot(
+                frames, saved.optInt("selectedIndex", 0).coerceIn(frames.indices),
+                timeline.fps, timeline.playbackMode,
+                saved.optInt("onionBefore", 1), saved.optInt("onionAfter", 1),
+                saved.optDouble("onionOpacity", .3).toFloat(),
+                backgrounds, rasterCels, imageCels,
+            )
+        }
+        LoadedProject(width, height, selected, layers, json.optInt("galleryRotationQuarterTurns", 0).mod(4), animation)
     }
 
     fun export(resolver: ContentResolver, uri: Uri, snapshot: DrawingSnapshot, format: ExportFormat, quality: Int, scale: Float, transparent: Boolean): Result<Unit> = runCatching {
@@ -508,7 +608,27 @@ internal object ProjectPersistence {
         } finally { bitmap.recycle() }
     }
 
-    private fun render(snapshot: DrawingSnapshot, resolver: ContentResolver, scale: Float, transparent: Boolean): Bitmap {
+    fun exportAnimation(
+        resolver: ContentResolver, uri: Uri, snapshot: DrawingSnapshot,
+        format: AnimationExportFormat, scale: Float,
+    ): Result<Unit> = runCatching {
+        val animation = requireNotNull(snapshot.animation) { "This drawing has no animation" }
+        require(scale > 0f && scale <= 1f)
+        val pixels = snapshot.widthPx.toLong() * snapshot.heightPx.toLong() * scale * scale
+        require(pixels <= 16_777_216L) { "Animation export is too large for this device" }
+        val cache = mutableMapOf<Uri, Bitmap>()
+        try {
+            AnimationExporter.export(resolver, uri, animation, format) { frameIndex ->
+                render(snapshot, resolver, scale, transparent = false, frameIndex = frameIndex, imageCache = cache)
+            }
+        } finally { cache.values.forEach(Bitmap::recycle) }
+    }
+
+    private fun render(
+        snapshot: DrawingSnapshot, resolver: ContentResolver, scale: Float, transparent: Boolean,
+        frameIndex: Int = snapshot.animation?.selectedIndex ?: 0,
+        imageCache: MutableMap<Uri, Bitmap>? = null,
+    ): Bitmap {
         val outputWidth = (snapshot.widthPx * scale).roundToInt().coerceAtLeast(1)
         val outputHeight = (snapshot.heightPx * scale).roundToInt().coerceAtLeast(1)
         val output = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
@@ -516,21 +636,28 @@ internal object ProjectPersistence {
         if (!transparent) canvas.drawColor(Color.WHITE)
         canvas.scale(scale, scale)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        val animation = snapshot.animation
+        val frameId = animation?.frames?.getOrNull(frameIndex)?.id
         snapshot.layers.forEach { layer ->
             if (!layer.visible || layer.opacity <= 0f) return@forEach
+            val shared = animation == null || layer.id in animation.backgroundLayerIds
             paint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
             when (layer) {
-                is SavedRasterSnapshot -> layer.tiles.forEach { (coordinate, bitmap) ->
+                is SavedRasterSnapshot -> (if (shared) layer.tiles else animation?.rasterCels?.get(layer.id)?.get(frameId).orEmpty())
+                    .forEach { (coordinate, bitmap) ->
                     canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
                 }
                 is SavedImageSnapshot -> {
-                    val source = decodeBitmap(resolver, layer.sourceUri)
+                    val imageTransform = if (shared) layer.transform else animation?.imageCels?.get(layer.id)?.get(frameId)
+                        ?: return@forEach
+                    val source = imageCache?.getOrPut(layer.sourceUri) { decodeBitmap(resolver, layer.sourceUri) }
+                        ?: decodeBitmap(resolver, layer.sourceUri)
                     try {
-                        val width = layer.originalWidthPx * layer.transform.scale
-                        val height = layer.originalHeightPx * layer.transform.scale
+                        val width = layer.originalWidthPx * imageTransform.scale
+                        val height = layer.originalHeightPx * imageTransform.scale
                         val outerSave = canvas.save()
-                        canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
-                        val destination = RectF(layer.transform.centerX - width / 2, layer.transform.centerY - height / 2, layer.transform.centerX + width / 2, layer.transform.centerY + height / 2)
+                        canvas.rotate(imageTransform.rotationDegrees, imageTransform.centerX, imageTransform.centerY)
+                        val destination = RectF(imageTransform.centerX - width / 2, imageTransform.centerY - height / 2, imageTransform.centerX + width / 2, imageTransform.centerY + height / 2)
                         if (layer.maskTiles.isEmpty()) {
                             canvas.drawBitmap(source, null, destination, paint)
                         } else {
@@ -539,7 +666,7 @@ internal object ProjectPersistence {
                             canvas.drawBitmap(source, null, destination, paint)
                             canvas.save()
                             canvas.translate(destination.left, destination.top)
-                            canvas.scale(layer.transform.scale, layer.transform.scale)
+                            canvas.scale(imageTransform.scale, imageTransform.scale)
                             paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
                             layer.maskTiles.forEach { (coordinate, bitmap) ->
                                 canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
@@ -549,7 +676,7 @@ internal object ProjectPersistence {
                             canvas.restoreToCount(layerSave)
                         }
                         canvas.restoreToCount(outerSave)
-                    } finally { source.recycle() }
+                    } finally { if (imageCache == null) source.recycle() }
                 }
             }
         }

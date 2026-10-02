@@ -339,6 +339,23 @@ class TileStoreTest {
         assertEquals(0, Color.alpha(store.colorAt(155, 80)))
     }
 
+    @Test fun movingWideLassoOnSparseCanvasDoesNotAllocateBlankCanvasTiles() {
+        val store = TileStore(8192, 8192)
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {
+            setPixel(88, 88, Color.BLUE)
+        }
+        store.replaceTiles(mapOf(TileCoordinate(2, 2) to tile))
+        val lasso = dev.tipstroke.core.geometry.SelectionRegion(listOf(
+            Point(0f, 0f), Point(8191f, 0f), Point(8191f, 8191f), Point(0f, 8191f),
+        ))
+
+        store.moveSelection(lasso, 40f, 40f)
+
+        assertEquals(0, Color.alpha(store.colorAt(600, 600)))
+        assertEquals(Color.BLUE, store.colorAt(640, 640))
+        assertTrue("Sparse move allocated ${store.allocatedTileCount} tiles", store.allocatedTileCount <= 4)
+    }
+
     private fun stroke(a: Point, b: Point, style: StrokeStyle) = CompletedStroke(
         listOf(sample(a, 0), sample(b, 1)), style
     )

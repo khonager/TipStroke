@@ -75,12 +75,17 @@ fun CanvasScreen(
     var selectedLayerId by remember { mutableStateOf<LayerId?>(null) }
     var selectedLayerIds by remember { mutableStateOf<Set<LayerId>>(emptySet()) }
     var layersOpen by remember { mutableStateOf(initialLayersOpen) }
+    var animationOpen by remember { mutableStateOf(false) }
+    var animationActivationOpen by remember { mutableStateOf(false) }
+    var animationState by remember { mutableStateOf<AnimationUiState?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var ready by remember { mutableStateOf(library == null) }
     var saving by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }
+    var stillExportOpen by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<ExportRequest?>(null) }
+    var pendingAnimationExport by remember { mutableStateOf<AnimationExportRequest?>(null) }
     var imageTransforming by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(initialSelectionOpen) }
     var selectionTool by remember { mutableStateOf(SelectionTool.LASSO) }
@@ -137,8 +142,15 @@ fun CanvasScreen(
 
     val exportDestination = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val request = pendingExport
+        val animationRequest = pendingAnimationExport
         val uri = result.data?.data
-        if (result.resultCode == Activity.RESULT_OK && request != null && uri != null) {
+        if (result.resultCode == Activity.RESULT_OK && animationRequest != null && uri != null) {
+            exporting = true
+            surface?.exportAnimation(uri, animationRequest.format, animationRequest.scale) { outcome ->
+                exporting = false
+                message = outcome.fold({ "Animation saved." }, { it.message ?: "Animation export failed." })
+            }
+        } else if (result.resultCode == Activity.RESULT_OK && request != null && uri != null) {
             exporting = true
             surface?.exportDrawing(uri, request.format, request.quality, request.scale, request.transparent) { outcome ->
                 exporting = false
@@ -146,6 +158,7 @@ fun CanvasScreen(
             }
         }
         pendingExport = null
+        pendingAnimationExport = null
     }
 
     fun sync() { surface?.settings?.apply {
@@ -262,6 +275,13 @@ fun CanvasScreen(
     BackHandler(enabled = onBackToGallery != null, onBack = leaveEditor)
     BackHandler(enabled = colorPickerOpen) { colorPickerOpen = false }
     BackHandler(enabled = layersOpen) { layersOpen = false }
+    BackHandler(enabled = animationOpen) { animationOpen = false }
+
+    fun openAnimation() {
+        layersOpen = false
+        colorPickerOpen = false
+        if (animationState == null) animationActivationOpen = true else animationOpen = !animationOpen
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val density = LocalDensity.current
@@ -294,6 +314,7 @@ fun CanvasScreen(
                     selectedLayerIds = selectedIds
                     layerPreviews = previews
                 }
+                view.animationListener = { animationState = it }
                 view.colorPickedListener = { picked -> color = picked }
                 view.visiblePaletteListener = { drawingPalette = it }
                 view.drawnColorListener = { drawn -> colorHistory = colorHistoryPreferences.record(drawn) }
@@ -337,6 +358,8 @@ fun CanvasScreen(
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
                 onBack = if (onBackToGallery != null) leaveEditor else null,
                 onExport = { if (ready) exportOpen = true },
+                animationOpen = animationOpen,
+                onAnimation = ::openAnimation,
                 modifier = Modifier.fillMaxSize().statusBarsPadding(),
             )
         } else if (phoneChromeVisible) {
@@ -363,6 +386,7 @@ fun CanvasScreen(
                 onReset = { surface?.resetView() },
                 onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
                 onExport = { if (ready) exportOpen = true },
+                onAnimation = ::openAnimation,
                 onDebug = { debug = !debug },
                 onHide = ::manuallyHidePhoneChrome,
                 modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(8.dp),
@@ -525,6 +549,43 @@ fun CanvasScreen(
             )
         }
 
+        if (animationOpen) animationState?.let { state ->
+            AnimationPanel(
+                state = state,
+                layers = layers,
+                selectedLayerId = selectedLayerId,
+                hasSelection = hasSelection,
+                onSelectFrame = { surface?.selectAnimationFrame(it) },
+                onAddFrame = { surface?.addAnimationFrame() },
+                onDuplicateFrame = { surface?.duplicateAnimationFrame() },
+                onDeleteFrame = { surface?.deleteAnimationFrame() },
+                onMoveFrame = { surface?.moveAnimationFrame(it) },
+                onExposure = { surface?.setAnimationExposure(it) },
+                onFps = { surface?.setAnimationFps(it) },
+                onPlaybackMode = { surface?.setAnimationPlaybackMode(it) },
+                onPlayPause = { surface?.toggleAnimationPlayback() },
+                onOnion = { before, after, opacity -> surface?.setOnionSkin(before, after, opacity) },
+                onBackground = { id, shared -> surface?.setAnimationBackground(id, shared) },
+                onCopyCel = { surface?.copyCelToNewLayer(false) },
+                onMoveCel = { surface?.copyCelToNewLayer(true) },
+                onCopySelection = { surface?.duplicateSelection() },
+                onMoveSelection = { surface?.moveSelectionToNewLayer() },
+                onRecordMotion = { end, timing ->
+                    if (surface?.armImageMotionRecording(end, timing) == true) imageTransforming = true
+                    else message = "Select an image layer and at least two frames to record movement."
+                },
+                onRecordLine = { end, timing ->
+                    if (surface?.armStrokeRevealRecording(end, timing) != true) {
+                        message = "Select a paint layer, at least two frames, and turn off the eraser."
+                    }
+                },
+                onCancelRecording = { surface?.cancelAnimationRecording() },
+                onClose = { animationOpen = false },
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                    .padding(bottom = if (compactPhone) 75.dp else if (portrait) 95.dp else 12.dp),
+            )
+        }
+
         if (colorPickerOpen) {
             val dismissInteraction = remember { MutableInteractionSource() }
             Box(
@@ -640,8 +701,24 @@ fun CanvasScreen(
         onDismiss = { brushStudioOpen = false },
     )
 
-    if (exportOpen) ExportDrawingDialog(documentName, canvasWidthPx, canvasHeightPx, onDismiss = { exportOpen = false }) { request ->
+    if (exportOpen && animationState != null) AnimationExportDialog(
+        documentName, canvasWidthPx, canvasHeightPx,
+        onDismiss = { exportOpen = false },
+        onStillImage = { exportOpen = false; stillExportOpen = true },
+    ) { request ->
         exportOpen = false
+        pendingAnimationExport = request
+        exportDestination.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = request.format.mimeType
+            putExtra(Intent.EXTRA_TITLE, request.fileName)
+        })
+    }
+    if (stillExportOpen || (exportOpen && animationState == null)) ExportDrawingDialog(documentName, canvasWidthPx, canvasHeightPx, onDismiss = {
+        exportOpen = false; stillExportOpen = false
+    }) { request ->
+        exportOpen = false
+        stillExportOpen = false
         pendingExport = request
         exportDestination.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -649,6 +726,22 @@ fun CanvasScreen(
             putExtra(Intent.EXTRA_TITLE, request.fileName)
         })
     }
+
+    if (animationActivationOpen) AlertDialog(
+        onDismissRequest = { animationActivationOpen = false },
+        title = { Text("Start animation") },
+        text = { Text("Where should the current artwork go? You can change a layer between shared background and animated cel later.") },
+        confirmButton = { TextButton(onClick = {
+            surface?.enableAnimation(false)
+            animationActivationOpen = false
+            animationOpen = true
+        }) { Text("First frame") } },
+        dismissButton = { TextButton(onClick = {
+            surface?.enableAnimation(true)
+            animationActivationOpen = false
+            animationOpen = true
+        }) { Text("Shared background") } },
+    )
 
 }
 
@@ -673,6 +766,8 @@ private fun EditorChrome(
     onOpenColorPicker: () -> Unit,
     onBack: (() -> Unit)?,
     onExport: () -> Unit,
+    animationOpen: Boolean,
+    onAnimation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier) {
@@ -692,6 +787,10 @@ private fun EditorChrome(
                 ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker, compact = true)
             }
             TextButton(onClick = onExport, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Export", fontSize = 13.sp) }
+            TextButton(onClick = onAnimation, contentPadding = PaddingValues(horizontal = 12.dp),
+                colors = ButtonDefaults.textButtonColors(contentColor = if (animationOpen) Color(0xFFED6A5A) else Color.White)) {
+                Text("Animate", fontSize = 13.sp)
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Debug", color = Color(0xFFD8D9DC), fontSize = 11.sp)
                 Switch(checked = debug, onCheckedChange = { onDebug() }, modifier = Modifier.scale(.68f).semantics { contentDescription = "Debug overlay" })
@@ -719,6 +818,7 @@ private fun PhoneEditorChrome(
     onReset: () -> Unit,
     onSelection: () -> Unit,
     onExport: () -> Unit,
+    onAnimation: () -> Unit,
     onDebug: () -> Unit,
     onHide: () -> Unit,
     modifier: Modifier = Modifier,
@@ -770,6 +870,7 @@ private fun PhoneEditorChrome(
                         onClick = { onMenuOpenChange(false); onSelection() },
                     )
                     DropdownMenuItem(text = { Text("Export") }, onClick = { onMenuOpenChange(false); onExport() })
+                    DropdownMenuItem(text = { Text("Animate") }, onClick = { onMenuOpenChange(false); onAnimation() })
                     DropdownMenuItem(text = { Text("Diagnostics") }, onClick = { onMenuOpenChange(false); onDebug() })
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text("Hide controls") }, onClick = onHide)

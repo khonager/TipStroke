@@ -11,6 +11,15 @@ import dev.tipstroke.core.model.*
 import kotlin.test.*
 
 class CoreTests {
+    @Test fun selectionKeepsItsPointsAfterGestureBufferIsCleared() {
+        val gesture = mutableListOf(Point(0f, 0f), Point(100f, 0f), Point(50f, 100f))
+        val selection = SelectionRegion(gesture)
+        gesture.clear()
+
+        assertEquals(3, selection.points.size)
+        assertTrue(selection.contains(Point(50f, 30f)))
+    }
+
     @Test fun imageTransformsRemainNonDestructiveMetadata() {
         val transformed = ImageTransform(250f, 200f, 1f).changedBy(35f, -20f, .5f, 22f)
         assertEquals(285f, transformed.centerX, .001f)
