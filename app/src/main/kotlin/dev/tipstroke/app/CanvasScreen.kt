@@ -10,6 +10,10 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,7 +65,6 @@ fun CanvasScreen(
     var erasing by remember { mutableStateOf(false) }
     val smallCanvas = canvasWidthPx <= 128 && canvasHeightPx <= 128
     var pixelTool by remember { mutableStateOf<PixelTool?>(if (smallCanvas) PixelTool.PENCIL else null) }
-    var showPixelDock by remember { mutableStateOf(smallCanvas) }
     var pixelSize by remember { mutableFloatStateOf(1f) }
     var size by remember { mutableFloatStateOf(if (smallCanvas) 1f else initialBrushTuning.sizePx) }
     var opacity by remember { mutableFloatStateOf(if (smallCanvas) 1f else initialBrushTuning.opacity) }
@@ -201,11 +204,6 @@ fun CanvasScreen(
         pencilShadeTransitionRadians = tuning.pencilShadeTransitionRadians
     }
     fun toggleEraser() {
-        if (!erasing && showPixelDock && pixelTool == null) {
-            pixelTool = PixelTool.PENCIL
-            size = pixelSize
-            opacity = 1f
-        }
         erasing = !erasing
         if (pixelTool == null) applyTuning(if (erasing) brushPreferences.loadEraser() else brushPreferences.load(brush))
         sync()
@@ -213,22 +211,16 @@ fun CanvasScreen(
     fun selectPixelTool(tool: PixelTool) {
         if (pixelTool == null) opacity = 1f
         pixelTool = tool
-        showPixelDock = true
         erasing = false
         size = pixelSize
     }
     fun selectRegularBrush(preset: BrushPreset = brush) {
         pixelTool = null
-        showPixelDock = false
         brush = preset
         erasing = false
         applyTuning(brushPreferences.load(preset))
     }
     val pixelToolsAvailable = smallCanvas || diagnostics.zoom >= 8f || pixelTool != null
-    LaunchedEffect(diagnostics.zoom >= 8f) {
-        if (diagnostics.zoom >= 8f) showPixelDock = true
-        else if (!smallCanvas && pixelTool == null) showPixelDock = false
-    }
     fun performStylusButton(button: StylusButton) {
         val now = android.os.SystemClock.uptimeMillis()
         val buttonIndex = button.ordinal
@@ -320,6 +312,7 @@ fun CanvasScreen(
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val density = LocalDensity.current
         val portrait = maxHeight > maxWidth
+        val viewportWidth = maxWidth
         val viewportHeight = maxHeight
         val compactPhone = minOf(maxWidth, maxHeight) < 600.dp
         val compactLandscape = !portrait && maxHeight < 760.dp
@@ -437,15 +430,18 @@ fun CanvasScreen(
         ) {
             BrushRail(
                 selected = brush, erasing = erasing,
-                pixelTool = pixelTool, showPixelTools = showPixelDock, pixelToolsAvailable = pixelToolsAvailable,
-                onPixelTool = ::selectPixelTool, onRegularBrushes = { selectRegularBrush() },
+                pixelTool = pixelTool, pixelToolsAvailable = pixelToolsAvailable,
+                pixelToolsFirst = smallCanvas,
+                onPixelTool = ::selectPixelTool,
                 onBrush = ::selectRegularBrush,
                 onEraser = {
                     toggleEraser()
                 },
                 onAdjust = { brushStudioOpen = true },
                 modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
-                    .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp)),
+                    .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp))
+                    .then(if (portrait) Modifier.width((viewportWidth - 430.dp).coerceIn(170.dp, 440.dp))
+                        else Modifier.heightIn(max = (viewportHeight - 110.dp).coerceAtLeast(220.dp))),
                 horizontal = portrait,
                 compact = compactLandscape,
             )
@@ -520,10 +516,9 @@ fun CanvasScreen(
                     selected = brush,
                     erasing = erasing,
                     pixelTool = pixelTool,
-                    showPixelTools = showPixelDock,
                     pixelToolsAvailable = pixelToolsAvailable,
+                    pixelToolsFirst = smallCanvas,
                     onPixelTool = ::selectPixelTool,
-                    onRegularBrushes = { selectRegularBrush() },
                     adjustmentsOpen = phoneAdjustmentsOpen,
                     onBrush = ::selectRegularBrush,
                     onEraser = ::toggleEraser,
@@ -940,57 +935,72 @@ private fun PhoneBrushDock(
     selected: BrushPreset,
     erasing: Boolean,
     pixelTool: PixelTool?,
-    showPixelTools: Boolean,
     pixelToolsAvailable: Boolean,
+    pixelToolsFirst: Boolean,
     onPixelTool: (PixelTool) -> Unit,
-    onRegularBrushes: () -> Unit,
     adjustmentsOpen: Boolean,
     onBrush: (BrushPreset) -> Unit,
     onEraser: () -> Unit,
     onAdjustments: () -> Unit,
     onBrushStudio: () -> Unit,
 ) {
+    val listState = rememberLazyListState()
+    val activeIndex = toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
+    LaunchedEffect(activeIndex, pixelToolsAvailable, pixelToolsFirst) {
+        listState.scrollToItem(toolScrollStart(activeIndex))
+    }
     Surface(
         Modifier.fillMaxWidth().widthIn(max = 520.dp),
         color = Color(0xE6202125),
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, Color(0xB345474D)),
     ) {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            if (showPixelTools) {
-                PixelTool.entries.forEach { tool ->
-                    ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val toolWidth = (maxWidth - (if (pixelTool == null) 96.dp else 54.dp)).coerceAtLeast(88.dp)
+            Row(
+                Modifier.fillMaxWidth().padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                LazyRow(
+                    modifier = Modifier.width(toolWidth),
+                    state = listState,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (pixelToolsAvailable && pixelToolsFirst) {
+                        items(PixelTool.entries, key = { it.name }) { tool ->
+                            ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
+                        }
+                        item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
+                    }
+                    items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
+                        ToolButton(
+                            preset.displayName,
+                            pixelTool == null && selected.id == preset.id && !erasing,
+                            { onBrush(preset) },
+                            preset.glyph,
+                            compact = true,
+                            phone = true,
+                        )
+                    }
+                    if (pixelToolsAvailable && !pixelToolsFirst) {
+                        item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
+                        items(PixelTool.entries, key = { it.name }) { tool ->
+                            ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
+                        }
+                    }
+                    item(key = "eraser") {
+                        ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact = true, phone = true)
+                    }
                 }
-                ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact = true, phone = true)
-                TextButton(onClick = onRegularBrushes) { Text("Brushes", fontSize = 10.sp) }
-            } else {
-                BrushPreset.builtIns.forEach { preset ->
-                    ToolButton(
-                        preset.displayName,
-                        selected.id == preset.id && !erasing,
-                        { onBrush(preset) },
-                        when (preset.engine) {
-                            BrushEngine.PENCIL -> ToolGlyph.PENCIL
-                            BrushEngine.INK -> ToolGlyph.INK
-                            BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH
-                        },
-                        compact = true,
-                        phone = true,
-                    )
+                IconButton(
+                    onClick = onAdjustments,
+                    modifier = Modifier.size(42.dp).semantics { contentDescription = if (adjustmentsOpen) "Hide size and opacity" else "Show size and opacity" },
+                ) { TuneIcon(if (adjustmentsOpen) Color(0xFFED6A5A) else Color.White) }
+                if (pixelTool == null) TextButton(onClick = onBrushStudio, modifier = Modifier.size(width = 42.dp, height = 50.dp), contentPadding = PaddingValues(0.dp)) {
+                    Text("Studio", fontSize = 8.sp)
                 }
-                ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact = true, phone = true)
-                if (pixelToolsAvailable) TextButton(onClick = { onPixelTool(PixelTool.PENCIL) }) { Text("Pixels", fontSize = 10.sp) }
-            }
-            IconButton(
-                onClick = onAdjustments,
-                modifier = Modifier.size(42.dp).semantics { contentDescription = if (adjustmentsOpen) "Hide size and opacity" else "Show size and opacity" },
-            ) { TuneIcon(if (adjustmentsOpen) Color(0xFFED6A5A) else Color.White) }
-            if (!showPixelTools) TextButton(onClick = onBrushStudio, modifier = Modifier.size(width = 42.dp, height = 50.dp), contentPadding = PaddingValues(0.dp)) {
-                Text("Studio", fontSize = 8.sp)
             }
         }
     }
@@ -1009,10 +1019,9 @@ private fun PhoneBrushDock(
     selected: BrushPreset,
     erasing: Boolean,
     pixelTool: PixelTool?,
-    showPixelTools: Boolean,
     pixelToolsAvailable: Boolean,
+    pixelToolsFirst: Boolean,
     onPixelTool: (PixelTool) -> Unit,
-    onRegularBrushes: () -> Unit,
     onBrush: (BrushPreset) -> Unit,
     onEraser: () -> Unit,
     onAdjust: () -> Unit,
@@ -1021,30 +1030,63 @@ private fun PhoneBrushDock(
     compact: Boolean = false,
 ) {
     val shape = RoundedCornerShape(22.dp)
-    val content: @Composable RowScope.() -> Unit = {
-        if (showPixelTools) {
-            PixelTool.entries.forEach { tool -> ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact) }
-            ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact)
-            TextButton(onClick = onRegularBrushes) { Text("Brushes", fontSize = 10.sp) }
-        } else {
-            BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }, compact = compact) }
-            ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact)
-            if (pixelToolsAvailable) TextButton(onClick = { onPixelTool(PixelTool.PENCIL) }) { Text("Pixels", fontSize = 10.sp) }
-        }
-        if (!showPixelTools) TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
+    val listState = rememberLazyListState()
+    val activeIndex = toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
+    LaunchedEffect(activeIndex, pixelToolsAvailable, pixelToolsFirst) {
+        listState.scrollToItem(toolScrollStart(activeIndex))
     }
-    if (horizontal) Row(modifier.background(Color(0xD9202125), shape).border(1.dp, Color(0xB345474D), shape).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), content = content)
-    else Column(modifier.background(Color(0xD9202125), shape).border(1.dp, Color(0xB345474D), shape).padding(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (showPixelTools) {
-            PixelTool.entries.forEach { tool -> ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact) }
-            ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact)
-            TextButton(onClick = onRegularBrushes) { Text("Brushes", fontSize = 10.sp) }
-        } else {
-            BrushPreset.builtIns.forEach { preset -> ToolButton(preset.displayName, selected.id == preset.id && !erasing, { onBrush(preset) }, icon = when (preset.engine) { BrushEngine.PENCIL -> ToolGlyph.PENCIL; BrushEngine.INK -> ToolGlyph.INK; BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH }, compact = compact) }
-            ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact)
-            if (pixelToolsAvailable) TextButton(onClick = { onPixelTool(PixelTool.PENCIL) }) { Text("Pixels", fontSize = 10.sp) }
+    val dockModifier = modifier.background(Color(0xD9202125), shape)
+        .border(1.dp, Color(0xB345474D), shape).padding(5.dp)
+    if (horizontal) LazyRow(
+        modifier = dockModifier,
+        state = listState,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (pixelToolsAvailable && pixelToolsFirst) {
+            items(PixelTool.entries, key = { it.name }) { tool ->
+                ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact)
+            }
+            item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
         }
-        if (!showPixelTools) TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
+        items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
+            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing, { onBrush(preset) }, preset.glyph, compact)
+        }
+        if (pixelToolsAvailable && !pixelToolsFirst) {
+            item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
+            items(PixelTool.entries, key = { it.name }) { tool ->
+                ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact)
+            }
+        }
+        item(key = "eraser") { ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact) }
+        if (pixelTool == null) item(key = "adjust") {
+            TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
+        }
+    } else LazyColumn(
+        modifier = dockModifier,
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (pixelToolsAvailable && pixelToolsFirst) {
+            items(PixelTool.entries, key = { it.name }) { tool ->
+                ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact)
+            }
+            item(key = "pixel-divider") { Box(Modifier.width(36.dp).height(1.dp).background(Color(0xFF55575D))) }
+        }
+        items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
+            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing, { onBrush(preset) }, preset.glyph, compact)
+        }
+        if (pixelToolsAvailable && !pixelToolsFirst) {
+            item(key = "pixel-divider") { Box(Modifier.width(36.dp).height(1.dp).background(Color(0xFF55575D))) }
+            items(PixelTool.entries, key = { it.name }) { tool ->
+                ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact)
+            }
+        }
+        item(key = "eraser") { ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact) }
+        if (pixelTool == null) item(key = "adjust") {
+            TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
+        }
     }
 }
 
@@ -1078,6 +1120,31 @@ private val PixelTool.glyph: ToolGlyph get() = when (this) {
     PixelTool.LINE -> ToolGlyph.LINE
     PixelTool.DITHER -> ToolGlyph.DITHER
 }
+
+private val BrushPreset.glyph: ToolGlyph get() = when (engine) {
+    BrushEngine.PENCIL -> ToolGlyph.PENCIL
+    BrushEngine.INK -> ToolGlyph.INK
+    BrushEngine.AIRBRUSH -> ToolGlyph.AIRBRUSH
+}
+
+private fun toolIndex(
+    brush: BrushPreset,
+    erasing: Boolean,
+    pixelTool: PixelTool?,
+    pixelToolsAvailable: Boolean,
+    pixelToolsFirst: Boolean,
+): Int {
+    val regularIndex = BrushPreset.builtIns.indexOfFirst { it.id == brush.id }.coerceAtLeast(0)
+    if (!pixelToolsAvailable) return if (erasing) 3 else regularIndex
+    return when {
+        erasing -> 7
+        pixelTool != null -> (if (pixelToolsFirst) 0 else 4) + pixelTool.ordinal
+        else -> (if (pixelToolsFirst) 4 else 0) + regularIndex
+    }
+}
+
+private fun toolScrollStart(activeIndex: Int): Int =
+    if (activeIndex == 4) 2 else (activeIndex - 1).coerceAtLeast(0)
 
 private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER, PIXEL, LINE, DITHER }
 

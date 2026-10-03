@@ -43,6 +43,10 @@ class CanvasScreenshotTest {
         CanvasScreen(onBackToGallery = {})
     }
 
+    @Test fun renderNarrowPhonePixelToolsForVisualReview() = render(600, 1200, "tipstroke-phone-pixel-tools.png") {
+        CanvasScreen(canvasWidthPx = 32, canvasHeightPx = 32, onBackToGallery = {})
+    }
+
     @Test fun renderCompactLandscapeCanvasForVisualReview() = render(1600, 720, "tipstroke-compact-landscape.png") { CanvasScreen() }
 
     @Test fun renderMediumLandscapeCanvasForVisualReview() = render(1600, 1200, "tipstroke-medium-landscape.png") { CanvasScreen() }
