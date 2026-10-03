@@ -2,9 +2,11 @@ package dev.tipstroke.drawing.android
 
 import android.os.Build
 import dev.tipstroke.core.model.*
+import dev.tipstroke.core.drawing.PixelTool
 
 class CanvasSettings {
     @Volatile var brush: BrushPreset = BrushPreset.Ink
+    @Volatile var pixelTool: PixelTool? = null
     @Volatile var sizePx: Float = BrushPreset.Ink.baseSizePx
     @Volatile var opacity: Float = 1f
     @Volatile var color: RgbaColor = RgbaColor(0.05f, 0.05f, 0.06f)

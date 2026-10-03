@@ -10,6 +10,7 @@ import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.RgbaColor
 
 enum class PointerKind { STYLUS, ERASER_STYLUS, FINGER, MOUSE, UNKNOWN }
+enum class PixelTool { PENCIL, LINE, DITHER }
 data class StrokeSample(
     val pointerId: Int,
     val position: Point,
@@ -30,8 +31,8 @@ data class StrokeStyle(
     val blend: BlendBehavior,
     /** Optional transient selection clip; it is never persisted as artwork. */
     val selection: SelectionRegion? = null,
-    /** Transient rendering choice for small, pixel-sized documents. */
-    val pixelArt: Boolean = false,
+    /** Transient pixel tool; it does not change the saved raster document format. */
+    val pixelTool: PixelTool? = null,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     val bounds: Rect by lazy {

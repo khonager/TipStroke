@@ -473,6 +473,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         publishAnimation()
     }
 
+    fun setPixelTool(tool: PixelTool?) {
+        settings.pixelTool = tool
+        rasterView.pixelToolActive = tool != null
+    }
+
     fun loadProject(library: DrawingLibrary, id: String, onComplete: (Result<Unit>) -> Unit) {
         ProjectPersistence.executor.execute {
             val loaded = ProjectPersistence.load(library.projectDirectory(id))
@@ -641,7 +646,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (target.image != null || style.blend == BlendBehavior.ERASE) {
                     customPreviewStyle = style
                     target.store.beginLiveStroke()
-                } else if (style.pixelArt || style.brush.engine == BrushEngine.AIRBRUSH) {
+                } else if (style.pixelTool != null || style.brush.engine == BrushEngine.AIRBRUSH) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId).toList(), style)
                 } else if (style.brush.engine == BrushEngine.PENCIL) {
@@ -1155,7 +1160,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val brush = if (erasing) settings.brush.copy(hardness = settings.eraserHardness) else settings.brush
         return StrokeStyle(brush, settings.sizePx, settings.opacity, settings.color,
             if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
-            pixelArt = layerStack.canvasWidth <= 128 && layerStack.canvasHeight <= 128)
+            pixelTool = settings.pixelTool)
     }
 
     private fun styleForTarget(style: StrokeStyle, target: StrokeTarget): StrokeStyle {

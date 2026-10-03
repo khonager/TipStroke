@@ -54,7 +54,10 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var stylusHoverPreview: StylusHoverPreview? = null
         set(value) { field = value; postInvalidateOnAnimation() }
     var transform = CanvasTransform(0f, 0f, 1f, 0f); private set
-    private val pixelArtCanvas get() = layerStack.canvasWidth <= 128 && layerStack.canvasHeight <= 128
+    var pixelToolActive = false
+        set(value) { if (field != value) { field = value; invalidate() } }
+    private val pixelArtCanvas get() =
+        pixelToolActive || (layerStack.canvasWidth <= 128 && layerStack.canvasHeight <= 128) || transform.scale >= 8f
     var transformChangedListener: ((CanvasTransform) -> Unit)? = null
 
     fun setPencilPreview(store: TileStore?, layerId: LayerId?) {

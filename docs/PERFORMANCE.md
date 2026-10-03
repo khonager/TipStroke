@@ -13,6 +13,7 @@ Current safeguards:
 - Canvas pixels use sparse 256×256 tiles; only intersecting tiles allocate and redraw.
 - Undo snapshots cover affected tiles only and have a 96 MiB configurable budget.
 - Camera navigation is a matrix; artwork is not transformed or resampled.
+- Raster tiles use nearest-neighbor presentation on canvases up to 128×128 px and at 8× zoom or above. Pixel tools paint exact integer cells into the existing sparse tiles; wet marks are drawn by the native raster view and only intersecting tiles are committed.
 - Layer thumbnails fit their visible content. Exact alpha bounds are cached per sparse tile, and only dirty tiles are rescanned after paint changes; preview recomposition does not scan an entire layer or allocate a canvas-sized bitmap.
 - No storage, networking, database, DI framework, or serialization exists in the hot path.
 - Animation cels remain separate sparse tile stores. Holds are metadata, onion skins draw neighboring cels without duplicating them, and export renders one frame at a time on the project executor. Moving a lasso no longer allocates blank destination tiles across the lasso's full bounding box.

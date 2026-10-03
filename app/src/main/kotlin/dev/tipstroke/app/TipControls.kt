@@ -37,6 +37,7 @@ internal fun TipControls(
     verticalTrackHeight: Dp = if (compactVertical) 154.dp else 205.dp,
     showColorSwitcher: Boolean = true,
     horizontalWidthFraction: Float = .62f,
+    sizeRange: ClosedFloatingPointRange<Float> = 1f..180f,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -50,7 +51,7 @@ internal fun TipControls(
                     .background(Color(0xD9202125), RoundedCornerShape(20.dp)).padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                PrecisionSlider("Size", "${size.roundToInt()} px", size, 2f..180f, 1f, onSize, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
+                PrecisionSlider("Size", "${size.roundToInt()} px", size, sizeRange, 1f, onSize, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
                 PrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
             }
         } else {
@@ -62,7 +63,7 @@ internal fun TipControls(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 VerticalPrecisionSlider(
-                    "Size", "${size.roundToInt()} px", size, 2f..180f, 1f, onSize,
+                    "Size", "${size.roundToInt()} px", size, sizeRange, 1f, onSize,
                     onAdjustmentStart, onAdjustmentEnd,
                     trackHeight = verticalTrackHeight,
                     compact = compactVertical,

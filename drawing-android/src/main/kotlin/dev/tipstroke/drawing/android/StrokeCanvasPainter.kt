@@ -17,6 +17,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import dev.tipstroke.core.drawing.CompletedStroke
 import dev.tipstroke.core.drawing.StrokeSample
+import dev.tipstroke.core.drawing.PixelTool
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushEngine
@@ -26,6 +27,11 @@ import kotlin.math.*
 
 /** Shared painter for custom wet previews and their byte-for-byte-equivalent tile commit. */
 internal object StrokeCanvasPainter {
+    private val pixelDitherShader by lazy {
+        val pattern = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888)
+        pattern.setPixels(intArrayOf(Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT, Color.WHITE), 0, 2, 0, 0, 2, 2)
+        BitmapShader(pattern, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+    }
     private val pencilGrainMasks by lazy {
         val source = TipStrokeInkBrushes.pencilGrainTexture()
         val sourcePixels = IntArray(source.width * source.height)
@@ -127,7 +133,7 @@ internal object StrokeCanvasPainter {
     fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke)) {
         val saveCount = canvas.save()
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
-        if (stroke.style.pixelArt) {
+        if (stroke.style.pixelTool != null) {
             drawPixelStroke(canvas, stroke, paint)
             canvas.restoreToCount(saveCount)
             return
@@ -172,14 +178,15 @@ internal object StrokeCanvasPainter {
         val offset = (width - 1) / 2
         val path = Path()
         fun stamp(x: Int, y: Int) {
-            path.addRect(
-                (x - offset).toFloat(), (y - offset).toFloat(),
-                (x - offset + width).toFloat(), (y - offset + width).toFloat(),
-                Path.Direction.CW,
-            )
+            val left = x - offset
+            val top = y - offset
+            path.addRect(left.toFloat(), top.toFloat(), (left + width).toFloat(), (top + width).toFloat(), Path.Direction.CW)
         }
         var previous: StrokeSample? = null
-        stroke.samples.forEach { sample ->
+        val samples = if (stroke.style.pixelTool == PixelTool.LINE) {
+            listOf(stroke.samples.first(), stroke.samples.last())
+        } else stroke.samples
+        samples.forEach { sample ->
             var x = previous?.position?.x?.let { floor(it).toInt() } ?: floor(sample.position.x).toInt()
             var y = previous?.position?.y?.let { floor(it).toInt() } ?: floor(sample.position.y).toInt()
             val endX = floor(sample.position.x).toInt()
@@ -199,9 +206,14 @@ internal object StrokeCanvasPainter {
             previous = sample
         }
         paint.isAntiAlias = false
+        paint.isFilterBitmap = false
         paint.maskFilter = null
         paint.style = Paint.Style.FILL
         paint.alpha = (stroke.style.opacity * stroke.style.color.alpha * 255).roundToInt().coerceIn(0, 255)
+        if (stroke.style.pixelTool == PixelTool.DITHER && stroke.style.blend == BlendBehavior.PAINT) {
+            paint.shader = pixelDitherShader
+            paint.colorFilter = PorterDuffColorFilter(stroke.style.color.toOpaqueRgb(), PorterDuff.Mode.SRC_IN)
+        }
         canvas.drawPath(path, paint)
     }
 
