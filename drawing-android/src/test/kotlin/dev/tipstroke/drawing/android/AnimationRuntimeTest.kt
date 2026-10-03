@@ -22,6 +22,32 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AnimationRuntimeTest {
+    @Test fun liveDrawingAddsFramesAndKeepsRecordingLaterStrokes() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 256, 256) {}
+        val animation = AnimationRuntime(stack, existingAsBackground = false, initialFps = 10)
+        val layerId = stack.addRaster()
+        animation.register(stack.selected())
+        val style = StrokeStyle(BrushPreset.Ink, 12f, 1f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT)
+        fun stroke(y: Float, duration: Long) = CompletedStroke(listOf(
+            StrokeSample(1, Point(20f, y), 1f, 0f, 0f, 0L, 0, PointerKind.STYLUS),
+            StrokeSample(1, Point(170f, y), 1f, 0f, 0f, duration, 0, PointerKind.STYLUS),
+        ), style)
+
+        animation.addBlankFrame()
+        animation.carryRecordedDrawing(layerId, 0, 1)
+        animation.recordLiveStroke(layerId, 0, 1_000L, 1_000L, 1, stroke(50f, 150_000_000L))
+        animation.addBlankFrame()
+        animation.carryRecordedDrawing(layerId, 1, 2)
+        animation.recordLiveStroke(layerId, 0, 1_000L, 1_200L, 2, stroke(150f, 40_000_000L))
+
+        assertEquals(3, animation.frames.size)
+        assertNotEquals(0, Color.alpha(animation.celRaster(layerId, animation.frames[0].id)!!.colorAt(50, 50)))
+        assertEquals(0, Color.alpha(animation.celRaster(layerId, animation.frames[0].id)!!.colorAt(150, 50)))
+        assertNotEquals(0, Color.alpha(animation.celRaster(layerId, animation.frames[1].id)!!.colorAt(150, 50)))
+        assertNotEquals(0, Color.alpha(animation.celRaster(layerId, animation.frames[2].id)!!.colorAt(150, 50)))
+        assertNotEquals(0, Color.alpha(animation.celRaster(layerId, animation.frames[2].id)!!.colorAt(100, 150)))
+    }
+
     @Test fun recordedLineRevealsAcrossFramesWithoutCopyingTheWholeLayer() {
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 256, 256) {}
         val animation = AnimationRuntime(stack, existingAsBackground = false)

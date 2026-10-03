@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.tipstroke.core.model.*
+import dev.tipstroke.drawing.android.AnimationRecordingKind
 import dev.tipstroke.drawing.android.AnimationUiState
 
 /** A narrow timeline strip; actions appear only while their menu is open. */
@@ -41,7 +42,7 @@ internal fun AnimationPanel(
     onCopySelection: () -> Unit,
     onMoveSelection: () -> Unit,
     onRecordMotion: (Int, RecordingTiming) -> Unit,
-    onRecordLine: (Int, RecordingTiming) -> Unit,
+    onRecordLine: () -> Unit,
     onCancelRecording: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
@@ -77,15 +78,26 @@ internal fun AnimationPanel(
                 contentDescription = "Add blank animation frame"
             }, contentPadding = PaddingValues(0.dp)) { Text("+", fontSize = 22.sp) }
             Box {
-                TextButton(onClick = { recordingMenu = true }, modifier = Modifier.width(44.dp).semantics {
-                    contentDescription = "Animation recording"
+                TextButton(onClick = {
+                    when {
+                        state.recording != null -> onCancelRecording()
+                        selectedLayer?.kind == LayerKind.RASTER -> onRecordLine()
+                        else -> recordingMenu = true
+                    }
+                }, modifier = Modifier.width(44.dp).semantics {
+                    contentDescription = when {
+                        state.recording != null -> "Stop animation recording"
+                        selectedLayer?.kind == LayerKind.RASTER -> "Record drawing live"
+                        else -> "Animation recording"
+                    }
                 }, contentPadding = PaddingValues(0.dp),
                     colors = ButtonDefaults.textButtonColors(contentColor = if (state.recording != null) accent else Color.White)) {
-                    Text(if (state.recording != null) "●" else "Rec", fontSize = if (state.recording != null) 17.sp else 11.sp)
+                    Text(if (state.recording == AnimationRecordingKind.LIVE_DRAWING) "■" else if (state.recording != null) "●" else "Rec",
+                        fontSize = if (state.recording != null) 17.sp else 11.sp)
                 }
                 DropdownMenu(expanded = recordingMenu, onDismissRequest = { recordingMenu = false }) {
                     if (state.recording != null) {
-                        DropdownMenuItem(text = { Text("Cancel recording") }, onClick = {
+                        DropdownMenuItem(text = { Text("Stop recording") }, onClick = {
                             recordingMenu = false; onCancelRecording()
                         })
                     } else {
@@ -100,8 +112,6 @@ internal fun AnimationPanel(
                             onClick = { timing = if (timing == RecordingTiming.FIT_RANGE) RecordingTiming.REAL_TIME else RecordingTiming.FIT_RANGE })
                         DropdownMenuItem(text = { Text("Record image movement") }, enabled = selectedLayer?.kind == LayerKind.IMAGE,
                             onClick = { recordingMenu = false; onRecordMotion(recordEnd, timing) })
-                        DropdownMenuItem(text = { Text("Record line reveal") }, enabled = selectedLayer?.kind == LayerKind.RASTER,
-                            onClick = { recordingMenu = false; onRecordLine(recordEnd, timing) })
                     }
                 }
             }

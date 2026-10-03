@@ -25,7 +25,7 @@ data class AnimationUiState(
     val recording: AnimationRecordingKind? = null,
 )
 
-enum class AnimationRecordingKind { IMAGE_MOTION, STROKE_REVEAL }
+enum class AnimationRecordingKind { IMAGE_MOTION, LIVE_DRAWING }
 
 /** Only the active cel is installed in LayerStack. Other cels keep their sparse stores. */
 internal class AnimationRuntime(
@@ -147,6 +147,17 @@ internal class AnimationRuntime(
     fun celRaster(layerId: LayerId, frameId: FrameId): TileStore? = rasterCels[layerId]?.get(frameId)
     fun celImageTransform(layerId: LayerId, frameId: FrameId): ImageTransform? = imageCels[layerId]?.get(frameId)
 
+    fun carryRecordedDrawing(layerId: LayerId, from: Int, to: Int) {
+        if (from !in frames.indices || to !in frames.indices) return
+        val cels = rasterCels[layerId] ?: return
+        val previous = cels[frames[from].id] ?: return
+        val copy = previous.duplicate()
+        cels.put(frames[to].id, copy)?.discard()
+        if (selectedIndex == to) {
+            (stack.layers.firstOrNull { it.id == layerId } as? RasterLayerRuntime)?.tiles = copy
+        }
+    }
+
     fun inactiveTileBytes(): Long {
         val active = stack.layers.filterIsInstance<RasterLayerRuntime>().mapTo(mutableSetOf()) { it.tiles }
         val counted = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<TileStore, Boolean>())
@@ -228,6 +239,25 @@ internal class AnimationRuntime(
             cels.put(frames[index].id, store)?.discard()
         }
         install(start)
+    }
+
+    /** Place each part of a live stroke in the frame that was playing when it was drawn. */
+    fun recordLiveStroke(layerId: LayerId, start: Int, startedAt: Long, downAt: Long, playedThrough: Int, stroke: CompletedStroke) {
+        if (stroke.samples.isEmpty() || start !in frames.indices) return
+        val offsetNanos = (downAt - startedAt).coerceAtLeast(0L) * 1_000_000L
+        val durationNanos = stroke.samples.last().elapsedNanos
+        val first = start + (offsetNanos * fps / 1_000_000_000L).toInt()
+        val last = start + ((offsetNanos + durationNanos) * fps / 1_000_000_000L).toInt()
+        val cels = rasterCels.getOrPut(layerId) { linkedMapOf() }
+        for (index in first..maxOf(last, playedThrough)) {
+            val frameEnd = ((index - start + 1) * 1_000_000_000L / fps) - offsetNanos
+            if (index in frames.indices) {
+                val part = if (frameEnd >= durationNanos) stroke.samples else prefixThrough(stroke.samples, frameEnd)
+                val store = cels.getOrPut(frames[index].id) { TileStore(stack.canvasWidth, stack.canvasHeight) }
+                store.commit(stroke.copy(samples = part))
+            }
+        }
+        install(selectedIndex)
     }
 
     private fun prefixThrough(samples: List<StrokeSample>, cutoff: Long): List<StrokeSample> {

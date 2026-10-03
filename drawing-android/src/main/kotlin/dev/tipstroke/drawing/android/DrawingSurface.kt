@@ -39,15 +39,24 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val layerId: LayerId, val start: Int, val end: Int, val timing: RecordingTiming,
         val samples: MutableList<Pair<Long, ImageTransform>> = mutableListOf(),
     )
-    private data class StrokeRecording(val layerId: LayerId, val start: Int, val end: Int, val timing: RecordingTiming)
+    private data class StrokeRecording(
+        val layerId: LayerId, val start: Int, val startedAt: Long,
+        val downAt: Long = 0L, var advancedTo: Int = start,
+    )
     private var motionRecording: MotionRecording? = null
     private var strokeRecording: StrokeRecording? = null
+    private var strokeDownAt = 0L
     private var playbackStartedAt = 0L
     private val playbackStep = object : Runnable {
         override fun run() {
             val active = animation ?: return
             if (!animationPlaying) return
             val tick = ((SystemClock.uptimeMillis() - playbackStartedAt) * active.fps / 1000L)
+            strokeRecording?.let { recording ->
+                advanceLiveRecording(recording, recording.start + tick.toInt())
+                gestureHandler.postDelayed(this, 16L)
+                return
+            }
             val timeline = active.timeline
             if (active.playbackMode == PlaybackMode.ONCE && tick >= timeline.totalTicks) {
                 stopAnimationPlayback()
@@ -167,7 +176,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     val stroke = pending.stroke
                     val store = pending.target.store
                     committedAny = true
-                    if (stroke.style.blend == BlendBehavior.PAINT) {
+                    if (pending.reveal != null) {
+                        finishStrokeRecording(pending.reveal, stroke)
+                    } else if (stroke.style.blend == BlendBehavior.PAINT) {
                         val rasterStroke = if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
                             Stroke(createInkBrush(stroke.style, includePressureOpacity = false), inkStroke.inputs)
                         } else inkStroke
@@ -178,7 +189,6 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     if (pending.target.image == null && stroke.style.blend == BlendBehavior.PAINT) {
                         drawnColorListener?.invoke(stroke.style.color)
                     }
-                    pending.reveal?.let { finishStrokeRecording(it, stroke) }
                 }
                 rasterView.invalidate()
                 liveView.removeFinishedStrokes(strokes.keys)
@@ -360,7 +370,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.invalidate(); publishAnimation()
     }
     fun setAnimationExposure(value: Int) { animation?.setExposure(value); publishAnimation() }
-    fun setAnimationFps(value: Int) { animation?.fps = value.coerceIn(1, 60); publishAnimation() }
+    fun setAnimationFps(value: Int) {
+        if (strokeRecording != null) stopAnimationPlayback()
+        animation?.fps = value.coerceIn(1, 60)
+        publishAnimation()
+    }
     fun setAnimationPlaybackMode(mode: PlaybackMode) { animation?.playbackMode = mode; publishAnimation() }
     fun setOnionSkin(before: Int, after: Int, opacity: Float) {
         animation?.apply {
@@ -388,6 +402,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         gestureHandler.post(playbackStep)
         publishAnimation()
     }
+    private fun advanceLiveRecording(recording: StrokeRecording, index: Int) {
+        val active = animation ?: return
+        if (index <= recording.advancedTo) return
+        while (recording.advancedTo < index) {
+            val previous = recording.advancedTo
+            val next = previous + 1
+            if (next > active.frames.lastIndex) active.addBlankFrame() else active.select(next)
+            active.carryRecordedDrawing(recording.layerId, previous, next)
+            recording.advancedTo = next
+        }
+        rasterView.invalidate()
+        notifyLayers(); publishAnimation()
+    }
     fun armImageMotionRecording(endIndex: Int, timing: RecordingTiming): Boolean {
         val active = animation ?: return false
         val image = layerStack.selectedImage() ?: return false
@@ -400,32 +427,31 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         publishAnimation()
         return true
     }
-    fun armStrokeRevealRecording(endIndex: Int, timing: RecordingTiming): Boolean {
+    fun startLiveDrawingRecording(): Boolean {
         val active = animation ?: return false
-        if (layerStack.selectedRaster() == null || settings.erasing || activeDrawingPointerId != null ||
-            endIndex !in (active.selectedIndex + 1)..active.frames.lastIndex) return false
+        if (layerStack.selectedRaster() == null || settings.erasing || activeDrawingPointerId != null) return false
         stopAnimationPlayback()
         val start = active.selectedIndex
         val layerId = layerStack.addRaster()
-        layerStack.renameSelected("Draw on")
+        layerStack.renameSelected("Live drawing")
         active.register(layerStack.selected())
-        strokeRecording = StrokeRecording(layerId, start, endIndex, timing)
+        strokeRecording = StrokeRecording(layerId, start, SystemClock.uptimeMillis())
+        animationPlaying = true
+        rasterView.animationPlaying = true
+        playbackStartedAt = strokeRecording!!.startedAt
+        gestureHandler.post(playbackStep)
         notifyLayers(); publishAnimation()
         return true
     }
     fun cancelAnimationRecording() {
         motionRecording = null
-        strokeRecording?.let {
-            if (layerStack.selectedId == it.layerId && activeDrawingPointerId == null) {
-                layerStack.deleteSelected(); animation?.unregisterMissingLayers()
-            }
-        }
         strokeRecording = null
+        stopAnimationPlayback()
         notifyLayers(); publishAnimation()
     }
     private fun recordingKind(): AnimationRecordingKind? = when {
         motionRecording != null -> AnimationRecordingKind.IMAGE_MOTION
-        strokeRecording != null -> AnimationRecordingKind.STROKE_REVEAL
+        strokeRecording != null -> AnimationRecordingKind.LIVE_DRAWING
         else -> null
     }
     private fun recordImageSample(eventTime: Long) {
@@ -441,12 +467,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.invalidate(); notifyLayers(); publishAnimation()
     }
     private fun finishStrokeRecording(recording: StrokeRecording, stroke: CompletedStroke) {
-        animation?.recordStrokeReveal(recording.layerId, recording.start, recording.end, recording.timing, stroke)
+        val playedThrough = strokeRecording?.takeIf { it.startedAt == recording.startedAt }?.advancedTo
+            ?: recording.advancedTo
+        animation?.recordLiveStroke(recording.layerId, recording.start, recording.startedAt,
+            recording.downAt, playedThrough, stroke)
         rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
     }
     private fun stopAnimationPlayback() {
         if (!animationPlaying) return
         animationPlaying = false
+        strokeRecording = null
         rasterView.animationPlaying = false
         gestureHandler.removeCallbacks(playbackStep)
         publishAnimation()
@@ -639,6 +669,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
                 requestUnbufferedDispatch(event)
                 activeDrawingPointerId = pointerId
+                strokeDownAt = event.downTime
                 pendingTargets[pointerId] = target
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
                 updateChromeOcclusion(event, event.actionIndex)
@@ -679,6 +710,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                strokeRecording?.let { recording ->
+                    val tick = ((event.eventTime - recording.startedAt).coerceAtLeast(0L) * (animation?.fps ?: 1) / 1000L)
+                    advanceLiveRecording(recording, recording.start + tick.toInt())
+                }
                 val index = event.findPointerIndex(pointerId)
                 val terminalPressure = stabilizedTerminalPressure(
                     pendingSamples[pointerId]?.lastOrNull()?.pressure,
@@ -699,18 +734,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     val style = customPreviewStyle ?: rasterPreviewStyle ?: pencilPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
                     val reveal = strokeRecording?.takeIf { target?.image == null &&
                         layerStack.selectedId == it.layerId && style.blend == BlendBehavior.PAINT }
-                    strokeRecording = null
+                        ?.copy(downAt = strokeDownAt)
                     if (target != null) {
                         if (customPreviewStyle != null) {
                             if (samples.size == 1) invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
-                            target.store.finishLiveStroke(CompletedStroke(samples, style))
+                            if (reveal != null) target.store.cancelLiveStroke()
+                            else target.store.finishLiveStroke(CompletedStroke(samples, style))
                             rasterView.invalidate()
                             notifyHistory()
                             notifyVisiblePalette()
                             notifyLayers()
                             if (reveal != null) finishStrokeRecording(reveal, CompletedStroke(samples, style))
                         } else if (rasterPreviewStyle != null) {
-                            target.store.commit(CompletedStroke(samples, style))
+                            if (reveal == null) target.store.commit(CompletedStroke(samples, style))
                             rasterView.previewStroke = null
                             rasterView.invalidate()
                             notifyHistory()
@@ -728,7 +764,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                                         skipFirstSegment = ending.size == 2,
                                     )
                                 }
-                                target.store.commitOverlay(preview, completed)
+                                if (reveal == null) target.store.commitOverlay(preview, completed)
                             }
                             clearPencilPreview()
                             finishedSamples += PendingCommit(completed, target, rasterizedLive = true)

@@ -42,7 +42,7 @@ Before subjective pen testing, run `./tipstroke brushes` with a device attached.
 3. Enable onion skins, draw on neighboring frames, and confirm their ghosts follow the current frame. Start playback and confirm ghosts disappear during playback.
 4. Draw a lasso around sparse pixels, choose **Move**, and drag them. Repeat with **Move selection to new layer**; verify source pixels are removed, the new layer contains only selected pixels, and the app does not crash.
 5. Import an image, arm motion recording across three or more frames, and drag it up and down with a finger. Scrub the resulting frames, then play them. Verify distinct positions, including the final position, and repeat with **fit range** and **real time** timing.
-6. Arm stroke recording across several frames and draw a line. Scrub and play to verify the line progressively appears. Test normal loop, ping pong, and play once.
+6. Start **Record drawing live** with one frame. Confirm the canvas plays and new frames appear at the chosen FPS while drawing. Draw a long stroke across frame boundaries, then several more strokes without restarting recording. Stop, scrub, and play to verify each stroke appears in the frames corresponding to its drawing time. Test normal loop, ping pong, and play once.
 7. Save and reopen the project. Confirm frame order, holds, shared background, image positions, and playback settings survive. Export MP4, GIF, and PNG sequence; open each output and check frame order, duration, and background composition. Also export a still PNG from the selected frame.
 
 ## Touch and camera

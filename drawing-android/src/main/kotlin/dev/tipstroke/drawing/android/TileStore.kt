@@ -281,7 +281,7 @@ class TileStore(
     internal fun duplicate(selection: SelectionRegion? = null): TileStore {
         val duplicate = TileStore(canvasWidth, canvasHeight, tileSize)
         val copiedTiles = if (selection == null) {
-            snapshotTiles()
+            tiles.mapValues { (_, bitmap) -> bitmap.copy(Bitmap.Config.ARGB_8888, true) }
         } else {
             val path = selection.toAndroidPath()
             TileGrid.intersecting(selection.bounds, canvasWidth, canvasHeight, tileSize).mapNotNull { coordinate ->

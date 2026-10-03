@@ -612,9 +612,9 @@ fun CanvasScreen(
                     if (surface?.armImageMotionRecording(end, timing) == true) imageTransforming = true
                     else message = "Select an image layer and at least two frames to record movement."
                 },
-                onRecordLine = { end, timing ->
-                    if (surface?.armStrokeRevealRecording(end, timing) != true) {
-                        message = "Select a paint layer, at least two frames, and turn off the eraser."
+                onRecordLine = {
+                    if (surface?.startLiveDrawingRecording() != true) {
+                        message = "Select a paint layer and turn off the eraser."
                     }
                 },
                 onCancelRecording = { surface?.cancelAnimationRecording() },

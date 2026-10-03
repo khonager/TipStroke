@@ -23,6 +23,30 @@ import java.util.concurrent.TimeUnit
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AnimationInteractionTest {
+    @Test fun liveRecordingPlaysAndAddsFramesUntilStopped() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication())
+        surface.layout(0, 0, 600, 600)
+        surface.configureBlank(256, 256)
+        var latest: AnimationUiState? = null
+        surface.animationListener = { latest = it }
+        surface.enableAnimation(existingAsBackground = false)
+        surface.setAnimationFps(10)
+
+        assertTrue(surface.startLiveDrawingRecording())
+        assertTrue(latest!!.playing)
+        assertEquals(AnimationRecordingKind.LIVE_DRAWING, latest!!.recording)
+        shadowOf(Looper.getMainLooper()).idleFor(260L, TimeUnit.MILLISECONDS)
+        assertTrue(latest!!.frames.size >= 3)
+        assertTrue(latest!!.selectedIndex >= 2)
+
+        surface.cancelAnimationRecording()
+        val count = latest!!.frames.size
+        shadowOf(Looper.getMainLooper()).idleFor(200L, TimeUnit.MILLISECONDS)
+        assertEquals(count, latest!!.frames.size)
+        assertFalse(latest!!.playing)
+        assertNull(latest!!.recording)
+    }
+
     @Test fun selectedPixelsMoveIntoANewLayerOnTheCurrentFrame() {
         val surface = DrawingSurface(RuntimeEnvironment.getApplication())
         surface.layout(0, 0, 600, 600)
