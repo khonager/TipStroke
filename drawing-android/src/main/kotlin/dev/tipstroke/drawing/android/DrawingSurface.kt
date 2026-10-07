@@ -130,6 +130,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
     private var paletteColorCount = 3
+    private var originalImageColors = false
     var stylusButtonListener: ((StylusButton) -> Unit)? = null
     var chromeOcclusionListener: ((Boolean) -> Unit)? = null
     private var chromeOccludedByStroke = false
@@ -284,6 +285,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun setPaletteColorCount(count: Int) {
         val safeCount = count.coerceIn(1, 8)
         if (paletteColorCount != safeCount) paletteColorCount = safeCount
+        notifyVisiblePalette()
+    }
+    fun setOriginalImageColors(enabled: Boolean) {
+        if (originalImageColors == enabled) return
+        originalImageColors = enabled
         notifyVisiblePalette()
     }
     fun setSelectedImageScale(value: Float) { layerStack.setImageScale(value); notifyLayers() }
@@ -1071,7 +1077,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun updateColorPick(screenX: Float, screenY: Float, document: android.graphics.PointF) {
-        val picked = layerStack.colorAt(document.x, document.y)
+        val picked = layerStack.colorAt(document.x, document.y, originalImageColors)
         pendingPickedColor = picked
         colorLoupe.showAt(screenX, screenY, picked)
     }
@@ -1328,7 +1334,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         )
     }
     private fun notifyVisiblePalette() {
-        visiblePaletteListener?.invoke(layerStack.visiblePalette(paletteColorCount))
+        visiblePaletteListener?.invoke(layerStack.visiblePalette(paletteColorCount, originalImageColors))
     }
     private fun emitDiagnostics(event: MotionEvent, index: Int) {
         val now = SystemClock.elapsedRealtimeNanos(); frameCount++

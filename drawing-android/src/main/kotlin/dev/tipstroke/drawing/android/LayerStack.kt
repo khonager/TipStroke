@@ -137,7 +137,7 @@ internal class LayerStack(
      * number of weighted average colors. Transparent canvas pixels are ignored so the paper
      * color does not overwhelm a sparse drawing.
      */
-    fun visiblePalette(limit: Int): List<RgbaColor> {
+    fun visiblePalette(limit: Int, originalImageColors: Boolean = false): List<RgbaColor> {
         val colorCount = limit.coerceIn(1, 8)
         val columns = minOf(canvasWidth, 72)
         val rows = minOf(canvasHeight, 72)
@@ -146,7 +146,7 @@ internal class LayerStack(
             val y = ((row + .5f) * canvasHeight / rows).toInt().coerceIn(0, canvasHeight - 1)
             for (column in 0 until columns) {
                 val x = ((column + .5f) * canvasWidth / columns).toInt().coerceIn(0, canvasWidth - 1)
-                val argb = compositedColorAt(x.toFloat(), y.toFloat(), transparentBackground = true)
+                val argb = compositedColorAt(x.toFloat(), y.toFloat(), transparentBackground = true, originalImageColors)
                 val alpha = android.graphics.Color.alpha(argb)
                 if (alpha < 20) continue
                 val key = ((android.graphics.Color.red(argb) shr 4) shl 8) or
@@ -355,8 +355,8 @@ internal class LayerStack(
         invalidate()
     }
 
-    fun colorAt(x: Float, y: Float): RgbaColor {
-        val result = compositedColorAt(x, y, transparentBackground = false)
+    fun colorAt(x: Float, y: Float, originalImageColors: Boolean = false): RgbaColor {
+        val result = compositedColorAt(x, y, transparentBackground = false, originalImageColors)
         return RgbaColor(
             android.graphics.Color.red(result) / 255f,
             android.graphics.Color.green(result) / 255f,
@@ -365,10 +365,11 @@ internal class LayerStack(
         )
     }
 
-    private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean): Int {
+    private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean, originalImageColors: Boolean = false): Int {
         var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else android.graphics.Color.WHITE
         layers.forEach { layer ->
-            if (!layer.visible || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
+            if (!layer.visible || !layer.activeAtFrame ||
+                (layer.opacity <= 0f && !(originalImageColors && layer is ImageLayerRuntime))) return@forEach
             val source = when (layer) {
                 is RasterLayerRuntime -> layer.tiles.colorAt(x.roundToInt(), y.roundToInt())
                 is ImageLayerRuntime -> {
@@ -385,7 +386,7 @@ internal class LayerStack(
                     ) bitmap.getPixel(imageX, imageY) else android.graphics.Color.TRANSPARENT
                 }
             }
-            result = sourceOver(source, result, layer.opacity)
+            result = sourceOver(source, result, if (originalImageColors && layer is ImageLayerRuntime) 1f else layer.opacity)
         }
         return result
     }

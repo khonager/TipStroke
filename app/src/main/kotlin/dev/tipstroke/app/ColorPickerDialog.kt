@@ -73,10 +73,12 @@ internal fun ColorPickerPanel(
     mode: ColorPickerMode,
     drawingPalette: List<RgbaColor>,
     paletteColorCount: Int,
+    originalImageColors: Boolean = false,
     colorHistory: List<RgbaColor>,
     onColorSelected: (RgbaColor) -> Unit,
     onModeChanged: (ColorPickerMode) -> Unit,
     onPaletteColorCountChanged: (Int) -> Unit,
+    onOriginalImageColorsChanged: (Boolean) -> Unit = {},
     onClearHistory: () -> Unit,
     compact: Boolean = false,
     modifier: Modifier = Modifier,
@@ -121,6 +123,14 @@ internal fun ColorPickerPanel(
 
             Spacer(Modifier.height(14.dp))
             PickerModeTabs(mode, onMode = onModeChanged)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Original image colors", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                androidx.compose.material3.Switch(
+                    checked = originalImageColors,
+                    onCheckedChange = onOriginalImageColorsChanged,
+                    modifier = Modifier.semantics { contentDescription = "Sample original image colors" },
+                )
+            }
             Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
 
             when (mode) {

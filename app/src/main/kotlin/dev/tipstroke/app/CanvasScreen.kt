@@ -74,6 +74,7 @@ fun CanvasScreen(
     var color by remember { mutableStateOf(RgbaColor(.05f, .05f, .06f)) }
     var drawingPalette by remember { mutableStateOf<List<RgbaColor>>(emptyList()) }
     var paletteColorCount by remember { mutableIntStateOf(3) }
+    var originalImageColors by rememberSaveable { mutableStateOf(false) }
     var colorHistory by remember { mutableStateOf(colorHistoryPreferences.load()) }
     var colorPickerOpen by remember { mutableStateOf(initialColorPickerOpen) }
     var colorPickerModeName by rememberSaveable { mutableStateOf(ColorPickerMode.HSV_WHEEL.name) }
@@ -242,6 +243,7 @@ fun CanvasScreen(
     }
     LaunchedEffect(brush, erasing, pixelTool, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
+    LaunchedEffect(surface, originalImageColors) { surface?.setOriginalImageColors(originalImageColors) }
     LaunchedEffect(surface, debug) {
         while (debug && surface != null) {
             surface?.publishDiagnostics()
@@ -646,10 +648,12 @@ fun CanvasScreen(
                 mode = ColorPickerMode.valueOf(colorPickerModeName),
                 drawingPalette = drawingPalette,
                 paletteColorCount = paletteColorCount,
+                originalImageColors = originalImageColors,
                 colorHistory = colorHistory,
                 onColorSelected = { selected -> color = selected },
                 onModeChanged = { colorPickerModeName = it.name },
                 onPaletteColorCountChanged = { paletteColorCount = it.coerceIn(1, 8) },
+                onOriginalImageColorsChanged = { originalImageColors = it },
                 onClearHistory = {
                     colorHistoryPreferences.clear()
                     colorHistory = emptyList()
