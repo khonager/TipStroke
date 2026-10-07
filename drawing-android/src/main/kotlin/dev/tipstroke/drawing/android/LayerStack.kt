@@ -59,8 +59,8 @@ internal class ImageLayerRuntime(
 
 internal class LayerStack(
     private val resolver: ContentResolver,
-    val canvasWidth: Int,
-    val canvasHeight: Int,
+    var canvasWidth: Int,
+    var canvasHeight: Int,
     private val invalidate: () -> Unit,
 ) {
     /** Back-to-front painter's order. */
@@ -109,6 +109,27 @@ internal class LayerStack(
     fun selectedStore(): TileStore? = when (val layer = selected()) {
         is RasterLayerRuntime -> layer.tiles
         is ImageLayerRuntime -> layer.mask
+    }
+
+    /** Called after animation cels are remapped, so only shared raster stores are changed here. */
+    fun resizeCanvas(width: Int, height: Int, offsetX: Int, offsetY: Int, animation: AnimationRuntime?) {
+        animation?.resizeCanvas(width, height, offsetX, offsetY)
+        layers.forEach { layer ->
+            when (layer) {
+                is RasterLayerRuntime -> if (animation == null || animation.isBackground(layer.id)) {
+                    val previous = layer.tiles
+                    layer.tiles = previous.resized(width, height, offsetX, offsetY)
+                    previous.discard()
+                }
+                is ImageLayerRuntime -> layer.transform = layer.transform.copy(
+                    centerX = layer.transform.centerX + offsetX,
+                    centerY = layer.transform.centerY + offsetY,
+                )
+            }
+        }
+        canvasWidth = width
+        canvasHeight = height
+        invalidate()
     }
 
     /**

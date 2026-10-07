@@ -216,6 +216,26 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun undo() { layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun redo() { layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun resetView() = rasterView.fitCanvas()
+    val canvasWidthPx: Int get() = layerStack.canvasWidth
+    val canvasHeightPx: Int get() = layerStack.canvasHeight
+
+    /** Edge deltas are in document pixels: positive adds paper, negative crops it. */
+    fun resizeCanvas(left: Int, top: Int, right: Int, bottom: Int): Boolean {
+        val width = layerStack.canvasWidth.toLong() + left + right
+        val height = layerStack.canvasHeight.toLong() + top + bottom
+        if (width !in 16L..8192L || height !in 16L..8192L || activeDrawingPointerId != null ||
+            pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty() || motionRecording != null || strokeRecording != null
+        ) return false
+        stopAnimationPlayback()
+        clearSelection()
+        layerStack.resizeCanvas(width.toInt(), height.toInt(), left, top, animation)
+        rasterView.fitCanvas(rasterView.transform.rotationDegrees)
+        notifyHistory()
+        notifyLayers()
+        notifyVisiblePalette()
+        publishAnimation()
+        return true
+    }
     fun showBrushAdjustmentPreview() {
         gestureHandler.removeCallbacks(hideBrushPreview)
         if (activeDrawingPointerId != null || width == 0 || height == 0) return

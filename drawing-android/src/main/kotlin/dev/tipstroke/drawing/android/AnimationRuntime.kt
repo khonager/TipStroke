@@ -76,6 +76,22 @@ internal class AnimationRuntime(
 
     fun isBackground(id: LayerId) = id in backgroundLayerIds
 
+    fun resizeCanvas(width: Int, height: Int, offsetX: Int, offsetY: Int) {
+        saveActiveImageTransforms()
+        rasterCels.forEach { (layerId, cels) ->
+            cels.replaceAll { _, store -> store.resized(width, height, offsetX, offsetY).also { store.discard() } }
+            (stack.layers.firstOrNull { it.id == layerId } as? RasterLayerRuntime)?.let { layer ->
+                layer.tiles = cels[currentFrame.id] ?: TileStore(width, height)
+            }
+        }
+        imageCels.values.forEach { cels ->
+            cels.replaceAll { _, transform -> transform.copy(
+                centerX = transform.centerX + offsetX,
+                centerY = transform.centerY + offsetY,
+            ) }
+        }
+    }
+
     fun setBackground(id: LayerId, background: Boolean) {
         val layer = stack.layers.firstOrNull { it.id == id } ?: return
         if (background == isBackground(id)) return

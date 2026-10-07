@@ -61,9 +61,12 @@ fun CanvasScreen(
     val initialBrushTuning = remember { brushPreferences.load(BrushPreset.Ink) }
     val initialEraserTuning = remember { brushPreferences.loadEraser() }
     var surface by remember { mutableStateOf<DrawingSurface?>(null) }
+    var editorWidthPx by remember { mutableIntStateOf(canvasWidthPx) }
+    var editorHeightPx by remember { mutableIntStateOf(canvasHeightPx) }
+    var resizeOpen by remember { mutableStateOf(false) }
     var brush by remember { mutableStateOf(BrushPreset.Ink) }
     var erasing by remember { mutableStateOf(false) }
-    val smallCanvas = canvasWidthPx <= 128 && canvasHeightPx <= 128
+    val smallCanvas = editorWidthPx <= 128 && editorHeightPx <= 128
     var pixelTool by remember { mutableStateOf<PixelTool?>(if (smallCanvas) PixelTool.PENCIL else null) }
     var pixelSize by remember { mutableFloatStateOf(1f) }
     var size by remember { mutableFloatStateOf(if (smallCanvas) 1f else initialBrushTuning.sizePx) }
@@ -350,6 +353,10 @@ fun CanvasScreen(
                 if (library != null && documentId != null) {
                     if (loadExisting) view.loadProject(library, documentId) { outcome ->
                         ready = outcome.isSuccess
+                        if (outcome.isSuccess) {
+                            editorWidthPx = view.canvasWidthPx
+                            editorHeightPx = view.canvasHeightPx
+                        }
                         outcome.exceptionOrNull()?.let { message = it.message ?: "Drawing could not be opened." }
                     } else {
                         view.configureBlank(canvasWidthPx, canvasHeightPx)
@@ -385,6 +392,7 @@ fun CanvasScreen(
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
                 onBack = if (onBackToGallery != null) leaveEditor else null,
                 onExport = { if (ready) exportOpen = true },
+                onResize = { if (ready) resizeOpen = true },
                 animationOpen = animationOpen,
                 onAnimation = ::openAnimation,
                 modifier = Modifier.fillMaxSize().statusBarsPadding(),
@@ -413,6 +421,7 @@ fun CanvasScreen(
                 onReset = { surface?.resetView() },
                 onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
                 onExport = { if (ready) exportOpen = true },
+                onResize = { if (ready) resizeOpen = true },
                 onAnimation = ::openAnimation,
                 onDebug = { debug = !debug },
                 onHide = ::manuallyHidePhoneChrome,
@@ -740,7 +749,7 @@ fun CanvasScreen(
     )
 
     if (exportOpen && animationState != null) AnimationExportDialog(
-        documentName, canvasWidthPx, canvasHeightPx,
+        documentName, editorWidthPx, editorHeightPx,
         onDismiss = { exportOpen = false },
         onStillImage = { exportOpen = false; stillExportOpen = true },
     ) { request ->
@@ -752,7 +761,7 @@ fun CanvasScreen(
             putExtra(Intent.EXTRA_TITLE, request.fileName)
         })
     }
-    if (stillExportOpen || (exportOpen && animationState == null)) ExportDrawingDialog(documentName, canvasWidthPx, canvasHeightPx, onDismiss = {
+    if (stillExportOpen || (exportOpen && animationState == null)) ExportDrawingDialog(documentName, editorWidthPx, editorHeightPx, onDismiss = {
         exportOpen = false; stillExportOpen = false
     }) { request ->
         exportOpen = false
@@ -763,6 +772,15 @@ fun CanvasScreen(
             type = request.format.mimeType
             putExtra(Intent.EXTRA_TITLE, request.fileName)
         })
+    }
+
+    if (resizeOpen) ResizeCanvasDialog(editorWidthPx, editorHeightPx, onDismiss = { resizeOpen = false }) { left, top, right, bottom ->
+        val resized = surface?.resizeCanvas(left, top, right, bottom) == true
+        if (resized) {
+            editorWidthPx = surface!!.canvasWidthPx
+            editorHeightPx = surface!!.canvasHeightPx
+            resizeOpen = false
+        } else message = "Canvas could not be resized while drawing, or the new size is outside 16–8192 px."
     }
 
     if (animationActivationOpen) AlertDialog(
@@ -804,6 +822,7 @@ private fun EditorChrome(
     onOpenColorPicker: () -> Unit,
     onBack: (() -> Unit)?,
     onExport: () -> Unit,
+    onResize: () -> Unit,
     animationOpen: Boolean,
     onAnimation: () -> Unit,
     modifier: Modifier = Modifier,
@@ -825,6 +844,7 @@ private fun EditorChrome(
                 ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker, compact = true)
             }
             TextButton(onClick = onExport, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Export", fontSize = 13.sp) }
+            TextButton(onClick = onResize, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Resize", fontSize = 13.sp) }
             TextButton(onClick = onAnimation, contentPadding = PaddingValues(horizontal = 12.dp),
                 colors = ButtonDefaults.textButtonColors(contentColor = if (animationOpen) Color(0xFFED6A5A) else Color.White)) {
                 Text("Animate", fontSize = 13.sp)
@@ -856,6 +876,7 @@ private fun PhoneEditorChrome(
     onReset: () -> Unit,
     onSelection: () -> Unit,
     onExport: () -> Unit,
+    onResize: () -> Unit,
     onAnimation: () -> Unit,
     onDebug: () -> Unit,
     onHide: () -> Unit,
@@ -908,6 +929,7 @@ private fun PhoneEditorChrome(
                         onClick = { onMenuOpenChange(false); onSelection() },
                     )
                     DropdownMenuItem(text = { Text("Export") }, onClick = { onMenuOpenChange(false); onExport() })
+                    DropdownMenuItem(text = { Text("Resize canvas") }, onClick = { onMenuOpenChange(false); onResize() })
                     DropdownMenuItem(text = { Text("Animate") }, onClick = { onMenuOpenChange(false); onAnimation() })
                     DropdownMenuItem(text = { Text("Diagnostics") }, onClick = { onMenuOpenChange(false); onDebug() })
                     HorizontalDivider()

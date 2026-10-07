@@ -4,6 +4,8 @@ TipStroke should feel like opening a sketchbook: the first meaningful action is 
 
 The product is raster-first, finite-canvas, local-first, account-free, ad-free, telemetry-free, and useful offline. The UI stays contextual and gesture-led rather than growing into a desktop graphics suite.
 
+Drawing actions include **Resize canvas**. Each edge accepts a signed pixel amount: positive values add white paper and negative values crop. Existing raster pixels retain their exact size and colors; added space is transparent layer content over the white canvas. Cropped pixels outside the new bounds are discarded, and raster stroke undo history is cleared. Placed images and animation cels follow the same integer canvas offset without changing image scale or frame timing. Canvas sides remain between 16 and 8192 px.
+
 Drawing mode has no branded or full-width header. Slightly translucent controls are split into small edge clusters, keeping the top center and canvas center clear; expanded tools such as the color picker remain side-attached in landscape.
 
 Tablet ergonomics remain authoritative. Compact phone windows adapt those same tools into a short command strip and bottom dock that move out of the way only while an active stroke approaches them, then return at stroke end; this is a layout adaptation, not a separate drawing engine or reduced document format. Touch drawing is an explicit mode for fingers and passive capacitive pens, with two-finger navigation retained.

@@ -207,6 +207,52 @@ class TileStore(
 
     internal fun snapshotColorUsage(): Map<Int, Long> = colorUsage.toMap()
 
+    /** Moves existing pixels by an integer offset into a new finite canvas, without scaling. */
+    internal fun resized(width: Int, height: Int, offsetX: Int, offsetY: Int): TileStore {
+        val result = TileStore(width, height, tileSize)
+        tiles.forEach { (coordinate, bitmap) ->
+            val sourceLeft = coordinate.x * tileSize
+            val sourceTop = coordinate.y * tileSize
+            val oldLeft = maxOf(sourceLeft, 0)
+            val oldTop = maxOf(sourceTop, 0)
+            val oldRight = minOf(sourceLeft + tileSize, canvasWidth)
+            val oldBottom = minOf(sourceTop + tileSize, canvasHeight)
+            val left = maxOf(oldLeft, -offsetX)
+            val top = maxOf(oldTop, -offsetY)
+            val right = minOf(oldRight, width - offsetX)
+            val bottom = minOf(oldBottom, height - offsetY)
+            if (left >= right || top >= bottom) return@forEach
+            val firstX = (left + offsetX) / tileSize
+            val lastX = (right - 1 + offsetX) / tileSize
+            val firstY = (top + offsetY) / tileSize
+            val lastY = (bottom - 1 + offsetY) / tileSize
+            for (tileY in firstY..lastY) for (tileX in firstX..lastX) {
+                val destLeft = tileX * tileSize
+                val destTop = tileY * tileSize
+                val copyLeft = maxOf(left, destLeft - offsetX)
+                val copyTop = maxOf(top, destTop - offsetY)
+                val copyRight = minOf(right, destLeft + tileSize - offsetX)
+                val copyBottom = minOf(bottom, destTop + tileSize - offsetY)
+                val destination = result.tiles.getOrPut(TileCoordinate(tileX, tileY)) {
+                    Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888)
+                }
+                Canvas(destination).drawBitmap(
+                    bitmap,
+                    Rect(copyLeft - sourceLeft, copyTop - sourceTop, copyRight - sourceLeft, copyBottom - sourceTop),
+                    Rect(copyLeft + offsetX - destLeft, copyTop + offsetY - destTop,
+                        copyRight + offsetX - destLeft, copyBottom + offsetY - destTop),
+                    null,
+                )
+            }
+        }
+        result.tiles.entries.removeAll { (_, bitmap) ->
+            if (bitmap.isFullyTransparent()) { bitmap.recycle(); true } else false
+        }
+        result.lastDirtyTiles = result.tiles.keys.toSet()
+        result.replaceColorUsage(colorUsage)
+        return result
+    }
+
     internal fun contentBounds(): RectF? {
         if (!contentBoundsInitialized) {
             dirtyContentBoundsTiles += tiles.keys

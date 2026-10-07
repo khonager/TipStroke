@@ -21,6 +21,28 @@ import org.robolectric.annotation.GraphicsMode
 class TileStoreTest {
     private val ink = StrokeStyle(BrushPreset.Ink, 24f, 1f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT)
 
+    @Test fun canvasResizeMovesPixelsWithoutResamplingAndCropsOutside() {
+        val source = TileStore(300, 300)
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        tile.setPixel(250, 20, Color.RED)
+        tile.setPixel(255, 30, Color.BLUE)
+        val nextTile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        nextTile.setPixel(0, 30, Color.GREEN)
+        source.replaceTiles(mapOf(TileCoordinate(0, 0) to tile, TileCoordinate(1, 0) to nextTile))
+
+        val expanded = source.resized(320, 310, 10, 5)
+        assertEquals(Color.RED, expanded.colorAt(260, 25))
+        assertEquals(Color.BLUE, expanded.colorAt(265, 35))
+        assertEquals(Color.GREEN, expanded.colorAt(266, 35))
+        assertEquals(Color.TRANSPARENT, expanded.colorAt(250, 20))
+
+        val cropped = expanded.resized(16, 40, -250, -5)
+        assertEquals(Color.RED, cropped.colorAt(10, 20))
+        assertEquals(Color.BLUE, cropped.colorAt(15, 30))
+        assertEquals(Color.TRANSPARENT, cropped.colorAt(0, 0))
+        assertEquals(1, cropped.allocatedTileCount)
+    }
+
     @Test fun allocatesOnlyIntersectingTilesAndUndoRemovesThem() {
         val store = TileStore(2048, 2048)
         store.commit(stroke(Point(250f, 80f), Point(270f, 80f), ink))

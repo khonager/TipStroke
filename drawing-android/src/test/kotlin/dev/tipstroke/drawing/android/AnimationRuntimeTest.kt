@@ -22,6 +22,26 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AnimationRuntimeTest {
+    @Test fun canvasResizeMovesEveryCelWithoutScaling() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 300, 300) {}
+        val animation = AnimationRuntime(stack, existingAsBackground = false)
+        val layer = stack.selectedRaster()!!
+        val firstTile = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888)
+        firstTile.setPixel(250, 30, Color.RED)
+        layer.tiles.replaceTiles(mapOf(dev.tipstroke.core.geometry.TileCoordinate(0, 0) to firstTile))
+        animation.addBlankFrame()
+        val secondTile = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888)
+        secondTile.setPixel(240, 40, Color.BLUE)
+        layer.tiles.replaceTiles(mapOf(dev.tipstroke.core.geometry.TileCoordinate(0, 0) to secondTile))
+
+        stack.resizeCanvas(310, 305, 10, 5, animation)
+
+        assertEquals(Color.RED, animation.celRaster(layer.id, animation.frames[0].id)!!.colorAt(260, 35))
+        assertEquals(Color.BLUE, animation.celRaster(layer.id, animation.frames[1].id)!!.colorAt(250, 45))
+        assertEquals(310, stack.canvasWidth)
+        assertEquals(305, layer.tiles.canvasHeight)
+    }
+
     @Test fun liveDrawingAddsFramesAndKeepsRecordingLaterStrokes() {
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 256, 256) {}
         val animation = AnimationRuntime(stack, existingAsBackground = false, initialFps = 10)
