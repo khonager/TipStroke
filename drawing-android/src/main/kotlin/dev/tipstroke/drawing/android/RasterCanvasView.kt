@@ -141,6 +141,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         super.onDraw(canvas)
         bitmapPaint.isFilterBitmap = !pixelArtCanvas
         canvas.save(); canvas.concat(transformMatrix)
+        canvasPaint.color = layerStack.backgroundColor
+        canvasPaint.alpha = (layerStack.backgroundOpacity * 255).toInt()
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), canvasPaint)
         canvas.clipRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
         layerStack.layers.forEach { layer ->

@@ -320,6 +320,8 @@ internal data class DrawingSnapshot(
     val layers: List<SavedLayerSnapshot>,
     val galleryRotationQuarterTurns: Int = 0,
     val animation: SavedAnimationSnapshot? = null,
+    val backgroundColor: Int = Color.WHITE,
+    val backgroundOpacity: Float = 1f,
 ) {
     fun recycle() = (layers.flatMap { layer ->
         when (layer) {
@@ -350,6 +352,8 @@ internal data class LoadedProject(
     val layers: List<LoadedLayer>,
     val galleryRotationQuarterTurns: Int = 0,
     val animation: SavedAnimationSnapshot? = null,
+    val backgroundColor: Int = Color.WHITE,
+    val backgroundOpacity: Float = 1f,
 )
 
 internal sealed interface LoadedLayer {
@@ -465,6 +469,8 @@ internal object ProjectPersistence {
                 .put("widthPx", snapshot.widthPx).put("heightPx", snapshot.heightPx)
                 .put("modifiedAtMillis", modifiedAt)
                 .put("selectedLayerId", snapshot.selectedId.value)
+                .put("backgroundColor", snapshot.backgroundColor)
+                .put("backgroundOpacity", snapshot.backgroundOpacity)
                 .put("galleryRotationQuarterTurns", snapshot.galleryRotationQuarterTurns.mod(4))
                 .put("layers", layersJson)
                 .also { if (animationJson != null) it.put("animation", animationJson) }
@@ -587,14 +593,16 @@ internal object ProjectPersistence {
                 backgrounds, rasterCels, imageCels,
             )
         }
-        LoadedProject(width, height, selected, layers, json.optInt("galleryRotationQuarterTurns", 0).mod(4), animation)
+        LoadedProject(width, height, selected, layers, json.optInt("galleryRotationQuarterTurns", 0).mod(4), animation,
+            json.optInt("backgroundColor", Color.WHITE), json.optDouble("backgroundOpacity", 1.0).toFloat().coerceIn(0f, 1f))
     }
 
     fun export(resolver: ContentResolver, uri: Uri, snapshot: DrawingSnapshot, format: ExportFormat, quality: Int, scale: Float, transparent: Boolean): Result<Unit> = runCatching {
         require(scale > 0f)
         val pixels = snapshot.widthPx.toLong() * snapshot.heightPx.toLong() * scale * scale
         require(pixels <= 67_108_864L) { "Export is too large for this device" }
-        val bitmap = render(snapshot, resolver, scale, transparent && format != ExportFormat.JPEG)
+        val bitmap = render(snapshot, resolver, scale, transparent && format != ExportFormat.JPEG,
+            opaqueBase = format == ExportFormat.JPEG)
         try {
             resolver.openOutputStream(uri, "w").use { output ->
                 requireNotNull(output) { "Cannot open export destination" }
@@ -628,12 +636,15 @@ internal object ProjectPersistence {
         snapshot: DrawingSnapshot, resolver: ContentResolver, scale: Float, transparent: Boolean,
         frameIndex: Int = snapshot.animation?.selectedIndex ?: 0,
         imageCache: MutableMap<Uri, Bitmap>? = null,
+        opaqueBase: Boolean = false,
     ): Bitmap {
         val outputWidth = (snapshot.widthPx * scale).roundToInt().coerceAtLeast(1)
         val outputHeight = (snapshot.heightPx * scale).roundToInt().coerceAtLeast(1)
         val output = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
-        if (!transparent) canvas.drawColor(Color.WHITE)
+        if (opaqueBase) canvas.drawColor(Color.WHITE)
+        if (!transparent) canvas.drawColor((snapshot.backgroundColor and 0x00ffffff) or
+            ((snapshot.backgroundOpacity * 255).roundToInt().coerceIn(0, 255) shl 24))
         canvas.scale(scale, scale)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val animation = snapshot.animation

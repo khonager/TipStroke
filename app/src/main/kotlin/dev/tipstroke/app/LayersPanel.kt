@@ -32,6 +32,10 @@ internal fun LayersPanel(
     previews: Map<LayerId, Bitmap>,
     selectedId: LayerId?,
     selectedIds: Set<LayerId>,
+    backgroundColor: Int = android.graphics.Color.WHITE,
+    backgroundOpacity: Float = 1f,
+    onBackgroundColor: (Int) -> Unit = {},
+    onBackgroundOpacity: (Float) -> Unit = {},
     imageTransforming: Boolean,
     onSelect: (LayerId) -> Unit,
     onToggleSelection: (LayerId) -> Unit,
@@ -52,6 +56,8 @@ internal fun LayersPanel(
 ) {
     var renameLayer by remember { mutableStateOf<LayerSummary?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var backgroundPickerOpen by remember { mutableStateOf(false) }
+    var backgroundHex by remember(backgroundPickerOpen) { mutableStateOf("%06X".format(backgroundColor and 0xFFFFFF)) }
     Surface(
         modifier.width(324.dp).fillMaxHeight(.9f).semantics { contentDescription = "Layers panel" },
         color = Color(0xE6202125),
@@ -99,6 +105,19 @@ internal fun LayersPanel(
                     }
                 }
             }
+            HorizontalDivider(Modifier.padding(top = 10.dp, bottom = 8.dp), color = Color(0xFF3B3D42))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(9.dp))
+                    .background(Color(backgroundColor)).border(1.dp, Color(0xFF777A81), RoundedCornerShape(9.dp))
+                    .clickable { backgroundPickerOpen = true }
+                    .semantics { contentDescription = "Choose background color" })
+                Spacer(Modifier.width(10.dp))
+                Text("Background", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { backgroundPickerOpen = true }) { Text("Color") }
+            }
+            ValueHeader("Background opacity", "${(backgroundOpacity * 100).roundToInt()}%")
+            Slider(backgroundOpacity, onBackgroundOpacity, valueRange = 0f..1f,
+                modifier = Modifier.fillMaxWidth().height(40.dp))
             HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color(0xFF3B3D42))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -129,6 +148,38 @@ internal fun LayersPanel(
                 ) { Text("Rename") }
             },
             dismissButton = { TextButton(onClick = { renameLayer = null }) { Text("Cancel") } },
+        )
+    }
+    if (backgroundPickerOpen) {
+        AlertDialog(
+            onDismissRequest = { backgroundPickerOpen = false },
+            title = { Text("Background color") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = backgroundHex,
+                        onValueChange = { backgroundHex = it.removePrefix("#").take(6).uppercase().filter { char -> char in "0123456789ABCDEF" } },
+                        label = { Text("Hex color") },
+                        prefix = { Text("#") },
+                        singleLine = true,
+                    )
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(0xFFFFFF, 0xF2F1ED, 0x000000, 0xDDE8F5).forEach { preset ->
+                            Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF000000 or preset.toLong()))
+                                .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+                                .clickable { backgroundHex = "%06X".format(preset) })
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = backgroundHex.length == 6, onClick = {
+                    onBackgroundColor(0xFF000000.toInt() or backgroundHex.toInt(16))
+                    backgroundPickerOpen = false
+                }) { Text("Apply") }
+            },
+            dismissButton = { TextButton(onClick = { backgroundPickerOpen = false }) { Text("Cancel") } },
         )
     }
 }

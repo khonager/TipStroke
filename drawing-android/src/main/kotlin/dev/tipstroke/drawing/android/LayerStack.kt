@@ -65,6 +65,15 @@ internal class LayerStack(
 ) {
     /** Back-to-front painter's order. */
     val layers = mutableListOf<CanvasLayerRuntime>()
+    var backgroundColor: Int = android.graphics.Color.WHITE
+        private set
+    var backgroundOpacity: Float = 1f
+        private set
+    fun setBackground(color: Int = backgroundColor, opacity: Float = backgroundOpacity) {
+        backgroundColor = color or -0x1000000
+        backgroundOpacity = opacity.coerceIn(0f, 1f)
+        invalidate()
+    }
     var selectedId: LayerId
         private set
     private val selectedIds = linkedSetOf<LayerId>()
@@ -327,10 +336,11 @@ internal class LayerStack(
                     layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(),
                 )
             }
-        }, galleryRotationQuarterTurns.mod(4), animation?.snapshot(),
+        }, galleryRotationQuarterTurns.mod(4), animation?.snapshot(), backgroundColor, backgroundOpacity,
     )
 
     fun replaceWith(loaded: LoadedProject) {
+        setBackground(loaded.backgroundColor, loaded.backgroundOpacity)
         layers.filterIsInstance<ImageLayerRuntime>().forEach { it.source.close() }
         layers.clear()
         loaded.layers.forEach { layer ->
@@ -366,7 +376,8 @@ internal class LayerStack(
     }
 
     private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean, originalImageColors: Boolean = false): Int {
-        var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else android.graphics.Color.WHITE
+        var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else
+            (backgroundColor and 0x00ffffff) or ((backgroundOpacity * 255).roundToInt() shl 24)
         layers.forEach { layer ->
             if (!layer.visible || !layer.activeAtFrame ||
                 (layer.opacity <= 0f && !(originalImageColors && layer is ImageLayerRuntime))) return@forEach

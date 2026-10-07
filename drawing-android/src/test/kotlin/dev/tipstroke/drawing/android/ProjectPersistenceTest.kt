@@ -23,6 +23,31 @@ import org.json.JSONObject
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProjectPersistenceTest {
+    @Test fun backgroundColorAndOpacitySurviveSaveAndExport() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val id = library.newId()
+        val layerId = LayerId("background-test")
+        val snapshot = DrawingSnapshot(16, 16, layerId,
+            listOf(SavedRasterSnapshot(layerId, "Paint", true, 1f, emptyMap())),
+            backgroundColor = Color.RED, backgroundOpacity = .5f)
+        try {
+            ProjectPersistence.save(context.contentResolver, library, id, "Background", snapshot).getOrThrow()
+            val loaded = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
+            assertEquals(Color.RED, loaded.backgroundColor)
+            assertEquals(.5f, loaded.backgroundOpacity)
+            val output = java.io.File.createTempFile("tipstroke-background", ".png")
+            try {
+                ProjectPersistence.export(context.contentResolver, Uri.fromFile(output), snapshot,
+                    ExportFormat.PNG, 100, 1f, transparent = false).getOrThrow()
+                val bitmap = BitmapFactory.decodeFile(output.absolutePath)
+                assertEquals(Color.RED and 0x00ffffff, bitmap.getPixel(0, 0) and 0x00ffffff)
+                assertEquals(128, Color.alpha(bitmap.getPixel(0, 0)))
+                bitmap.recycle()
+            } finally { output.delete() }
+        } finally { snapshot.recycle(); library.delete(id) }
+    }
+
     @Test fun animatedCelsAndBackgroundSurviveSaveAndExport() {
         val context = RuntimeEnvironment.getApplication()
         val library = DrawingLibrary(context)

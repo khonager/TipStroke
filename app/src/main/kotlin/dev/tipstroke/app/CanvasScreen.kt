@@ -83,6 +83,8 @@ fun CanvasScreen(
     var canUndo by remember { mutableStateOf(false) }
     var canRedo by remember { mutableStateOf(false) }
     var layers by remember { mutableStateOf<List<LayerSummary>>(emptyList()) }
+    var backgroundColor by remember { mutableIntStateOf(android.graphics.Color.WHITE) }
+    var backgroundOpacity by remember { mutableFloatStateOf(1f) }
     var layerPreviews by remember { mutableStateOf<Map<LayerId, Bitmap>>(emptyMap()) }
     var selectedLayerId by remember { mutableStateOf<LayerId?>(null) }
     var selectedLayerIds by remember { mutableStateOf<Set<LayerId>>(emptySet()) }
@@ -340,11 +342,13 @@ fun CanvasScreen(
                 surface = view
                 view.diagnosticsListener = { diagnostics = it }
                 view.historyListener = { undo, redo -> canUndo = undo; canRedo = redo }
-                view.layersListener = { updated, selected, selectedIds, previews ->
+                view.layersListener = { updated, selected, selectedIds, previews, paperColor, paperOpacity ->
                     layers = updated
                     selectedLayerId = selected
                     selectedLayerIds = selectedIds
                     layerPreviews = previews
+                    backgroundColor = paperColor
+                    backgroundOpacity = paperOpacity
                 }
                 view.animationListener = { animationState = it }
                 view.colorPickedListener = { picked -> color = picked }
@@ -569,6 +573,10 @@ fun CanvasScreen(
                 previews = layerPreviews,
                 selectedId = selectedLayerId,
                 selectedIds = selectedLayerIds,
+                backgroundColor = backgroundColor,
+                backgroundOpacity = backgroundOpacity,
+                onBackgroundColor = { surface?.setCanvasBackgroundColor(it) },
+                onBackgroundOpacity = { surface?.setCanvasBackgroundOpacity(it) },
                 imageTransforming = imageTransforming,
                 onSelect = {
                     movingSelection = false

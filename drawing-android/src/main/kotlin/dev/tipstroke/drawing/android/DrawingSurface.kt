@@ -123,7 +123,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             value?.invoke(lastDiagnostics)
         }
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
-    var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>) -> Unit)? = null
+    var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>, Int, Float) -> Unit)? = null
     var animationListener: ((AnimationUiState?) -> Unit)? = null
         set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind())) }
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
@@ -280,6 +280,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
     fun toggleLayerSelection(id: LayerId) { layerStack.toggleAdditionalSelection(id); notifyLayers(); notifyHistory() }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
+    fun setCanvasBackgroundColor(color: Int) { layerStack.setBackground(color = color); notifyLayers() }
+    fun setCanvasBackgroundOpacity(opacity: Float) { layerStack.setBackground(opacity = opacity); notifyLayers() }
     fun renameSelectedLayer(name: String) { layerStack.renameSelected(name); notifyLayers() }
     fun toggleLayerVisibility(id: LayerId) { layerStack.toggleVisible(id); notifyLayers() }
     fun setPaletteColorCount(count: Int) {
@@ -1331,6 +1333,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             layerStack.selectedId,
             layerStack.selectedLayerIds(),
             layerStack.previewsFrontToBack(96),
+            layerStack.backgroundColor,
+            layerStack.backgroundOpacity,
         )
     }
     private fun notifyVisiblePalette() {
