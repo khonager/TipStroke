@@ -34,9 +34,9 @@ jobs:
         env:
           TIPSTROKE_SIGNING_KEY: ${{ secrets.TIPSTROKE_SIGNING_KEY }}
         run: |
-          git fetch origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "Numbered releases must be tagged from main." >&2
+          git fetch origin stable
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/stable; then
+            echo "Numbered releases must be tagged from stable." >&2
             exit 1
           fi
 

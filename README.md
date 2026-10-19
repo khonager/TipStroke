@@ -38,13 +38,13 @@ This is intentionally a useful compatibility renderer rather than a claim that J
 
 ### GitHub releases
 
-Pull requests and pushes to `main` are tested by GitHub Actions, with a debug APK attached to each successful CI run. Every push to `unstable` also tests, lints, and publishes a signed `TipStroke-dev.apk` to the rolling [dev prerelease](https://github.com/khonager/TipStroke/releases/tag/dev). Dev builds need no version edit or tag. They use the same signing key and package ID as stable builds, with an automatically increasing internal Android version code.
+Pull requests and pushes to `stable` are tested by GitHub Actions, with a debug APK attached to each successful CI run. Every push to `unstable` also tests, lints, and publishes a signed `TipStroke-dev.apk` to the rolling [dev prerelease](https://github.com/khonager/TipStroke/releases/tag/dev). Dev builds need no version edit or tag. They use the same signing key and package ID as stable builds, with an automatically increasing internal Android version code.
 
-To publish a numbered stable release from `main`:
+To publish a numbered stable release from `stable`:
 
 1. Update `versionName` in `app/build.gradle.kts`.
 2. Create a signed Android keystore and add these GitHub Actions repository secrets: `TIPSTROKE_SIGNING_KEY` (the keystore encoded with `base64 -w 0`), `TIPSTROKE_KEYSTORE_PASSWORD`, `TIPSTROKE_KEY_ALIAS`, and `TIPSTROKE_KEY_PASSWORD`.
-3. Push a tag on `main` matching the version name, such as `v0.1.0`.
+3. Push a tag on `stable` matching the version name, such as `v0.1.0`.
 
 The release workflow tests and lints the project, verifies the APK signature, and attaches `TipStroke-vX.Y.Z.apk` plus its SHA-256 checksum to a GitHub release. Keep the keystore and its passwords backed up: Android will not install an update signed with a different key over an existing installation.
 
