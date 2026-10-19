@@ -38,7 +38,7 @@ This is intentionally a useful compatibility renderer rather than a claim that J
 
 ### GitHub releases
 
-Pull requests and pushes to `main` are tested by GitHub Actions, with a debug APK attached to each successful CI run. Every push to `dev` also tests, lints, and publishes a signed `TipStroke-dev.apk` to the rolling [dev prerelease](https://github.com/khonager/TipStroke/releases/tag/dev). Dev builds need no version edit or tag. They use the same signing key and package ID as stable builds, with an automatically increasing internal Android version code.
+Pull requests and pushes to `main` are tested by GitHub Actions, with a debug APK attached to each successful CI run. Every push to `unstable` also tests, lints, and publishes a signed `TipStroke-dev.apk` to the rolling [dev prerelease](https://github.com/khonager/TipStroke/releases/tag/dev). Dev builds need no version edit or tag. They use the same signing key and package ID as stable builds, with an automatically increasing internal Android version code.
 
 To publish a numbered stable release from `main`:
 

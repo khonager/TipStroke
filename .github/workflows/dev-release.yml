@@ -3,7 +3,7 @@ name: Android dev release
 on:
   push:
     branches:
-      - dev
+      - unstable
 
 permissions:
   contents: write
@@ -68,7 +68,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          current_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')
+          current_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/unstable" --jq '.object.sha')
           if [[ "$current_sha" != "$GITHUB_SHA" ]]; then
             echo "Skipping superseded dev commit $GITHUB_SHA."
             exit 0
