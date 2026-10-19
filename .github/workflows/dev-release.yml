@@ -1,0 +1,98 @@
+name: Android dev release
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-dev-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TIPSTROKE_KEYSTORE_PASSWORD: ${{ secrets.TIPSTROKE_KEYSTORE_PASSWORD }}
+      TIPSTROKE_KEY_ALIAS: ${{ secrets.TIPSTROKE_KEY_ALIAS }}
+      TIPSTROKE_KEY_PASSWORD: ${{ secrets.TIPSTROKE_KEY_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare signing key
+        env:
+          TIPSTROKE_SIGNING_KEY: ${{ secrets.TIPSTROKE_SIGNING_KEY }}
+        run: |
+          if [[ -z "${TIPSTROKE_SIGNING_KEY:-}" || \
+                -z "${TIPSTROKE_KEYSTORE_PASSWORD:-}" || \
+                -z "${TIPSTROKE_KEY_ALIAS:-}" || \
+                -z "${TIPSTROKE_KEY_PASSWORD:-}" ]]; then
+            echo "One or more TipStroke release-signing secrets are missing." >&2
+            exit 1
+          fi
+
+          umask 077
+          keystore_file="$RUNNER_TEMP/tipstroke-release.jks"
+          printf '%s' "$TIPSTROKE_SIGNING_KEY" | base64 --decode > "$keystore_file"
+          echo "TIPSTROKE_KEYSTORE_FILE=$keystore_file" >> "$GITHUB_ENV"
+
+      - name: Test and build signed dev APK
+        run: |
+          export TIPSTROKE_VERSION_CODE=$(( $(date -u +%s) - 1577836800 ))
+          export TIPSTROKE_VERSION_NAME=dev
+          ./gradlew test lint assembleRelease
+
+      - name: Verify and prepare dev APK
+        run: |
+          apk="app/build/outputs/apk/release/app-release.apk"
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          "$apksigner" verify --verbose --print-certs "$apk"
+
+          cp "$apk" TipStroke-dev.apk
+          sha256sum TipStroke-dev.apk > TipStroke-dev.apk.sha256
+
+      - name: Publish rolling dev prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/dev" --jq '.object.sha')
+          if [[ "$current_sha" != "$GITHUB_SHA" ]]; then
+            echo "Skipping superseded dev commit $GITHUB_SHA."
+            exit 0
+          fi
+
+          if gh release view dev >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/dev" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+            gh release upload dev TipStroke-dev.apk TipStroke-dev.apk.sha256 --clobber
+            gh release edit dev --prerelease --title "TipStroke dev" \
+              --notes "Latest dev build from $GITHUB_SHA."
+          else
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/dev" >/dev/null 2>&1; then
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/dev" \
+                -f sha="$GITHUB_SHA" -F force=true >/dev/null
+            else
+              gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                -f ref=refs/tags/dev -f sha="$GITHUB_SHA" >/dev/null
+            fi
+            gh release create dev TipStroke-dev.apk TipStroke-dev.apk.sha256 \
+              --verify-tag --prerelease --title "TipStroke dev" \
+              --notes "Latest dev build from $GITHUB_SHA."
+          fi
+
+      - name: Remove decoded signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/tipstroke-release.jks"

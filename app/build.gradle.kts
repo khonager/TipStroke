@@ -8,6 +8,8 @@ val releaseKeystoreFile = providers.environmentVariable("TIPSTROKE_KEYSTORE_FILE
 val releaseKeystorePassword = providers.environmentVariable("TIPSTROKE_KEYSTORE_PASSWORD").orNull
 val releaseKeyAlias = providers.environmentVariable("TIPSTROKE_KEY_ALIAS").orNull
 val releaseKeyPassword = providers.environmentVariable("TIPSTROKE_KEY_PASSWORD").orNull
+val ciVersionCode = providers.environmentVariable("TIPSTROKE_VERSION_CODE").orNull?.toIntOrNull()
+val ciVersionName = providers.environmentVariable("TIPSTROKE_VERSION_NAME").orNull
 val releaseSigningValues = listOf(
     releaseKeystoreFile,
     releaseKeystorePassword,
@@ -26,8 +28,8 @@ android {
         applicationId = "dev.tipstroke.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ciVersionCode ?: 1
+        versionName = ciVersionName ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }

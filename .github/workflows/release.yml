@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -32,6 +34,12 @@ jobs:
         env:
           TIPSTROKE_SIGNING_KEY: ${{ secrets.TIPSTROKE_SIGNING_KEY }}
         run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "Numbered releases must be tagged from main." >&2
+            exit 1
+          fi
+
           version_name=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle.kts)
           if [[ "v${version_name}" != "${GITHUB_REF_NAME}" ]]; then
             echo "Tag ${GITHUB_REF_NAME} does not match app version ${version_name}." >&2
@@ -52,7 +60,11 @@ jobs:
           echo "TIPSTROKE_KEYSTORE_FILE=$keystore_file" >> "$GITHUB_ENV"
 
       - name: Test and build signed APK
-        run: ./gradlew test lint assembleRelease
+        # CI APKs use a build-time code so stable and dev installs can update each other.
+        # Keep the human-facing stable version in app/build.gradle.kts.
+        run: |
+          export TIPSTROKE_VERSION_CODE=$(( $(date -u +%s) - 1577836800 ))
+          ./gradlew test lint assembleRelease
 
       - name: Verify and prepare release files
         run: |
