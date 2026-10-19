@@ -97,6 +97,7 @@ fun CanvasScreen(
     var saving by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }
+    var projectExportOpen by remember { mutableStateOf(false) }
     var exportChoiceOpen by remember { mutableStateOf(false) }
     var processOpen by remember { mutableStateOf(false) }
     var pendingProcessExport by remember { mutableStateOf<AnimationExportFormat?>(null) }
@@ -774,10 +775,26 @@ fun CanvasScreen(
     if (exportChoiceOpen) AlertDialog(
         onDismissRequest = { exportChoiceOpen = false },
         title = { Text("Export or replay") },
-        text = { Text("Save your artwork or look back on its drawing progress.") },
+        text = {
+            Column {
+                Text("Save your artwork or look back on its drawing progress.")
+                if (library != null && documentId != null) TextButton(onClick = {
+                    exportChoiceOpen = false
+                    saving = true
+                    surface?.saveProject(library, documentId, documentName) { result ->
+                        saving = false
+                        result.onSuccess { projectExportOpen = true }
+                            .onFailure { message = it.message ?: "Could not save drawing." }
+                    }
+                }) { Text("Export editable TipStroke file") }
+            }
+        },
         confirmButton = { TextButton(onClick = { exportChoiceOpen = false; exportOpen = true }) { Text("Export artwork") } },
         dismissButton = { TextButton(onClick = { exportChoiceOpen = false; processOpen = true }) { Text("Drawing progress") } },
     )
+    if (projectExportOpen && library != null && documentId != null) {
+        GalleryTransfer(library, listOf(documentId), { projectExportOpen = false }, {})
+    }
     if (processOpen) surface?.let { active ->
         ProcessRecordingDialog(active, onDismiss = { processOpen = false }) { format ->
             processOpen = false

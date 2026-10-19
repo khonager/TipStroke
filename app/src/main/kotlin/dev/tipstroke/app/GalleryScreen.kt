@@ -59,6 +59,8 @@ fun GalleryScreen(
 ) {
     var items by remember(library) { mutableStateOf(library.galleryItems()) }
     var openStackId by remember { mutableStateOf<String?>(null) }
+    var transferOpen by remember { mutableStateOf(false) }
+    var transferIds by remember { mutableStateOf<List<String>?>(null) }
     var creating by remember { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<DrawingSummary?>(null) }
     var operationError by remember { mutableStateOf<String?>(null) }
@@ -186,6 +188,13 @@ fun GalleryScreen(
 
     Column(Modifier.fillMaxSize().background(Color(0xFF17181B))) {
         GalleryTopBar(onNew = { creating = true }, onSettings = onSettings)
+        Row(Modifier.horizontalScroll(rememberScrollState())) {
+            TextButton(onClick = { transferIds = null; transferOpen = true }) { Text("Import") }
+            TextButton(onClick = {
+                transferIds = items.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }
+                transferOpen = true
+            }) { Text("Export / select drawings") }
+        }
         Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 22.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (openStack != null) {
@@ -223,6 +232,7 @@ fun GalleryScreen(
                                 { duplicateDrawing(item.drawing) },
                                 { deleteCandidate = item.drawing },
                                 dragModifier(item),
+                                onExport = { transferIds = listOf(item.drawing.id); transferOpen = true },
                                 onMoveOut = openStack?.let { stack -> { library.moveOutOfStack(stack.id, item.drawing.id); refreshGallery() } },
                             )
                             is GalleryStack -> StackCard(item, { openStackId = item.id }, dragModifier(item))
@@ -233,6 +243,8 @@ fun GalleryScreen(
             }
         }
     }
+
+    if (transferOpen) GalleryTransfer(library, transferIds, { transferOpen = false }, ::refreshGallery)
 
     if (creating) NewDrawingDialog(
         onDismiss = { creating = false },
@@ -322,6 +334,7 @@ private fun DrawingCard(
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    onExport: () -> Unit,
     onMoveOut: (() -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -349,6 +362,7 @@ private fun DrawingCard(
                 TextButton(onClick = { menuOpen = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(38.dp)) { Text("⋮", fontSize = 24.sp) }
                 DropdownMenu(menuOpen, { menuOpen = false }) {
                     onMoveOut?.let { moveOut -> DropdownMenuItem(text = { Text("Move out of stack") }, onClick = { menuOpen = false; moveOut() }) }
+                    DropdownMenuItem(text = { Text("Export") }, onClick = { menuOpen = false; onExport() })
                     DropdownMenuItem(text = { Text("Duplicate") }, onClick = { menuOpen = false; onDuplicate() })
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menuOpen = false; onDelete() })
                 }

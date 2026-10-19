@@ -192,6 +192,26 @@ class DrawingLibrary(context: Context) {
         }
     }
 
+    @Synchronized
+    internal fun importGalleryLayout(file: File, mapping: Map<String, String>) {
+        val imported = mutableListOf<GalleryEntry>()
+        if (file.isFile) {
+            require(file.length() <= 8_388_608) { "Gallery index is too large" }
+            val items = JSONObject(file.readText()).getJSONArray("items")
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                if (item.getString("kind") == "drawing") {
+                    mapping[item.getString("id")]?.let { imported += GalleryEntry.Drawing(it) }
+                } else {
+                    val ids = item.getJSONArray("drawingIds")
+                    val mapped = (0 until ids.length()).mapNotNull { mapping[ids.getString(it)] }.toMutableList()
+                    imported += GalleryEntry.Stack("stack-${UUID.randomUUID()}", item.optString("name", "Stack"), mapped)
+                }
+            }
+        }
+        writeGalleryState(reconciledState(readGalleryState() + imported, list().map(DrawingSummary::id)))
+    }
+
     private fun mutateGallery(block: (MutableList<GalleryEntry>) -> Boolean): Boolean {
         val state = reconciledState(readGalleryState(), list().map(DrawingSummary::id)).toMutableList()
         if (!block(state)) return false
