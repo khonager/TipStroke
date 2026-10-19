@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -32,6 +34,12 @@ jobs:
         env:
           TIPSTROKE_SIGNING_KEY: ${{ secrets.TIPSTROKE_SIGNING_KEY }}
         run: |
+          git fetch origin stable
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/stable; then
+            echo "Numbered releases must be tagged from stable." >&2
+            exit 1
+          fi
+
           version_name=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' app/build.gradle.kts)
           if [[ "v${version_name}" != "${GITHUB_REF_NAME}" ]]; then
             echo "Tag ${GITHUB_REF_NAME} does not match app version ${version_name}." >&2
