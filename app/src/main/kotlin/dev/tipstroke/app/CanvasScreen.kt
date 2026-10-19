@@ -97,6 +97,9 @@ fun CanvasScreen(
     var saving by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }
+    var exportChoiceOpen by remember { mutableStateOf(false) }
+    var processOpen by remember { mutableStateOf(false) }
+    var pendingProcessExport by remember { mutableStateOf<AnimationExportFormat?>(null) }
     var stillExportOpen by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<ExportRequest?>(null) }
     var pendingAnimationExport by remember { mutableStateOf<AnimationExportRequest?>(null) }
@@ -158,7 +161,14 @@ fun CanvasScreen(
         val request = pendingExport
         val animationRequest = pendingAnimationExport
         val uri = result.data?.data
-        if (result.resultCode == Activity.RESULT_OK && animationRequest != null && uri != null) {
+        val processFormat = pendingProcessExport
+        if (result.resultCode == Activity.RESULT_OK && processFormat != null && uri != null) {
+            exporting = true
+            surface?.exportProcess(uri, processFormat) { outcome ->
+                exporting = false
+                message = outcome.fold({ "Drawing progress saved." }, { it.message ?: "Progress export failed." })
+            }
+        } else if (result.resultCode == Activity.RESULT_OK && animationRequest != null && uri != null) {
             exporting = true
             surface?.exportAnimation(uri, animationRequest.format, animationRequest.scale) { outcome ->
                 exporting = false
@@ -173,6 +183,7 @@ fun CanvasScreen(
         }
         pendingExport = null
         pendingAnimationExport = null
+        pendingProcessExport = null
     }
 
     fun sync() {
@@ -397,7 +408,7 @@ fun CanvasScreen(
                 onColor = { color = it },
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
                 onBack = if (onBackToGallery != null) leaveEditor else null,
-                onExport = { if (ready) exportOpen = true },
+                onExport = { if (ready) exportChoiceOpen = true },
                 onResize = { if (ready) resizeOpen = true },
                 animationOpen = animationOpen,
                 onAnimation = ::openAnimation,
@@ -426,7 +437,7 @@ fun CanvasScreen(
                 onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
                 onReset = { surface?.resetView() },
                 onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
-                onExport = { if (ready) exportOpen = true },
+                onExport = { if (ready) exportChoiceOpen = true },
                 onResize = { if (ready) resizeOpen = true },
                 onAnimation = ::openAnimation,
                 onDebug = { debug = !debug },
@@ -759,6 +770,25 @@ fun CanvasScreen(
         },
         onDismiss = { brushStudioOpen = false },
     )
+
+    if (exportChoiceOpen) AlertDialog(
+        onDismissRequest = { exportChoiceOpen = false },
+        title = { Text("Export or replay") },
+        text = { Text("Save your artwork or look back on its drawing progress.") },
+        confirmButton = { TextButton(onClick = { exportChoiceOpen = false; exportOpen = true }) { Text("Export artwork") } },
+        dismissButton = { TextButton(onClick = { exportChoiceOpen = false; processOpen = true }) { Text("Drawing progress") } },
+    )
+    if (processOpen) surface?.let { active ->
+        ProcessRecordingDialog(active, onDismiss = { processOpen = false }) { format ->
+            processOpen = false
+            pendingProcessExport = format
+            exportDestination.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = format.mimeType
+                putExtra(Intent.EXTRA_TITLE, "TipStroke-progress.${format.extension}")
+            })
+        }
+    }
 
     if (exportOpen && animationState != null) AnimationExportDialog(
         documentName, editorWidthPx, editorHeightPx,

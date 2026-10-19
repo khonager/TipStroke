@@ -15,6 +15,10 @@ class TileStore(
     val tileSize: Int = TileGrid.DEFAULT_TILE_SIZE,
     historyBudgetBytes: Long = 96L * 1024 * 1024,
 ) : StrokeRasterizer {
+    internal var recordingListener: ((List<ReplayPaint>?, Map<TileCoordinate, Bitmap?>) -> Unit)? = null
+    internal var captureReplayPreview = false
+    private val replayPreview = ReplayCapture()
+    private val replayLive = ReplayCapture()
     private val tiles = mutableMapOf<TileCoordinate, Bitmap>()
     val history = UndoHistory(historyBudgetBytes)
     private val tileContentBounds = mutableMapOf<TileCoordinate, Rect>()
@@ -48,7 +52,7 @@ class TileStore(
             if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke)))
+        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke))))
         lastDirtyTiles = dirty
         return dirty
     }
@@ -58,11 +62,13 @@ class TileStore(
         check(liveStrokeBefore == null) { "A live stroke is already active" }
         liveStrokeBefore = mutableMapOf()
         liveStrokeTouched.clear()
+        replayLive.clear()
     }
 
     /** Applies one new point or segment and returns only the tiles that need screen invalidation. */
     internal fun appendLiveStroke(stroke: CompletedStroke): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
+        if (recordingListener != null) replayLive.add(ReplayPaint(stroke))
         val candidates = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
         val dirty = if (stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE) {
             candidates.filterTo(mutableSetOf()) { it in tiles }
@@ -90,6 +96,7 @@ class TileStore(
         capEnd: Boolean = false,
         skipFirstSegment: Boolean = false,
     ): Set<TileCoordinate> {
+        if (captureReplayPreview) replayPreview.add(ReplayPaint(stroke, true, capStart, capEnd, skipFirstSegment))
         val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
         dirty.forEach { coordinate ->
             val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
@@ -121,7 +128,7 @@ class TileStore(
             }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke)))
+        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), overlay.replayPreview.commands()))
         lastDirtyTiles = dirty
         return dirty
     }
@@ -135,6 +142,8 @@ class TileStore(
         contentBoundsInitialized = false
         lastDirtyTiles = emptySet()
         history.clear()
+        replayPreview.clear()
+        replayLive.clear()
     }
 
     internal fun finishLiveStroke(stroke: CompletedStroke? = null): Set<TileCoordinate> {
@@ -145,13 +154,15 @@ class TileStore(
             tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) } }
         }
         val after = liveStrokeTouched.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after, stroke?.let(::usageFor)))
+        history.push(TileSnapshotTransaction(this, before, after, stroke?.let(::usageFor), replayLive.commands()))
+        replayLive.clear()
         return liveStrokeTouched.toSet().also { lastDirtyTiles = it; liveStrokeTouched.clear() }
     }
 
     internal fun cancelLiveStroke(): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null
+        replayLive.clear()
         val dirty = liveStrokeTouched.toSet()
         restore(before)
         liveStrokeTouched.clear()
@@ -186,7 +197,7 @@ class TileStore(
             if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke)))
+        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke, ink = inkStroke))))
         lastDirtyTiles = dirty
         return dirty
     }
@@ -655,10 +666,11 @@ class TileStore(
         private val before: Map<TileCoordinate, Bitmap?>,
         private val after: Map<TileCoordinate, Bitmap?>,
         private val colorUsage: Pair<Int, Long>? = null,
+        commands: List<ReplayPaint>? = null,
     ) : UndoTransaction {
-        init { store.applyUsage(colorUsage, 1L) }
+        init { store.applyUsage(colorUsage, 1L); store.recordingListener?.invoke(commands, after) }
         override val estimatedBytes = (before.values.count { it != null } + after.values.count { it != null }).toLong() * store.tileSize * store.tileSize * 4
-        override fun undo() { store.restore(before); store.applyUsage(colorUsage, -1L) }
-        override fun redo() { store.restore(after); store.applyUsage(colorUsage, 1L) }
+        override fun undo() { store.restore(before); store.recordingListener?.invoke(null, before); store.applyUsage(colorUsage, -1L) }
+        override fun redo() { store.restore(after); store.recordingListener?.invoke(null, after); store.applyUsage(colorUsage, 1L) }
     }
 }

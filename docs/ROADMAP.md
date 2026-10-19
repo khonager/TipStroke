@@ -16,3 +16,7 @@ Validate gallery creation/reopening, drag ordering and stacks, crash-resistant a
 ## LATER
 
 Additional brush families/effects, masks and blend modes, richer vector editing, advanced animation/export, Linux, iPad/iOS native input/rendering, and optional Windows/macOS clients.
+
+## Drawing-process replay preview
+
+Implemented: automatic bounded command recording for raster drawing, versioned/frozen brush replay, exact tile fallbacks for destructive edits, atomic sidecar persistence, native preview/scrubbing, GIF/MP4 export, and compatibility fixtures. First-version exclusions: image layers, animated documents, resize continuation, retrospective filtering, per-sample playback, recording reset/pause controls, and accelerated backward seeking. Before expanding support, measure real Pencil/Ink/Airbrush sessions on the tablet and verify native rendering/export after dependency updates.

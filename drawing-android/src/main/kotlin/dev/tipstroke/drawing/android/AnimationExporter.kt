@@ -26,8 +26,9 @@ internal object AnimationExporter {
         val timeline = dev.tipstroke.core.model.AnimationTimeline(
             animation.frames, animation.fps, animation.playbackMode,
         )
+        require(timeline.totalTicks <= 36_000) { "Animation is too long to export" }
         val ticks = buildList {
-            for (tick in 0 until timeline.totalTicks) add(timeline.frameAtTick(tick))
+            animation.frames.forEachIndexed { index, frame -> repeat(frame.exposure) { add(index) } }
             if (animation.playbackMode == dev.tipstroke.core.model.PlaybackMode.PING_PONG) {
                 for (tick in timeline.totalTicks - 2 downTo 1) add(timeline.frameAtTick(tick))
             }
@@ -146,7 +147,12 @@ internal object AnimationExporter {
                 } finally { if (bitmap !== first) bitmap.recycle() }
             }
             var eosInput = codec.dequeueInputBuffer(10_000L)
-            while (eosInput < 0) { drain(false); eosInput = codec.dequeueInputBuffer(10_000L) }
+            var eosAttempts = 0
+            while (eosInput < 0) {
+                drain(false)
+                check(++eosAttempts < 1_000) { "Video encoder did not accept end of stream" }
+                eosInput = codec.dequeueInputBuffer(10_000L)
+            }
             codec.queueInputBuffer(eosInput, 0, 0, ticks.size * 1_000_000L / fps, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
             drain(true)
         } finally {

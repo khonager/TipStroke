@@ -30,6 +30,42 @@ internal fun galleryQuarterTurns(rotationDegrees: Float): Int = (rotationDegrees
 @OptIn(androidx.ink.brush.ExperimentalInkCustomBrushApi::class)
 class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.util.AttributeSet? = null) : FrameLayout(context, attrs) {
     val settings = CanvasSettings()
+    private var processRecorder: ProcessRecorder? = null
+    private var processReadError: String? = null
+
+    fun processRecordingStatus(): String = processReadError
+        ?: processRecorder?.stoppedReason ?: "Recording drawing progress"
+
+    fun getProcessRecording(onComplete: (Result<ProcessRecording>) -> Unit) {
+        val recorder = processRecorder
+        val error = processReadError
+        ProjectPersistence.executor.execute {
+            val result = runCatching {
+                check(error == null) { error.orEmpty() }
+                requireNotNull(recorder) { "No process recording" }.snapshot().also {
+                    require(it.actionCount > 0) { "No drawing progress recorded yet" }
+                }
+            }
+            ProjectPersistence.mainHandler.post { onComplete(result) }
+        }
+    }
+
+    fun exportProcess(uri: android.net.Uri, format: AnimationExportFormat, onComplete: (Result<Unit>) -> Unit) {
+        getProcessRecording { captured ->
+            captured.fold(onSuccess = { recording ->
+                ProjectPersistence.executor.execute {
+                    val result = runCatching {
+                        ProcessReplay(recording).use { replay ->
+                            val frames = List(recording.actionCount) { AnimationFrame(FrameId("process-$it")) }
+                            val timeline = SavedAnimationSnapshot(frames, 0, 12, PlaybackMode.ONCE, 0, 0, 0f, emptySet(), emptyMap(), emptyMap())
+                            AnimationExporter.export(context.contentResolver, uri, timeline, format) { replay.frame(it) }
+                        }
+                    }
+                    ProjectPersistence.mainHandler.post { onComplete(result) }
+                }
+            }, onFailure = { onComplete(Result.failure(it)) })
+        }
+    }
     private lateinit var rasterView: RasterCanvasView
     private lateinit var colorLoupe: ColorPickerLoupeView
     private var layerStack: LayerStack = createLayerStack(2048, 2048)
@@ -521,7 +557,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun configureBlank(widthPx: Int, heightPx: Int) {
         require(widthPx in 16..8192 && heightPx in 16..8192)
+        processRecorder?.detach()
+        processRecorder = null
         layerStack = createLayerStack(widthPx, heightPx)
+        processRecorder = ProcessRecorder(widthPx, heightPx)
+        processReadError = null
         animation = null
         rasterView.animation = null
         clearSelection()
@@ -541,6 +581,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             val loaded = ProjectPersistence.load(library.projectDirectory(id))
             ProjectPersistence.mainHandler.post {
                 val result = loaded.map { project ->
+                    processRecorder?.detach()
+                    processRecorder = null
                     val replacement = createLayerStack(project.widthPx, project.heightPx)
                     layerStack = replacement
                     clearSelection()
@@ -549,6 +591,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     animation = project.animation?.let { saved ->
                         AnimationRuntime(replacement, true, saved.frames, saved.fps, saved.playbackMode).apply { restore(saved) }
                     }
+                    processReadError = project.recordingError
+                    processRecorder = if (project.recordingError == null) ProcessRecorder(project.widthPx, project.heightPx, project.processRecording) else null
+                    processRecorder?.sync(replacement, animation != null, restoring = project.processRecording != null)
                     rasterView.animation = animation
                     rasterView.fitCanvas(project.galleryRotationQuarterTurns * 90f)
                     publishLayers()
@@ -561,8 +606,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     fun saveProject(library: DrawingLibrary, id: String, name: String, onComplete: (Result<DrawingSummary>) -> Unit = {}) {
         val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation)
+        val recorder = processRecorder
         ProjectPersistence.executor.execute {
-            val result = try { ProjectPersistence.save(context.contentResolver, library, id, name, snapshot) }
+            val result = try { ProjectPersistence.save(context.contentResolver, library, id, name, snapshot.copy(processRecording = recorder?.snapshot())) }
             finally { snapshot.recycle() }
             ProjectPersistence.mainHandler.post { onComplete(result) }
         }
@@ -1277,6 +1323,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun startPencilPreview(stroke: CompletedStroke) {
         clearPencilPreview()
         pencilPreviewStore = TileStore(layerStack.canvasWidth, layerStack.canvasHeight).also { preview ->
+            preview.captureReplayPreview = processRecorder?.stoppedReason == null && processRecorder != null
             preview.appendPencilPreview(stroke, capStart = true)
             rasterView.setPencilPreview(preview, layerStack.selectedId)
         }
@@ -1328,6 +1375,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
     private fun notifyLayers() {
+        processRecorder?.sync(layerStack, animation != null)
         layersListener?.invoke(
             layerStack.summariesFrontToBack(),
             layerStack.selectedId,

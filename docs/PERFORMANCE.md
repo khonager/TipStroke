@@ -25,3 +25,9 @@ The debug overlay reports approximate FPS/event rate, tool, pressure, tilt, zoom
 ## Benchmark next
 
 On the Xiaomi Pad 6, record input-to-photon behavior, first-stroke time, frame pacing at 60/120/144 Hz, fast-stroke continuity, tile commit time, GC/allocation traces, and handoff frames. Move raster preparation off the UI thread only with an atomic commit design proven not to introduce a handoff flash.
+
+## Process recording budgets
+
+No PNG/gzip encoding, disk I/O, frame rendering, or video encoding is added to MotionEvent handling. Recording retains completed command references or existing immutable tile-undo snapshots and compresses them on the project executor. Additional incremental Pencil/eraser command capture is limited to 100,000 samples per gesture, falling back to changed tiles when exceeded. The pending encoding queue has a 16 MiB estimated-memory ceiling; overflow stops recording without dropping an action and continuing misleadingly. The compressed archive is bounded to 32 MiB/30,000 actions and pauses at its limit; no unlimited undo history is retained. Raster-heavy operations can reach that limit faster than ordinary strokes. Source artwork plus an existing undo budget are separate from these additional recording budgets.
+
+Replay caps allocated sparse tiles (including temporary overlay tiles) at 128 MiB and fails with a visible message if exceeded. Preview requests are serialized; exported frames are released as they are encoded. Backward seeks replay from the beginning, so long recordings may seek slowly. Durable append-only disk journaling, disposable seek checkpoints, reduced-resolution tile reconstruction, and recording reset/pause controls are follow-ups. Device input-latency/thermal testing is still required; JVM correctness tests do not establish pen latency.

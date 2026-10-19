@@ -322,6 +322,7 @@ internal data class DrawingSnapshot(
     val animation: SavedAnimationSnapshot? = null,
     val backgroundColor: Int = Color.WHITE,
     val backgroundOpacity: Float = 1f,
+    val processRecording: ProcessRecording? = null,
 ) {
     fun recycle() = (layers.flatMap { layer ->
         when (layer) {
@@ -354,6 +355,8 @@ internal data class LoadedProject(
     val animation: SavedAnimationSnapshot? = null,
     val backgroundColor: Int = Color.WHITE,
     val backgroundOpacity: Float = 1f,
+    val processRecording: ProcessRecording? = null,
+    val recordingError: String? = null,
 )
 
 internal sealed interface LoadedLayer {
@@ -486,6 +489,8 @@ internal object ProjectPersistence {
                 if (thumbnail !== rendered) rendered.recycle()
                 thumbnail.recycle()
             }
+            snapshot.processRecording?.write(File(temporary, "process.tsr"))
+                ?: File(target, "process.tsr").takeIf { it.exists() }?.copyTo(File(temporary, "process.tsr"))
             replaceDirectoryAtomically(temporary, target)
             DrawingSummary(id, name, snapshot.widthPx, snapshot.heightPx, modifiedAt, File(target, DrawingLibrary.THUMBNAIL), quarterTurns)
         } catch (failure: Throwable) {
@@ -593,8 +598,10 @@ internal object ProjectPersistence {
                 backgrounds, rasterCels, imageCels,
             )
         }
+        val process = runCatching { ProcessRecording.read(File(directory, "process.tsr")) }
         LoadedProject(width, height, selected, layers, json.optInt("galleryRotationQuarterTurns", 0).mod(4), animation,
-            json.optInt("backgroundColor", Color.WHITE), json.optDouble("backgroundOpacity", 1.0).toFloat().coerceIn(0f, 1f))
+            json.optInt("backgroundColor", Color.WHITE), json.optDouble("backgroundOpacity", 1.0).toFloat().coerceIn(0f, 1f),
+            process.getOrNull(), process.exceptionOrNull()?.let { it.message ?: "Recording could not be read" })
     }
 
     fun export(resolver: ContentResolver, uri: Uri, snapshot: DrawingSnapshot, format: ExportFormat, quality: Int, scale: Float, transparent: Boolean): Result<Unit> = runCatching {

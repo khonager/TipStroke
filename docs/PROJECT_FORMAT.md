@@ -26,3 +26,9 @@ Autosave writes to a temporary sibling directory on the project executor and ato
 Image layer records refer to an original asset by stable ID and store transforms and masks separately. Saving copies the original encoded bytes into `assets/`; it never saves a canvas-sized resample as the layer source. Mask tiles contain only alpha-removal coverage and remain sparse at source resolution.
 
 No empty future directories are created. PNG/JPEG/WebP export uses the same back-to-front layer snapshot and finite canvas bounds as thumbnails. Packaging a project for transfer/import is still future work; the gallery directories are app-private.
+
+## Optional process recording
+
+`process.tsr` is an optional sidecar inside the atomic project directory. Existing schema-3 artwork stays compatible; recording has its own `TipStroke-process-1` header, canvas dimensions, optional stopped reason, action count, and length-prefixed independently gzip-compressed actions. Actions contain layer/background metadata, explicit v1 brush/style/sample commands, or tile-coordinate/PNG replacement patches (zero length deletes a tile). Native Ink commands retain the finalized input batch and `androidx-ink-1.1.0-alpha08` identifier. No video frames or temporary export videos are stored in the project.
+
+Saving snapshots the immutable compressed action list on the same serial executor after earlier captures, alongside the artwork snapshot. Gallery duplication copies the sidecar; deleting the project removes it. The compressed payload budget is 32 MiB with at most 30,000 actions; header/length overhead is additional. Corrupt/unknown sidecars are preserved when saving otherwise valid artwork, so they cannot silently erase history. Exported videos/GIFs are separate user-selected destination files.

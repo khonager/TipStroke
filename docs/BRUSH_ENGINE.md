@@ -33,3 +33,9 @@ Jetpack Ink 1.1 custom brushes are alpha API. TipStroke accepts that source-comp
 `SelfOverlap.ACCUMULATE`, particle-gap custom coats, and `StampingTexture` airbrush coats currently render in `InProgressStrokesView` but produce an empty finalized image through `CanvasStrokeRenderer` in `1.1.0-alpha08`. Airbrush therefore uses the native blurred raster path for both its live result and permanent tiles. The connected-device visual regression test exercises that production path so an attractive wet preview cannot silently disappear at commit.
 
 Eraser gestures still use a cancellable sparse-tile transaction while the pointer is down because Ink does not author a clear-blend stroke over the already-composited lower layers. Only the new segment and intersecting tiles are processed; cancellation restores before snapshots and pen-up records one bounded undo transaction.
+
+## Replay compatibility
+
+Process recording v1 stores complete brush parameters rather than mutable preset IDs alone. `ReplayPainterV1`, `ReplayBrushMathV1`, and `ReplayInkBrushesV1` are frozen compatibility implementations, including texture generation and pressure/tilt math. Never update them to match a new brush look. Introduce a new renderer version and keep v1 dispatch for earlier actions. Any new production brush algorithm must update recording dispatch as part of the same change; production-vs-replay pixel tests guard that seam.
+
+Native Ink is pinned to 1.1.0-alpha08. A dependency guard test requires explicit compatibility review before upgrading it; a string version tag alone cannot preserve an old native implementation. Run the connected native round-trip test and retain compatibility or migrate recordings before removing native support. Checked-in `recording/v1.tsr` and `v1.png` fixtures guard older raster recordings independently of current presets. Do not regenerate these fixtures to accommodate a brush change.

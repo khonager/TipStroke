@@ -70,3 +70,16 @@ Before subjective pen testing, run `./tipstroke brushes` with a device attached.
 5. Trigger interrupted gestures and app-switch during contact to exercise cancellation.
 
 Record a 120/240 fps external video of nib and pixels for input-to-photon/handoff review; unit tests cannot measure drawing feel.
+
+## Drawing-progress recording
+
+Run `./gradlew :drawing-android:testDebugUnitTest --tests '*ProcessRecordingTest'` for exact raster replay across tile boundaries, Pencil segment replay, eraser transactions, undo branches, save/reopen/continue, seeking, layer changes, corrupt-file isolation, the storage cap, GIF output, complete settings round-trip, and frozen v1 fixtures. Native Ink and MP4 require `./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.ProcessRecordingInstrumentedTest` on Android. The native test checks exact final Ink pixels, compact sample storage, and an MP4 that the platform decoder can open.
+
+Manual first-version test:
+
+1. Create a drawing; use Pencil, Ink, Airbrush, and pixel tools with different settings, crossing tile boundaries. Erase, undo/redo, move a selection, and add/hide/reorder layers.
+2. Open **Export → Drawing progress**. Play, pause, restart, and scrub. Compare the end with the canvas. Return to drawing and verify the artwork/undo stack did not change.
+3. Save, leave, reopen, add more marks, and replay again. Earlier strokes must retain their original brush settings. Export MP4 and GIF and open both outside TipStroke.
+4. Open an old raster-only project: replay starts from its current artwork, not its lost past. Imported-image and animation projects show the unsupported-operation stop reason.
+5. Resize or import an image during a new recording: recording stops with a reason, the earlier prefix stays playable, and editing still works. Stress large selections/undo to exercise the queue/archive limits.
+6. Test rapid stylus input and long sessions on the physical tablet with recording enabled; watch frame pacing, memory, and heat. Native Ink exactness must be rechecked whenever its dependency changes.
