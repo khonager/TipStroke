@@ -23,6 +23,8 @@ The manifest also stores `backgroundColor` as an ARGB integer and `backgroundOpa
 
 Autosave writes to a temporary sibling directory on the project executor and atomically replaces the prior committed revision, retaining a backup until replacement succeeds. It snapshots immutable allocated tiles and never encodes or writes from the input path. Autosave runs periodically, on app backgrounding, and when returning to the gallery.
 
+If Android terminates the process between moving the prior project to `.<id>.backup` and installing its replacement, the next gallery listing or project open restores that committed backup when the target is absent. Recovery and the directory swap share a lock so recovery cannot race a live swap. Invalid saved PNG tiles fail loading instead of silently becoming missing paint. Neither an unreadable project nor a restored missing document is replaced with a blank drawing.
+
 Image layer records refer to an original asset by stable ID and store transforms and masks separately. Saving copies the original encoded bytes into `assets/`; it never saves a canvas-sized resample as the layer source. Mask tiles contain only alpha-removal coverage and remain sparse at source resolution.
 
 No empty future directories are created. PNG/JPEG/WebP export uses the same back-to-front layer snapshot and finite canvas bounds as thumbnails. The gallery directories are app-private; portable `.tipstroke` packages provide transfer and import.

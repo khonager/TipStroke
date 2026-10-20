@@ -30,6 +30,8 @@ private sealed interface SettingsSlot {
 @Composable
 fun SettingsScreen(settings: GestureSettings, onChange: (GestureSettings) -> Unit, onBack: () -> Unit) {
     var selected by remember { mutableStateOf<SettingsSlot?>(null) }
+    var diagnosticsOpen by remember { mutableStateOf(false) }
+    if (diagnosticsOpen) DiagnosticsDialog { diagnosticsOpen = false }
     Column(Modifier.fillMaxSize().background(Color(0xFF17181B))) {
         Row(
             Modifier.fillMaxWidth().statusBarsPadding().height(62.dp).border(.5.dp, Color(0xFF34363A)).padding(horizontal = 24.dp),
@@ -42,7 +44,8 @@ fun SettingsScreen(settings: GestureSettings, onChange: (GestureSettings) -> Uni
         BoxWithConstraints(Modifier.fillMaxSize().padding(20.dp)) {
             val wide = maxWidth >= 780.dp
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                SettingsContent(settings, onChange, { selected = it }, Modifier.weight(if (wide) 1.15f else 1f))
+                SettingsContent(settings, onChange, { selected = it }, { diagnosticsOpen = true },
+                    Modifier.weight(if (wide) 1.15f else 1f))
                 if (wide) ActionChoicePanel(selected ?: SettingsSlot.Finger(GestureSlot.ONE_DRAG), settings, onChange, Modifier.weight(.85f))
             }
             if (!wide) selected?.let { slot ->
@@ -53,7 +56,7 @@ fun SettingsScreen(settings: GestureSettings, onChange: (GestureSettings) -> Uni
 }
 
 @Composable
-private fun SettingsContent(settings: GestureSettings, onChange: (GestureSettings) -> Unit, onSelect: (SettingsSlot) -> Unit, modifier: Modifier) {
+private fun SettingsContent(settings: GestureSettings, onChange: (GestureSettings) -> Unit, onSelect: (SettingsSlot) -> Unit, onDiagnostics: () -> Unit, modifier: Modifier) {
     Column(modifier.verticalScroll(rememberScrollState())) {
         Text("Finger actions", color = Color(0xFFF5F5F2), fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         Text("Customize what touch gestures do on the canvas.", color = Color(0xFFA9ABB1), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
@@ -105,6 +108,13 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
                 Text("Show the current brush footprint when a stylus is detected above the canvas.", color = Color(0xFFA9ABB1), fontSize = 12.sp)
             }
             Switch(settings.showStylusHoverPreview, { onChange(settings.copy(showStylusHoverPreview = it)) })
+        }
+        Text("Troubleshooting", color = Color.White, fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp))
+        Text("View crashes, Android process exits, and drawing save/load events. Logs stay on this device.",
+            color = Color(0xFFA9ABB1), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+        OutlinedButton(onClick = onDiagnostics, modifier = Modifier.padding(top = 10.dp).navigationBarsPadding()) {
+            Text("Crash and debug log")
         }
     }
 }

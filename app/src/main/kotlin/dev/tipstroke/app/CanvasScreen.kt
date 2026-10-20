@@ -54,6 +54,7 @@ fun CanvasScreen(
     onBackToGallery: (() -> Unit)? = null,
     onSaveActionChanged: (((() -> Unit)?) -> Unit)? = null,
     onStylusButtonHandlerChanged: ((((StylusButton) -> Unit)?) -> Unit)? = null,
+    onDocumentOpened: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val brushPreferences = remember { BrushPreferences(context) }
@@ -94,7 +95,8 @@ fun CanvasScreen(
     var animationState by remember { mutableStateOf<AnimationUiState?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var ready by remember { mutableStateOf(library == null) }
-    var saving by remember { mutableStateOf(false) }
+    var savesInFlight by remember { mutableIntStateOf(0) }
+    val saving = savesInFlight > 0
     var exporting by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }
     var projectExportOpen by remember { mutableStateOf(false) }
@@ -282,9 +284,12 @@ fun CanvasScreen(
     LaunchedEffect(surface, ready, library, documentId) {
         while (surface != null && ready && library != null && documentId != null) {
             delay(30_000)
-            if (!saving) {
-                saving = true
-                surface?.saveProject(library, documentId, documentName) { saving = false }
+            if (savesInFlight == 0) {
+                savesInFlight++
+                surface?.saveProject(library, documentId, documentName) { result ->
+                    savesInFlight--
+                    result.exceptionOrNull()?.let { message = it.message ?: "Autosave failed." }
+                }
             }
         }
     }
@@ -292,19 +297,21 @@ fun CanvasScreen(
         val destination = onBackToGallery
         if (destination != null && !saving) {
             if (library != null && documentId != null && ready) {
-                saving = true
+                savesInFlight++
                 surface?.saveProject(library, documentId, documentName) { result ->
-                    saving = false
+                    savesInFlight--
                     if (result.isSuccess) destination() else message = result.exceptionOrNull()?.message ?: "Save failed."
                 }
             } else destination()
         }
     }
     val saveWithoutLeaving: () -> Unit = {
-        if (!saving && ready && surface != null && library != null && documentId != null) {
-            saving = true
+        // A background save must capture edits made after an already-running autosave.
+        // Capture now so a recreated editor's load is queued after this revision.
+        if (ready && surface != null && library != null && documentId != null) {
+            savesInFlight++
             surface?.saveProject(library, documentId, documentName) { result ->
-                saving = false
+                savesInFlight--
                 result.exceptionOrNull()?.let { message = it.message ?: "Autosave failed." }
             }
         }
@@ -369,16 +376,16 @@ fun CanvasScreen(
                 view.stylusButtonListener = ::performStylusButton
                 view.selectionListener = { active, selected -> selectionMode = active; hasSelection = selected }
                 if (library != null && documentId != null) {
-                    if (loadExisting) view.loadProject(library, documentId) { outcome ->
+                    ready = false
+                    view.openProject(library, documentId, createIfMissing = !loadExisting,
+                        widthPx = canvasWidthPx, heightPx = canvasHeightPx, name = documentName) { outcome ->
                         ready = outcome.isSuccess
                         if (outcome.isSuccess) {
                             editorWidthPx = view.canvasWidthPx
                             editorHeightPx = view.canvasHeightPx
+                            onDocumentOpened?.invoke()
                         }
                         outcome.exceptionOrNull()?.let { message = it.message ?: "Drawing could not be opened." }
-                    } else {
-                        view.configureBlank(canvasWidthPx, canvasHeightPx)
-                        ready = true
                     }
                 } else view.publishLayers()
             } },
@@ -780,9 +787,9 @@ fun CanvasScreen(
                 Text("Save your artwork or look back on its drawing progress.")
                 if (library != null && documentId != null) TextButton(onClick = {
                     exportChoiceOpen = false
-                    saving = true
+                    savesInFlight++
                     surface?.saveProject(library, documentId, documentName) { result ->
-                        saving = false
+                        savesInFlight--
                         result.onSuccess { projectExportOpen = true }
                             .onFailure { message = it.message ?: "Could not save drawing." }
                     }

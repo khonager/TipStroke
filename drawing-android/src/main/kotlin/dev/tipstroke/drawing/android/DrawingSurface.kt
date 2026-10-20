@@ -577,10 +577,33 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     fun loadProject(library: DrawingLibrary, id: String, onComplete: (Result<Unit>) -> Unit) {
+        openProject(library, id, createIfMissing = false, onComplete = onComplete)
+    }
+
+    /** Resolve existence on the same queue as saves, including saves from the previous activity. */
+    fun openProject(
+        library: DrawingLibrary, id: String, createIfMissing: Boolean,
+        widthPx: Int = 2048, heightPx: Int = 2048,
+        name: String = "Untitled drawing",
+        onComplete: (Result<Unit>) -> Unit,
+    ) {
+        isEnabled = false
+        LocalDiagnostics.record("project open requested id=$id createIfMissing=$createIfMissing")
         ProjectPersistence.executor.execute {
-            val loaded = ProjectPersistence.load(library.projectDirectory(id))
+            val loaded = runCatching {
+                val directory = library.projectDirectory(id)
+                ProjectPersistence.recoverInterruptedSave(directory)
+                if (!directory.exists() && createIfMissing) {
+                    require(widthPx in 16..8192 && heightPx in 16..8192)
+                    val layerId = LayerId(java.util.UUID.randomUUID().toString())
+                    val blank = DrawingSnapshot(widthPx, heightPx, layerId,
+                        listOf(SavedRasterSnapshot(layerId, "Layer 1", true, 1f, emptyMap())))
+                    ProjectPersistence.save(context.contentResolver, library, id, name, blank).getOrThrow()
+                }
+                ProjectPersistence.load(directory).getOrThrow()
+            }
             ProjectPersistence.mainHandler.post {
-                val result = loaded.map { project ->
+                val result = loaded.mapCatching { project ->
                     processRecorder?.detach()
                     processRecorder = null
                     val replacement = createLayerStack(project.widthPx, project.heightPx)
@@ -592,6 +615,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         AnimationRuntime(replacement, true, saved.frames, saved.fps, saved.playbackMode).apply { restore(saved) }
                     }
                     processReadError = project.recordingError
+                    project.recordingError?.let { LocalDiagnostics.record("project recording unreadable id=$id: $it") }
                     processRecorder = if (project.recordingError == null) ProcessRecorder(project.widthPx, project.heightPx, project.processRecording) else null
                     processRecorder?.sync(replacement, animation != null, restoring = project.processRecording != null)
                     rasterView.animation = animation
@@ -599,17 +623,38 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     publishLayers()
                     publishAnimation()
                 }
+                isEnabled = result.isSuccess
+                LocalDiagnostics.record("project open ${if (result.isSuccess) "complete" else "failed"} id=$id",
+                    result.exceptionOrNull())
                 onComplete(result)
             }
         }
     }
 
     fun saveProject(library: DrawingLibrary, id: String, name: String, onComplete: (Result<DrawingSummary>) -> Unit = {}) {
-        val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation)
+        if (!isEnabled) {
+            onComplete(Result.failure(IllegalStateException("Drawing has not finished opening")))
+            return
+        }
+        val captured = runCatching { layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation) }
+        val snapshot = captured.getOrElse {
+            LocalDiagnostics.record("project snapshot failed id=$id", it)
+            onComplete(Result.failure(it))
+            return
+        }
         val recorder = processRecorder
+        val rasterTiles = snapshot.layers.filterIsInstance<SavedRasterSnapshot>().sumOf { it.tiles.size }
+        LocalDiagnostics.record("project save queued id=$id layers=${snapshot.layers.size} rasterTiles=$rasterTiles")
         ProjectPersistence.executor.execute {
-            val result = try { ProjectPersistence.save(context.contentResolver, library, id, name, snapshot.copy(processRecording = recorder?.snapshot())) }
+            val result = try {
+                runCatching {
+                    ProjectPersistence.save(context.contentResolver, library, id, name,
+                        snapshot.copy(processRecording = recorder?.snapshot())).getOrThrow()
+                }
+            }
             finally { snapshot.recycle() }
+            LocalDiagnostics.record("project save ${if (result.isSuccess) "complete" else "failed"} id=$id",
+                result.exceptionOrNull())
             ProjectPersistence.mainHandler.post { onComplete(result) }
         }
     }
@@ -633,6 +678,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (!isEnabled) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             stopAnimationPlayback()
             gestureHandler.removeCallbacks(hideBrushPreview)

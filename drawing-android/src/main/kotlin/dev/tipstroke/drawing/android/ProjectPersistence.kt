@@ -43,19 +43,27 @@ class DrawingLibrary(context: Context) {
     fun projectDirectory(id: String): File = File(root, requireSafeId(id))
     fun exists(id: String): Boolean = File(projectDirectory(id), MANIFEST).isFile
 
-    fun list(): List<DrawingSummary> = root.listFiles().orEmpty().mapNotNull { directory ->
-        if (!directory.isDirectory || directory.name.startsWith(".")) return@mapNotNull null
-        runCatching {
-            val json = JSONObject(File(directory, MANIFEST).readText())
-            DrawingSummary(
-                id = json.getString("id"), name = json.getString("name"),
-                widthPx = json.getInt("widthPx"), heightPx = json.getInt("heightPx"),
-                modifiedAtMillis = json.getLong("modifiedAtMillis"),
-                thumbnailFile = File(directory, THUMBNAIL),
-                galleryRotationQuarterTurns = json.optInt("galleryRotationQuarterTurns", 0).mod(4),
-            )
-        }.getOrNull()
-    }.sortedByDescending { it.modifiedAtMillis }
+    fun list(): List<DrawingSummary> {
+        root.listFiles().orEmpty().filter { it.isDirectory && it.name.startsWith(".") && it.name.endsWith(".backup") }
+            .forEach { backup ->
+                runCatching {
+                    ProjectPersistence.recoverInterruptedSave(File(root, backup.name.removePrefix(".").removeSuffix(".backup")))
+                }.onFailure { LocalDiagnostics.record("gallery recovery failed", it) }
+            }
+        return root.listFiles().orEmpty().mapNotNull { directory ->
+            if (!directory.isDirectory || directory.name.startsWith(".")) return@mapNotNull null
+            runCatching {
+                val json = JSONObject(File(directory, MANIFEST).readText())
+                DrawingSummary(
+                    id = json.getString("id"), name = json.getString("name"),
+                    widthPx = json.getInt("widthPx"), heightPx = json.getInt("heightPx"),
+                    modifiedAtMillis = json.getLong("modifiedAtMillis"),
+                    thumbnailFile = File(directory, THUMBNAIL),
+                    galleryRotationQuarterTurns = json.optInt("galleryRotationQuarterTurns", 0).mod(4),
+                )
+            }.getOrNull()
+        }.sortedByDescending { it.modifiedAtMillis }
+    }
 
     @Synchronized
     fun galleryItems(): List<GalleryItem> {
@@ -405,6 +413,7 @@ internal object ProjectPersistence {
 
     fun save(resolver: ContentResolver, library: DrawingLibrary, id: String, name: String, snapshot: DrawingSnapshot): Result<DrawingSummary> = runCatching {
         val target = library.projectDirectory(id)
+        recoverInterruptedSave(target)
         val temporary = File(library.root, ".$id-${UUID.randomUUID()}.saving")
         temporary.mkdirs()
         try {
@@ -520,6 +529,7 @@ internal object ProjectPersistence {
     }
 
     fun load(directory: File): Result<LoadedProject> = runCatching {
+        recoverInterruptedSave(directory)
         val json = JSONObject(File(directory, DrawingLibrary.MANIFEST).readText())
         val schemaVersion = json.getInt("schemaVersion")
         require(schemaVersion in 1..SCHEMA_VERSION) { "Unsupported drawing version" }
@@ -537,7 +547,9 @@ internal object ProjectPersistence {
                     val tileDirectory = File(directory, "layers/${id.value}/tiles")
                     val tiles = tileDirectory.listFiles().orEmpty().mapNotNull { file ->
                         val match = Regex("(-?\\d+)_(-?\\d+)\\.png").matchEntire(file.name) ?: return@mapNotNull null
-                        val decoded = BitmapFactory.decodeFile(file.absolutePath) ?: return@mapNotNull null
+                        val decoded = requireNotNull(BitmapFactory.decodeFile(file.absolutePath)) {
+                            "Cannot decode saved raster tile ${file.name}"
+                        }
                         val bitmap = decoded.copy(Bitmap.Config.ARGB_8888, true).also { decoded.recycle() }
                         TileCoordinate(match.groupValues[1].toInt(), match.groupValues[2].toInt()) to bitmap
                     }.toMap()
@@ -740,7 +752,9 @@ internal object ProjectPersistence {
     private fun loadTiles(directory: File): Map<TileCoordinate, Bitmap> =
         directory.listFiles().orEmpty().mapNotNull { file ->
             val match = Regex("(-?\\d+)_(-?\\d+)\\.png").matchEntire(file.name) ?: return@mapNotNull null
-            val decoded = BitmapFactory.decodeFile(file.absolutePath) ?: return@mapNotNull null
+            val decoded = requireNotNull(BitmapFactory.decodeFile(file.absolutePath)) {
+                "Cannot decode saved tile ${file.name}"
+            }
             val bitmap = decoded.copy(Bitmap.Config.ARGB_8888, true).also { decoded.recycle() }
             TileCoordinate(match.groupValues[1].toInt(), match.groupValues[2].toInt()) to bitmap
         }.toMap()
@@ -768,6 +782,17 @@ internal object ProjectPersistence {
         return quantized.entries.sortedByDescending { it.value }.take(16).associate { it.toPair() }
     }
 
+    /** A process can die between the two directory renames; keep the last committed revision. */
+    @Synchronized
+    internal fun recoverInterruptedSave(target: File) {
+        val backup = File(target.parentFile, ".${target.name}.backup")
+        if (!target.exists() && backup.isDirectory) {
+            check(backup.renameTo(target)) { "Cannot recover the previous drawing revision" }
+            LocalDiagnostics.record("project recovered interrupted save id=${target.name}")
+        }
+    }
+
+    @Synchronized
     private fun replaceDirectoryAtomically(temporary: File, target: File) {
         val backup = File(target.parentFile, ".${target.name}.backup")
         backup.deleteRecursively()

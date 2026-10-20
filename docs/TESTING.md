@@ -71,6 +71,17 @@ Before subjective pen testing, run `./tipstroke brushes` with a device attached.
 
 Record a 120/240 fps external video of nib and pixels for input-to-photon/handoff review; unit tests cannot measure drawing feel.
 
+## Screen lock, recreation, and diagnostics
+
+Automated coverage: `EditorPersistenceTest` verifies painted pixels and a positioned image across pending saves and a replacement editor with a stale “new drawing” flag, failed-load overwrite prevention, missing-document handling, and interrupted directory replacement recovery. `MainActivityRestorationTest` exercises actual activity recreation and a fresh activity restored from a saved bundle, preserving image layers, scale, paper color, and document identity. `LocalDiagnosticsTest` checks crash persistence/delegation, rotation limits, clearing, and failure to write diagnostics.
+
+1. Create a new drawing, draw several strokes, import an image, and move/resize/rotate it. Lock and unlock within 30 seconds (before periodic autosave). Verify both paint and image placement, then return to the gallery and reopen.
+2. Repeat with Developer options **Don't keep activities** enabled, backgrounding the app and returning. Also trigger a non-handled configuration change such as system light/dark mode while editing. Disable the developer option afterward.
+3. With the app backgrounded and a completed save visible in diagnostics, use `adb shell am kill dev.tipstroke.app` and resume from Recents. The same document should reopen. Force-stop is a separate user action and does not guarantee task restoration.
+4. Repeat while a larger drawing is saving, adding an edit before locking. After reopening, check the last edit and inspect queued/completed save events.
+5. Open **Settings → Troubleshooting → Crash and debug log**. Verify process start/version, activity events, and save/load results. Copy the report and paste it into a text editor; clear it and refresh.
+6. On a disposable debug installation, exercise an uncaught exception with a debugger. Relaunch and verify the exception, cause, and stack trace remain in settings. On Android 11+, inspect system exit reasons too; a system memory kill or native crash need not have a Java stack trace. Do not deliberately crash while working on valuable unsaved artwork.
+
 ## Drawing-progress recording
 
 Run `./gradlew :drawing-android:testDebugUnitTest --tests '*ProcessRecordingTest'` for exact raster replay across tile boundaries, Pencil segment replay, eraser transactions, undo branches, save/reopen/continue, seeking, layer changes, corrupt-file isolation, the storage cap, GIF output, complete settings round-trip, and frozen v1 fixtures. Native Ink and MP4 require `./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.ProcessRecordingInstrumentedTest` on Android. The native test checks exact final Ink pixels, compact sample storage, and an MP4 that the platform decoder can open.

@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import dev.tipstroke.core.model.GestureSettings
 import dev.tipstroke.drawing.android.DrawingLibrary
+import dev.tipstroke.drawing.android.LocalDiagnostics
 import dev.tipstroke.drawing.android.StylusButton
 import dev.tipstroke.drawing.android.StylusButtons
 
@@ -26,6 +27,33 @@ internal sealed interface AppScreen {
 
 internal class TipStrokeAppState : ViewModel() {
     var screen by mutableStateOf<AppScreen>(AppScreen.Gallery)
+
+    fun saveState(out: Bundle) {
+        val current = screen
+        out.putString("screen", when (current) {
+            AppScreen.Gallery -> "gallery"
+            AppScreen.Settings -> "settings"
+            is AppScreen.Editor -> "editor"
+        })
+        if (current is AppScreen.Editor) {
+            out.putString("documentId", current.id)
+            out.putString("documentName", current.name)
+            out.putInt("widthPx", current.widthPx)
+            out.putInt("heightPx", current.heightPx)
+        }
+    }
+
+    fun restoreState(saved: Bundle) {
+        screen = when (saved.getString("screen")) {
+            "settings" -> AppScreen.Settings
+            // Restoration must never create a blank replacement for a missing/failed project.
+            "editor" -> saved.getString("documentId")?.let {
+                AppScreen.Editor(it, saved.getString("documentName") ?: "Untitled drawing",
+                    saved.getInt("widthPx", 2048), saved.getInt("heightPx", 2048), true)
+            } ?: AppScreen.Gallery
+            else -> AppScreen.Gallery
+        }
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -36,6 +64,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedInstanceState?.let(appState::restoreState)
+        LocalDiagnostics.record("activity create restored=${savedInstanceState != null}")
         enableEdgeToEdge()
         setContent {
             TipStrokeTheme {
@@ -65,8 +95,19 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        LocalDiagnostics.record("activity stop changingConfigurations=$isChangingConfigurations saveAvailable=${saveActiveDrawing != null}")
         saveActiveDrawing?.invoke()
         super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        appState.saveState(outState)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        LocalDiagnostics.record("activity start")
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -136,6 +177,9 @@ private fun TipStrokeApp(
             onBackToGallery = { appState.screen = AppScreen.Gallery },
             onSaveActionChanged = onSaveActionChanged,
             onStylusButtonHandlerChanged = onStylusButtonHandlerChanged,
+            onDocumentOpened = {
+                if (appState.screen == current) appState.screen = current.copy(existing = true)
+            },
         )
     }
 }
