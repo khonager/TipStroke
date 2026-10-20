@@ -597,7 +597,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     require(widthPx in 16..8192 && heightPx in 16..8192)
                     val layerId = LayerId(java.util.UUID.randomUUID().toString())
                     val blank = DrawingSnapshot(widthPx, heightPx, layerId,
-                        listOf(SavedRasterSnapshot(layerId, "Layer 1", true, 1f, emptyMap())))
+                        listOf(SavedRasterSnapshot(layerId, "Paint 1", true, 1f, emptyMap())))
                     ProjectPersistence.save(context.contentResolver, library, id, name, blank).getOrThrow()
                 }
                 ProjectPersistence.load(directory).getOrThrow()

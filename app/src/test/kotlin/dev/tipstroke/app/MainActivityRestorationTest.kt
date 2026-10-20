@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.lifecycle.ViewModelProvider
 import dev.tipstroke.core.model.LayerKind
 import dev.tipstroke.drawing.android.DrawingLibrary
@@ -26,12 +27,13 @@ import java.time.Duration
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MainActivityRestorationTest {
     @Test fun newDrawingAndImageSurviveActivityRecreationAndFreshActivityStateRestore() {
-        val controller = Robolectric.buildActivity(MainActivity::class.java).setup().visible()
+        val controller = Robolectric.buildActivity(MainActivity::class.java).create()
         val activity = controller.get()
         val library = DrawingLibrary(activity)
         val id = library.newId()
         ViewModelProvider(activity)[TipStrokeAppState::class.java].screen =
             AppScreen.Editor(id, "Lifecycle test", 128, 128, false)
+        controller.start().resume().visible()
         val original = awaitSurface(activity)
         original.setCanvasBackgroundColor(Color.YELLOW)
         val source = File(activity.cacheDir, "activity-image.png")
@@ -82,6 +84,8 @@ class MainActivityRestorationTest {
     private fun awaitSurface(activity: MainActivity): DrawingSurface {
         val deadline = System.nanoTime() + 15_000_000_000L
         while (System.nanoTime() < deadline) {
+            // Drive snapshot notifications as well as frames with Robolectric's paused looper.
+            Snapshot.sendApplyNotifications()
             val root = activity.window.decorView
             root.measure(View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(1600, View.MeasureSpec.EXACTLY))
@@ -90,7 +94,10 @@ class MainActivityRestorationTest {
             findSurface(root)?.takeIf { it.isEnabled }?.let { return it }
             Thread.sleep(10)
         }
-        error("Editor did not finish opening")
+        val surface = findSurface(activity.window.decorView)
+        val logs = File(activity.filesDir, "diagnostics/events.log").takeIf { it.exists() }?.readText()
+        error("Editor did not finish opening: surface=$surface enabled=${surface?.isEnabled} " +
+            "screen=${ViewModelProvider(activity)[TipStrokeAppState::class.java].screen}\n$logs")
     }
 
     private fun findSurface(view: View): DrawingSurface? {
