@@ -19,6 +19,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -72,6 +74,9 @@ fun CanvasScreen(
     var pixelSize by remember { mutableFloatStateOf(1f) }
     var size by remember { mutableFloatStateOf(if (smallCanvas) 1f else initialBrushTuning.sizePx) }
     var opacity by remember { mutableFloatStateOf(if (smallCanvas) 1f else initialBrushTuning.opacity) }
+    var filling by remember { mutableStateOf(false) }
+    var colorDropPosition by remember { mutableStateOf<Offset?>(null) }
+    var canvasWindowOrigin by remember { mutableStateOf(Offset.Zero) }
     var color by remember { mutableStateOf(RgbaColor(.05f, .05f, .06f)) }
     var drawingPalette by remember { mutableStateOf<List<RgbaColor>>(emptyList()) }
     var paletteColorCount by remember { mutableIntStateOf(3) }
@@ -335,7 +340,12 @@ fun CanvasScreen(
         if (animationState == null) animationActivationOpen = true else animationOpen = !animationOpen
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    CompositionLocalProvider(LocalColorDrop provides { position, droppedColor, released ->
+        colorDropPosition = if (released) null else position
+        if (released && position != null) surface?.dropColor(position.x, position.y, droppedColor)
+    }) {
+    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { canvasWindowOrigin = it.positionInWindow() }
+        .background(MaterialTheme.colorScheme.background)) {
         val density = LocalDensity.current
         val portrait = maxHeight > maxWidth
         val viewportWidth = maxWidth
@@ -360,6 +370,7 @@ fun CanvasScreen(
             factory = { context -> DrawingSurface(context).also { view ->
                 surface = view
                 view.diagnosticsListener = { diagnostics = it }
+                view.fillListener = { active, error -> filling = active; if (error != null) message = error }
                 view.historyListener = { undo, redo -> canUndo = undo; canRedo = redo }
                 view.layersListener = { updated, selected, selectedIds, previews, paperColor, paperOpacity ->
                     layers = updated
@@ -707,9 +718,30 @@ fun CanvasScreen(
             }
         }
 
+        colorDropPosition?.let { position ->
+            Box(Modifier.offset { IntOffset((position.x - canvasWindowOrigin.x - 18.dp.toPx()).roundToInt(),
+                (position.y - canvasWindowOrigin.y - 18.dp.toPx()).roundToInt()) }
+                .size(36.dp).background(Color(color.red, color.green, color.blue, color.alpha), CircleShape)
+                .border(2.dp, Color.White, CircleShape))
+        }
+        if (filling) {
+            BackHandler { surface?.cancelFill() }
+            Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}) {
+                Surface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp),
+                    shape = RoundedCornerShape(16.dp), color = Color(0xED202125)) {
+                    Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Filling paint layer…", color = Color.White)
+                        TextButton(onClick = { surface?.cancelFill() }) { Text("Cancel") }
+                    }
+                }
+            }
+        }
+
         if (debug) DebugOverlay(diagnostics, Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(start = 22.dp, bottom = if (portrait) 116.dp else 16.dp))
     }
 
+
+    } // Color-drop callbacks shared by portrait and landscape color circles.
 
     if (brushStudioOpen) BrushStudioDialog(
         toolName = if (erasing) "Eraser" else brush.displayName,
@@ -977,6 +1009,7 @@ private fun PhoneEditorChrome(
                 Modifier.size(30.dp).clip(CircleShape)
                     .background(Color(color.red, color.green, color.blue, color.alpha))
                     .border(2.dp, Color.White, CircleShape)
+                    .colorDrop(color)
                     .clickable(onClick = onColorPicker)
                     .semantics { contentDescription = "Open color picker" },
             )

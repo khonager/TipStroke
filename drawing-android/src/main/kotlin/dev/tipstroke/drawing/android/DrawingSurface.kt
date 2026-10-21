@@ -246,13 +246,73 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun onDetachedFromWindow() {
+        cancelFill()
         stopAnimationPlayback()
         gestureHandler.removeCallbacks(hideBrushPreview)
         rasterView.stylusHoverPreview = null
         super.onDetachedFromWindow()
     }
 
-    fun undo() { layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
+    var fillListener: ((Boolean, String?) -> Unit)? = null
+    private var activeFill: AnimatedFill? = null
+    private var fillTarget: RasterLayerRuntime? = null
+    private var fillColor = Color.TRANSPARENT
+    private val fillStep = object : Runnable {
+        override fun run() {
+            val fill = activeFill ?: return
+            val target = fillTarget ?: return
+            try {
+                rasterView.invalidateTiles(fill.advance())
+                if (fill.complete) {
+                    target.tiles.commitFill(fill.preview, fillColor, fill.pixelCount)
+                    if (fill.pixelCount > 0) drawnColorListener?.invoke(RgbaColor(
+                        Color.red(fillColor) / 255f, Color.green(fillColor) / 255f,
+                        Color.blue(fillColor) / 255f, Color.alpha(fillColor) / 255f))
+                    cancelFill()
+                    notifyHistory(); notifyLayers(); notifyVisiblePalette()
+                } else gestureHandler.postDelayed(this, 16L)
+            } catch (error: IllegalStateException) {
+                cancelFill()
+                fillListener?.invoke(false, error.message)
+            }
+        }
+    }
+
+    /** Window coordinates come from the color-circle drag, then use the native inverse transform. */
+    fun dropColor(windowX: Float, windowY: Float, color: RgbaColor) {
+        if (!isEnabled || activeFill != null || activeDrawingPointerId != null ||
+            pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+        val target = layerStack.selectedRaster()?.takeIf { it.visible && it.opacity > 0f }
+        if (target == null) {
+            fillListener?.invoke(false, "Choose a visible paint layer to fill.")
+            return
+        }
+        val location = IntArray(2)
+        getLocationInWindow(location)
+        val point = rasterView.screenToDocument(windowX - location[0], windowY - location[1])
+        if (point.x < 0 || point.y < 0 || point.x >= canvasWidthPx || point.y >= canvasHeightPx) return
+        stopAnimationPlayback()
+        fillColor = Color.argb((color.alpha * 255).roundToInt(), (color.red * 255).roundToInt(),
+            (color.green * 255).roundToInt(), (color.blue * 255).roundToInt())
+        val fill = AnimatedFill(target.tiles, point.x.toInt(), point.y.toInt(), fillColor, selectionRegion)
+        activeFill = fill
+        fillTarget = target
+        rasterView.setPencilPreview(fill.preview, target.id)
+        fillListener?.invoke(true, null)
+        gestureHandler.post(fillStep)
+    }
+
+    fun cancelFill() {
+        gestureHandler.removeCallbacks(fillStep)
+        if (activeFill == null) return
+        rasterView.setPencilPreview(null, null)
+        activeFill?.preview?.discard()
+        activeFill = null
+        fillTarget = null
+        fillListener?.invoke(false, null)
+    }
+
+    fun undo() { if (activeFill != null) { cancelFill(); return }; layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun redo() { layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun resetView() = rasterView.fitCanvas()
     val canvasWidthPx: Int get() = layerStack.canvasWidth
@@ -680,7 +740,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!isEnabled) return true
+        if (!isEnabled || activeFill != null) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             stopAnimationPlayback()
             gestureHandler.removeCallbacks(hideBrushPreview)

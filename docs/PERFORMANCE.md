@@ -33,3 +33,10 @@ No PNG/gzip encoding, disk I/O, frame rendering, or video encoding is added to M
 Replay retains at most 128 full-resolution tiles (32 MiB, including temporary overlays) in memory. An LRU spills exact PNG tiles into disposable app-cache files, bounded to 512 MiB and deleted when replay closes or resets. This replaces the old 128 MiB total-tile cutoff; the project archive remains bounded to 32 MiB. Preview has its own worker, so project saving/export and recording compression cannot stall it. The latest seek supersedes queued requests; cancellation is checked between actions, commands and tiles, and a partially applied action resets replay rather than skipping content. The player advances only after receiving a frame and displays completed-frame progress, loading state, and errors; exported frames are released as they are encoded. Backward seeks replay from the beginning, so long recordings may seek slowly. Durable append-only disk journaling, disposable seek checkpoints, reduced-resolution tile reconstruction, and recording reset/pause controls are follow-ups. Device input-latency/thermal testing is still required; JVM correctness tests do not establish pen latency.
 
 An imported image adds one source-resolution PNG asset to the same 32 MiB recording archive. Transforms add only metadata, regardless of enlargement. The encoding worker decodes the source once for capture; its estimated bitmap memory is charged to the recording queue. Replay decodes visible image sources during compositing and releases each after drawing; it does not allocate enlarged image bitmaps.
+
+Animated fill is scheduled in native-view frame callbacks, capped at 4 ms of
+propagation work, 8,192 pixels, and 12 connectivity waves per callback. Only changed
+tile bounds are invalidated. Sparse per-tile visited bitsets and a frontier queue
+avoid a full-canvas bitmap. Preview bitmaps have a 32 MiB limit; exceeding it cancels
+without committing and asks the user to select a smaller area. Completion creates
+before/after snapshots of touched tiles under the existing undo-history policy.

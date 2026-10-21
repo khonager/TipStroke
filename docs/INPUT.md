@@ -53,3 +53,18 @@ Gesture routing can later add swipe actions, a quick menu, fullscreen toggle, an
 Remote/air actions are intentionally outside the generic button path. Samsung's remote S Pen SDK is model-specific, and Xiaomi reserves long presses for system note/screenshot shortcuts; TipStroke targets short in-range/contact button presses through Android input APIs first.
 
 Image scaling no longer has fixed 4× slider or 16× gesture ceilings. The slider expands its range after reaching the upper end; Half size/Double size allow repeated scaling, and pinch gestures preserve scales above the old ceiling. Scale values must remain positive and finite. Imported source pixels are preserved regardless of display size.
+
+### Color-drop fill
+
+Drag the current color circle onto the canvas to fill; tapping it still opens the
+color picker. Both portrait and landscape circles support the gesture. The drop
+uses the native inverse canvas transform, including zoom, rotation, and pan.
+Fill targets the selected visible paint layer and respects the current selection.
+Other layers are not boundary references. Image layers must be painted on a raster
+layer instead. Color alpha is respected; brush size and brush opacity do not apply.
+
+A breadth-first wave spreads through connected, similarly colored pixels. Open
+lines allow the wave to escape, making leaks visible. While it spreads, drawing
+and controls are covered by a cancellable preview. Tap Cancel (or Back) to discard
+it, close the gap, and drop again. A completed fill is one Undo/Redo action. A drop
+outside the canvas, a transparent color, or an identical seed color changes nothing.

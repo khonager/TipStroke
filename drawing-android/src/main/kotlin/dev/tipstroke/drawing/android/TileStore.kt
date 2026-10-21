@@ -37,6 +37,29 @@ class TileStore(
     private val liveStrokeTouched = mutableSetOf<TileCoordinate>()
     private val colorUsage = mutableMapOf<Int, Long>()
 
+    internal fun hasTile(x: Int, y: Int) = TileCoordinate(x / tileSize, y / tileSize) in tiles
+
+    internal fun putFillPixel(x: Int, y: Int, color: Int): TileCoordinate {
+        val coordinate = TileCoordinate(x / tileSize, y / tileSize)
+        tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            .setPixel(x % tileSize, y % tileSize, color)
+        return coordinate
+    }
+
+    internal fun commitFill(overlay: TileStore, color: Int, pixels: Long): Set<TileCoordinate> {
+        val dirty = overlay.tiles.keys.toSet()
+        if (dirty.isEmpty()) return emptySet()
+        val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        dirty.forEach { coordinate ->
+            val destination = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            Canvas(destination).drawBitmap(overlay.tiles.getValue(coordinate), 0f, 0f, null)
+        }
+        val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        history.push(TileSnapshotTransaction(this, before, after, color to pixels))
+        lastDirtyTiles = dirty
+        return dirty
+    }
+
     override fun commit(stroke: CompletedStroke): Set<TileCoordinate> {
         val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
         if (dirty.isEmpty()) return emptySet()

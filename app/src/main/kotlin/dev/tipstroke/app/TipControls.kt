@@ -107,6 +107,7 @@ internal fun ColorSwitcher(
         Box(
             Modifier.size(if (compact) 36.dp else 46.dp).clip(CircleShape).background(color.toCompose())
                 .border(2.dp, Color.White, CircleShape)
+                .colorDrop(color)
                 .clickable(onClick = onOpenColorPicker)
                 .semantics { contentDescription = "Open color picker" },
         )

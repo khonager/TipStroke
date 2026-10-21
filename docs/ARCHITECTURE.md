@@ -88,3 +88,14 @@ Animation activation and canvas resizing stop process recording, preserving a co
 Project saves request a recording snapshot barrier at the same moment as the artwork snapshot on the UI thread, then await encoding on the save worker. This preserves the same history prefix even when the user continues drawing while a save is queued. No input-thread compression or I/O is introduced.
 
 Imported images are recorded once as source-resolution PNG assets on the encoding worker. Layer metadata retains image dimensions and center/scale/rotation; image erasing and undo use exact source-mask tile patches. Replay composites these with paint layers in document order, including visibility and opacity. Transforming an image never records a canvas-sized bitmap or repeatedly re-encodes the source. Source decoding is included in the bounded recording queue estimate.
+
+### Animated fill
+
+`AnimatedFill` reads selected-layer pixels and builds an isolated sparse tile
+preview using four-connected breadth-first propagation. A fixed 24/255 tolerance
+compares alpha and premultiplied RGB against the seed. Selection boundaries are
+hard limits. The existing native layer-preview compositor shows the spreading
+pixels at the target layer's position and opacity. No Ink strokes are involved.
+Completion composites only touched tiles and records one tile-snapshot transaction,
+including process-recording patches and palette usage. Autosave/export sees only
+committed artwork; cancelling or detaching discards the preview.
