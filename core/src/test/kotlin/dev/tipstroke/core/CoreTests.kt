@@ -154,4 +154,11 @@ class CoreTests {
         assertEquals(FingerAction.REDO, settings.threeFingerTap)
         assertTrue(settings.showStylusHoverPreview)
     }
+    @Test fun tinyImageCanScaleBeyondSixteenTimesWithoutSnappingBack() {
+        val fitted=ImageTransform(256f,256f,64f)
+        assertEquals(128f,fitted.changedBy(0f,0f,2f).scale,0f)
+        assertEquals(64f,fitted.changedBy(5f,5f).scale,0f)
+        assertEquals(64f,fitted.changedBy(0f,0f,Float.POSITIVE_INFINITY).scale,0f)
+    }
+
 }

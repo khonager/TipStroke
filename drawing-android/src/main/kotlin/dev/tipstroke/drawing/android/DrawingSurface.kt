@@ -45,6 +45,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 check(error == null) { error.orEmpty() }
                 requireNotNull(captured) { "No process recording" }.get().also {
                     require(it.actionCount > 0) { "No drawing progress recorded yet" }
+                    it.hasRecoveryGap // Inspect the archive on the worker, not during composition.
                 }
             }
             ProjectPersistence.mainHandler.post { onComplete(result) }

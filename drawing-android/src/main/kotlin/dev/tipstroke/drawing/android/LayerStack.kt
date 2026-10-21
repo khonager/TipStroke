@@ -265,7 +265,7 @@ internal class LayerStack(
 
     fun setImageScale(value: Float) {
         (selected() as? ImageLayerRuntime)?.let {
-            it.transform = it.transform.copy(scale = value.coerceIn(.02f, 4f))
+            if (value.isFinite() && value > 0f) it.transform = it.transform.copy(scale = value.coerceAtLeast(.0001f))
             invalidate()
         }
     }
@@ -599,6 +599,39 @@ internal class OriginalImageSource(
             }
         }
         return null
+    }
+
+    // Called only by the recording worker; independent of the disposable UI decode cache.
+    fun recordingPng(): ByteArray {
+        val stream = if (uri.scheme == ContentResolver.SCHEME_FILE) File(requireNotNull(uri.path)).inputStream()
+            else requireNotNull(resolver.openInputStream(uri))
+        val encoded = java.io.ByteArrayOutputStream()
+        stream.use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                require(encoded.size().toLong() + count <= ProcessRecording.MAX_BYTES) { "Image exceeds recording storage budget" }
+                encoded.write(buffer, 0, count)
+            }
+        }
+        val decoded = ImageDecoder.decodeBitmap(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(encoded.toByteArray()))) { decoder, _, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+        return try {
+            val output = object : java.io.ByteArrayOutputStream() {
+                override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                    require(size().toLong() + length <= ProcessRecording.MAX_BYTES) { "Image exceeds recording storage budget" }
+                    super.write(bytes, offset, length)
+                }
+                override fun write(value: Int) {
+                    require(size().toLong() < ProcessRecording.MAX_BYTES) { "Image exceeds recording storage budget" }
+                    super.write(value)
+                }
+            }
+            check(decoded.compress(Bitmap.CompressFormat.PNG, 100, output))
+            output.toByteArray()
+        } finally { decoded.recycle() }
     }
 
     fun cachedBitmapBytes(): Long = bitmap?.allocationByteCount?.toLong() ?: 0L

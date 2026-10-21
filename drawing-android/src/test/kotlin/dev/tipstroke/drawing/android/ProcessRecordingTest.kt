@@ -269,4 +269,97 @@ class ProcessRecordingTest {
         }
     }
 
+    private fun pixelImage(): File {
+        val file=File.createTempFile("pixel-import", ".png",context.cacheDir)
+        Bitmap.createBitmap(32,32,Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.RED)
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+            bitmap.recycle()
+        }
+        return file
+    }
+
+    @Test fun importedPixelImageCanGrowPastOldLimitsAndRecordingContinues() {
+        val file=pixelImage()
+        try {
+            val stack=stack(); val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)
+            stack.addImage(Uri.fromFile(file)).getOrThrow(); recorder.sync(stack,false)
+            stack.setImageScale(64f); recorder.sync(stack,false)
+            stack.transformSelectedImage(0f,0f,2f); recorder.sync(stack,false)
+            assertEquals(128f,stack.selectedImage()!!.transform.scale,0f)
+            stack.addRaster(); recorder.sync(stack,false)
+            stack.selectedRaster()!!.tiles.commit(stroke())
+            val data=recorder.snapshot()
+            assertNull(data.stoppedReason)
+            assertTrue("Transforms must not store enlarged image frames",data.bytes<16*1024)
+            val archive=File.createTempFile("image-replay", ".tsr")
+            try {
+                data.write(archive)
+                ProcessReplay(ProcessRecording.read(archive)!!).use { replay ->
+                    val end=replay.frame(data.actionCount-1)
+                    assertEquals(Color.RED,end.getPixel(20,20))
+                    assertNotEquals(Color.RED,end.getPixel(270,145))
+                    replay.frame(0).also { assertEquals(Color.WHITE,it.getPixel(20,20)); it.recycle() }
+                    replay.frame(data.actionCount-1).also { assertPixels(end,it); it.recycle() }
+                    end.recycle()
+                }
+            } finally { archive.delete() }
+        } finally { file.delete() }
+    }
+
+    @Test fun imageTransformMaskUndoVisibilityAndDeletionReplay() {
+        val file=pixelImage()
+        try {
+            val stack=stack(); val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)
+            val id=stack.addImage(Uri.fromFile(file)).getOrThrow(); recorder.sync(stack,false)
+            stack.setImageScale(8f); stack.setOpacity(.5f); recorder.sync(stack,false)
+            val image=stack.selectedImage()!!
+            val paint=CompletedStroke(listOf(StrokeSample(1,Point(16f,16f),1f,0f,0f,0,0,PointerKind.STYLUS)),
+                StrokeStyle(BrushPreset.Ink,4f,1f,RgbaColor(1f,1f,1f),BlendBehavior.PAINT,pixelTool=PixelTool.PENCIL))
+            image.mask.commit(paint)
+            val masked=recorder.snapshot().actionCount-1
+            image.mask.history.undo()
+            val undone=recorder.snapshot().actionCount-1
+            stack.transformSelectedImage(64f,0f,1f,90f); recorder.sync(stack,false)
+            val moved=recorder.snapshot().actionCount-1
+            stack.toggleVisible(id); recorder.sync(stack,false)
+            val hidden=recorder.snapshot().actionCount-1
+            stack.deleteSelected(); recorder.sync(stack,false)
+            val data=recorder.snapshot(); assertNull(data.stoppedReason)
+            ProcessReplay(data).use { replay ->
+                replay.frame(masked).also { assertEquals(Color.WHITE,it.getPixel(256,256)); it.recycle() }
+                replay.frame(undone).also { assertNotEquals(Color.WHITE,it.getPixel(256,256)); it.recycle() }
+                replay.frame(moved).also { assertNotEquals(Color.WHITE,it.getPixel(420,256)); assertEquals(Color.WHITE,it.getPixel(140,256)); it.recycle() }
+                replay.frame(hidden).also { assertEquals(Color.WHITE,it.getPixel(256,256)); it.recycle() }
+                replay.frame(data.actionCount-1).also { assertEquals(Color.WHITE,it.getPixel(256,256)); it.recycle() }
+            }
+        } finally { file.delete() }
+    }
+
+    @Test fun legacyImageCutoffResumesWithExplicitCurrentArtworkCheckpoint() {
+        val file=pixelImage()
+        try {
+            val stack=stack(); val original=ProcessRecorder(512,512); original.sync(stack,false)
+            val before=original.snapshot(); original.detach()
+            stack.addImage(Uri.fromFile(file)).getOrThrow(); stack.setImageScale(64f)
+            stack.addRaster(); stack.selectedRaster()!!.tiles.commit(stroke())
+            val stopped=ProcessRecording(512,512,before.actions,
+                "Recording stopped: image layers, animation and canvas resizing are not supported yet.")
+            val resumed=ProcessRecorder(512,512,stopped); resumed.sync(stack,false,true)
+            val baseline=resumed.snapshot()
+            assertNull(baseline.stoppedReason); assertTrue(baseline.hasRecoveryGap)
+            stack.selectedRaster()!!.tiles.commit(stroke())
+            assertEquals(baseline.actionCount+1,resumed.snapshot().actionCount)
+            ProcessReplay(baseline).use { replay ->
+                replay.frame(0).also { assertEquals(Color.WHITE,it.getPixel(20,20)); it.recycle() }
+                replay.frame(baseline.actionCount-1).also {
+                    assertEquals(Color.RED,it.getPixel(20,20))
+                    assertNotEquals(Color.RED,it.getPixel(270,145)); it.recycle()
+                }
+            }
+            val reopened=ProcessRecorder(512,512,baseline); reopened.sync(stack,false,true)
+            assertEquals(baseline.actionCount,reopened.snapshot().actionCount)
+        } finally { file.delete() }
+    }
+
 }

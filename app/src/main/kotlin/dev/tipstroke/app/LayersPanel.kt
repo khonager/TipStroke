@@ -219,7 +219,19 @@ private fun LayerControls(
                 modifier = Modifier.padding(top = 5.dp, bottom = 8.dp),
             )
             ValueHeader("Image scale", "${((layer.imageScale ?: 1f) * 100).roundToInt()}%")
-            Slider(layer.imageScale ?: 1f, onImageScale, valueRange = .02f..4f, modifier = Modifier.fillMaxWidth().height(40.dp))
+            val imageScale = layer.imageScale ?: 1f
+            var scaleRange by remember(layer.id) { mutableFloatStateOf(maxOf(4f, imageScale * 2f)) }
+            LaunchedEffect(imageScale) {
+                if (imageScale > scaleRange) scaleRange = imageScale
+            }
+            Slider(imageScale.coerceIn(.0001f, scaleRange), onImageScale,
+                valueRange = .0001f..scaleRange,
+                onValueChangeFinished = { if (imageScale >= scaleRange * .95f) scaleRange = (scaleRange * 2f).takeIf { it.isFinite() } ?: scaleRange },
+                modifier = Modifier.fillMaxWidth().height(40.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onImageScale(imageScale / 2f) }) { Text("Half size") }
+                OutlinedButton(onClick = { onImageScale(imageScale * 2f) }) { Text("Double size") }
+            }
             Text(
                 "Original ${layer.originalWidthPx} × ${layer.originalHeightPx} px · source preserved",
                 color = Color(0xFFAAAEB4), fontSize = 11.sp,

@@ -81,4 +81,44 @@ class ProcessRecordingInstrumentedTest {
             }
         } finally { file.delete(); expected.recycle() }
     }
+    @Test fun importedTinyImageEnlargesAndExportsWithLaterPaint() {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        val source=File(context.cacheDir,"tiny-recording-import.png")
+        val videoFile=File(context.cacheDir,"tiny-recording-import.mp4")
+        Bitmap.createBitmap(32,32,Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.RED)
+            source.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+            bitmap.recycle()
+        }
+        try {
+            val stack=LayerStack(context.contentResolver,512,512) {}
+            val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)
+            stack.addImage(Uri.fromFile(source)).getOrThrow(); recorder.sync(stack,false)
+            stack.setImageScale(64f); recorder.sync(stack,false)
+            stack.transformSelectedImage(0f,0f,2f); recorder.sync(stack,false)
+            stack.addRaster(); recorder.sync(stack,false)
+            val stroke=CompletedStroke(listOf(StrokeSample(1,Point(256f,256f),1f,0f,0f,0,0,PointerKind.STYLUS)),
+                StrokeStyle(BrushPreset.Ink,60f,1f,RgbaColor(0f,0f,1f),BlendBehavior.PAINT,pixelTool=PixelTool.PENCIL))
+            stack.selectedRaster()!!.tiles.commit(stroke)
+            val data=recorder.snapshot(); assertNull(data.stoppedReason); assertTrue(data.bytes<16*1024)
+            ProcessReplay(data,context.cacheDir).use { replay ->
+                replay.frame(data.actionCount-1).also {
+                    assertEquals(Color.RED,it.getPixel(20,20)); assertEquals(Color.BLUE,it.getPixel(256,256)); it.recycle()
+                }
+                val frames=List(data.actionCount) { AnimationFrame(FrameId("$it"),6) }
+                AnimationExporter.export(context.contentResolver,Uri.fromFile(videoFile),
+                    SavedAnimationSnapshot(frames,0,12,PlaybackMode.ONCE,0,0,0f,emptySet(),emptyMap(),emptyMap()),AnimationExportFormat.MP4) { replay.frame(it) }
+            }
+            MediaMetadataRetriever().use { video ->
+                video.setDataSource(videoFile.absolutePath)
+                val time=(data.actionCount*500L-100)*1000
+                val frame=requireNotNull(video.getFrameAtTime(time,MediaMetadataRetriever.OPTION_CLOSEST))
+                assertTrue(Color.red(frame.getPixel(20,20))>200)
+                assertTrue(Color.blue(frame.getPixel(256,256))>200)
+                assertTrue(Color.red(frame.getPixel(256,256))<50)
+                frame.recycle()
+            }
+        } finally { source.delete(); videoFile.delete() }
+    }
+
 }

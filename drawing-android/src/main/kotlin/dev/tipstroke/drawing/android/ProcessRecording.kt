@@ -29,6 +29,9 @@ internal data class ReplayPaint(
 class ProcessRecording internal constructor(
     val width: Int, val height: Int, internal val actions: List<ByteArray>, val stoppedReason: String?,
 ) {
+    val hasRecoveryGap: Boolean by lazy {
+        actions.any { bytes -> DataInputStream(GZIPInputStream(ByteArrayInputStream(bytes))).use { it.readUnsignedByte() == 4 } }
+    }
     val actionCount get() = actions.size
     val bytes get() = actions.sumOf { it.size.toLong() }
     companion object {
@@ -75,6 +78,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
         private set
     private val queued = AtomicLong()
     private var metadata: String? = null
+    private var legacyImageStop = saved?.stoppedReason == "Recording stopped: image layers, animation and canvas resizing are not supported yet."
     private val known = mutableSetOf<String>()
     private val stores = mutableSetOf<TileStore>()
     fun stop(reason: String) {
@@ -91,31 +95,61 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
     fun snapshot(): ProcessRecording = captureSnapshot().get()
 
     fun sync(stack: LayerStack, animated: Boolean, restoring: Boolean = false) {
-        if (animated || stack.layers.any { it !is RasterLayerRuntime } || stack.canvasWidth != width || stack.canvasHeight != height) {
-            stop("Recording stopped: image layers, animation and canvas resizing are not supported yet.")
+        val recovering = legacyImageStop && !animated && stack.canvasWidth == width && stack.canvasHeight == height
+        if (recovering) {
+            legacyImageStop = false
+            stoppedReason = null
+            known.clear()
+            // Explicit discontinuity: old unrecorded edits cannot be reconstructed.
+            enqueue(32) { it.writeByte(4) }
+        }
+        val restore = restoring && !recovering
+        if (animated || stack.canvasWidth != width || stack.canvasHeight != height) {
+            stop("Recording stopped: animation and canvas resizing are not supported yet.")
         }
         if (stoppedReason != null) { detach(); return }
         val json = JSONObject().put("background", stack.backgroundColor).put("opacity", stack.backgroundOpacity)
         val layers = org.json.JSONArray()
-        stack.layers.filterIsInstance<RasterLayerRuntime>().forEach { layer ->
-            layers.put(JSONObject().put("id", layer.id.value).put("visible", layer.visible).put("opacity", layer.opacity))
+        stack.layers.forEach { layer ->
+            val item = JSONObject().put("id", layer.id.value).put("visible", layer.visible).put("opacity", layer.opacity)
+            if (layer is ImageLayerRuntime) {
+                item.put("image", true).put("x", layer.transform.centerX).put("y", layer.transform.centerY)
+                    .put("scale", layer.transform.scale).put("rotation", layer.transform.rotationDegrees)
+                    .put("width", layer.source.width).put("height", layer.source.height)
+            }
+            layers.put(item)
         }
         val state = json.put("layers", layers).toString()
-        if (!restoring && metadata != state) enqueue(2048) { out -> out.writeByte(0); out.writeUTF(state) }
+        if (!restore && (metadata != state || recovering)) enqueue(2048) { out -> out.writeByte(0); out.writeUTF(state) }
         metadata = state
-        stack.layers.filterIsInstance<RasterLayerRuntime>().forEach { layer ->
-            if (known.add(layer.id.value) && !restoring && layer.tiles.allocatedTileCount > 0) {
-                val cost = layer.tiles.allocatedTileBytes
-                if (cost > QUEUE_LIMIT) stop("Recording stopped: initial artwork is too large.")
-                else {
-                    val initial = layer.tiles.snapshotTiles()
-                    capture(layer.id.value, null, initial, recycle = true)
+        stack.layers.forEach { layer ->
+            val id = layer.id.value
+            val first = known.add(id)
+            val store = when (layer) {
+                is RasterLayerRuntime -> layer.tiles
+                is ImageLayerRuntime -> layer.mask
+            }
+            val storeId = if (layer is ImageLayerRuntime) "$id:mask" else id
+            if (first && !restore) {
+                if (layer is ImageLayerRuntime) {
+                    enqueue(layer.source.width.toLong() * layer.source.height * 4) { out ->
+                        val png = layer.source.recordingPng()
+                        out.writeByte(3); out.writeUTF(id); out.writeInt(png.size); out.write(png)
+                    }
+                }
+                if (store.allocatedTileCount > 0) {
+                    if (store.allocatedTileBytes > QUEUE_LIMIT) stop("Recording stopped: initial artwork is too large.")
+                    else capture(storeId, null, store.snapshotTiles(), recycle = true)
                 }
             }
-            stores += layer.tiles
-            layer.tiles.recordingListener = { commands, patches -> capture(layer.id.value, commands, patches) }
+            stores += store
+            store.recordingListener = { commands, patches ->
+                // Image erasing paints a mask in source coordinates; preserve its exact tiles.
+                capture(storeId, if (layer is ImageLayerRuntime) null else commands, patches)
+            }
         }
     }
+
     private fun capture(id: String, capturedCommands: List<ReplayPaint>?, patches: Map<TileCoordinate, Bitmap?>, recycle: Boolean = false) {
         val commands = capturedCommands?.takeIf { ops -> ops.sumOf { it.stroke.samples.size.toLong() + (it.ink?.inputs?.size ?: 0) } <= 100_000 }
         val cost = commands?.sumOf { it.stroke.samples.size.toLong() * 64 + (it.ink?.inputs?.size ?: 0) * 48L + 512 }
@@ -241,6 +275,7 @@ class ProcessReplay internal constructor(
     private val cache = ReplayTileCache(cacheDirectory, residentTileLimit)
     private val inkRenderer by lazy { CanvasStrokeRenderer.create(ReplayInkBrushesV1().textureStore) }
     private val layers = linkedMapOf<String, ReplayTileCache.Layer>()
+    private val images = mutableMapOf<String, ByteArray>()
     private var metadata = JSONObject().put("layers", org.json.JSONArray()).put("background", Color.WHITE).put("opacity", 1)
     private var position = -1
     fun frame(index: Int, maxEdge: Int = 1280, cancelled: () -> Boolean = { false }): Bitmap {
@@ -266,7 +301,26 @@ class ProcessReplay internal constructor(
         for (i in 0 until order.length()) {
             val layer=order.getJSONObject(i); if (!layer.getBoolean("visible")) continue
             val paint=Paint().apply { alpha=(layer.getDouble("opacity")*255).roundToInt() }
-            layers[layer.getString("id")]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
+            val id = layer.getString("id")
+            if (layer.optBoolean("image")) {
+                val encoded = images[id] ?: continue // metadata precedes the initial image asset
+                val bitmap = requireNotNull(BitmapFactory.decodeByteArray(encoded, 0, encoded.size))
+                try {
+                    val save = canvas.save()
+                    canvas.translate(layer.getDouble("x").toFloat(), layer.getDouble("y").toFloat())
+                    canvas.rotate(layer.getDouble("rotation").toFloat())
+                    val imageScale = layer.getDouble("scale").toFloat()
+                    canvas.scale(imageScale, imageScale)
+                    canvas.translate(-layer.getInt("width") / 2f, -layer.getInt("height") / 2f)
+                    val group = canvas.saveLayer(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat(), paint)
+                    val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                    canvas.drawBitmap(bitmap, 0f, 0f, imagePaint)
+                    imagePaint.isFilterBitmap = false
+                    imagePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+                    layers["$id:mask"]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,imagePaint) }
+                    canvas.restoreToCount(group); canvas.restoreToCount(save)
+                } finally { bitmap.recycle() }
+            } else layers[id]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
         }
         return output
     }
@@ -276,7 +330,8 @@ class ProcessReplay internal constructor(
                 metadata=JSONObject(input.readUTF())
                 val order=metadata.getJSONArray("layers")
                 val retained=(0 until order.length()).map { order.getJSONObject(it).getString("id") }.toSet()
-                layers.keys.toList().filter { it !in retained }.forEach { layers.remove(it)?.clear() }
+                images.keys.retainAll(retained)
+                layers.keys.toList().filter { it !in retained && !(it.endsWith(":mask") && it.removeSuffix(":mask") in retained) }.forEach { layers.remove(it)?.clear() }
             }
             1 -> {
                 val id = input.readUTF()
@@ -328,10 +383,16 @@ class ProcessReplay internal constructor(
                     }
                 }
             }
+            3 -> {
+                val id = input.readUTF()
+                val size = input.readInt(); require(size in 1..ProcessRecording.MAX_BYTES.toInt())
+                images[id] = ByteArray(size).also(input::readFully)
+            }
+            4 -> { cache.close(); layers.clear(); images.clear() }
             else -> error("Unsupported process action")
         }
     }
-    override fun close() { cache.close(); layers.clear(); position = -1 }
+    override fun close() { cache.close(); layers.clear(); images.clear(); position = -1 }
 
 }
 

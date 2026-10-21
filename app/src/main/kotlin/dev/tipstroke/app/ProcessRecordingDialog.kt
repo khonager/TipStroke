@@ -32,7 +32,7 @@ internal fun ProcessRecordingDialog(surface: DrawingSurface, onDismiss: () -> Un
         Unit
     } }
     ProcessRecordingPlayer(recording?.actionCount ?: 0, recording?.bytes ?: 0, recording?.stoppedReason,
-        error ?: surface.processRecordingStatus(), requestFrame, onDismiss, onExport)
+        error ?: if (recording?.hasRecoveryGap == true) "Recording resumed from current artwork. Earlier unrecorded edits appear as a jump." else surface.processRecordingStatus(), requestFrame, onDismiss, onExport)
 }
 
 @Composable
@@ -101,7 +101,7 @@ internal fun ProcessRecordingPlayer(
                         OutlinedButton(onClick = { onExport(AnimationExportFormat.MP4) }, enabled = error == null) { Text("Export MP4") }
                         OutlinedButton(onClick = { onExport(AnimationExportFormat.GIF) }, enabled = error == null) { Text("Export GIF") }
                     }
-                    Text("Exports at up to 1280 px, 12 steps per second. Image layers, animation and resizing stop recording in this preview version.", style = MaterialTheme.typography.bodySmall)
+                    Text("Exports at up to 1280 px, 12 steps per second. Animation and resizing stop recording in this preview version.", style = MaterialTheme.typography.bodySmall)
                 }
                 TextButton(onClick = onDismiss) { Text("Close") }
             }

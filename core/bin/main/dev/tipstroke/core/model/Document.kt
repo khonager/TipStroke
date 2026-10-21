@@ -36,12 +36,12 @@ data class ImageTransform(
     val scale: Float = 1f,
     val rotationDegrees: Float = 0f,
 ) {
-    init { require(scale > 0f) }
+    init { require(scale.isFinite() && scale > 0f) }
 
     fun changedBy(deltaX: Float, deltaY: Float, scaleFactor: Float = 1f, rotationDeltaDegrees: Float = 0f) = copy(
         centerX = centerX + deltaX,
         centerY = centerY + deltaY,
-        scale = (scale * scaleFactor).coerceIn(.02f, 16f),
+        scale = (scale * scaleFactor).takeIf { it.isFinite() && it > 0f }?.coerceAtLeast(.0001f) ?: scale,
         rotationDegrees = rotationDegrees + rotationDeltaDegrees,
     )
 }

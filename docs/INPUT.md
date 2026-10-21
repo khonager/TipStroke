@@ -51,3 +51,5 @@ The compact color dock always exposes the current drawing's most-used colors. In
 Gesture routing can later add swipe actions, a quick menu, fullscreen toggle, and additional user mappings without adding work to the sample path.
 
 Remote/air actions are intentionally outside the generic button path. Samsung's remote S Pen SDK is model-specific, and Xiaomi reserves long presses for system note/screenshot shortcuts; TipStroke targets short in-range/contact button presses through Android input APIs first.
+
+Image scaling no longer has fixed 4× slider or 16× gesture ceilings. The slider expands its range after reaching the upper end; Half size/Double size allow repeated scaling, and pinch gestures preserve scales above the old ceiling. Scale values must remain positive and finite. Imported source pixels are preserved regardless of display size.
