@@ -25,7 +25,7 @@ internal data class ReplayPaint(
     val ink: Stroke? = null,
 )
 
-/** Encoded immutable actions, not video frames. Only constructed on the project executor. */
+/** Encoded immutable actions, not video frames. Captured on the serial encoding worker. */
 class ProcessRecording internal constructor(
     val width: Int, val height: Int, internal val actions: List<ByteArray>, val stoppedReason: String?,
 ) {
@@ -249,7 +249,7 @@ class ProcessReplay internal constructor(
         while (position < index) {
             if (cancelled()) throw java.util.concurrent.CancellationException()
             try {
-                apply(recording.actions[position + 1])
+                apply(recording.actions[position + 1], cancelled)
                 position++
             } catch (failure: Exception) {
                 // A failed action may have partially modified tiles. Never skip it on retry.
@@ -270,7 +270,7 @@ class ProcessReplay internal constructor(
         }
         return output
     }
-    private fun apply(bytes: ByteArray) = DataInputStream(GZIPInputStream(ByteArrayInputStream(bytes))).use { input ->
+    private fun apply(bytes: ByteArray, cancelled: () -> Boolean) = DataInputStream(GZIPInputStream(ByteArrayInputStream(bytes))).use { input ->
         when (input.readUnsignedByte()) {
             0 -> {
                 metadata=JSONObject(input.readUTF())
@@ -285,9 +285,11 @@ class ProcessReplay internal constructor(
                 val overlay=cache.layer("\u0000overlay")
                 try {
                     repeat(count) {
+                        if (cancelled()) throw java.util.concurrent.CancellationException()
                         val op=ReplayCodec.readPaint(input)
                         val target=if(op.overlay) overlay else tiles
                         TileGrid.intersecting(op.stroke.replayBoundsV1(),recording.width,recording.height).forEach { xy ->
+                            if (cancelled()) throw java.util.concurrent.CancellationException()
                             // Erasing empty space must not allocate transparent tiles.
                             if (op.stroke.style.blend == BlendBehavior.ERASE && !target.contains(xy)) return@forEach
                             val bitmap=target.edit(xy)
@@ -315,6 +317,7 @@ class ProcessReplay internal constructor(
                 val tiles=layers.getOrPut(id) { cache.layer(id) }
                 val count=input.readInt(); require(count in 0..1024)
                 repeat(count) {
+                    if (cancelled()) throw java.util.concurrent.CancellationException()
                     val xy=TileCoordinate(input.readInt(),input.readInt()); val size=input.readInt(); require(size in 0..1_048_576)
                     tiles.remove(xy)
                     if(size>0) {
@@ -348,7 +351,12 @@ class ProcessPreview(recording: ProcessRecording, cacheDirectory: File? = null) 
         executor.execute {
             fun obsolete() = closed || generation.get() != request
             if (obsolete()) return@execute
+            val started = android.os.SystemClock.uptimeMillis()
             val result = runCatching { replay.frame(index, 960, ::obsolete) }
+            val elapsed = android.os.SystemClock.uptimeMillis() - started
+            if (!obsolete() && (result.isFailure || elapsed > 500)) {
+                LocalDiagnostics.record("process preview step=${index + 1} elapsedMs=$elapsed", result.exceptionOrNull())
+            }
             ProjectPersistence.mainHandler.post {
                 if (obsolete()) result.getOrNull()?.recycle() else callback(result)
             }

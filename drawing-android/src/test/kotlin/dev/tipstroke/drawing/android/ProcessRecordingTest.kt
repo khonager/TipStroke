@@ -80,7 +80,7 @@ class ProcessRecordingTest {
         store.appendLiveStroke(eraser.copy(samples=eraser.samples.take(2)))
         store.appendLiveStroke(eraser.copy(samples=eraser.samples.takeLast(2)))
         store.finishLiveStroke(eraser); flush()
-        ProcessReplay(recorder.snapshot()).use { replay ->
+        ProcessReplay(recorder.snapshot(), residentTileLimit=2).use { replay ->
             val actual=replay.frame(recorder.snapshot().actionCount-1); val expected=expected(stack)
             assertPixels(expected,actual); expected.recycle(); actual.recycle()
         }
@@ -184,6 +184,89 @@ class ProcessRecordingTest {
         assertEquals(32,recorder.snapshot().actionCount)
         assertEquals(ProcessRecording.MAX_BYTES,recorder.snapshot().bytes)
         assertNotNull(recorder.stoppedReason)
+    }
+
+    @Test fun replayBeyondOldTileLimitKeepsEveryTileAndSeeksBackwards() {
+        val tile = Bitmap.createBitmap(256,256,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val png = ByteArrayOutputStream().also { tile.compress(Bitmap.CompressFormat.PNG,100,it) }.toByteArray()
+        tile.recycle()
+        fun action(write: (DataOutputStream) -> Unit): ByteArray = ByteArrayOutputStream().also { buffer ->
+            DataOutputStream(java.util.zip.GZIPOutputStream(buffer)).use(write)
+        }.toByteArray()
+        val metadata = action { out ->
+            out.writeByte(0)
+            out.writeUTF("""{"background":-1,"opacity":1,"layers":[{"id":"paint","visible":true,"opacity":1}]}""")
+        }
+        val patch = action { out ->
+            out.writeByte(2); out.writeUTF("paint"); out.writeInt(513)
+            repeat(513) { i -> out.writeInt(i%32); out.writeInt(i/32); out.writeInt(png.size); out.write(png) }
+        }
+        val root = java.nio.file.Files.createTempDirectory("replay-test").toFile()
+        try {
+            ProcessReplay(ProcessRecording(8192,8192,listOf(metadata,patch),null),root,4).use { replay ->
+                repeat(2) {
+                    replay.frame(1,256).also {
+                        assertEquals(Color.RED,it.getPixel(4,4))
+                        assertEquals(Color.RED,it.getPixel(4,132))
+                        assertEquals(Color.WHITE,it.getPixel(12,132)); it.recycle()
+                    }
+                    replay.frame(0,256).also { assertEquals(Color.WHITE,it.getPixel(4,4)); it.recycle() }
+                }
+            }
+            assertTrue(root.listFiles()!!.isEmpty())
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun failedActionCannotBeSkippedByRetryingTheSameFrame() {
+        val stack=stack(); val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)
+        val good=recorder.snapshot()
+        ProcessReplay(ProcessRecording(512,512,good.actions + byteArrayOf(1,2,3),null)).use { replay ->
+            repeat(2) { assertThrows(IOException::class.java) { replay.frame(1) } }
+            replay.frame(0).recycle()
+        }
+    }
+
+    @Test fun snapshotBarrierAndEncodingDoNotWaitForProjectIo() {
+        val blocked=java.util.concurrent.CountDownLatch(1)
+        val release=java.util.concurrent.CountDownLatch(1)
+        ProjectPersistence.executor.execute { blocked.countDown(); release.await(20,TimeUnit.SECONDS) }
+        assertTrue(blocked.await(5,TimeUnit.SECONDS))
+        try {
+            val stack=stack(); val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)
+            stack.selectedRaster()!!.tiles.commit(stroke())
+            val first=recorder.captureSnapshot()
+            stack.selectedRaster()!!.tiles.commit(stroke())
+            assertEquals(2,first.get(5,TimeUnit.SECONDS).actionCount)
+            assertEquals(3,recorder.captureSnapshot().get(5,TimeUnit.SECONDS).actionCount)
+        } finally { release.countDown() }
+    }
+
+    @Test fun largeTransparentUndoDoesNotStopRecording() {
+        val stack=stack(); val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)
+        val patches=(0 until 1024).associate { dev.tipstroke.core.geometry.TileCoordinate(it%32,it/32) to null }
+        stack.selectedRaster()!!.tiles.recordingListener!!.invoke(null,patches)
+        stack.selectedRaster()!!.tiles.commit(stroke())
+        val recording=recorder.snapshot()
+        assertNull(recording.stoppedReason)
+        assertEquals(3,recording.actionCount)
+        ProcessReplay(recording).use { replay ->
+            val actual=replay.frame(2); val expected=expected(stack)
+            assertPixels(expected,actual); actual.recycle(); expected.recycle()
+        }
+    }
+
+    @Test fun cancelledSeekCanContinueWithoutSkippingPaint() {
+        val stack=stack(); val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)
+        repeat(7) { stack.selectedRaster()!!.tiles.commit(stroke()) }
+        val recording=recorder.snapshot()
+        ProcessReplay(recording).use { replay ->
+            var checks=0
+            assertThrows(java.util.concurrent.CancellationException::class.java) {
+                replay.frame(7) { ++checks > 3 }
+            }
+            val actual=replay.frame(7); val expected=expected(stack)
+            assertPixels(expected,actual); actual.recycle(); expected.recycle()
+        }
     }
 
 }

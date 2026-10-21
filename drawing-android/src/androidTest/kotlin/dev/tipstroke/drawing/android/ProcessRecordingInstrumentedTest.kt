@@ -37,12 +37,32 @@ class ProcessRecordingInstrumentedTest {
             setNoiseSeed(1793)
             samples.forEach { add(InputToolType.STYLUS,it.position.x,it.position.y,it.elapsedNanos/1_000_000,StrokeInput.NO_STROKE_UNIT_LENGTH,it.pressure,it.tiltRadians,it.orientationRadians) }
         }
-        stack.selectedRaster()!!.tiles.commitInk(CompletedStroke(samples,style),Stroke(brush,inputs),CanvasStrokeRenderer.create(brushes.textureStore))
+        val renderer=CanvasStrokeRenderer.create(brushes.textureStore)
+        repeat(7) {
+            stack.selectedRaster()!!.tiles.commitInk(CompletedStroke(samples,style),Stroke(brush,inputs),renderer)
+        }
         ProjectPersistence.executor.submit {}.get(20,TimeUnit.SECONDS)
         val recording=recorder.snapshot()
-        assertTrue(recording.bytes<4096)
+        assertEquals(8,recording.actionCount)
+        assertTrue(recording.bytes<16*1024)
         val expected=Bitmap.createBitmap(512,512,Bitmap.Config.ARGB_8888)
         Canvas(expected).apply { drawColor(Color.WHITE); stack.selectedRaster()!!.tiles.draw(this,Paint()) }
+        // A blocked save must not freeze preview at an early frame or prevent a final seek.
+        val release=java.util.concurrent.CountDownLatch(1)
+        ProjectPersistence.executor.execute { release.await(15,TimeUnit.SECONDS) }
+        try {
+            ProcessPreview(recording,context.cacheDir).use { preview ->
+                for (step in listOf(2,7,0,7)) {
+                    val complete=java.util.concurrent.CountDownLatch(1)
+                    var result: Result<Bitmap>? = null
+                    preview.frame(step) { result=it; complete.countDown() }
+                    assertTrue("Preview waited for project I/O",complete.await(10,TimeUnit.SECONDS))
+                    val actual=requireNotNull(result).getOrThrow()
+                    if(step==7) assertTrue("Final preview does not match artwork",expected.sameAs(actual))
+                    actual.recycle()
+                }
+            }
+        } finally { release.countDown() }
         val file=File(context.cacheDir,"process-recording.mp4")
         try {
             ProcessReplay(recording).use { replay ->
@@ -56,7 +76,7 @@ class ProcessRecordingInstrumentedTest {
                 video.setDataSource(file.absolutePath)
                 assertEquals("512",video.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
                 assertTrue(video.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong()>0)
-                val frame=video.getFrameAtTime(900_000,MediaMetadataRetriever.OPTION_CLOSEST)
+                val frame=video.getFrameAtTime(3_900_000,MediaMetadataRetriever.OPTION_CLOSEST)
                 assertNotNull(frame); frame?.recycle()
             }
         } finally { file.delete(); expected.recycle() }

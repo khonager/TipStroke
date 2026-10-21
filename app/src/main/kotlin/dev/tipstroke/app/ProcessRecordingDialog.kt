@@ -21,59 +21,79 @@ import kotlinx.coroutines.delay
 internal fun ProcessRecordingDialog(surface: DrawingSurface, onDismiss: () -> Unit, onExport: (AnimationExportFormat) -> Unit) {
     var recording by remember { mutableStateOf<ProcessRecording?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    val cacheDirectory = LocalContext.current.cacheDir
+    LaunchedEffect(surface) {
+        surface.getProcessRecording { it.fold({ value -> recording = value }, { failure -> error = failure.message ?: "Could not load recording" }) }
+    }
+    val preview = remember(recording) { recording?.let { ProcessPreview(it, cacheDirectory) } }
+    DisposableEffect(preview) { onDispose { preview?.close() } }
+    val requestFrame = remember(preview) { { index: Int, callback: (Result<android.graphics.Bitmap>) -> Unit ->
+        preview?.frame(index, callback)
+        Unit
+    } }
+    ProcessRecordingPlayer(recording?.actionCount ?: 0, recording?.bytes ?: 0, recording?.stoppedReason,
+        error ?: surface.processRecordingStatus(), requestFrame, onDismiss, onExport)
+}
+
+@Composable
+internal fun ProcessRecordingPlayer(
+    actionCount: Int,
+    bytes: Long,
+    stoppedReason: String?,
+    status: String,
+    requestFrame: (Int, (Result<android.graphics.Bitmap>) -> Unit) -> Unit,
+    onDismiss: () -> Unit,
+    onExport: (AnimationExportFormat) -> Unit,
+) {
+    var error by remember { mutableStateOf<String?>(null) }
     var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var index by remember { mutableIntStateOf(0) }
     var displayedIndex by remember { mutableIntStateOf(-1) }
     var playing by remember { mutableStateOf(false) }
     var rendering by remember { mutableStateOf(false) }
-    LaunchedEffect(surface) {
-        surface.getProcessRecording { it.fold({ value -> recording = value }, { failure -> error = failure.message }) }
-    }
-    val cacheDirectory = LocalContext.current.cacheDir
-    val preview = remember(recording) { recording?.let { ProcessPreview(it, cacheDirectory) } }
-    DisposableEffect(preview) { onDispose { preview?.close() } }
-    LaunchedEffect(preview, index, playing) {
-        val active = preview ?: return@LaunchedEffect
+    LaunchedEffect(requestFrame, actionCount, index, playing) {
+        if (actionCount == 0) return@LaunchedEffect
+        val requestedIndex = index
         val startedAt = SystemClock.uptimeMillis()
         rendering = true
         error = null
         val result = suspendCancellableCoroutine<Result<android.graphics.Bitmap>> { continuation ->
-            active.frame(index) { value ->
+            requestFrame(requestedIndex) { value ->
                 if (continuation.isActive) continuation.resume(value) else value.getOrNull()?.recycle()
             }
         }
         rendering = false
-        result.fold({ bitmap = it; displayedIndex = index }, { error = it.message; playing = false })
+        result.fold({ bitmap = it; displayedIndex = requestedIndex }, { error = it.message ?: "Could not render this step"; playing = false })
         if (playing && result.isSuccess) {
             // Rendering time is part of the frame interval, not an extra delay on every step.
             delay((83L - (SystemClock.uptimeMillis() - startedAt)).coerceAtLeast(0L))
-            if (index < (recording?.actionCount ?: 0) - 1) index++ else playing = false
+            if (index < actionCount - 1) index++ else playing = false
         }
     }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.large) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Drawing progress", style = MaterialTheme.typography.titleLarge)
-                Text(recording?.stoppedReason ?: surface.processRecordingStatus(), style = MaterialTheme.typography.bodySmall)
+                Text(stoppedReason ?: status, style = MaterialTheme.typography.bodySmall)
                 bitmap?.let { Image(it.asImageBitmap(), "Drawing progress replay", Modifier.fillMaxWidth().heightIn(max = 320.dp)) }
                 if (rendering) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text("Rendering step ${index + 1}…", style = MaterialTheme.typography.bodySmall)
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                recording?.stoppedReason?.let {
+                stoppedReason?.let {
                     Text("This recording is incomplete. Later edits were not recorded; seeking cannot recover those missing steps.",
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
-                recording?.let { data ->
-                    val size = if (data.bytes < 1024 * 1024) "${"%.1f".format(data.bytes / 1024.0)} KiB"
-                        else "${"%.2f".format(data.bytes / 1048576.0)} MiB"
-                    Text("${(displayedIndex + 1).coerceAtLeast(0)} / ${data.actionCount} steps · $size", style = MaterialTheme.typography.bodySmall)
-                    if (data.actionCount > 1) Slider(index.toFloat(), { playing = false; index = it.toInt() },
-                        valueRange = 0f..(data.actionCount - 1).toFloat())
+                if (actionCount > 0) {
+                    val size = if (bytes < 1024 * 1024) "${"%.1f".format(bytes / 1024.0)} KiB"
+                        else "${"%.2f".format(bytes / 1048576.0)} MiB"
+                    Text("${(displayedIndex + 1).coerceAtLeast(0)} / ${actionCount} steps · $size", style = MaterialTheme.typography.bodySmall)
+                    if (actionCount > 1) Slider(index.toFloat(), { playing = false; index = it.toInt() },
+                        valueRange = 0f..(actionCount - 1).toFloat())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { playing = false; index = 0 }, enabled = true) { Text("Restart") }
-                        Button(onClick = { if (index == data.actionCount - 1) index = 0; playing = !playing }, enabled = error == null) {
+                        Button(onClick = { if (index == actionCount - 1) index = 0; playing = !playing }, enabled = error == null) {
                             Text(if (playing) "Pause" else "Play")
                         }
                     }
