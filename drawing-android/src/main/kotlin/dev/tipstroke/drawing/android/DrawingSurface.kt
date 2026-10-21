@@ -39,10 +39,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun getProcessRecording(onComplete: (Result<ProcessRecording>) -> Unit) {
         val recorder = processRecorder
         val error = processReadError
-        ProjectPersistence.executor.execute {
+        val captured = recorder?.captureSnapshot()
+        ProcessEncoding.executor.execute {
             val result = runCatching {
                 check(error == null) { error.orEmpty() }
-                requireNotNull(recorder) { "No process recording" }.snapshot().also {
+                requireNotNull(captured) { "No process recording" }.get().also {
                     require(it.actionCount > 0) { "No drawing progress recorded yet" }
                 }
             }
@@ -55,7 +56,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             captured.fold(onSuccess = { recording ->
                 ProjectPersistence.executor.execute {
                     val result = runCatching {
-                        ProcessReplay(recording).use { replay ->
+                        ProcessReplay(recording, context.cacheDir).use { replay ->
                             val frames = List(recording.actionCount) { AnimationFrame(FrameId("process-$it")) }
                             val timeline = SavedAnimationSnapshot(frames, 0, 12, PlaybackMode.ONCE, 0, 0, 0f, emptySet(), emptyMap(), emptyMap())
                             AnimationExporter.export(context.contentResolver, uri, timeline, format) { replay.frame(it) }
@@ -642,14 +643,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             onComplete(Result.failure(it))
             return
         }
-        val recorder = processRecorder
+        val recordingSnapshot = processRecorder?.captureSnapshot()
         val rasterTiles = snapshot.layers.filterIsInstance<SavedRasterSnapshot>().sumOf { it.tiles.size }
         LocalDiagnostics.record("project save queued id=$id layers=${snapshot.layers.size} rasterTiles=$rasterTiles")
         ProjectPersistence.executor.execute {
             val result = try {
                 runCatching {
                     ProjectPersistence.save(context.contentResolver, library, id, name,
-                        snapshot.copy(processRecording = recorder?.snapshot())).getOrThrow()
+                        snapshot.copy(processRecording = recordingSnapshot?.get())).getOrThrow()
                 }
             }
             finally { snapshot.recycle() }

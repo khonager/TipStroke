@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import android.os.SystemClock
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -19,24 +23,30 @@ internal fun ProcessRecordingDialog(surface: DrawingSurface, onDismiss: () -> Un
     var error by remember { mutableStateOf<String?>(null) }
     var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var index by remember { mutableIntStateOf(0) }
+    var displayedIndex by remember { mutableIntStateOf(-1) }
     var playing by remember { mutableStateOf(false) }
     var rendering by remember { mutableStateOf(false) }
     LaunchedEffect(surface) {
         surface.getProcessRecording { it.fold({ value -> recording = value }, { failure -> error = failure.message }) }
     }
-    val preview = remember(recording) { recording?.let(::ProcessPreview) }
+    val cacheDirectory = LocalContext.current.cacheDir
+    val preview = remember(recording) { recording?.let { ProcessPreview(it, cacheDirectory) } }
     DisposableEffect(preview) { onDispose { preview?.close() } }
-    LaunchedEffect(preview, index) {
+    LaunchedEffect(preview, index, playing) {
         val active = preview ?: return@LaunchedEffect
+        val startedAt = SystemClock.uptimeMillis()
         rendering = true
-        active.frame(index) { result ->
-            rendering = false
-            result.fold({ bitmap = it }, { error = it.message; playing = false })
+        error = null
+        val result = suspendCancellableCoroutine<Result<android.graphics.Bitmap>> { continuation ->
+            active.frame(index) { value ->
+                if (continuation.isActive) continuation.resume(value) else value.getOrNull()?.recycle()
+            }
         }
-    }
-    LaunchedEffect(playing, rendering, index) {
-        if (playing && !rendering) {
-            delay(83)
+        rendering = false
+        result.fold({ bitmap = it; displayedIndex = index }, { error = it.message; playing = false })
+        if (playing && result.isSuccess) {
+            // Rendering time is part of the frame interval, not an extra delay on every step.
+            delay((83L - (SystemClock.uptimeMillis() - startedAt)).coerceAtLeast(0L))
             if (index < (recording?.actionCount ?: 0) - 1) index++ else playing = false
         }
     }
@@ -46,15 +56,23 @@ internal fun ProcessRecordingDialog(surface: DrawingSurface, onDismiss: () -> Un
                 Text("Drawing progress", style = MaterialTheme.typography.titleLarge)
                 Text(recording?.stoppedReason ?: surface.processRecordingStatus(), style = MaterialTheme.typography.bodySmall)
                 bitmap?.let { Image(it.asImageBitmap(), "Drawing progress replay", Modifier.fillMaxWidth().heightIn(max = 320.dp)) }
+                if (rendering) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("Rendering step ${index + 1}…", style = MaterialTheme.typography.bodySmall)
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                recording?.stoppedReason?.let {
+                    Text("This recording is incomplete. Later edits were not recorded; seeking cannot recover those missing steps.",
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 recording?.let { data ->
                     val size = if (data.bytes < 1024 * 1024) "${"%.1f".format(data.bytes / 1024.0)} KiB"
                         else "${"%.2f".format(data.bytes / 1048576.0)} MiB"
-                    Text("${index + 1} / ${data.actionCount} steps · $size", style = MaterialTheme.typography.bodySmall)
+                    Text("${(displayedIndex + 1).coerceAtLeast(0)} / ${data.actionCount} steps · $size", style = MaterialTheme.typography.bodySmall)
                     if (data.actionCount > 1) Slider(index.toFloat(), { playing = false; index = it.toInt() },
-                        valueRange = 0f..(data.actionCount - 1).toFloat(), enabled = !rendering)
+                        valueRange = 0f..(data.actionCount - 1).toFloat())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { playing = false; index = 0 }, enabled = !rendering) { Text("Restart") }
+                        TextButton(onClick = { playing = false; index = 0 }, enabled = true) { Text("Restart") }
                         Button(onClick = { if (index == data.actionCount - 1) index = 0; playing = !playing }, enabled = error == null) {
                             Text(if (playing) "Pause" else "Play")
                         }

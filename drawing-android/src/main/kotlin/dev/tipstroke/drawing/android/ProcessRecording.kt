@@ -14,6 +14,8 @@ import dev.tipstroke.core.model.*
 import org.json.JSONObject
 import java.io.*
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 
@@ -59,7 +61,13 @@ class ProcessRecording internal constructor(
     }
 }
 
-/** UI-thread capture; compression runs serially alongside project persistence. */
+internal object ProcessEncoding {
+    val executor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "TipStroke-process-encoding").apply { isDaemon = true }
+    }
+}
+
+/** UI-thread capture; encoding has its own serial worker, independent of autosave and replay. */
 internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRecording? = null) {
     private val actions = saved?.actions?.toMutableList() ?: mutableListOf()
     private var bytes = actions.sumOf { it.size.toLong() }
@@ -69,9 +77,18 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
     private var metadata: String? = null
     private val known = mutableSetOf<String>()
     private val stores = mutableSetOf<TileStore>()
-    fun stop(reason: String) { if (stoppedReason == null) stoppedReason = reason }
+    fun stop(reason: String) {
+        if (stoppedReason == null) {
+            stoppedReason = reason
+            LocalDiagnostics.record("process recording stopped: $reason")
+        }
+    }
     fun detach() { stores.forEach { it.recordingListener = null }; stores.clear() }
-    fun snapshot() = ProcessRecording(width, height, actions.toList(), stoppedReason)
+    // Request this barrier on the UI thread at the same instant as the artwork snapshot.
+    fun captureSnapshot(): Future<ProcessRecording> = ProcessEncoding.executor.submit<ProcessRecording> {
+        ProcessRecording(width, height, actions.toList(), stoppedReason)
+    }
+    fun snapshot(): ProcessRecording = captureSnapshot().get()
 
     fun sync(stack: LayerStack, animated: Boolean, restoring: Boolean = false) {
         if (animated || stack.layers.any { it !is RasterLayerRuntime } || stack.canvasWidth != width || stack.canvasHeight != height) {
@@ -102,7 +119,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
     private fun capture(id: String, capturedCommands: List<ReplayPaint>?, patches: Map<TileCoordinate, Bitmap?>, recycle: Boolean = false) {
         val commands = capturedCommands?.takeIf { ops -> ops.sumOf { it.stroke.samples.size.toLong() + (it.ink?.inputs?.size ?: 0) } <= 100_000 }
         val cost = commands?.sumOf { it.stroke.samples.size.toLong() * 64 + (it.ink?.inputs?.size ?: 0) * 48L + 512 }
-            ?: patches.size.toLong() * 256 * 256 * 4
+            ?: patches.values.sumOf { it?.allocationByteCount?.toLong() ?: 32L }
         enqueue(cost, { if (recycle) patches.values.forEach { it?.recycle() } }) { out ->
             out.writeByte(if (commands != null) 1 else 2); out.writeUTF(id)
             if (commands != null) {
@@ -123,7 +140,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
         if (queued.addAndGet(cost) > QUEUE_LIMIT) {
             queued.addAndGet(-cost); cleanup(); stop("Recording stopped: recording queue reached its memory budget."); return
         }
-        ProjectPersistence.executor.execute {
+        ProcessEncoding.executor.execute {
             try {
                 val buffer = ByteArrayOutputStream()
                 DataOutputStream(GZIPOutputStream(buffer)).use(write)
@@ -133,12 +150,16 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
                     // Never append later actions after a missing action.
                     accepting = false
                 } else if (accepting) { actions += encoded; bytes += encoded.size }
-            } catch (_: Exception) { accepting = false; stop("Recording stopped: an action could not be saved.") }
+            } catch (failure: Exception) {
+                accepting = false
+                LocalDiagnostics.record("process action encoding failed", failure)
+                stop("Recording stopped: an action could not be saved.")
+            }
             finally { queued.addAndGet(-cost); cleanup() }
         }
     }
     private var accepting = true // executor-confined
-    companion object { private const val QUEUE_LIMIT = 16L * 1024 * 1024 }
+    companion object { private const val QUEUE_LIMIT = 128L * 1024 * 1024 }
 }
 
 /** Binary samples plus explicit, complete brush settings. No references to mutable presets. */
@@ -212,15 +233,31 @@ internal object ReplayCodec {
 }
 
 /** Sequential native replay. No video, frame archive, or modifications to the live artwork. */
-class ProcessReplay internal constructor(private val recording: ProcessRecording) : AutoCloseable {
+class ProcessReplay internal constructor(
+    private val recording: ProcessRecording,
+    cacheDirectory: File? = null,
+    residentTileLimit: Int = 128,
+) : AutoCloseable {
+    private val cache = ReplayTileCache(cacheDirectory, residentTileLimit)
     private val inkRenderer by lazy { CanvasStrokeRenderer.create(ReplayInkBrushesV1().textureStore) }
-    private val layers = linkedMapOf<String, MutableMap<TileCoordinate, Bitmap>>()
+    private val layers = linkedMapOf<String, ReplayTileCache.Layer>()
     private var metadata = JSONObject().put("layers", org.json.JSONArray()).put("background", Color.WHITE).put("opacity", 1)
     private var position = -1
-    fun frame(index: Int, maxEdge: Int = 1280): Bitmap {
+    fun frame(index: Int, maxEdge: Int = 1280, cancelled: () -> Boolean = { false }): Bitmap {
         require(index in recording.actions.indices)
         if (index < position) { close(); position = -1 }
-        while (position < index) apply(recording.actions[++position])
+        while (position < index) {
+            if (cancelled()) throw java.util.concurrent.CancellationException()
+            try {
+                apply(recording.actions[position + 1])
+                position++
+            } catch (failure: Exception) {
+                // A failed action may have partially modified tiles. Never skip it on retry.
+                close()
+                throw failure
+            }
+        }
+        if (cancelled()) throw java.util.concurrent.CancellationException()
         val scale = minOf(1f, maxEdge.toFloat()/recording.width, maxEdge.toFloat()/recording.height)
         val output = Bitmap.createBitmap((recording.width*scale).toInt().coerceAtLeast(1), (recording.height*scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
         val canvas=Canvas(output); canvas.drawColor(Color.WHITE); canvas.scale(scale,scale)
@@ -229,7 +266,7 @@ class ProcessReplay internal constructor(private val recording: ProcessRecording
         for (i in 0 until order.length()) {
             val layer=order.getJSONObject(i); if (!layer.getBoolean("visible")) continue
             val paint=Paint().apply { alpha=(layer.getDouble("opacity")*255).roundToInt() }
-            layers[layer.getString("id")]?.forEach { (xy,b) -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
+            layers[layer.getString("id")]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
         }
         return output
     }
@@ -239,18 +276,21 @@ class ProcessReplay internal constructor(private val recording: ProcessRecording
                 metadata=JSONObject(input.readUTF())
                 val order=metadata.getJSONArray("layers")
                 val retained=(0 until order.length()).map { order.getJSONObject(it).getString("id") }.toSet()
-                layers.keys.toList().filter { it !in retained }.forEach { layers.remove(it)?.values?.forEach { bitmap -> bitmap.recycle(); allocated-- } }
+                layers.keys.toList().filter { it !in retained }.forEach { layers.remove(it)?.clear() }
             }
             1 -> {
-                val tiles=layers.getOrPut(input.readUTF()) { mutableMapOf() }
+                val id = input.readUTF()
+                val tiles=layers.getOrPut(id) { cache.layer(id) }
                 val count=input.readInt(); require(count in 1..250_000)
-                val overlay=mutableMapOf<TileCoordinate,Bitmap>()
+                val overlay=cache.layer("\u0000overlay")
                 try {
                     repeat(count) {
                         val op=ReplayCodec.readPaint(input)
                         val target=if(op.overlay) overlay else tiles
                         TileGrid.intersecting(op.stroke.replayBoundsV1(),recording.width,recording.height).forEach { xy ->
-                            val bitmap=target.getOrPut(xy) { allocate() }
+                            // Erasing empty space must not allocate transparent tiles.
+                            if (op.stroke.style.blend == BlendBehavior.ERASE && !target.contains(xy)) return@forEach
+                            val bitmap=target.edit(xy)
                             val canvas=Canvas(bitmap); canvas.translate(-xy.x*256f,-xy.y*256f)
                             if (op.ink != null) {
                                 val pressure = replayPressureEnabledV1(op.stroke.style.brush.pressureToOpacity)
@@ -267,48 +307,59 @@ class ProcessReplay internal constructor(private val recording: ProcessRecording
                             else ReplayPainterV1.draw(canvas,op.stroke)
                         }
                     }
-                    overlay.forEach { (xy,b) -> Canvas(tiles.getOrPut(xy) { allocate() }).drawBitmap(b,0f,0f,null) }
-                } finally { overlay.values.forEach { it.recycle(); allocated-- } }
+                    overlay.forEach { xy,b -> Canvas(tiles.edit(xy)).drawBitmap(b,0f,0f,null) }
+                } finally { overlay.clear() }
             }
             2 -> {
-                val tiles=layers.getOrPut(input.readUTF()) { mutableMapOf() }
+                val id = input.readUTF()
+                val tiles=layers.getOrPut(id) { cache.layer(id) }
                 val count=input.readInt(); require(count in 0..1024)
                 repeat(count) {
                     val xy=TileCoordinate(input.readInt(),input.readInt()); val size=input.readInt(); require(size in 0..1_048_576)
-                    tiles.remove(xy)?.let { it.recycle(); allocated-- }
+                    tiles.remove(xy)
                     if(size>0) {
                         val data=ByteArray(size).also(input::readFully)
                         val decoded=requireNotNull(BitmapFactory.decodeByteArray(data,0,size))
                         require(decoded.width==256 && decoded.height==256)
-                        val bitmap=allocate(); Canvas(bitmap).drawBitmap(decoded,0f,0f,null); decoded.recycle(); tiles[xy]=bitmap
+                        try { Canvas(tiles.edit(xy)).drawBitmap(decoded,0f,0f,null) } finally { decoded.recycle() }
                     }
                 }
             }
             else -> error("Unsupported process action")
         }
     }
-    private var allocated=0
-    private fun allocate(): Bitmap {
-        check(allocated < 512) { "Replay exceeds the 128 MiB tile budget" }
-        allocated++; return Bitmap.createBitmap(256,256,Bitmap.Config.ARGB_8888)
-    }
-    override fun close() { layers.values.forEach { it.values.forEach(Bitmap::recycle) }; layers.clear(); allocated=0 }
+    override fun close() { cache.close(); layers.clear(); position = -1 }
+
 }
 
-/** Serial background preview with lifecycle-safe delivery and no queued playback frames. */
-class ProcessPreview(recording: ProcessRecording) : AutoCloseable {
-    private val replay = ProcessReplay(recording)
+/** Latest-request-wins preview. Seeking is cancellable between complete actions; stale frames
+ * never change the displayed position. Its worker cannot be delayed by autosave or encoding.
+ */
+class ProcessPreview(recording: ProcessRecording, cacheDirectory: File? = null) : AutoCloseable {
+    private val replay = ProcessReplay(recording, cacheDirectory)
+    private val executor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "TipStroke-process-preview").apply { isDaemon = true }
+    }
+    private val generation = AtomicLong()
     @Volatile private var closed = false
     fun frame(index: Int, callback: (Result<Bitmap>) -> Unit) {
-        ProjectPersistence.executor.execute {
-            if (closed) return@execute
-            val result = runCatching { replay.frame(index, 960) }
+        val request = generation.incrementAndGet()
+        if (closed) return
+        executor.execute {
+            fun obsolete() = closed || generation.get() != request
+            if (obsolete()) return@execute
+            val result = runCatching { replay.frame(index, 960, ::obsolete) }
             ProjectPersistence.mainHandler.post {
-                if (closed) result.getOrNull()?.recycle() else callback(result)
+                if (obsolete()) result.getOrNull()?.recycle() else callback(result)
             }
         }
     }
-    override fun close() { closed = true; ProjectPersistence.executor.execute { replay.close() } }
+    override fun close() {
+        if (closed) return
+        closed = true; generation.incrementAndGet()
+        executor.execute { replay.close() }
+        executor.shutdown()
+    }
 }
 
 /** Bound extra per-gesture recording references; oversized gestures fall back to exact tiles. */
