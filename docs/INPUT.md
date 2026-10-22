@@ -65,10 +65,12 @@ layer instead. Color alpha is respected; brush size and brush opacity do not app
 
 A circular wave reveals the prepared fill over 2.5 seconds, independent of region
 size, canvas resolution, or zoom. Preparation happens on a worker; large regions
-can have a preparation delay before the timed reveal starts. A one-pixel overlap
-into softened edges removes the thin unfilled fringe while preserving solid
-outlines. This overlap never propagates through the boundary. Open lines still
-allow the wave to escape, making leaks visible.
+can have a preparation delay before the timed reveal starts. Cleanup reaches up to two softened pixels in all eight directions, including
+diagonal corners. Recoloring replaces the old color contribution in premultiplied
+RGBA, so translucent edges retain their coverage without an old-color rim. Solid
+outlines stay intact. This overlap never propagates through the boundary. Open lines still
+allow the wave to escape into the connected background, making leaks visible.
+A large spill is not discarded when it crosses the old 32 MiB preview limit.
 
 Drawing, erasing, pan, zoom, rotation, and controls remain available. The fill
 commits before its visual reveal, so subsequent strokes go above it and undo in

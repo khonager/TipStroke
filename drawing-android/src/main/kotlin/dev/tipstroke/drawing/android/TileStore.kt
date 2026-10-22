@@ -44,8 +44,6 @@ class TileStore(
     private val liveStrokeTouched = mutableSetOf<TileCoordinate>()
     private val colorUsage = mutableMapOf<Int, Long>()
 
-    internal fun hasTile(x: Int, y: Int) = TileCoordinate(x / tileSize, y / tileSize) in tiles
-
     internal fun putFillPixel(x: Int, y: Int, color: Int): TileCoordinate {
         val coordinate = TileCoordinate(x / tileSize, y / tileSize)
         revision++
@@ -59,9 +57,22 @@ class TileStore(
         val dirty = overlay.tiles.keys.toSet()
         if (dirty.isEmpty()) return emptySet()
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        // Preview pixels are final replacement colors, not a source-over tint. Clear
+        // only its nontransparent footprint before copying to preserve partial-alpha edges.
+        val clearFilled = Paint().apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+            colorFilter = ColorMatrixColorFilter(floatArrayOf(
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 255f, 0f,
+            ))
+        }
         dirty.forEach { coordinate ->
             val destination = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
-            Canvas(destination).drawBitmap(overlay.tiles.getValue(coordinate), 0f, 0f, null)
+            val replacement = overlay.tiles.getValue(coordinate)
+            Canvas(destination).apply {
+                drawBitmap(replacement, 0f, 0f, clearFilled)
+                drawBitmap(replacement, 0f, 0f, null)
+            }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, color to pixels))
@@ -81,18 +92,6 @@ class TileStore(
             }
             check(handler.post(copy)) { "Drawing surface is no longer available." }
             copy.get()
-        }
-    }
-
-    internal fun normalizedArrivalMasks(maximum: Int): Map<TileCoordinate, Bitmap> = tiles.mapValues { (_, bitmap) ->
-        val pixels = IntArray(tileSize * tileSize)
-        bitmap.getPixels(pixels, 0, tileSize, 0, 0, tileSize, tileSize)
-        for (i in pixels.indices) {
-            val arrival = pixels[i] and 0x00ffffff
-            pixels[i] = if (arrival == 0) 0 else ((1 + (arrival.toLong() * 254 / maximum).toInt()) shl 24)
-        }
-        Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ALPHA_8).apply {
-            setPixels(pixels, 0, tileSize, 0, 0, tileSize, tileSize)
         }
     }
 
@@ -453,7 +452,15 @@ class TileStore(
         val coordinate = TileCoordinate(x / tileSize, y / tileSize)
         fillTileReader?.let { reader ->
             if (sampledFillTiles.add(coordinate)) {
-                check(allocatedTileBytes < 32L * 1024 * 1024) { "Fill source exceeds the preparation budget. Select a smaller area." }
+                // Bound the worker's cache, not the size of the reachable region.
+                // Evicted source tiles can be sampled again; revision validation at
+                // commit still rejects any edits made during preparation.
+                if (allocatedTileBytes >= 32L * 1024 * 1024) {
+                    val oldest = tiles.entries.first()
+                    tiles.remove(oldest.key)
+                    sampledFillTiles.remove(oldest.key)
+                    oldest.value.recycle()
+                }
                 reader(coordinate)?.let { tiles[coordinate] = it }
             }
         }

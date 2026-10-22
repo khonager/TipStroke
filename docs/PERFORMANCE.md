@@ -38,10 +38,17 @@ Fill propagation runs on a dedicated worker in cancellable batches of up to 4 ms
 or 16,384 region pixels. Tile copies needed by the worker are scheduled one at a
 time on the main thread; the worker never reads a mutable live bitmap. Sparse
 visited bitsets, a distance-ordered frontier, and lazily captured source tiles
-avoid full-canvas/layer copies. Source pixels, fill preview, and arrival data each
-have a 32 MiB bitmap ceiling; exceeding a preparation budget discards the pending
-fill without changing artwork. Arrival data becomes ALPHA_8 reveal masks (at most
-8 MiB for a 32 MiB fill) and its ARGB storage is released.
+avoid full-canvas/layer copies. Source pixels use a 32 MiB FIFO cache; evicted tiles
+are reloaded on demand rather than rejecting a large connected region. Fill output
+is bounded by the finite document (up to 8192 × 8192), not a fixed 128-tile preview
+cutoff. A spill may therefore allocate a full document's raster tiles, just like
+painting that area. Large results and their before/after history still require
+memory proportional to the affected area.
+
+Arrival data uses two bytes per reached pixel in sparse tile arrays, half the old
+ARGB arrival storage, and is converted to one-byte ALPHA_8 masks. Arrays are released
+after conversion. Two-pixel edge cleanup has its own sparse byte visitation maps;
+only softened boundaries perform the more expensive local color-mixture fitting.
 
 After preparation, commit snapshots only touched tiles under the existing undo
 budget. The visual reveal uses an elapsed 2,500 ms clock and native canvas mask

@@ -110,3 +110,10 @@ checks pan and drawing input during an actual worker-prepared reveal, stale-resu
 recomputation after edits, and cancellation without a delayed commit. On-device,
 repeat with Pencil and eraser while panning/pinching, change layers, stop the effect,
 and save midway; the saved image must contain the full fill and subsequent strokes.
+
+Fill edge regressions cover two-pixel diagonal corners, repeated recoloring next
+to solid outlines, translucent old-color fringes with exact alpha preservation,
+and an open background spanning 153 tiles (past the former 32 MiB rejection).
+Worker cache coverage reads beyond 128 source tiles and then reloads an evicted
+tile. Spill commit/undo checks verify the background changes while solid ink stays
+intact. Repeat on a large device canvas with open and closed contours.

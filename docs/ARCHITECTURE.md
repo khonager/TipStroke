@@ -96,20 +96,25 @@ preview using four-connected propagation ordered by Euclidean distance from the
 drop. Each queued pixel inherits at least the arrival radius of its predecessor,
 so the circular front cannot appear beyond a closed boundary. A fixed 24/255 tolerance
 compares alpha and premultiplied RGB against the seed. Selection boundaries are
-hard limits. Fill overlaps one pixel into rejected boundary pixels without adding
-those pixels to the propagation queue. Translucent edges are underpainted while
-preserving their ink contribution; flattened antialiasing uses nearby stronger
-boundary contrast to replace the old background contribution. Solid outlines stay
-unchanged. This removes the thin unfilled fringe without opening closed lines.
+hard limits. Edge cleanup visits eight neighbors and extends at most two softened
+pixels without adding them to the propagation queue. Solid outline pixels stop
+cleanup. Transparent seed regions underpaint translucent ink; recoloring estimates
+the old region's contribution from a nearby stronger boundary reference that fits
+the edge's premultiplied RGBA mixture. It replaces both color and alpha contribution,
+including translucent fringes and diagonal corners. Commit replaces only the
+preview's nontransparent footprint instead of compositing old color underneath it.
+Solid outlines and unrelated neighboring colors stay unchanged.
 Preparation runs on a dedicated worker. Source tiles are copied lazily, only when
 reached, via short main-thread tile-copy requests; no full-layer snapshot is made.
+A 32 MiB FIFO cache evicts and reloads source tiles instead of aborting a spill.
 A revision check before commit rejects inconsistent reads and retries against the
 edited layer. The result waits for any wet stroke to finish before inserting its
 single tile-snapshot history transaction. Layer/frame replacement invalidates
 pending results. Cancellation is checked between bounded worker batches.
 
 Preparation also records each pixel's connectivity-aware arrival radius. These
-are normalized into sparse ALPHA_8 masks. `FillReveal` thresholds those masks
+are stored as sparse unsigned 16-bit values, then normalized into sparse ALPHA_8
+masks. The finite document bounds result allocation; there is no 128-tile fill cutoff. `FillReveal` thresholds those masks
 against an elapsed-time clock for a 2.5-second reveal, compositing immutable
 before-history tiles with current raster tiles at the original layer opacity.
 The mask and original pixels are independent of Pencil's preview. A tile modified

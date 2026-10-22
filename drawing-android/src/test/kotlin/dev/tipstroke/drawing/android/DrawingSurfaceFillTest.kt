@@ -92,6 +92,24 @@ class DrawingSurfaceFillTest {
         surface.cancelFill()
     }
 
+    @Test fun workerSourceCacheEvictsAndReloadsInsteadOfRejectingLargeRegions() {
+        val store = TileStore(17 * 256, 9 * 256)
+        for (index in 0 until 130) store.putFillPixel((index % 17) * 256, (index / 17) * 256, Color.RED)
+        val snapshot = store.fillSnapshot(android.os.Handler(Looper.getMainLooper()))
+        val task = FillPreparation.executor.submit {
+            for (index in 0 until 130) {
+                assertEquals(Color.RED, snapshot.colorAt((index % 17) * 256, (index / 17) * 256))
+                assertTrue(snapshot.allocatedTileBytes <= 32L * 1024 * 1024)
+            }
+            // The first tile was evicted; asking for it again must obtain its pixels.
+            assertEquals(Color.RED, snapshot.colorAt(0, 0))
+        }
+        waitUntil { task.isDone }
+        task.get()
+        snapshot.discard()
+        store.discard()
+    }
+
     @Test fun cancellingPreparationDoesNotCommitLater() {
         val surface = surface()
         val store = (surface.getChildAt(0) as RasterCanvasView).layerStack.selectedRaster()!!.tiles

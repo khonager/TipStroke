@@ -23,14 +23,25 @@ internal class AnimatedFill(
     private val frontier = PriorityQueue<Pending>(compareBy<Pending> { it.radius }.thenBy { it.pixel })
     private val target = source.colorAt(x, y)
     private var radius = 24f
-    private val arrivals = if (prepareReveal) TileStore(source.canvasWidth, source.canvasHeight) else null
+    private val arrivals = if (prepareReveal) mutableMapOf<TileCoordinate, ShortArray>() else null
+    private val edgeDepths = mutableMapOf<TileCoordinate, ByteArray>()
     private var arrival = 0
     private var maximumArrival = 1
 
-    fun takeRevealMasks(): Map<TileCoordinate, android.graphics.Bitmap> =
-        arrivals?.normalizedArrivalMasks(maximumArrival).orEmpty().also { arrivals?.discard() }
+    fun takeRevealMasks(): Map<TileCoordinate, android.graphics.Bitmap> {
+        val pixels = IntArray(256 * 256)
+        return arrivals?.mapValues { (_, times) ->
+            for (i in times.indices) {
+                val time = times[i].toInt() and 0xffff
+                pixels[i] = if (time == 0) 0 else ((1 + time * 254 / maximumArrival) shl 24)
+            }
+            android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ALPHA_8).apply {
+                setPixels(pixels, 0, 256, 0, 0, 256, 256)
+            }
+        }.orEmpty().also { arrivals?.clear() }
+    }
 
-    fun discard() { preview.discard(); arrivals?.discard() }
+    fun discard() { preview.discard(); arrivals?.clear(); edgeDepths.clear() }
 
     var pixelCount = 0L
         private set
@@ -63,44 +74,80 @@ internal class AnimatedFill(
     }
 
     private fun write(x: Int, y: Int, value: Int, dirty: MutableSet<TileCoordinate>) {
-        check(preview.allocatedTileBytes < 32L * 1024 * 1024 || preview.hasTile(x, y)) {
-            "Fill is too large for the preview budget. Select a smaller area and try again."
-        }
+        // Allocation is limited to reachable tiles of the finite document. A spill
+        // must not disappear merely because its preview crosses 128 tiles (32 MiB).
         dirty += preview.putFillPixel(x, y, value)
-        arrivals?.putFillPixel(x, y, 0xff000000.toInt() or (arrival + 1))
+        arrivals?.getOrPut(TileCoordinate(x / 256, y / 256)) { ShortArray(256 * 256) }
+            ?.set((y % 256) * 256 + x % 256, (arrival + 1).toShort())
         maximumArrival = max(maximumArrival, arrival + 1)
         pixelCount++
     }
 
-    /** Extend exactly one pixel into antialiasing, without using those pixels as fill seeds. */
-    private fun overlap(x: Int, y: Int, value: Int, difference: Int, dirty: MutableSet<TileCoordinate>) {
-        val channels = IntArray(3)
+    private fun premultiplied(value: Int): FloatArray {
+        val alpha = Color.alpha(value).toFloat()
+        return floatArrayOf(Color.red(value) * alpha / 255f, Color.green(value) * alpha / 255f,
+            Color.blue(value) * alpha / 255f, alpha)
+    }
+
+    /** Replace the old region contribution, including alpha, rather than tinting its fringe. */
+    private fun edgeReplacement(x: Int, y: Int, value: Int): Int? {
+        val edge = premultiplied(value)
+        val replacement = premultiplied(color)
         if (Color.alpha(target) <= 24) {
-            // Underpaint translucent ink. This overlay, composited over the source, is
-            // algebraically equivalent to placing the fill behind that source pixel.
-            if (Color.alpha(value) == 255) return
-            val coverage = Color.alpha(value) / 255f
-            for (i in 0..2) {
-                val shift = i * 8
-                channels[i] = ((((value ushr shift) and 255) * coverage) +
-                    ((color ushr shift) and 255) * (1f - coverage)).roundToInt()
-            }
+            if (Color.alpha(value) == 255) return null
+            val background = 1f - edge[3] / 255f
+            for (i in 0..3) edge[i] += replacement[i] * background
         } else {
-            // Flattened artwork: estimate edge coverage from nearby stronger ink,
-            // then replace only its background contribution with the fill color.
-            var strongest = difference
-            for (dy in -1..1) for (dx in -1..1) {
-                if (allowed(x + dx, y + dy)) strongest = max(strongest, distance(source.colorAt(x + dx, y + dy)))
+            val original = premultiplied(target)
+            var strongest = distance(value)
+            var background = 0f
+            // Look past a two-pixel softened edge for the solid line or transparent
+            // exterior. Only accept references that explain this pixel as a mixture.
+            for (dy in -2..2) for (dx in -2..2) {
+                val sx = x + dx; val sy = y + dy
+                if (sx !in 0 until source.canvasWidth || sy !in 0 until source.canvasHeight) continue
+                val candidate = source.colorAt(sx, sy)
+                val contrast = distance(candidate)
+                if (contrast <= strongest) continue
+                val boundary = premultiplied(candidate)
+                var dot = 0f
+                var length = 0f
+                for (i in 0..3) {
+                    val delta = boundary[i] - original[i]
+                    dot += (edge[i] - original[i]) * delta
+                    length += delta * delta
+                }
+                if (length == 0f) continue
+                val coverage = (dot / length).coerceIn(0f, 1f)
+                if (coverage >= 1f || (0..3).any {
+                    abs(edge[it] - (original[it] + coverage * (boundary[it] - original[it]))) > 16f
+                }) continue
+                strongest = contrast
+                background = 1f - coverage
             }
-            if (strongest == difference) return // Solid outline, not a softened edge.
-            val background = 1f - difference.toFloat() / strongest
-            for (i in 0..2) {
-                val shift = i * 8
-                channels[i] = (((value ushr shift) and 255) + background *
-                    (((color ushr shift) and 255) - ((target ushr shift) and 255))).roundToInt().coerceIn(0, 255)
-            }
+            if (background == 0f) return null // Solid ink or unrelated neighboring color.
+            for (i in 0..3) edge[i] += (replacement[i] - original[i]) * background
         }
-        write(x, y, Color.argb(Color.alpha(color), channels[2], channels[1], channels[0]), dirty)
+        val alpha = edge[3].roundToInt().coerceIn(1, 255)
+        fun channel(i: Int) = (edge[i] * 255f / alpha).roundToInt().coerceIn(0, 255)
+        return Color.argb(alpha, channel(0), channel(1), channel(2))
+    }
+
+    /** Eight-direction, two-pixel cleanup. Soft edges may extend cleanup, never the flood. */
+    private fun overlap(x: Int, y: Int, depth: Int, dirty: MutableSet<TileCoordinate>) {
+        if (!allowed(x, y)) return
+        val coordinate = TileCoordinate(x / 256, y / 256)
+        val index = (y % 256) * 256 + x % 256
+        val previous = edgeDepths[coordinate]?.get(index)?.toInt() ?: 0
+        if (previous != 0 && previous <= depth) return
+        val value = source.colorAt(x, y)
+        if (distance(value) <= 24) return
+        edgeDepths.getOrPut(coordinate) { ByteArray(256 * 256) }[index] = depth.toByte()
+        val result = edgeReplacement(x, y, value) ?: return
+        if (previous == 0) write(x, y, result, dirty)
+        if (depth < 2) for (dy in -1..1) for (dx in -1..1) {
+            if (dx != 0 || dy != 0) overlap(x + dx, y + dy, depth + 1, dirty)
+        }
     }
 
     private fun enqueue(x: Int, y: Int, arrival: Float, dirty: MutableSet<TileCoordinate>) {
@@ -108,7 +155,7 @@ internal class AnimatedFill(
         val value = source.colorAt(x, y)
         val difference = distance(value)
         if (difference > 24) {
-            overlap(x, y, value, difference, dirty)
+            overlap(x, y, 1, dirty)
             return
         }
         // A pixel must be reachable before its radial wave arrives. The inherited
@@ -130,6 +177,9 @@ internal class AnimatedFill(
             write(x, y, color, dirty)
             enqueue(x - 1, y, pending.radius, dirty); enqueue(x + 1, y, pending.radius, dirty)
             enqueue(x, y - 1, pending.radius, dirty); enqueue(x, y + 1, pending.radius, dirty)
+            // Diagonal edge pixels at tight corners are not cardinal flood neighbors.
+            overlap(x - 1, y - 1, 1, dirty); overlap(x + 1, y - 1, 1, dirty)
+            overlap(x - 1, y + 1, 1, dirty); overlap(x + 1, y + 1, 1, dirty)
             processed++
         }
         return dirty
