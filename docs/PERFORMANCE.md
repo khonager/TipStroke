@@ -35,8 +35,10 @@ Replay retains at most 128 full-resolution tiles (32 MiB, including temporary ov
 An imported image adds one source-resolution PNG asset to the same 32 MiB recording archive. Transforms add only metadata, regardless of enlargement. The encoding worker decodes the source once for capture; its estimated bitmap memory is charged to the recording queue. Replay decodes visible image sources during compositing and releases each after drawing; it does not allocate enlarged image bitmaps.
 
 Animated fill is scheduled in native-view frame callbacks, capped at 4 ms of
-propagation work, 8,192 pixels, and 12 connectivity waves per callback. Only changed
-tile bounds are invalidated. Sparse per-tile visited bitsets and a frontier queue
+propagation work, 16,384 region pixels, and 24 pixels of radial expansion per callback.
+A distance-ordered frontier produces circular waves and drains each radius before
+advancing it; previously the fill advanced 12 Manhattan-distance waves. Only changed
+tile bounds are invalidated. Sparse per-tile visited bitsets and a priority queue
 avoid a full-canvas bitmap. Preview bitmaps have a 32 MiB limit; exceeding it cancels
 without committing and asks the user to select a smaller area. Completion creates
 before/after snapshots of touched tiles under the existing undo-history policy.

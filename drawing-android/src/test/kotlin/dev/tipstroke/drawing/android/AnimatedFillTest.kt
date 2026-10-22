@@ -63,6 +63,46 @@ class AnimatedFillTest {
         assertEquals(460L, fill.pixelCount)
     }
 
+    @Test fun frontIsCircularAndReachesBeyondTheOldWaveSpeed() {
+        val fill = AnimatedFill(TileStore(128, 128), 64, 64, Color.RED, null)
+        // Time budgeting can split a radius across callbacks; wait for the diagonal.
+        while (fill.preview.colorAt(80, 80) == Color.TRANSPARENT) fill.advance()
+        assertEquals(Color.RED, fill.preview.colorAt(86, 64))
+        assertEquals(Color.TRANSPARENT, fill.preview.colorAt(86, 86))
+    }
+
+    @Test fun overlapUnderpaintsTransparentEdgesWithoutEatingSolidInk() {
+        val store = TileStore(16, 16)
+        for (y in 0 until 16) {
+            store.putFillPixel(8, y, Color.argb(128, 0, 0, 0))
+            store.putFillPixel(9, y, Color.BLACK)
+        }
+        val fill = AnimatedFill(store, 2, 8, Color.RED, null)
+        finish(fill)
+        store.commitFill(fill.preview, Color.RED, fill.pixelCount)
+        val edge = store.colorAt(8, 8)
+        assertEquals(255, Color.alpha(edge))
+        assertTrue(Color.red(edge) in 126..128)
+        assertEquals(0, Color.green(edge))
+        assertEquals(Color.BLACK, store.colorAt(9, 8))
+        assertEquals(Color.TRANSPARENT, store.colorAt(10, 8))
+        assertTrue(store.history.undo())
+        assertEquals(Color.argb(128, 0, 0, 0), store.colorAt(8, 8))
+    }
+
+    @Test fun overlapRemovesWhiteMatteFromFlattenedAntialiasing() {
+        val store = TileStore(16, 16)
+        for (y in 0 until 16) for (x in 0 until 16) {
+            store.putFillPixel(x, y, when (x) { 8 -> Color.rgb(128, 128, 128); 9 -> Color.BLACK; else -> Color.WHITE })
+        }
+        val fill = AnimatedFill(store, 2, 8, Color.RED, null)
+        finish(fill)
+        store.commitFill(fill.preview, Color.RED, fill.pixelCount)
+        assertEquals(Color.rgb(128, 0, 0), store.colorAt(8, 8))
+        assertEquals(Color.BLACK, store.colorAt(9, 8))
+        assertEquals(Color.WHITE, store.colorAt(10, 8))
+    }
+
     @Test fun sameColorAndTransparentDropsDoNotCreateHistory() {
         val store = TileStore(16, 16)
         store.putFillPixel(1, 1, Color.RED)

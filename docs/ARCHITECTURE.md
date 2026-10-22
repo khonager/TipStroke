@@ -92,9 +92,16 @@ Imported images are recorded once as source-resolution PNG assets on the encodin
 ### Animated fill
 
 `AnimatedFill` reads selected-layer pixels and builds an isolated sparse tile
-preview using four-connected breadth-first propagation. A fixed 24/255 tolerance
+preview using four-connected propagation ordered by Euclidean distance from the
+drop. Each queued pixel inherits at least the arrival radius of its predecessor,
+so the circular front cannot appear beyond a closed boundary. A fixed 24/255 tolerance
 compares alpha and premultiplied RGB against the seed. Selection boundaries are
-hard limits. The existing native layer-preview compositor shows the spreading
+hard limits. Fill overlaps one pixel into rejected boundary pixels without adding
+those pixels to the propagation queue. Translucent edges are underpainted while
+preserving their ink contribution; flattened antialiasing uses nearby stronger
+boundary contrast to replace the old background contribution. Solid outlines stay
+unchanged. This removes the thin unfilled fringe without opening closed lines.
+The existing native layer-preview compositor shows the spreading
 pixels at the target layer's position and opacity. No Ink strokes are involved.
 Completion composites only touched tiles and records one tile-snapshot transaction,
 including process-recording patches and palette usage. Autosave/export sees only

@@ -95,7 +95,8 @@ Manual first-version test:
 5. Import a 32×32 image during recording, enlarge it past 16×, move/rotate it, erase and undo its mask, then paint on another layer. Replay and export must reach the current artwork, including after reopening. A legacy image-stopped recording must resume with an explicit current-artwork checkpoint and a gap notice. Canvas resizing still stops recording with a reason and preserves the earlier prefix. Stress large selections/undo to exercise the queue/archive limits.
 6. Test rapid stylus input and long sessions on the physical tablet with recording enabled; watch frame pacing, memory, and heat. Native Ink exactness must be rechecked whenever its dependency changes.
 
-`AnimatedFillTest` covers containment, a one-pixel leak, sparse tile boundaries,
+`AnimatedFillTest` covers circular wave shape and speed, transparent and flattened
+antialiased edge overlap, preservation of solid outlines, containment, a one-pixel leak, sparse tile boundaries,
 selection clipping, isolated preview cancellation, no-op colors, and a single
 undo/redo transaction. `ColorDropTest` verifies tap-versus-drag behavior and window
 coordinates when releasing outside the circle. On a device, drag the current color circle in portrait and

@@ -63,7 +63,9 @@ Fill targets the selected visible paint layer and respects the current selection
 Other layers are not boundary references. Image layers must be painted on a raster
 layer instead. Color alpha is respected; brush size and brush opacity do not apply.
 
-A breadth-first wave spreads through connected, similarly colored pixels. Open
+A faster circular wave spreads through connected, similarly colored pixels.
+A one-pixel overlap into softened edges removes the thin unfilled fringe while
+preserving solid outlines; this overlap never propagates through the boundary. Open
 lines allow the wave to escape, making leaks visible. While it spreads, drawing
 and controls are covered by a cancellable preview. Tap Cancel (or Back) to discard
 it, close the gap, and drop again. A completed fill is one Undo/Redo action. A drop
