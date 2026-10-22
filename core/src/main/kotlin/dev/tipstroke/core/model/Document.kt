@@ -74,6 +74,7 @@ data class LayerSummary(
     val originalWidthPx: Int? = null,
     val originalHeightPx: Int? = null,
     val imageScale: Float? = null,
+    val groupId: String? = null,
 )
 
 data class Document(

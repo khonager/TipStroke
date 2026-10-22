@@ -3,9 +3,12 @@ package dev.tipstroke.app
 import android.graphics.Bitmap
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,10 +16,14 @@ import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -24,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import dev.tipstroke.core.model.*
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 @Composable
@@ -52,6 +60,9 @@ internal fun LayersPanel(
     onImportImage: () -> Unit,
     onMoveForward: () -> Unit,
     onMoveBackward: () -> Unit,
+    onReorder: (LayerId, LayerId, Boolean) -> Unit = { _, _, _ -> },
+    onGroup: (LayerId, LayerId) -> Unit = { _, _ -> },
+    onUngroup: (String) -> Unit = {},
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
@@ -68,6 +79,48 @@ internal fun LayersPanel(
     var renameText by remember { mutableStateOf("") }
     var backgroundPickerOpen by remember { mutableStateOf(false) }
     var backgroundHex by remember(backgroundPickerOpen) { mutableStateOf("%06X".format(backgroundColor and 0xFFFFFF)) }
+    val listState = rememberLazyListState()
+    val rowBounds = remember { mutableStateMapOf<LayerId, Rect>() }
+    val previewBounds = remember { mutableStateMapOf<LayerId, Rect>() }
+    var listBounds by remember { mutableStateOf(Rect.Zero) }
+    var draggedId by remember { mutableStateOf<LayerId?>(null) }
+    var dragPoint by remember { mutableStateOf(Offset.Unspecified) }
+    var dragTranslation by remember { mutableStateOf(Offset.Zero) }
+    val latestReorder by rememberUpdatedState(onReorder)
+    val latestGroup by rememberUpdatedState(onGroup)
+    val targetId = if (draggedId != null && dragPoint != Offset.Unspecified) {
+        rowBounds.entries.firstOrNull { (id, bounds) ->
+            id != draggedId && bounds.contains(dragPoint) && listBounds.contains(dragPoint)
+        }?.key
+    } else null
+    val groupDrop = targetId?.let { previewBounds[it]?.contains(dragPoint) == true } ?: false
+    val scrollEdge = with(LocalDensity.current) { 40.dp.toPx() }
+    LaunchedEffect(draggedId) {
+        while (draggedId != null) {
+            if (listBounds != Rect.Zero && dragPoint != Offset.Unspecified) {
+                when {
+                    dragPoint.y < listBounds.top + scrollEdge -> listState.scrollBy(-12f)
+                    dragPoint.y > listBounds.bottom - scrollEdge -> listState.scrollBy(12f)
+                }
+            }
+            delay(16)
+        }
+    }
+
+    fun finishDrag() {
+        val source = draggedId
+        val target = rowBounds.entries.firstOrNull { (id, bounds) ->
+            id != source && bounds.contains(dragPoint) && listBounds.contains(dragPoint)
+        }?.key
+        if (source != null && target != null) {
+            if (previewBounds[target]?.contains(dragPoint) == true) latestGroup(source, target)
+            else latestReorder(source, target, dragPoint.y < (rowBounds[target]?.center?.y ?: dragPoint.y))
+        }
+        draggedId = null
+        dragPoint = Offset.Unspecified
+        dragTranslation = Offset.Zero
+    }
+    val latestFinishDrag by rememberUpdatedState(::finishDrag)
     Surface(
         modifier.width(324.dp).fillMaxHeight(.9f).semantics { contentDescription = "Layers panel" },
         color = Color(0xE6202125),
@@ -83,11 +136,24 @@ internal fun LayersPanel(
                 TextButton(onClick = onImportImage, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("+ Image") }
             }
             Text("Front to back", color = Color(0xFF9B9DA3), fontSize = 11.sp)
-            Text("Swipe a layer right to add it to the selection", color = Color(0xFF777A81), fontSize = 10.sp)
+            Text("Hold and drag to reorder · release over a preview to group", color = Color(0xFF777A81), fontSize = 10.sp)
+            Text("Swipe right to select another layer", color = Color(0xFF777A81), fontSize = 10.sp)
             Spacer(Modifier.height(10.dp))
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            LazyColumn(Modifier.weight(1f).onGloballyPositioned { listBounds = it.boundsInRoot() }, state = listState,
+                verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 items(layers, key = { it.id.value }) { layer ->
+                    DisposableEffect(layer.id) {
+                        onDispose { rowBounds.remove(layer.id); previewBounds.remove(layer.id) }
+                    }
                     Column {
+                        if (layer.groupId != null && layers.getOrNull(layers.indexOf(layer) - 1)?.groupId != layer.groupId) {
+                            Row(Modifier.fillMaxWidth().padding(top = 5.dp, start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Group · ${layers.count { it.groupId == layer.groupId }} layers", color = Color(0xFFB8C9E5), fontSize = 11.sp,
+                                    modifier = Modifier.weight(1f))
+                                TextButton(onClick = { onUngroup(layer.groupId!!) }, modifier = Modifier.height(28.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Ungroup", fontSize = 10.sp) }
+                            }
+                        }
                         LayerRow(
                             layer = layer,
                             preview = previews[layer.id],
@@ -96,6 +162,39 @@ internal fun LayersPanel(
                             onSelect = { onSelect(layer.id) },
                             onToggleSelection = { onToggleSelection(layer.id) },
                             onVisibility = { onToggleVisibility(layer.id) },
+                            modifier = Modifier
+                                .padding(start = if (layer.groupId != null) 12.dp else 0.dp)
+                                .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }
+                                .graphicsLayer {
+                                    alpha = if (draggedId == layer.id) .72f else 1f
+                                    if (draggedId == layer.id) {
+                                        translationX = dragTranslation.x
+                                        translationY = dragTranslation.y
+                                    }
+                                }
+                                .pointerInput(layer.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { local ->
+                                            draggedId = layer.id
+                                            dragPoint = (rowBounds[layer.id]?.topLeft ?: Offset.Zero) + local
+                                            dragTranslation = Offset.Zero
+                                        },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            dragPoint += amount
+                                            dragTranslation += amount
+                                        },
+                                        onDragEnd = { latestFinishDrag() },
+                                        onDragCancel = {
+                                            draggedId = null
+                                            dragPoint = Offset.Unspecified
+                                            dragTranslation = Offset.Zero
+                                        },
+                                    )
+                                },
+                            onPreviewBounds = { previewBounds[layer.id] = it },
+                            dropTarget = targetId == layer.id,
+                            groupTarget = targetId == layer.id && groupDrop,
                         )
                         if (layer.id == selectedId) {
                             LayerControls(
@@ -270,14 +369,20 @@ private fun LayerRow(
     onSelect: () -> Unit,
     onToggleSelection: () -> Unit,
     onVisibility: () -> Unit,
+    modifier: Modifier = Modifier,
+    onPreviewBounds: (Rect) -> Unit = {},
+    dropTarget: Boolean = false,
+    groupTarget: Boolean = false,
 ) {
     val shape = RoundedCornerShape(15.dp)
     var dragDistance by remember(layer.id) { mutableFloatStateOf(0f) }
     val swipeThreshold = with(LocalDensity.current) { 34.dp.toPx() }
     Row(
-        Modifier.fillMaxWidth().offset { IntOffset(dragDistance.coerceIn(0f, swipeThreshold).roundToInt(), 0) }.clip(shape)
+        modifier.fillMaxWidth().offset { IntOffset(dragDistance.coerceIn(0f, swipeThreshold).roundToInt(), 0) }.clip(shape)
             .background(if (selected) Color(0xFF343034) else Color(0xFF292A2E))
-            .border(if (selected) 1.5.dp else .5.dp, if (primary) Color(0xFFED6A5A) else if (selected) Color(0xFF75A7FF) else Color(0xFF414349), shape)
+            .border(if (dropTarget) 2.dp else if (selected) 1.5.dp else .5.dp,
+                if (dropTarget) if (groupTarget) Color(0xFF75A7FF) else Color(0xFFED6A5A)
+                else if (primary) Color(0xFFED6A5A) else if (selected) Color(0xFF75A7FF) else Color(0xFF414349), shape)
             .pointerInput(layer.id, selected) {
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { change, amount ->
@@ -296,7 +401,10 @@ private fun LayerRow(
             .clickable(onClick = onSelect).padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LayerThumbnail(layer.kind, preview)
+        Box(Modifier.onGloballyPositioned { onPreviewBounds(it.boundsInRoot()) }
+            .border(if (groupTarget) 2.dp else 0.dp, Color(0xFF75A7FF), RoundedCornerShape(10.dp))) {
+            LayerThumbnail(layer.kind, preview)
+        }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(layer.name, color = Color(0xFFF1F1EF), fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)

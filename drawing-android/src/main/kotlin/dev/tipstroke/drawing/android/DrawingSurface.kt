@@ -643,6 +643,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun fitSelectedImage() { layerStack.fitSelectedImage(); notifyLayers() }
     fun originalSizeSelectedImage() { layerStack.originalSizeSelectedImage(); notifyLayers() }
     fun moveSelectedLayer(towardFront: Boolean) { layerStack.moveSelected(towardFront); notifyLayers() }
+    fun reorderLayer(sourceId: LayerId, targetId: LayerId, afterTarget: Boolean) {
+        if (layerStack.reorder(sourceId, targetId, afterTarget)) notifyLayers()
+    }
+    fun groupLayer(sourceId: LayerId, targetId: LayerId) {
+        if (layerStack.group(sourceId, targetId)) notifyLayers()
+    }
+    fun ungroupLayers(groupId: String) {
+        if (layerStack.ungroup(groupId)) notifyLayers()
+    }
     fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { animation?.unregisterMissingLayers(); notifyLayers(); notifyHistory(); publishAnimation() } }
     fun publishLayers() { notifyLayers(); notifyHistory(); notifyVisiblePalette() }
     fun enableAnimation(existingAsBackground: Boolean) {

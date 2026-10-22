@@ -16,6 +16,8 @@ Selections are transient platform-neutral polygons. Rectangle selection is the f
 
 The app shell owns three destinations: local gallery, editor, and settings. `DrawingLibrary` and `ProjectPersistence` live in `:drawing-android` because decoding/encoding tiles and imported assets requires Android bitmap/content-resolver types. Gallery order and stacks are stored in a separate root `gallery.json`; stack operations never move or rewrite project directories. The Compose gallery supplies long-press drag hit-testing, edge auto-scroll, stack previews, and stack management. Gesture choices remain platform-neutral values in `:core` and are persisted by the app with local preferences.
 
+The editor's Compose layer panel supports long-press dragging. Releasing over another row places the layer above or below that row; releasing specifically over its artwork preview groups the two layers or adds the dragged layer to the target's group. Group IDs organize contiguous layers in the flat back-to-front painter stack. They do not change blending, allocate tiles, or add a separate compositing pass. The panel shows group boundaries and an Ungroup action. Leaving a group dissolves it when fewer than two members remain. The native compositor still reads the ordered layers directly, and drag hit-testing never enters the drawing input path.
+
 ## Stroke pipeline
 
 ```text

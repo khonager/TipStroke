@@ -318,6 +318,7 @@ internal sealed interface SavedLayerSnapshot {
     val name: String
     val visible: Boolean
     val opacity: Float
+    val groupId: String?
 }
 
 internal data class SavedRasterSnapshot(
@@ -327,6 +328,7 @@ internal data class SavedRasterSnapshot(
     override val opacity: Float,
     val tiles: Map<TileCoordinate, Bitmap>,
     val colorUsage: Map<Int, Long> = emptyMap(),
+    override val groupId: String? = null,
 ) : SavedLayerSnapshot
 
 internal data class SavedImageSnapshot(
@@ -339,6 +341,7 @@ internal data class SavedImageSnapshot(
     val originalHeightPx: Int,
     val transform: ImageTransform,
     val maskTiles: Map<TileCoordinate, Bitmap> = emptyMap(),
+    override val groupId: String? = null,
 ) : SavedLayerSnapshot
 
 internal data class DrawingSnapshot(
@@ -392,17 +395,20 @@ internal sealed interface LoadedLayer {
     val name: String
     val visible: Boolean
     val opacity: Float
+    val groupId: String?
 }
 
 internal data class LoadedRaster(
     override val id: LayerId, override val name: String, override val visible: Boolean, override val opacity: Float,
     val tiles: Map<TileCoordinate, Bitmap>, val colorUsage: Map<Int, Long> = emptyMap(),
+    override val groupId: String? = null,
 ) : LoadedLayer
 
 internal data class LoadedImage(
     override val id: LayerId, override val name: String, override val visible: Boolean, override val opacity: Float,
     val assetFile: File, val transform: ImageTransform, val originalWidthPx: Int, val originalHeightPx: Int,
     val maskTiles: Map<TileCoordinate, Bitmap> = emptyMap(),
+    override val groupId: String? = null,
 ) : LoadedLayer
 
 internal object ProjectPersistence {
@@ -422,6 +428,7 @@ internal object ProjectPersistence {
                 val json = JSONObject()
                     .put("id", layer.id.value).put("name", layer.name)
                     .put("visible", layer.visible).put("opacity", layer.opacity)
+                layer.groupId?.let { json.put("groupId", it) }
                 when (layer) {
                     is SavedRasterSnapshot -> {
                         json.put("kind", "raster")
@@ -543,6 +550,7 @@ internal object ProjectPersistence {
                 val name = layer.getString("name")
                 val visible = layer.optBoolean("visible", true)
                 val opacity = layer.optDouble("opacity", 1.0).toFloat()
+                val groupId = layer.optString("groupId").takeIf { it.isNotBlank() }
                 if (layer.getString("kind") == "raster") {
                     val tileDirectory = File(directory, "layers/${id.value}/tiles")
                     val tiles = tileDirectory.listFiles().orEmpty().mapNotNull { file ->
@@ -563,7 +571,7 @@ internal object ProjectPersistence {
                             }
                         }
                     } else inferColorUsage(tiles.values)
-                    add(LoadedRaster(id, name, visible, opacity, tiles, usage))
+                    add(LoadedRaster(id, name, visible, opacity, tiles, usage, groupId))
                 } else {
                     val originalWidth = layer.getInt("originalWidthPx")
                     val originalHeight = layer.getInt("originalHeightPx")
@@ -575,7 +583,7 @@ internal object ProjectPersistence {
                             layer.getDouble("centerX").toFloat(), layer.getDouble("centerY").toFloat(),
                             layer.getDouble("scale").toFloat(), layer.optDouble("rotationDegrees", 0.0).toFloat(),
                         ),
-                        originalWidth, originalHeight, maskTiles,
+                        originalWidth, originalHeight, maskTiles, groupId,
                     ))
                 }
             }

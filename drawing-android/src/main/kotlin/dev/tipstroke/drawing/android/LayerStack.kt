@@ -28,6 +28,7 @@ internal sealed class CanvasLayerRuntime {
     abstract var visible: Boolean
     abstract var opacity: Float
     var activeAtFrame: Boolean = true
+    var groupId: String? = null
     abstract fun summary(): LayerSummary
 }
 
@@ -38,7 +39,7 @@ internal class RasterLayerRuntime(
     override var opacity: Float = 1f,
     var tiles: TileStore,
 ) : CanvasLayerRuntime() {
-    override fun summary() = LayerSummary(id, name, LayerKind.RASTER, visible, opacity)
+    override fun summary() = LayerSummary(id, name, LayerKind.RASTER, visible, opacity, groupId = groupId)
 }
 
 internal class ImageLayerRuntime(
@@ -53,7 +54,7 @@ internal class ImageLayerRuntime(
 ) : CanvasLayerRuntime() {
     override fun summary() = LayerSummary(
         id, name, LayerKind.IMAGE, visible, opacity,
-        source.width, source.height, transform.scale,
+        source.width, source.height, transform.scale, groupId,
     )
 }
 
@@ -197,7 +198,7 @@ internal class LayerStack(
     fun duplicateSelected(): List<LayerId> {
         val originals = layers.filter { it.id in selectedIds }
         if (originals.isEmpty()) return emptyList()
-        val insertionIndex = originals.maxOf { layers.indexOf(it) } + 1
+        val insertionIndex = indexAboveGroupAt(originals.maxOf { layers.indexOf(it) })
         val duplicates = originals.map(::duplicateLayer)
         layers.addAll(insertionIndex, duplicates)
         val primaryIndex = originals.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
@@ -216,7 +217,7 @@ internal class LayerStack(
             }
         }
         if (duplicates.isEmpty()) return emptyList()
-        val insertionIndex = originals.maxOf { layers.indexOf(it) } + 1
+        val insertionIndex = indexAboveGroupAt(originals.maxOf { layers.indexOf(it) })
         layers.addAll(insertionIndex, duplicates)
         selectedId = duplicates.last().id
         selectedIds.clear()
@@ -303,17 +304,69 @@ internal class LayerStack(
     fun moveSelected(towardFront: Boolean) {
         val index = layers.indexOfFirst { it.id == selectedId }
         val destination = (index + if (towardFront) 1 else -1).coerceIn(0, layers.lastIndex)
-        if (index != destination) {
-            val layer = layers.removeAt(index)
-            layers.add(destination, layer)
-            invalidate()
-        }
+        if (index != destination) reorder(selectedId, layers[destination].id, towardFront)
+    }
+
+    /** Reorders one layer in the flat painter stack. Leaving a group removes its membership. */
+    fun reorder(sourceId: LayerId, targetId: LayerId, afterTarget: Boolean): Boolean {
+        if (sourceId == targetId) return false
+        val source = layers.firstOrNull { it.id == sourceId } ?: return false
+        val target = layers.firstOrNull { it.id == targetId } ?: return false
+        val oldIndex = layers.indexOf(source)
+        val targetIndex = layers.indexOf(target)
+        // An outside drop beside a group goes beyond the whole group, preserving contiguity.
+        val sameGroup = source.groupId != null && source.groupId == target.groupId
+        val anchor = if (target.groupId != null && !sameGroup) {
+            val members = layers.indices.filter { layers[it].groupId == target.groupId }
+            if (afterTarget) members.last() else members.first()
+        } else targetIndex
+        val insertion = (anchor + if (afterTarget) 1 else 0) - if (oldIndex < anchor + if (afterTarget) 1 else 0) 1 else 0
+        if (insertion == oldIndex && (sameGroup || source.groupId == null)) return false
+        layers.removeAt(oldIndex)
+        layers.add(insertion, source)
+        if (!sameGroup) source.groupId = null
+        dissolveSingleMemberGroups()
+        invalidate()
+        return true
+    }
+
+    /** A thumbnail drop joins the target's group or creates a new two-layer group. */
+    fun group(sourceId: LayerId, targetId: LayerId): Boolean {
+        if (sourceId == targetId) return false
+        val source = layers.firstOrNull { it.id == sourceId } ?: return false
+        val target = layers.firstOrNull { it.id == targetId } ?: return false
+        if (source.groupId != null && source.groupId == target.groupId) return false
+        val groupId = target.groupId ?: UUID.randomUUID().toString()
+        layers.remove(source)
+        val targetIndex = layers.indexOf(target)
+        val members = layers.indices.filter { layers[it].groupId == groupId }
+        val insertion = if (members.isEmpty()) targetIndex + 1 else members.last() + 1
+        layers.add(insertion, source)
+        target.groupId = groupId
+        source.groupId = groupId
+        dissolveSingleMemberGroups()
+        invalidate()
+        return true
+    }
+
+    fun ungroup(groupId: String): Boolean {
+        val members = layers.filter { it.groupId == groupId }
+        if (members.isEmpty()) return false
+        members.forEach { it.groupId = null }
+        invalidate()
+        return true
+    }
+
+    private fun dissolveSingleMemberGroups() {
+        val counts = layers.mapNotNull { it.groupId }.groupingBy { it }.eachCount()
+        layers.forEach { if (it.groupId != null && counts[it.groupId] == 1) it.groupId = null }
     }
 
     fun deleteSelected(): Boolean {
         if (layers.size == 1) return false
         val index = layers.indexOfFirst { it.id == selectedId }
         val removed = layers.removeAt(index)
+        dissolveSingleMemberGroups()
         if (removed is ImageLayerRuntime) removed.source.close()
         selectedId = layers[index.coerceAtMost(layers.lastIndex)].id
         selectedIds.clear()
@@ -329,11 +382,11 @@ internal class LayerStack(
                 is RasterLayerRuntime -> SavedRasterSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity,
                     if (animation == null || animation.isBackground(layer.id)) layer.tiles.snapshotTiles() else emptyMap(),
-                    layer.tiles.snapshotColorUsage(),
+                    layer.tiles.snapshotColorUsage(), layer.groupId,
                 )
                 is ImageLayerRuntime -> SavedImageSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity, layer.source.uri,
-                    layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(),
+                    layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(), layer.groupId,
                 )
             }
         }, galleryRotationQuarterTurns.mod(4), animation?.snapshot(), backgroundColor, backgroundOpacity,
@@ -344,7 +397,7 @@ internal class LayerStack(
         layers.filterIsInstance<ImageLayerRuntime>().forEach { it.source.close() }
         layers.clear()
         loaded.layers.forEach { layer ->
-            layers += when (layer) {
+            layers += (when (layer) {
                 is LoadedRaster -> RasterLayerRuntime(
                     layer.id, layer.name, layer.visible, layer.opacity,
                     TileStore(loaded.widthPx, loaded.heightPx).apply {
@@ -357,7 +410,7 @@ internal class LayerStack(
                     OriginalImageSource(resolver, Uri.fromFile(layer.assetFile), invalidate), layer.transform,
                     mask = TileStore(layer.originalWidthPx, layer.originalHeightPx).apply { replaceTiles(layer.maskTiles) },
                 )
-            }
+            }).also { it.groupId = layer.groupId }
         }
         selectedId = loaded.selectedId
         selectedIds.clear()
@@ -462,7 +515,11 @@ internal class LayerStack(
         return red * red * .3f + green * green * .59f + blue * blue * .11f
     }
 
-    private fun indexAboveSelected() = (layers.indexOfFirst { it.id == selectedId } + 1).coerceAtMost(layers.size)
+    private fun indexAboveSelected() = indexAboveGroupAt(layers.indexOfFirst { it.id == selectedId })
+    private fun indexAboveGroupAt(index: Int): Int {
+        val groupId = layers.getOrNull(index)?.groupId ?: return (index + 1).coerceAtMost(layers.size)
+        return layers.indexOfLast { it.groupId == groupId } + 1
+    }
     private fun newRaster(name: String) = RasterLayerRuntime(newId(), name, tiles = TileStore(canvasWidth, canvasHeight))
     private fun newId() = LayerId(UUID.randomUUID().toString())
 

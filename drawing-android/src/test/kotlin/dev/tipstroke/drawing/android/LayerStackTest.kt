@@ -17,6 +17,28 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LayerStackTest {
+    @Test fun layerDropsReorderAndPreviewDropsGroupWithoutChangingArtwork() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 512, 512) {}
+        val back = stack.selectedId
+        val middle = stack.addRaster()
+        val front = stack.addRaster()
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { setPixel(8, 8, Color.RED) }
+        (stack.layers.first { it.id == middle } as RasterLayerRuntime).tiles.replaceTiles(mapOf(TileCoordinate(0, 0) to tile))
+
+        assertTrue(stack.reorder(back, front, afterTarget = true))
+        assertEquals(listOf(back, front, middle), stack.summariesFrontToBack().map { it.id })
+        assertTrue(stack.group(back, middle))
+        val group = stack.summariesFrontToBack().first { it.id == back }.groupId
+        assertNotNull(group)
+        assertEquals(group, stack.summariesFrontToBack().first { it.id == middle }.groupId)
+        assertEquals(null, stack.summariesFrontToBack().first { it.id == front }.groupId)
+        assertEquals(Color.RED, (stack.layers.first { it.id == middle } as RasterLayerRuntime).tiles.colorAt(8, 8))
+
+        assertTrue(stack.reorder(back, front, afterTarget = false))
+        assertNull(stack.summariesFrontToBack().first { it.id == back }.groupId)
+        assertNull(stack.summariesFrontToBack().first { it.id == middle }.groupId)
+    }
+
     @Test fun selectedLayersCanBeDuplicated() {
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 512, 512) {}
         val original = stack.selectedRaster()!!

@@ -23,6 +23,23 @@ import org.json.JSONObject
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProjectPersistenceTest {
+    @Test fun layerGroupsSurviveSaveAndLoad() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val id = library.newId()
+        val first = LayerId("group-first")
+        val second = LayerId("group-second")
+        val snapshot = DrawingSnapshot(16, 16, second, listOf(
+            SavedRasterSnapshot(first, "First", true, 1f, emptyMap(), groupId = "group-1"),
+            SavedRasterSnapshot(second, "Second", true, 1f, emptyMap(), groupId = "group-1"),
+        ))
+        try {
+            ProjectPersistence.save(context.contentResolver, library, id, "Grouped", snapshot).getOrThrow()
+            val loaded = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
+            assertEquals(listOf("group-1", "group-1"), loaded.layers.map { it.groupId })
+        } finally { snapshot.recycle(); library.delete(id) }
+    }
+
     @Test fun backgroundColorAndOpacitySurviveSaveAndExport() {
         val context = RuntimeEnvironment.getApplication()
         val library = DrawingLibrary(context)
