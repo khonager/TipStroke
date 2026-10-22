@@ -35,7 +35,7 @@ internal object AnimationExporter {
         }
         require(ticks.isNotEmpty() && ticks.size <= 36_000) { "Animation is too long to export" }
         when (format) {
-            AnimationExportFormat.PNG_SEQUENCE -> resolver.openOutputStream(uri, "w").use { stream ->
+            AnimationExportFormat.PNG_SEQUENCE -> resolver.openOutputStream(uri, "wt").use { stream ->
                 val output = requireNotNull(stream) { "Cannot open export destination" }
                 ZipOutputStream(output).use { zip ->
                     zip.putNextEntry(ZipEntry("timing.json"))
@@ -54,7 +54,7 @@ internal object AnimationExporter {
                     }
                 }
             }
-            AnimationExportFormat.GIF -> resolver.openOutputStream(uri, "w").use { stream ->
+            AnimationExportFormat.GIF -> resolver.openOutputStream(uri, "wt").use { stream ->
                 val output = requireNotNull(stream) { "Cannot open export destination" }
                 val first = renderFrame(ticks.first())
                 try {
@@ -72,7 +72,7 @@ internal object AnimationExporter {
                     gif.finish()
                 } finally { first.recycle() }
             }
-            AnimationExportFormat.MP4 -> resolver.openFileDescriptor(uri, "rw").use { descriptor ->
+            AnimationExportFormat.MP4 -> resolver.openFileDescriptor(uri, "rwt").use { descriptor ->
                 val file = requireNotNull(descriptor) { "Cannot open export destination" }
                 writeMp4(file.fileDescriptor, ticks, animation.fps, renderFrame)
             }
@@ -141,7 +141,8 @@ internal object AnimationExporter {
                         input = codec.dequeueInputBuffer(10_000L)
                     }
                     val image = requireNotNull(codec.getInputImage(input)) { "Video encoder has no writable image" }
-                    try { writeYuv(bitmap, image, width, height) } finally { image.close() }
+                    writeYuv(bitmap, image, width, height)
+                    // queueInputBuffer transfers ownership of the input Image back to the codec.
                     codec.queueInputBuffer(input, 0, width * height * 3 / 2, tick * 1_000_000L / fps, 0)
                     drain(false)
                 } finally { if (bitmap !== first) bitmap.recycle() }
@@ -155,6 +156,16 @@ internal object AnimationExporter {
             }
             codec.queueInputBuffer(eosInput, 0, 0, ticks.size * 1_000_000L / fps, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
             drain(true)
+            check(muxerStarted) { "Video encoder produced no track" }
+            // Explicit end timestamp gives even a single-frame clip a nonzero duration.
+            // https://developer.android.com/reference/android/media/MediaMuxer#writeSampleData(int,java.nio.ByteBuffer,android.media.MediaCodec.BufferInfo)
+            val end = MediaCodec.BufferInfo().apply {
+                set(0, 0, ticks.size * 1_000_000L / fps, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+            }
+            muxer.writeSampleData(track, java.nio.ByteBuffer.allocate(0), end)
+            // Finalization writes the MP4 index. Never report success if it fails.
+            muxer.stop()
+            muxerStarted = false
         } finally {
             first.recycle()
             runCatching { codec.stop() }
@@ -263,7 +274,8 @@ internal object AnimationExporter {
                         emit(prefix)
                         if (nextCode < 4096) {
                             dictionary[key] = nextCode++
-                            if (nextCode == (1 shl codeSize) && codeSize < 12) codeSize++
+                            // The decoder creates each entry one emitted code later than the encoder.
+                            if (nextCode > (1 shl codeSize) && codeSize < 12) codeSize++
                         } else {
                             emit(256)
                             dictionary.clear(); codeSize = 9; nextCode = 258
@@ -272,6 +284,7 @@ internal object AnimationExporter {
                     }
                 }
                 emit(prefix)
+                if (nextCode == (1 shl codeSize) && codeSize < 12) codeSize++
             }
             emit(257)
             if (bitCount > 0) bytes.write(bitBuffer and 255)

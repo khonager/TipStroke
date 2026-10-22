@@ -75,10 +75,10 @@ internal fun ProcessRecordingPlayer(
             Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Drawing progress", style = MaterialTheme.typography.titleLarge)
                 Text(stoppedReason ?: status, style = MaterialTheme.typography.bodySmall)
-                bitmap?.let { Image(it.asImageBitmap(), "Drawing progress replay", Modifier.fillMaxWidth().heightIn(max = 320.dp)) }
-                if (rendering) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text("Rendering step ${index + 1}…", style = MaterialTheme.typography.bodySmall)
+                Box(Modifier.fillMaxWidth().height(280.dp)) {
+                    bitmap?.let { Image(it.asImageBitmap(), "Drawing progress replay", Modifier.fillMaxSize()) }
+                    // Keep loading feedback inside the preview so controls never move between frames.
+                    if (rendering && !playing) LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 stoppedReason?.let {

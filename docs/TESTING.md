@@ -125,3 +125,5 @@ cancelled or invalidated hover work, and a nearby drop across a closed boundary.
 On-device, compare a quick drag against pausing briefly over the destination,
 change the duration in Settings, and check pan/drawing responsiveness on a large
 fill. Preparation can still take time; the duration setting controls the reveal.
+
+Export regressions: `AnimationExporterTest` decodes all GIF pixels with the host JVM ImageIO decoder, exercising LZW dictionary growth/reset over several noisy odd-sized frames. `ProcessImageGestureTest` checks that many drag moves create exactly one release action. Device `ProcessRecordingInstrumentedTest` also decodes short, single-frame, odd-sized MP4s and overwrites an existing export; `ProcessRecordingPlayerTest` checks stable control bounds while awaiting playback frames.

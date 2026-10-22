@@ -108,8 +108,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun createLayerStack(width: Int, height: Int): LayerStack = LayerStack(context.contentResolver, width, height) {
         if (::rasterView.isInitialized) rasterView.invalidate()
-        notifyLayers()
-        notifyVisiblePalette()
+        if (!imageGestureInProgress) { notifyLayers(); notifyVisiblePalette() }
     }
     private val liveView = InProgressStrokesView(context)
     private val tipStrokeInkBrushes = TipStrokeInkBrushes()
@@ -177,6 +176,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var chromeApproachMarginPx = 0f
     private var pressedStylusButtons = 0
     private var imageTransformMode = false
+    private var imageGestureInProgress = false
     private var selectionMode = false
     private var selectionTool = SelectionTool.LASSO
     private val selectionPoints = mutableListOf<Point>()
@@ -1211,6 +1211,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun handleTouchGesture(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                imageGestureInProgress = isTransformingImage()
                 gestureDownAt = SystemClock.uptimeMillis()
                 gestureMoved = false
                 holdTriggered = false
@@ -1274,7 +1275,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     return true
                 }
                 if (isTransformingImage()) {
-                    notifyLayers()
+                    imageGestureInProgress = false
+                    notifyLayers(); notifyVisiblePalette()
                     if (event.actionMasked == MotionEvent.ACTION_UP) finishImageRecording(event.eventTime)
                 } else if (gestureStart.size >= 2 && !gestureMoved && SystemClock.uptimeMillis() - gestureDownAt < 300) {
                     performFingerAction(if (gestureStart.size >= 3) settings.gestures.threeFingerTap else settings.gestures.twoFingerTap, null)
@@ -1291,6 +1293,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             MotionEvent.ACTION_CANCEL -> {
                 cancelHold(); cancelColorPick(); smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null; gestureStart = emptyMap()
                 motionRecording = null; publishAnimation()
+                if (imageGestureInProgress) { imageGestureInProgress = false; notifyLayers(); notifyVisiblePalette() }
             }
         }
         if (event.actionMasked == MotionEvent.ACTION_MOVE && isTransformingImage()) recordImageSample(event.eventTime)
@@ -1656,7 +1659,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
     private fun notifyLayers() {
-        processRecorder?.sync(layerStack, animation != null)
+        if (!imageGestureInProgress) processRecorder?.sync(layerStack, animation != null)
         layersListener?.invoke(
             layerStack.summariesFrontToBack(),
             layerStack.selectedId,

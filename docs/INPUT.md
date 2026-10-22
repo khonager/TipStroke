@@ -93,3 +93,5 @@ first. Undo during preparation cancels that pending fill without undoing earlier
 artwork. Saving/exporting during the reveal includes the complete fill and later
 strokes. A drop outside the canvas, a transparent color, or an identical seed color
 changes nothing.
+
+Drawing-progress recording stores an image transform only when the last finger releases it (or a cancelled gesture retains its final position). Drag/pinch/twist intermediate positions remain visible live but do not create replay steps.

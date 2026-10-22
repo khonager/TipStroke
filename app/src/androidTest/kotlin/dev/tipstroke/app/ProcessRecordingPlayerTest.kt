@@ -36,6 +36,20 @@ class ProcessRecordingPlayerTest {
         assertEquals(0f,pixel.green,.01f)
         assertEquals(0f,pixel.blue,.01f)
     }
+    @Test fun loadingNextFrameDoesNotMovePlaybackControls() {
+        var pending: ((Result<Bitmap>) -> Unit)? = null
+        show { index, callback ->
+            if (index == 1) pending = callback else handler.post { callback(Result.success(frame(index))) }
+        }
+        waitForStep(1)
+        compose.onNodeWithText("Play").performScrollTo().performClick()
+        compose.waitUntil(5_000) { pending != null }
+        val loading = compose.onNodeWithText("Restart").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { pending!!(Result.success(frame(1))) }
+        waitForStep(8)
+        assertEquals(loading,compose.onNodeWithText("Restart").fetchSemanticsNode().boundsInRoot)
+    }
+
     @Test fun delayedThirdStepStillPlaysAllEightFramesAndStops() {
         show { index, callback -> handler.postDelayed({ callback(Result.success(frame(index))) }, if(index==2) 300 else 10) }
         waitForStep(1)

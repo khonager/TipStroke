@@ -21,6 +21,45 @@ import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class ProcessRecordingInstrumentedTest {
+    @Test fun gifOpensAsAnAnimatedDrawable() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File(context.cacheDir,"progress.gif")
+        try {
+            val frames = List(3) { AnimationFrame(FrameId("$it")) }
+            val random = java.util.Random(73)
+            AnimationExporter.export(context.contentResolver,Uri.fromFile(file),
+                SavedAnimationSnapshot(frames,0,12,PlaybackMode.ONCE,0,0,0f,emptySet(),emptyMap(),emptyMap()),AnimationExportFormat.GIF) {
+                Bitmap.createBitmap(IntArray(257*259) { Color.rgb(random.nextInt(256),random.nextInt(256),random.nextInt(256)) },257,259,Bitmap.Config.ARGB_8888)
+            }
+            val drawable = ImageDecoder.decodeDrawable(ImageDecoder.createSource(file))
+            assertTrue(drawable is android.graphics.drawable.AnimatedImageDrawable)
+            assertEquals(257,drawable.intrinsicWidth)
+            assertEquals(259,drawable.intrinsicHeight)
+        } finally { file.delete() }
+    }
+
+    @Test fun shortOddSizedVideoIsPlayableAndCanReplaceExistingExport() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File(context.cacheDir,"short-progress.mp4")
+        try {
+            for (count in listOf(8,1)) {
+                val frames = List(count) { AnimationFrame(FrameId("$it")) }
+                AnimationExporter.export(context.contentResolver,Uri.fromFile(file),
+                    SavedAnimationSnapshot(frames,0,12,PlaybackMode.ONCE,0,0,0f,emptySet(),emptyMap(),emptyMap()),AnimationExportFormat.MP4) {
+                    Bitmap.createBitmap(257,259,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+                }
+                MediaMetadataRetriever().use { video ->
+                    video.setDataSource(file.absolutePath)
+                    assertEquals("258",video.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH))
+                    assertTrue(video.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)!!.toLong()>0)
+                    val frame = requireNotNull(video.getFrameAtTime(0,MediaMetadataRetriever.OPTION_CLOSEST))
+                    assertTrue(Color.red(frame.getPixel(100,100))>200)
+                    frame.recycle()
+                }
+            }
+        } finally { file.delete() }
+    }
+
     @Test fun nativeInkRoundTripsPixelsAndExportsPlayableMp4() {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val stack=LayerStack(context.contentResolver,512,512) {}
