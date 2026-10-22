@@ -136,3 +136,5 @@ release must match both the captured revision and the prepared connected region,
 so crossing a thin closed line cannot apply the wrong cached fill. Cancellation
 resumes any paused continuation only to release its resources. Native drop feedback
 is transient view decoration, separate from artwork, history, and Pencil previews.
+
+During released fill preparation, the existing worker accumulates a bounded coverage grid and publishes immutable low-resolution snapshots to the native view at most every 80 ms. The faint loading silhouette grows from real reached pixels, with a small outward bloom until the first snapshot. Request identity and document revision gate delivery; completion/cancellation clears the preview. It remains outside tiles and history and does not delay the full-resolution reveal.

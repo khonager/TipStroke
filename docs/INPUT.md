@@ -71,7 +71,7 @@ the duration stays independent of region size, canvas resolution, or zoom. Prepa
 work. A release in the same connected region reuses it, after revision and region
 checks. Merely hovering never changes artwork or history.
 
-Every actual drop immediately displays a native radar scan at the drop point: a rotating color sweep and expanding rings stay visible while preparation runs, then give way to the fill reveal. The scan indicates activity, not a measured percentage or the detected boundary.
+Every actual drop starts a small outward bloom, followed by a faint loading silhouette of the region the worker has actually reached. It expands as the search progresses and follows discovered boundaries, with no spinning indicator or second flood search. The silhouette is a low-resolution hint; the final fill retains full-resolution edges.
 It disappears when the region reveal starts. Quick drops and large regions may
 still need preparation time, but no longer leave the drop visually unacknowledged. Cleanup reaches up to two softened pixels in all eight directions, including
 diagonal corners. Recoloring replaces the old color contribution in premultiplied

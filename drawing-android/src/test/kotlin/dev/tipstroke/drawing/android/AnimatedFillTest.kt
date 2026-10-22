@@ -20,6 +20,41 @@ class AnimatedFillTest {
         while (!fill.complete) { fill.advance(); check(++iterations < 10000) }
     }
 
+    @Test fun preparationSkeletonGrowsFromRealWorkAndRespectsClosedEdges() {
+        val store = TileStore(256, 256)
+        for (y in 0 until 256) store.putFillPixel(128, y, Color.BLACK)
+        val fill = AnimatedFill(store, 64, 128, Color.RED, null, prepareReveal = true)
+        while (fill.pixelCount == 0L) fill.advance()
+        assertFalse(fill.complete)
+        val early = fill.preparationPreview()
+        assertEquals(255, Color.alpha(early.getPixel(64, 128)))
+        assertEquals(0, Color.alpha(early.getPixel(200, 128)))
+        val earlyPixels = IntArray(256 * 256)
+        early.getPixels(earlyPixels, 0, 256, 0, 0, 256, 256)
+        finish(fill)
+        val complete = fill.preparationPreview()
+        assertEquals(255, Color.alpha(complete.getPixel(127, 128)))
+        assertEquals(0, Color.alpha(complete.getPixel(128, 128)))
+        assertEquals(0, Color.alpha(complete.getPixel(129, 128)))
+        val unchanged = IntArray(earlyPixels.size)
+        early.getPixels(unchanged, 0, 256, 0, 0, 256, 256)
+        assertArrayEquals(earlyPixels, unchanged) // Published snapshots never share worker mutations.
+        assertEquals(Color.TRANSPARENT, store.colorAt(64, 128))
+        assertFalse(store.history.canUndo())
+        early.recycle(); complete.recycle(); fill.discard(); store.discard()
+    }
+
+    @Test fun preparationSkeletonMemoryIsBoundedOnLargeDocuments() {
+        val store = TileStore(8192, 4096)
+        val fill = AnimatedFill(store, 64, 64, Color.RED, null, prepareReveal = true)
+        fill.advance()
+        val preview = fill.preparationPreview()
+        assertEquals(256, preview.width)
+        assertEquals(128, preview.height)
+        assertTrue(preview.allocationByteCount <= 256 * 256 * 4)
+        preview.recycle(); fill.discard(); store.discard()
+    }
+
     @Test fun closedBoundaryContainsFillAndOneUndoRestoresSparseTiles() {
         val store = TileStore(300, 32)
         for (y in 0 until 32) store.putFillPixel(260, y, Color.BLACK)
