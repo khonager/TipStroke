@@ -4,8 +4,9 @@ import android.graphics.*
 import dev.tipstroke.core.geometry.TileCoordinate
 
 /** A visual effect only: the fill is already committed, so later strokes and undo remain normal. */
-internal class FillReveal(val masks: Map<TileCoordinate, Bitmap>, private var startedAt: Long) {
+internal class FillReveal(val masks: Map<TileCoordinate, Bitmap>, private var startedAt: Long, private val durationMillis: Long = DURATION_MS) {
     companion object { const val DURATION_MS = 2500L }
+    init { require(durationMillis in 250L..5000L) }
     val before = mutableMapOf<TileCoordinate, Bitmap?>() // Shares immutable history snapshots.
     val editedTiles = mutableSetOf<TileCoordinate>()
     private val plain = Paint()
@@ -17,7 +18,7 @@ internal class FillReveal(val masks: Map<TileCoordinate, Bitmap>, private var st
     fun start(now: Long) { startedAt = now; update(now) }
 
     fun update(now: Long): Boolean {
-        progress = ((now - startedAt).toFloat() / DURATION_MS).coerceIn(0f, 1f)
+        progress = ((now - startedAt).toFloat() / durationMillis).coerceIn(0f, 1f)
         // Mask alpha encodes arrival time; clamp a steep ramp into a threshold.
         val filter = ColorMatrixColorFilter(floatArrayOf(
             0f, 0f, 0f, 0f, 0f,

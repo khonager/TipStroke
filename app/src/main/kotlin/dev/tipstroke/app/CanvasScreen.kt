@@ -343,6 +343,8 @@ fun CanvasScreen(
     CompositionLocalProvider(LocalColorDrop provides { position, droppedColor, released ->
         colorDropPosition = if (released) null else position
         if (released && position != null) surface?.dropColor(position.x, position.y, droppedColor)
+        else if (position != null) surface?.hoverFillColor(position.x, position.y, droppedColor)
+        else surface?.cancelFillHover()
     }) {
     BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { canvasWindowOrigin = it.positionInWindow() }
         .background(MaterialTheme.colorScheme.background)) {

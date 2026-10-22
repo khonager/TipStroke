@@ -60,6 +60,43 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         pixelToolActive || (layerStack.canvasWidth <= 128 && layerStack.canvasHeight <= 128) || transform.scale >= 8f
     var transformChangedListener: ((CanvasTransform) -> Unit)? = null
 
+    internal data class FillFeedback(val x: Float, val y: Float, val color: Int, val startedAt: Long)
+    internal var fillFeedback: FillFeedback? = null
+        private set
+    private val fillFeedbackPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    fun showFillFeedback(x: Float, y: Float, color: Int) {
+        clearFillFeedback()
+        fillFeedback = FillFeedback(x, y, color, android.os.SystemClock.uptimeMillis())
+        invalidateFillFeedback()
+    }
+
+    fun clearFillFeedback() { invalidateFillFeedback(); fillFeedback = null }
+
+    fun invalidateFillFeedback() {
+        val feedback = fillFeedback ?: return
+        val point = floatArrayOf(feedback.x, feedback.y)
+        transformMatrix.mapPoints(point)
+        val radius = 32f * resources.displayMetrics.density
+        postInvalidateOnAnimation((point[0] - radius).toInt(), (point[1] - radius).toInt(),
+            (point[0] + radius).toInt() + 1, (point[1] + radius).toInt() + 1)
+    }
+
+    private fun drawFillFeedback(canvas: Canvas) {
+        val feedback = fillFeedback ?: return
+        val units = resources.displayMetrics.density / transform.scale
+        val elapsed = (android.os.SystemClock.uptimeMillis() - feedback.startedAt) % 650L
+        val progress = elapsed / 650f
+        fillFeedbackPaint.color = feedback.color
+        fillFeedbackPaint.style = Paint.Style.FILL
+        fillFeedbackPaint.alpha = 180
+        canvas.drawCircle(feedback.x, feedback.y, 4f * units, fillFeedbackPaint)
+        fillFeedbackPaint.style = Paint.Style.STROKE
+        fillFeedbackPaint.strokeWidth = 2f * units
+        fillFeedbackPaint.alpha = ((1f - progress) * 160).toInt()
+        canvas.drawCircle(feedback.x, feedback.y, (8f + 16f * progress) * units, fillFeedbackPaint)
+    }
+
     fun setPencilPreview(store: TileStore?, layerId: LayerId?) {
         pencilPreviewStore = store
         pencilPreviewLayerId = layerId
@@ -178,6 +215,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                 }
             }
         }
+        drawFillFeedback(canvas)
         previewStroke?.let { StrokeCanvasPainter.draw(canvas, it) }
         stylusHoverPreview?.let { preview -> drawStylusHoverPreview(canvas, preview) }
         if (showImageTransformBounds) drawSelectedImageBounds(canvas)

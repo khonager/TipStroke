@@ -51,6 +51,10 @@ internal class AnimatedFill(
             frontier.add(Pending(y * source.canvasWidth + x, 0f))
         }
     }
+    /** Only call after preparation has finished; confirms a nearby hover seed was in the same region. */
+    fun containsDrop(x: Int, y: Int, currentColor: Int): Boolean =
+        allowed(x, y) && distance(currentColor) <= 24 && Color.alpha(preview.colorAt(x, y)) != 0
+
     val complete get() = frontier.isEmpty()
 
     private fun allowed(x: Int, y: Int) = x in 0 until source.canvasWidth && y in 0 until source.canvasHeight &&

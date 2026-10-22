@@ -39,6 +39,16 @@ class FillRevealTest {
         return bitmap
     }
 
+    @Test fun configuredDurationUsesTheSameNormalizedTimeline() {
+        for (duration in listOf(250L, 750L, 2500L, 5000L)) {
+            val reveal = FillReveal(emptyMap(), 1000L, duration)
+            assertFalse(reveal.update(1000L + duration / 2))
+            assertEquals(.5f, reveal.progress, .001f)
+            assertFalse(reveal.update(1000L + duration - 1))
+            assertTrue(reveal.update(1000L + duration))
+        }
+    }
+
     @Test fun durationIs2500MillisecondsForDifferentAreasAndZoomLevels() {
         for (size in listOf(32, 512)) {
             val (store, reveal) = prepare(size)

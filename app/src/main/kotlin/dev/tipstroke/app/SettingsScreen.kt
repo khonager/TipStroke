@@ -81,6 +81,10 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
         Text("Primary is normally nearest the tip. Xiaomi Pad 6 button key events are also supported.", color = Color(0xFFA9ABB1), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
         StylusButtonRow("Primary pen button", "Usually the lower button", settings.stylusPrimaryButton) { onSelect(SettingsSlot.Stylus(true)) }
         StylusButtonRow("Secondary pen button", "Usually the upper button", settings.stylusSecondaryButton) { onSelect(SettingsSlot.Stylus(false)) }
+        Text("Fill animation", color = Color(0xFFF5F5F2), fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp))
+        Text("Shorter is faster. The duration stays the same at every zoom level.", color = Color(0xFFA9ABB1), fontSize = 13.sp)
+        SettingSlider("Duration", "${settings.fillAnimationMillis / 1000f} s", settings.fillAnimationMillis.toFloat(), 250f..5000f,
+            { onChange(settings.copy(fillAnimationMillis = ((it / 250f).roundToInt() * 250L).coerceIn(250L, 5000L))) })
         Text("Canvas", color = Color(0xFFF5F5F2), fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp, bottom = 10.dp))
         Row(
             Modifier.fillMaxWidth().border(1.dp, Color(0xFF3F4146), RoundedCornerShape(15.dp)).padding(16.dp),

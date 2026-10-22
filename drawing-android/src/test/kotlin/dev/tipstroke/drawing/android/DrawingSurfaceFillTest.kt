@@ -51,6 +51,69 @@ class DrawingSurfaceFillTest {
             }
     }
 
+    @Test fun dropHasImmediateFeedbackAndHonorsConfiguredDuration() {
+        val surface = surface()
+        surface.settings.gestures = GestureSettings(fillAnimationMillis = 250L)
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        val store = raster.layerStack.selectedRaster()!!.tiles
+        surface.dropColor(300f, 300f, RgbaColor(1f, 0f, 0f))
+        assertNotNull(raster.fillFeedback) // No looper/worker wait before feedback.
+        waitUntil { store.fillReveal != null }
+        assertNull(raster.fillFeedback)
+        shadowOf(Looper.getMainLooper()).idleFor(300L, TimeUnit.MILLISECONDS)
+        assertNull(store.fillReveal)
+        assertEquals(Color.RED, store.colorAt(32, 32))
+    }
+
+    private fun finishHoverWork() {
+        shadowOf(Looper.getMainLooper()).idleFor(130L, TimeUnit.MILLISECONDS)
+        val barrier = FillPreparation.executor.submit { }
+        waitUntil { barrier.isDone }
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    @Test fun stableHoverPreparesWithoutPaintingAndDropUsesReadyResultImmediately() {
+        val surface = surface()
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        val store = raster.layerStack.selectedRaster()!!.tiles
+        surface.hoverFillColor(300f, 300f, RgbaColor(1f, 0f, 0f))
+        finishHoverWork()
+        assertFalse(store.history.canUndo())
+        assertNull(raster.fillFeedback)
+        surface.dropColor(300f, 300f, RgbaColor(1f, 0f, 0f))
+        assertNotNull(store.fillReveal) // Ready result accepted in this call.
+        assertEquals(Color.RED, store.colorAt(32, 32))
+        surface.cancelFill()
+    }
+
+    @Test fun nearbyDropAcrossClosedLineDoesNotReuseWrongHoveredRegion() {
+        val surface = surface()
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        val store = raster.layerStack.selectedRaster()!!.tiles
+        for (y in 0 until 64) store.putFillPixel(32, y, Color.BLACK)
+        surface.hoverFillColor(299f, 300f, RgbaColor(1f, 0f, 0f))
+        finishHoverWork()
+        surface.dropColor(309f, 300f, RgbaColor(1f, 0f, 0f))
+        waitUntil { store.fillReveal != null }
+        assertEquals(Color.TRANSPARENT, store.colorAt(31, 32))
+        assertEquals(Color.BLACK, store.colorAt(32, 32))
+        assertEquals(Color.RED, store.colorAt(33, 32))
+        surface.cancelFill()
+    }
+
+    @Test fun cancellingOrMovingAwayFromHoverNeverCommitsIt() {
+        val surface = surface()
+        val store = (surface.getChildAt(0) as RasterCanvasView).layerStack.selectedRaster()!!.tiles
+        surface.hoverFillColor(300f, 300f, RgbaColor(1f, 0f, 0f))
+        finishHoverWork()
+        surface.hoverFillColor(400f, 400f, RgbaColor(1f, 0f, 0f))
+        surface.cancelFillHover()
+        val barrier = FillPreparation.executor.submit { }
+        waitUntil { barrier.isDone }
+        assertFalse(store.history.canUndo())
+        assertEquals(Color.TRANSPARENT, store.colorAt(32, 32))
+    }
+
     @Test fun panAndDrawingRemainAvailableForTheEntireTimedReveal() {
         val surface = surface()
         val raster = surface.getChildAt(0) as RasterCanvasView

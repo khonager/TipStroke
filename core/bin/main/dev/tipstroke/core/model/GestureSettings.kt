@@ -29,9 +29,11 @@ data class GestureSettings(
     val showStylusHoverPreview: Boolean = true,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.TOGGLE_ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.UNDO,
+    val fillAnimationMillis: Long = 2500L,
 ) {
     init {
         require(holdDelayMillis in 150L..1500L)
+        require(fillAnimationMillis in 250L..5000L)
         require(smudgeStrength in 0f..1f)
     }
 }

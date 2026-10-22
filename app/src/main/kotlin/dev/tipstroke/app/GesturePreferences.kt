@@ -12,6 +12,7 @@ class GesturePreferences(context: Context) {
         twoFingerTap = action("two_tap", FingerAction.UNDO),
         threeFingerTap = action("three_tap", FingerAction.REDO),
         holdDelayMillis = preferences.getLong("hold_delay", 420L).coerceIn(150L, 1500L),
+        fillAnimationMillis = preferences.getLong("fill_animation_ms", 2500L).coerceIn(250L, 5000L),
         smudgeStrength = preferences.getFloat("smudge_strength", .45f).coerceIn(0f, 1f),
         rotationLocked = preferences.getBoolean("rotation_locked", false),
         hideNavigationBarWhileDrawing = preferences.getBoolean("hide_navigation_bar", true),
@@ -27,6 +28,7 @@ class GesturePreferences(context: Context) {
             .putString("two_tap", settings.twoFingerTap.name)
             .putString("three_tap", settings.threeFingerTap.name)
             .putLong("hold_delay", settings.holdDelayMillis)
+            .putLong("fill_animation_ms", settings.fillAnimationMillis)
             .putFloat("smudge_strength", settings.smudgeStrength)
             .putBoolean("rotation_locked", settings.rotationLocked)
             .putBoolean("hide_navigation_bar", settings.hideNavigationBarWhileDrawing)

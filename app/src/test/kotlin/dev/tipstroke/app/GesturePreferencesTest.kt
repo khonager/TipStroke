@@ -11,6 +11,18 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class GesturePreferencesTest {
+    @Test fun fillDurationDefaultsAndClampsStoredValues() {
+        val context = RuntimeEnvironment.getApplication()
+        val storage = context.getSharedPreferences("gesture-settings", android.content.Context.MODE_PRIVATE)
+        storage.edit().clear().commit()
+        val preferences = GesturePreferences(context)
+        assertEquals(2500L, preferences.load().fillAnimationMillis)
+        storage.edit().putLong("fill_animation_ms", -100L).commit()
+        assertEquals(250L, preferences.load().fillAnimationMillis)
+        storage.edit().putLong("fill_animation_ms", 99999L).commit()
+        assertEquals(5000L, preferences.load().fillAnimationMillis)
+    }
+
     @Test fun persistsCustomFingerMappingsAndTuning() {
         val preferences = GesturePreferences(RuntimeEnvironment.getApplication())
         val expected = GestureSettings(
@@ -20,6 +32,7 @@ class GesturePreferencesTest {
             threeFingerTap = FingerAction.DISABLED,
             holdDelayMillis = 650,
             smudgeStrength = .72f,
+            fillAnimationMillis = 750L,
             rotationLocked = true,
             hideNavigationBarWhileDrawing = false,
             showStylusHoverPreview = false,

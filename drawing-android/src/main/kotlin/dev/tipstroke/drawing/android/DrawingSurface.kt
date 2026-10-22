@@ -257,7 +257,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private class FillRequest(
         val target: RasterLayerRuntime, val store: TileStore, val revision: Long,
         val x: Int, val y: Int, val color: Int, val selection: SelectionRegion?,
-    ) { @Volatile var cancelled = false }
+        @Volatile var released: Boolean,
+    ) {
+        @Volatile var cancelled = false
+        var dropX = x
+        var dropY = y
+        // Main-thread continuation: either resume a paused worker or accept a ready result.
+        var continuation: (() -> Unit)? = null
+        fun resume() { val next = continuation; continuation = null; next?.invoke() }
+    }
     private var fillRequest: FillRequest? = null
     private var revealingStore: TileStore? = null
     private val fillStep = object : Runnable {
@@ -273,98 +281,198 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
     }
 
+    private var hoverAttempted = false
+    private var hoverPoint: android.graphics.PointF? = null
+    private var hoverJob: Runnable? = null
+    private val fillFeedbackStep = object : Runnable {
+        override fun run() {
+            if (fillRequest?.released != true) return
+            rasterView.invalidateFillFeedback()
+            gestureHandler.postDelayed(this, 32L)
+        }
+    }
+
+    private fun fillPoint(windowX: Float, windowY: Float): android.graphics.PointF {
+        val location = IntArray(2)
+        getLocationInWindow(location)
+        return rasterView.screenToDocument(windowX - location[0], windowY - location[1])
+    }
+
+    private fun fillArgb(color: RgbaColor) = Color.argb((color.alpha * 255).roundToInt(),
+        (color.red * 255).roundToInt(), (color.green * 255).roundToInt(), (color.blue * 255).roundToInt())
+
+    /** One attempt per drag, after 125 ms within a 12-screen-pixel neighborhood. */
+    fun hoverFillColor(windowX: Float, windowY: Float, color: RgbaColor) {
+        if (!isEnabled || fillRequest?.released == true || revealingStore != null || activeDrawingPointerId != null) return
+        val point = fillPoint(windowX, windowY)
+        val target = layerStack.selectedRaster()?.takeIf { it.visible && it.opacity > 0f }
+        if (target == null || point.x < 0 || point.y < 0 || point.x >= canvasWidthPx || point.y >= canvasHeightPx) {
+            clearFillHover(resetAttempt = false)
+            return
+        }
+        val previous = hoverPoint
+        if (previous != null && hypot(point.x - previous.x, point.y - previous.y) * rasterView.transform.scale <= 12f) return
+        clearFillHover(resetAttempt = false)
+        if (hoverAttempted) return
+        hoverPoint = point
+        hoverJob = Runnable {
+            hoverJob = null
+            if (fillRequest == null && revealingStore == null && layerStack.selectedRaster() === target &&
+                activeDrawingPointerId == null && pendingSamples.isEmpty() && finishedSamples.isEmpty()) {
+                hoverAttempted = true
+                prepareFill(target, point.x.toInt(), point.y.toInt(), fillArgb(color), selectionRegion, released = false)
+            }
+        }.also { gestureHandler.postDelayed(it, 125L) }
+    }
+
+    private fun clearFillHover(resetAttempt: Boolean) {
+        hoverJob?.let(gestureHandler::removeCallbacks)
+        hoverJob = null
+        hoverPoint = null
+        if (fillRequest?.released == false) {
+            val request = fillRequest!!
+            fillRequest = null
+            request.cancelled = true
+            request.resume()
+        }
+        if (resetAttempt) hoverAttempted = false
+    }
+
+    fun cancelFillHover() = clearFillHover(resetAttempt = true)
+
+    private fun beginFillFeedback(x: Float, y: Float, color: Int) {
+        rasterView.showFillFeedback(x, y, color)
+        gestureHandler.removeCallbacks(fillFeedbackStep)
+        gestureHandler.post(fillFeedbackStep)
+    }
+
     /** Drop in window coordinates; the reveal clock is independent of zoom and pixel count. */
     fun dropColor(windowX: Float, windowY: Float, color: RgbaColor) {
-        if (!isEnabled || activeDrawingPointerId != null ||
-            pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+        hoverJob?.let(gestureHandler::removeCallbacks)
+        hoverJob = null
+        hoverAttempted = false
+        if (!isEnabled || activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) {
+            cancelFillHover(); return
+        }
         val target = layerStack.selectedRaster()?.takeIf { it.visible && it.opacity > 0f }
         if (target == null) {
+            cancelFillHover()
             fillListener?.invoke(false, "Choose a visible paint layer to fill.")
             return
         }
-        val location = IntArray(2)
-        getLocationInWindow(location)
-        val point = rasterView.screenToDocument(windowX - location[0], windowY - location[1])
-        if (point.x < 0 || point.y < 0 || point.x >= canvasWidthPx || point.y >= canvasHeightPx) return
-        cancelFill()
+        val point = fillPoint(windowX, windowY)
+        if (point.x < 0 || point.y < 0 || point.x >= canvasWidthPx || point.y >= canvasHeightPx) {
+            cancelFillHover(); return
+        }
+        val argb = fillArgb(color)
+        val prepared = fillRequest?.takeIf { !it.released && it.target === target && it.store === target.tiles &&
+            it.revision == target.tiles.revision && it.color == argb && it.selection == selectionRegion &&
+            hypot(point.x - it.x, point.y - it.y) * rasterView.transform.scale <= 14f }
         stopAnimationPlayback()
-        val argb = Color.argb((color.alpha * 255).roundToInt(), (color.red * 255).roundToInt(),
-            (color.green * 255).roundToInt(), (color.blue * 255).roundToInt())
-        prepareFill(target, point.x.toInt(), point.y.toInt(), argb, selectionRegion)
+        if (prepared != null) {
+            prepared.dropX = point.x.toInt(); prepared.dropY = point.y.toInt()
+            prepared.released = true
+            hoverPoint = null
+            fillListener?.invoke(true, null)
+            beginFillFeedback(point.x, point.y, argb)
+            prepared.resume()
+        } else {
+            cancelFill()
+            prepareFill(target, point.x.toInt(), point.y.toInt(), argb, selectionRegion)
+        }
     }
 
-    private fun prepareFill(target: RasterLayerRuntime, x: Int, y: Int, color: Int, selection: SelectionRegion?) {
+    private fun prepareFill(target: RasterLayerRuntime, x: Int, y: Int, color: Int, selection: SelectionRegion?, released: Boolean = true) {
         val store = target.tiles
         val source = try { store.fillSnapshot(gestureHandler) } catch (error: IllegalStateException) {
             fillListener?.invoke(false, error.message)
             return
         }
-        val request = FillRequest(target, store, store.revision, x, y, color, selection)
+        val request = FillRequest(target, store, store.revision, x, y, color, selection, released)
         fillRequest = request
-        fillListener?.invoke(true, null)
-        FillPreparation.executor.execute {
-            val fill = try { AnimatedFill(source, x, y, color, selection, prepareReveal = true) } catch (error: Exception) {
-                source.discard()
-                gestureHandler.post {
-                    if (fillRequest === request) {
-                        fillRequest = null
-                        fillListener?.invoke(false, error.message ?: "Fill could not be prepared.")
-                    }
-                }
-                return@execute
-            }
-            var masks = emptyMap<dev.tipstroke.core.geometry.TileCoordinate, android.graphics.Bitmap>()
-            val result = runCatching {
-                while (!fill.complete && !request.cancelled) fill.advance()
-                if (!request.cancelled) masks = fill.takeRevealMasks()
-            }
-            source.discard()
-            gestureHandler.post(object : Runnable {
-                fun dispose() { fill.discard(); masks.values.forEach(android.graphics.Bitmap::recycle) }
-                override fun run() {
-                    if (request.cancelled || fillRequest !== request) { dispose(); return }
-                    if (result.isFailure) {
-                        dispose(); fillRequest = null
-                        fillListener?.invoke(false, result.exceptionOrNull()?.message ?: "Fill could not be prepared.")
-                        return
-                    }
-                    if (layerStack.layers.none { it === target } || target.tiles !== store) {
-                        dispose(); cancelFill(); return
-                    }
-                    // Never insert a history transaction in the middle of a wet stroke.
-                    if (activeDrawingPointerId != null || smudgeTarget != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) {
-                        gestureHandler.postDelayed(this, 16L)
-                        return
-                    }
-                    if (store.revision != request.revision) {
-                        // Drawing during preparation changed the boundary. Recompute against
-                        // its completed pixels instead of applying a stale fill over that work.
-                        dispose(); fillRequest = null
-                        prepareFill(target, x, y, color, selection)
-                        return
-                    }
-                    fillRequest = null
-                    if (fill.pixelCount == 0L) { dispose(); fillListener?.invoke(false, null); return }
-                    val reveal = FillReveal(masks, SystemClock.uptimeMillis())
-                    reveal.update(SystemClock.uptimeMillis())
-                    store.commitFill(fill.preview, color, fill.pixelCount, reveal)
-                    fill.discard()
-                    revealingStore = store
-                    drawnColorListener?.invoke(RgbaColor(Color.red(color) / 255f, Color.green(color) / 255f,
-                        Color.blue(color) / 255f, Color.alpha(color) / 255f))
-                    notifyHistory(); notifyLayers(); notifyVisiblePalette()
-                    reveal.start(SystemClock.uptimeMillis())
-                    gestureHandler.post(fillStep)
-                }
-            })
+        if (released) {
+            fillListener?.invoke(true, null)
+            beginFillFeedback(x.toFloat(), y.toFloat(), color)
         }
+        FillPreparation.executor.execute(object : Runnable {
+            var fill: AnimatedFill? = null
+            override fun run() {
+                var masks = emptyMap<dev.tipstroke.core.geometry.TileCoordinate, android.graphics.Bitmap>()
+                val result = runCatching {
+                    if (!request.cancelled) {
+                        val active = fill ?: AnimatedFill(source, x, y, color, selection, prepareReveal = true).also { fill = it }
+                        val speculativeDeadline = System.nanoTime() + 150_000_000L
+                        while (!active.complete && !request.cancelled) {
+                            active.advance()
+                            if (!request.released && !request.cancelled && !active.complete && System.nanoTime() >= speculativeDeadline) {
+                                // Keep partial work, but spend no more CPU until release.
+                                val worker = this
+                                gestureHandler.post {
+                                    if (request.cancelled || request.released) FillPreparation.executor.execute(worker)
+                                    else request.continuation = { FillPreparation.executor.execute(worker) }
+                                }
+                                return
+                            }
+                        }
+                        if (!request.cancelled) masks = active.takeRevealMasks()
+                    }
+                }
+                source.discard()
+                gestureHandler.post(object : Runnable {
+                    fun dispose() { fill?.discard(); masks.values.forEach(android.graphics.Bitmap::recycle) }
+                    override fun run() {
+                        if (request.cancelled || fillRequest !== request) { dispose(); return }
+                        if (result.isFailure) {
+                            dispose(); fillRequest = null
+                            rasterView.clearFillFeedback()
+                            if (request.released) fillListener?.invoke(false, result.exceptionOrNull()?.message ?: "Fill could not be prepared.")
+                            return
+                        }
+                        if (!request.released) { request.continuation = { run() }; return }
+                        if (layerStack.layers.none { it === target } || target.tiles !== store) {
+                            dispose(); cancelFill(); return
+                        }
+                        if (activeDrawingPointerId != null || smudgeTarget != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) {
+                            gestureHandler.postDelayed(this, 16L)
+                            return
+                        }
+                        val active = requireNotNull(fill)
+                        val movedSeed = request.dropX != x || request.dropY != y
+                        if (store.revision != request.revision || (movedSeed &&
+                                !active.containsDrop(request.dropX, request.dropY, store.colorAt(request.dropX, request.dropY)))) {
+                            dispose(); fillRequest = null
+                            prepareFill(target, request.dropX, request.dropY, color, selection)
+                            return
+                        }
+                        fillRequest = null
+                        rasterView.clearFillFeedback()
+                        if (active.pixelCount == 0L) { dispose(); fillListener?.invoke(false, null); return }
+                        val reveal = FillReveal(masks, SystemClock.uptimeMillis(), settings.gestures.fillAnimationMillis)
+                        reveal.update(SystemClock.uptimeMillis())
+                        store.commitFill(active.preview, color, active.pixelCount, reveal)
+                        active.discard()
+                        revealingStore = store
+                        drawnColorListener?.invoke(RgbaColor(Color.red(color) / 255f, Color.green(color) / 255f,
+                            Color.blue(color) / 255f, Color.alpha(color) / 255f))
+                        notifyHistory(); notifyLayers(); notifyVisiblePalette()
+                        reveal.start(SystemClock.uptimeMillis())
+                        gestureHandler.post(fillStep)
+                    }
+                })
+            }
+        })
     }
 
     /** Stop preparation, or finish an already committed reveal without undoing newer strokes. */
     fun cancelFill() {
         gestureHandler.removeCallbacks(fillStep)
-        fillRequest?.cancelled = true
+        gestureHandler.removeCallbacks(fillFeedbackStep)
+        rasterView.clearFillFeedback()
+        clearFillHover(resetAttempt = true)
+        val pending = fillRequest
         fillRequest = null
+        pending?.cancelled = true
+        pending?.resume()
         val wasRevealing = revealingStore != null
         revealingStore?.let { store -> store.fillReveal?.discard(); store.fillReveal = null }
         revealingStore = null
