@@ -34,7 +34,7 @@ Replay retains at most 128 full-resolution tiles (32 MiB, including temporary ov
 
 An imported image adds one source-resolution PNG asset to the same 32 MiB recording archive. Transforms add only metadata, regardless of enlargement. The encoding worker decodes the source once for capture; its estimated bitmap memory is charged to the recording queue. Replay decodes visible image sources during compositing and releases each after drawing; it does not allocate enlarged image bitmaps.
 
-Fill propagation runs on a dedicated worker in cancellable batches of up to 4 ms
+Fill propagation runs on a dedicated background-priority worker in cancellable batches of up to 4 ms
 or 16,384 region pixels. Tile copies needed by the worker are scheduled one at a
 time on the main thread; the worker never reads a mutable live bitmap. Sparse
 visited bitsets, a distance-ordered frontier, and lazily captured source tiles
@@ -51,9 +51,19 @@ after conversion. Two-pixel edge cleanup has its own sparse byte visitation maps
 only softened boundaries perform the more expensive local color-mixture fitting.
 
 After preparation, commit snapshots only touched tiles under the existing undo
-budget. The visual reveal uses an elapsed 2,500 ms clock and native canvas mask
+budget. The visual reveal uses the configured 250–5,000 ms elapsed-time clock
+(default 2,500 ms) and native canvas mask
 compositing; no propagation or per-pixel raster writes occur in animation callbacks.
 Only visible tiles are drawn, affected tile bounds are invalidated, and later edits
 bypass the effect on their touched tiles. Mask work is independent of zoom and fill
 area; actual frame pacing still requires device testing. Preparation latency is
 separate from animation duration and can grow with region complexity.
+
+Color-drag preparation waits for 125 ms within a 12-screen-pixel neighborhood.
+Only one speculative attempt is allowed per drag. It runs for at most about
+150 ms plus the current bounded batch, then yields the executor and retains its
+partial result without polling or doing more CPU work. Release resumes it;
+movement away, cancellation, or detachment disposes it. Ready results still check
+layer identity/revision and connected-region membership before reuse. The native
+drop pulse invalidates a small screen-space area at about 30 Hz during remaining
+preparation. Ordinary stylus hover does not trigger fill computation.

@@ -63,9 +63,17 @@ Fill targets the selected visible paint layer and respects the current selection
 Other layers are not boundary references. Image layers must be painted on a raster
 layer instead. Color alpha is respected; brush size and brush opacity do not apply.
 
-A circular wave reveals the prepared fill over 2.5 seconds, independent of region
-size, canvas resolution, or zoom. Preparation happens on a worker; large regions
-can have a preparation delay before the timed reveal starts. Cleanup reaches up to two softened pixels in all eight directions, including
+A circular wave reveals the prepared fill over the duration chosen in Settings →
+Fill animation → Duration (0.25–5 seconds, default 2.5 seconds). Shorter is faster;
+the duration stays independent of region size, canvas resolution, or zoom. Preparation happens on a worker. Pausing the dragged color over the canvas for
+125 ms starts one bounded preparation attempt; it pauses after approximately
+150 ms of work until release. Movement away or cancellation discards speculative
+work. A release in the same connected region reuses it, after revision and region
+checks. Merely hovering never changes artwork or history.
+
+Every actual drop immediately displays a native color pulse at the drop point.
+It disappears when the region reveal starts. Quick drops and large regions may
+still need preparation time, but no longer leave the drop visually unacknowledged. Cleanup reaches up to two softened pixels in all eight directions, including
 diagonal corners. Recoloring replaces the old color contribution in premultiplied
 RGBA, so translucent edges retain their coverage without an old-color rim. Solid
 outlines stay intact. This overlap never propagates through the boundary. Open lines still

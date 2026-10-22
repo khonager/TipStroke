@@ -52,6 +52,9 @@ internal class FillReveal(val masks: Map<TileCoordinate, Bitmap>, private var st
 
 internal object FillPreparation {
     val executor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
-        Thread(task, "fill-preparation").apply { isDaemon = true }
+        Thread({
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            task.run()
+        }, "fill-preparation").apply { isDaemon = true }
     }
 }

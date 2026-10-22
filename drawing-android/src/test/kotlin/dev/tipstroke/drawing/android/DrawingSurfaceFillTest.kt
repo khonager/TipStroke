@@ -86,6 +86,19 @@ class DrawingSurfaceFillTest {
         surface.cancelFill()
     }
 
+    @Test fun largeHoverYieldsTheWorkerAndResumesOnDrop() {
+        val surface = surface().apply { configureBlank(1024, 1024) }
+        val store = (surface.getChildAt(0) as RasterCanvasView).layerStack.selectedRaster()!!.tiles
+        surface.hoverFillColor(300f, 300f, RgbaColor(1f, 0f, 0f))
+        // The worker barrier completes even if preparation exhausts its hover budget.
+        finishHoverWork()
+        assertFalse(store.history.canUndo())
+        surface.dropColor(300f, 300f, RgbaColor(1f, 0f, 0f))
+        waitUntil { store.fillReveal != null }
+        assertEquals(Color.RED, store.colorAt(1023, 1023))
+        surface.cancelFill()
+    }
+
     @Test fun nearbyDropAcrossClosedLineDoesNotReuseWrongHoveredRegion() {
         val surface = surface()
         val raster = surface.getChildAt(0) as RasterCanvasView

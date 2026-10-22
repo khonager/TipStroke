@@ -115,7 +115,8 @@ pending results. Cancellation is checked between bounded worker batches.
 Preparation also records each pixel's connectivity-aware arrival radius. These
 are stored as sparse unsigned 16-bit values, then normalized into sparse ALPHA_8
 masks. The finite document bounds result allocation; there is no 128-tile fill cutoff. `FillReveal` thresholds those masks
-against an elapsed-time clock for a 2.5-second reveal, compositing immutable
+against an elapsed-time clock using `GestureSettings.fillAnimationMillis`
+(250–5,000 ms, default 2,500), compositing immutable
 before-history tiles with current raster tiles at the original layer opacity.
 The mask and original pixels are independent of Pencil's preview. A tile modified
 after fill commit reveals immediately; later strokes and erasures remain real
@@ -126,3 +127,12 @@ artwork through ordinary history. Autosave/export and process recording use the
 complete committed pixels, never a partially revealed frame. Source snapshots,
 arrival data, and preview pixels are released after preparation/commit; reveal
 masks are released at animation completion or cancellation.
+
+Fill duration is a local app preference persisted by `GesturePreferences`, not part
+of the project format. Color-drag callbacks optionally warm one `FillRequest`
+after a stable hover. A request may pause on its worker or hold a completed result;
+its main-thread continuation resumes or accepts it only after release. A nearby
+release must match both the captured revision and the prepared connected region,
+so crossing a thin closed line cannot apply the wrong cached fill. Cancellation
+resumes any paused continuation only to release its resources. Native drop feedback
+is transient view decoration, separate from artwork, history, and Pencil previews.

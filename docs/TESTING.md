@@ -117,3 +117,11 @@ and an open background spanning 153 tiles (past the former 32 MiB rejection).
 Worker cache coverage reads beyond 128 source tiles and then reloads an evicted
 tile. Spill commit/undo checks verify the background changes while solid ink stays
 intact. Repeat on a large device canvas with open and closed contours.
+
+Fill-speed tests cover preference defaults, persistence and clamping, configured
+250–5,000 ms reveal clocks, immediate drop feedback, hover preparation without a
+commit, immediate reuse of a ready result, large-hover yielding/resumption,
+cancelled or invalidated hover work, and a nearby drop across a closed boundary.
+On-device, compare a quick drag against pausing briefly over the destination,
+change the duration in Settings, and check pan/drawing responsiveness on a large
+fill. Preparation can still take time; the duration setting controls the reveal.
