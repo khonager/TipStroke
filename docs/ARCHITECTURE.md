@@ -101,8 +101,23 @@ those pixels to the propagation queue. Translucent edges are underpainted while
 preserving their ink contribution; flattened antialiasing uses nearby stronger
 boundary contrast to replace the old background contribution. Solid outlines stay
 unchanged. This removes the thin unfilled fringe without opening closed lines.
-The existing native layer-preview compositor shows the spreading
-pixels at the target layer's position and opacity. No Ink strokes are involved.
-Completion composites only touched tiles and records one tile-snapshot transaction,
-including process-recording patches and palette usage. Autosave/export sees only
-committed artwork; cancelling or detaching discards the preview.
+Preparation runs on a dedicated worker. Source tiles are copied lazily, only when
+reached, via short main-thread tile-copy requests; no full-layer snapshot is made.
+A revision check before commit rejects inconsistent reads and retries against the
+edited layer. The result waits for any wet stroke to finish before inserting its
+single tile-snapshot history transaction. Layer/frame replacement invalidates
+pending results. Cancellation is checked between bounded worker batches.
+
+Preparation also records each pixel's connectivity-aware arrival radius. These
+are normalized into sparse ALPHA_8 masks. `FillReveal` thresholds those masks
+against an elapsed-time clock for a 2.5-second reveal, compositing immutable
+before-history tiles with current raster tiles at the original layer opacity.
+The mask and original pixels are independent of Pencil's preview. A tile modified
+after fill commit reveals immediately; later strokes and erasures remain real
+raster edits, with ordinary history order. No Ink strokes are involved in fill.
+
+Stopping or detaching discards only the visual effect once committed; undo removes
+artwork through ordinary history. Autosave/export and process recording use the
+complete committed pixels, never a partially revealed frame. Source snapshots,
+arrival data, and preview pixels are released after preparation/commit; reveal
+masks are released at animation completion or cancellation.

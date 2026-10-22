@@ -15,6 +15,7 @@ internal class AnimatedFill(
     private val y: Int,
     private val color: Int,
     private val selection: SelectionRegion?,
+    private val prepareReveal: Boolean = false,
 ) {
     val preview = TileStore(source.canvasWidth, source.canvasHeight)
     private val visited = mutableMapOf<TileCoordinate, BitSet>()
@@ -22,6 +23,15 @@ internal class AnimatedFill(
     private val frontier = PriorityQueue<Pending>(compareBy<Pending> { it.radius }.thenBy { it.pixel })
     private val target = source.colorAt(x, y)
     private var radius = 24f
+    private val arrivals = if (prepareReveal) TileStore(source.canvasWidth, source.canvasHeight) else null
+    private var arrival = 0
+    private var maximumArrival = 1
+
+    fun takeRevealMasks(): Map<TileCoordinate, android.graphics.Bitmap> =
+        arrivals?.normalizedArrivalMasks(maximumArrival).orEmpty().also { arrivals?.discard() }
+
+    fun discard() { preview.discard(); arrivals?.discard() }
+
     var pixelCount = 0L
         private set
     init {
@@ -57,6 +67,8 @@ internal class AnimatedFill(
             "Fill is too large for the preview budget. Select a smaller area and try again."
         }
         dirty += preview.putFillPixel(x, y, value)
+        arrivals?.putFillPixel(x, y, 0xff000000.toInt() or (arrival + 1))
+        maximumArrival = max(maximumArrival, arrival + 1)
         pixelCount++
     }
 
@@ -110,8 +122,9 @@ internal class AnimatedFill(
         val deadline = System.nanoTime() + 4_000_000L
         frontier.peek()?.let { if (it.radius > radius) radius += 24f }
         var processed = 0
-        while ((frontier.peek()?.radius ?: Float.POSITIVE_INFINITY) <= radius && processed < 16384 && System.nanoTime() < deadline) {
+        while (frontier.isNotEmpty() && (prepareReveal || requireNotNull(frontier.peek()).radius <= radius) && processed < 16384 && System.nanoTime() < deadline) {
             val pending = frontier.remove()
+            arrival = pending.radius.roundToInt()
             val x = pending.pixel % source.canvasWidth
             val y = pending.pixel / source.canvasWidth
             write(x, y, color, dirty)

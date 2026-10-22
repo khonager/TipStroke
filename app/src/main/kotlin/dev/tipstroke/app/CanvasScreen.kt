@@ -726,13 +726,11 @@ fun CanvasScreen(
         }
         if (filling) {
             BackHandler { surface?.cancelFill() }
-            Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}) {
-                Surface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp),
-                    shape = RoundedCornerShape(16.dp), color = Color(0xED202125)) {
-                    Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Filling paint layer…", color = Color.White)
-                        TextButton(onClick = { surface?.cancelFill() }) { Text("Cancel") }
-                    }
+            Surface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp),
+                shape = RoundedCornerShape(16.dp), color = Color(0xED202125)) {
+                Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Filling paint layer…", color = Color.White)
+                    TextButton(onClick = { surface?.cancelFill() }) { Text("Stop animation") }
                 }
             }
         }

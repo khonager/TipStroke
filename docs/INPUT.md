@@ -63,10 +63,23 @@ Fill targets the selected visible paint layer and respects the current selection
 Other layers are not boundary references. Image layers must be painted on a raster
 layer instead. Color alpha is respected; brush size and brush opacity do not apply.
 
-A faster circular wave spreads through connected, similarly colored pixels.
-A one-pixel overlap into softened edges removes the thin unfilled fringe while
-preserving solid outlines; this overlap never propagates through the boundary. Open
-lines allow the wave to escape, making leaks visible. While it spreads, drawing
-and controls are covered by a cancellable preview. Tap Cancel (or Back) to discard
-it, close the gap, and drop again. A completed fill is one Undo/Redo action. A drop
-outside the canvas, a transparent color, or an identical seed color changes nothing.
+A circular wave reveals the prepared fill over 2.5 seconds, independent of region
+size, canvas resolution, or zoom. Preparation happens on a worker; large regions
+can have a preparation delay before the timed reveal starts. A one-pixel overlap
+into softened edges removes the thin unfilled fringe while preserving solid
+outlines. This overlap never propagates through the boundary. Open lines still
+allow the wave to escape, making leaks visible.
+
+Drawing, erasing, pan, zoom, rotation, and controls remain available. The fill
+commits before its visual reveal, so subsequent strokes go above it and undo in
+normal order (newest stroke, then fill). Editing an unrevealed tile shows that tile
+immediately so the new mark or erasure is never hidden. Pencil previews are
+independent of the fill effect. Edits during preparation trigger a recomputation
+against completed strokes rather than overwriting newer work.
+
+Stop animation (or Back) cancels pending preparation, or immediately shows an
+already committed fill. Use Undo to remove a committed fill; newer strokes undo
+first. Undo during preparation cancels that pending fill without undoing earlier
+artwork. Saving/exporting during the reveal includes the complete fill and later
+strokes. A drop outside the canvas, a transparent color, or an identical seed color
+changes nothing.

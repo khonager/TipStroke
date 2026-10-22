@@ -100,6 +100,13 @@ antialiased edge overlap, preservation of solid outlines, containment, a one-pix
 selection clipping, isolated preview cancellation, no-op colors, and a single
 undo/redo transaction. `ColorDropTest` verifies tap-versus-drag behavior and window
 coordinates when releasing outside the circle. On a device, drag the current color circle in portrait and
-landscape; repeat after pan/zoom/rotation, cancel a leaking fill, close the line,
+landscape; repeat after pan/zoom/rotation, undo a leaking fill, close the line,
 refill, undo, and reopen the saved drawing. Tapping the circle must still open the
 picker. Verify translucent colors and reduced layer opacity match the final fill.
+
+`FillRevealTest` verifies the 2,500 ms timeline across areas and zoom levels, native
+mask rendering, drawing/erasing during reveal, and undo order. `DrawingSurfaceFillTest`
+checks pan and drawing input during an actual worker-prepared reveal, stale-result
+recomputation after edits, and cancellation without a delayed commit. On-device,
+repeat with Pencil and eraser while panning/pinching, change layers, stop the effect,
+and save midway; the saved image must contain the full fill and subsequent strokes.

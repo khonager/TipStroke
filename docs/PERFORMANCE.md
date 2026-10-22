@@ -34,11 +34,19 @@ Replay retains at most 128 full-resolution tiles (32 MiB, including temporary ov
 
 An imported image adds one source-resolution PNG asset to the same 32 MiB recording archive. Transforms add only metadata, regardless of enlargement. The encoding worker decodes the source once for capture; its estimated bitmap memory is charged to the recording queue. Replay decodes visible image sources during compositing and releases each after drawing; it does not allocate enlarged image bitmaps.
 
-Animated fill is scheduled in native-view frame callbacks, capped at 4 ms of
-propagation work, 16,384 region pixels, and 24 pixels of radial expansion per callback.
-A distance-ordered frontier produces circular waves and drains each radius before
-advancing it; previously the fill advanced 12 Manhattan-distance waves. Only changed
-tile bounds are invalidated. Sparse per-tile visited bitsets and a priority queue
-avoid a full-canvas bitmap. Preview bitmaps have a 32 MiB limit; exceeding it cancels
-without committing and asks the user to select a smaller area. Completion creates
-before/after snapshots of touched tiles under the existing undo-history policy.
+Fill propagation runs on a dedicated worker in cancellable batches of up to 4 ms
+or 16,384 region pixels. Tile copies needed by the worker are scheduled one at a
+time on the main thread; the worker never reads a mutable live bitmap. Sparse
+visited bitsets, a distance-ordered frontier, and lazily captured source tiles
+avoid full-canvas/layer copies. Source pixels, fill preview, and arrival data each
+have a 32 MiB bitmap ceiling; exceeding a preparation budget discards the pending
+fill without changing artwork. Arrival data becomes ALPHA_8 reveal masks (at most
+8 MiB for a 32 MiB fill) and its ARGB storage is released.
+
+After preparation, commit snapshots only touched tiles under the existing undo
+budget. The visual reveal uses an elapsed 2,500 ms clock and native canvas mask
+compositing; no propagation or per-pixel raster writes occur in animation callbacks.
+Only visible tiles are drawn, affected tile bounds are invalidated, and later edits
+bypass the effect on their touched tiles. Mask work is independent of zoom and fill
+area; actual frame pacing still requires device testing. Preparation latency is
+separate from animation duration and can grow with region complexity.

@@ -20,13 +20,20 @@ class TileStore(
     private val replayPreview = ReplayCapture()
     private val replayLive = ReplayCapture()
     private val tiles = mutableMapOf<TileCoordinate, Bitmap>()
+    private var fillTileReader: ((TileCoordinate) -> Bitmap?)? = null
+    private val sampledFillTiles = mutableSetOf<TileCoordinate>()
     val history = UndoHistory(historyBudgetBytes)
     private val tileContentBounds = mutableMapOf<TileCoordinate, Rect>()
     private val dirtyContentBoundsTiles = mutableSetOf<TileCoordinate>()
     private var contentBoundsInitialized = false
+    internal var revision = 0L
+        private set
+    internal var fillReveal: FillReveal? = null
     var lastDirtyTiles: Set<TileCoordinate> = emptySet()
         private set(value) {
             field = value
+            revision++
+            fillReveal?.editedTiles?.addAll(value)
             dirtyContentBoundsTiles += value
         }
     val allocatedTileCount get() = tiles.size
@@ -41,12 +48,14 @@ class TileStore(
 
     internal fun putFillPixel(x: Int, y: Int, color: Int): TileCoordinate {
         val coordinate = TileCoordinate(x / tileSize, y / tileSize)
+        revision++
+        fillReveal?.editedTiles?.add(coordinate)
         tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
             .setPixel(x % tileSize, y % tileSize, color)
         return coordinate
     }
 
-    internal fun commitFill(overlay: TileStore, color: Int, pixels: Long): Set<TileCoordinate> {
+    internal fun commitFill(overlay: TileStore, color: Int, pixels: Long, reveal: FillReveal? = null): Set<TileCoordinate> {
         val dirty = overlay.tiles.keys.toSet()
         if (dirty.isEmpty()) return emptySet()
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
@@ -57,7 +66,34 @@ class TileStore(
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, color to pixels))
         lastDirtyTiles = dirty
+        reveal?.before?.putAll(before)
+        fillReveal = reveal
         return dirty
+    }
+
+    /** Worker-owned source: capture only tiles it reaches, one short main-thread copy at a time.
+     * The caller checks the live revision before commit and retries any inconsistent read.
+     */
+    internal fun fillSnapshot(handler: android.os.Handler): TileStore = TileStore(canvasWidth, canvasHeight).also { snapshot ->
+        snapshot.fillTileReader = { coordinate ->
+            val copy = java.util.concurrent.FutureTask<Bitmap?> {
+                tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
+            }
+            check(handler.post(copy)) { "Drawing surface is no longer available." }
+            copy.get()
+        }
+    }
+
+    internal fun normalizedArrivalMasks(maximum: Int): Map<TileCoordinate, Bitmap> = tiles.mapValues { (_, bitmap) ->
+        val pixels = IntArray(tileSize * tileSize)
+        bitmap.getPixels(pixels, 0, tileSize, 0, 0, tileSize, tileSize)
+        for (i in pixels.indices) {
+            val arrival = pixels[i] and 0x00ffffff
+            pixels[i] = if (arrival == 0) 0 else ((1 + (arrival.toLong() * 254 / maximum).toInt()) shl 24)
+        }
+        Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ALPHA_8).apply {
+            setPixels(pixels, 0, tileSize, 0, 0, tileSize, tileSize)
+        }
     }
 
     override fun commit(stroke: CompletedStroke): Set<TileCoordinate> {
@@ -231,7 +267,10 @@ class TileStore(
             val left = coordinate.x * tileSize
             val top = coordinate.y * tileSize
             if (visible.intersects(left, top, left + tileSize, top + tileSize)) {
-                canvas.drawBitmap(bitmap, left.toFloat(), top.toFloat(), paint)
+                val reveal = fillReveal
+                if (reveal != null && coordinate in reveal.masks && coordinate !in reveal.editedTiles) {
+                    reveal.drawTile(canvas, coordinate, bitmap, paint, tileSize)
+                } else canvas.drawBitmap(bitmap, left.toFloat(), top.toFloat(), paint)
             }
         }
     }
@@ -412,6 +451,12 @@ class TileStore(
     internal fun colorAt(x: Int, y: Int): Int {
         if (x !in 0 until canvasWidth || y !in 0 until canvasHeight) return Color.TRANSPARENT
         val coordinate = TileCoordinate(x / tileSize, y / tileSize)
+        fillTileReader?.let { reader ->
+            if (sampledFillTiles.add(coordinate)) {
+                check(allocatedTileBytes < 32L * 1024 * 1024) { "Fill source exceeds the preparation budget. Select a smaller area." }
+                reader(coordinate)?.let { tiles[coordinate] = it }
+            }
+        }
         return tiles[coordinate]?.getPixel(x % tileSize, y % tileSize) ?: Color.TRANSPARENT
     }
 
