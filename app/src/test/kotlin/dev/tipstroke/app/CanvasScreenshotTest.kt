@@ -150,7 +150,8 @@ class CanvasScreenshotTest {
                 selectedId = imageId,
                 selectedIds = setOf(imageId),
                 imageTransforming = true,
-                onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {}, onRename = {}, onImageScale = {},
+                onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {}, onOpacityFinished = {},
+                onBackgroundOpacityFinished = {}, onRename = {}, onImageScale = {},
                 onFitImage = {}, onOriginalImageSize = {}, onImageTransforming = {},
                 onAddPaint = {}, onImportImage = {}, onMoveForward = {}, onMoveBackward = {}, onDuplicate = {}, onDelete = {},
             )

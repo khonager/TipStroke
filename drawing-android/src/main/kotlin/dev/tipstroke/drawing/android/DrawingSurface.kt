@@ -177,6 +177,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var pressedStylusButtons = 0
     private var imageTransformMode = false
     private var imageGestureInProgress = false
+    private var opacityAdjustmentInProgress = false
     private var selectionMode = false
     private var selectionTool = SelectionTool.LASSO
     private val selectionPoints = mutableListOf<Point>()
@@ -562,6 +563,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
     fun toggleLayerSelection(id: LayerId) { layerStack.toggleAdditionalSelection(id); notifyLayers(); notifyHistory() }
+    fun beginOpacityAdjustment() { opacityAdjustmentInProgress = true }
+    fun finishOpacityAdjustment() {
+        if (!opacityAdjustmentInProgress) return
+        opacityAdjustmentInProgress = false
+        if (!imageGestureInProgress) processRecorder?.sync(layerStack, animation != null)
+    }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
     fun setCanvasBackgroundColor(color: Int) { layerStack.setBackground(color = color); notifyLayers() }
     fun setCanvasBackgroundOpacity(opacity: Float) { layerStack.setBackground(opacity = opacity); notifyLayers() }
@@ -806,6 +813,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun configureBlank(widthPx: Int, heightPx: Int) {
         cancelFill()
         require(widthPx in 16..8192 && heightPx in 16..8192)
+        opacityAdjustmentInProgress = false
         processRecorder?.detach()
         processRecorder = null
         layerStack = createLayerStack(widthPx, heightPx)
@@ -854,6 +862,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             ProjectPersistence.mainHandler.post {
                 val result = loaded.mapCatching { project ->
+                    opacityAdjustmentInProgress = false
                     processRecorder?.detach()
                     processRecorder = null
                     val replacement = createLayerStack(project.widthPx, project.heightPx)
@@ -1674,7 +1683,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
     private fun notifyLayers() {
-        if (!imageGestureInProgress) processRecorder?.sync(layerStack, animation != null)
+        if (!imageGestureInProgress && !opacityAdjustmentInProgress) processRecorder?.sync(layerStack, animation != null)
         layersListener?.invoke(
             layerStack.summariesFrontToBack(),
             layerStack.selectedId,

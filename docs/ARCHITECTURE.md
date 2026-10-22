@@ -89,6 +89,8 @@ Project saves request a recording snapshot barrier at the same moment as the art
 
 Imported images are recorded once as source-resolution PNG assets on the encoding worker. Layer metadata retains image dimensions and center/scale/rotation; image erasing and undo use exact source-mask tile patches. Replay composites these with paint layers in document order, including visibility and opacity. Native image drag/pinch/twist defers process metadata capture and thumbnail updates until the last finger is released (or cancellation keeps its final transform). Intermediate positions are not replay steps. Transforming an image never records a canvas-sized bitmap or repeatedly re-encodes the source. Source decoding is included in the bounded recording queue estimate.
 
+Layer and background opacity sliders update the live canvas throughout a drag, but process metadata is captured once when the slider is released. Intermediate opacity values are not replay steps.
+
 ### Animated fill
 
 `AnimatedFill` reads selected-layer pixels and builds an isolated sparse tile

@@ -36,11 +36,13 @@ internal fun LayersPanel(
     backgroundOpacity: Float = 1f,
     onBackgroundColor: (Int) -> Unit = {},
     onBackgroundOpacity: (Float) -> Unit = {},
+    onBackgroundOpacityFinished: () -> Unit,
     imageTransforming: Boolean,
     onSelect: (LayerId) -> Unit,
     onToggleSelection: (LayerId) -> Unit,
     onToggleVisibility: (LayerId) -> Unit,
     onOpacity: (Float) -> Unit,
+    onOpacityFinished: () -> Unit,
     onRename: (String) -> Unit,
     onImageScale: (Float) -> Unit,
     onFitImage: () -> Unit,
@@ -54,6 +56,14 @@ internal fun LayersPanel(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val latestBackgroundOpacityFinished by rememberUpdatedState(onBackgroundOpacityFinished)
+    val latestOpacityFinished by rememberUpdatedState(onOpacityFinished)
+    DisposableEffect(Unit) {
+        onDispose {
+            latestBackgroundOpacityFinished()
+            latestOpacityFinished()
+        }
+    }
     var renameLayer by remember { mutableStateOf<LayerSummary?>(null) }
     var renameText by remember { mutableStateOf("") }
     var backgroundPickerOpen by remember { mutableStateOf(false) }
@@ -96,6 +106,7 @@ internal fun LayersPanel(
                                     renameText = layer.name
                                 },
                                 onOpacity = onOpacity,
+                                onOpacityFinished = onOpacityFinished,
                                 onImageScale = onImageScale,
                                 onFitImage = onFitImage,
                                 onOriginalImageSize = onOriginalImageSize,
@@ -116,7 +127,7 @@ internal fun LayersPanel(
                 TextButton(onClick = { backgroundPickerOpen = true }) { Text("Color") }
             }
             ValueHeader("Background opacity", "${(backgroundOpacity * 100).roundToInt()}%")
-            Slider(backgroundOpacity, onBackgroundOpacity, valueRange = 0f..1f,
+            Slider(backgroundOpacity, onBackgroundOpacity, onValueChangeFinished = onBackgroundOpacityFinished, valueRange = 0f..1f,
                 modifier = Modifier.fillMaxWidth().height(40.dp))
             HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color(0xFF3B3D42))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -190,6 +201,7 @@ private fun LayerControls(
     imageTransforming: Boolean,
     onRename: () -> Unit,
     onOpacity: (Float) -> Unit,
+    onOpacityFinished: () -> Unit,
     onImageScale: (Float) -> Unit,
     onFitImage: () -> Unit,
     onOriginalImageSize: () -> Unit,
@@ -203,7 +215,8 @@ private fun LayerControls(
             TextButton(onClick = onRename, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(32.dp)) { Text("Rename", fontSize = 11.sp) }
         }
         ValueHeader("Layer opacity", "${(layer.opacity * 100).roundToInt()}%")
-        Slider(layer.opacity, onOpacity, valueRange = 0f..1f, modifier = Modifier.fillMaxWidth().height(40.dp))
+        Slider(layer.opacity, onOpacity, onValueChangeFinished = onOpacityFinished,
+            valueRange = 0f..1f, modifier = Modifier.fillMaxWidth().height(40.dp))
         if (layer.kind == LayerKind.IMAGE) {
             FilledTonalButton(
                 onClick = { onImageTransforming(!imageTransforming) },

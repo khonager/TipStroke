@@ -608,7 +608,8 @@ fun CanvasScreen(
                 backgroundColor = backgroundColor,
                 backgroundOpacity = backgroundOpacity,
                 onBackgroundColor = { surface?.setCanvasBackgroundColor(it) },
-                onBackgroundOpacity = { surface?.setCanvasBackgroundOpacity(it) },
+                onBackgroundOpacity = { surface?.apply { beginOpacityAdjustment(); setCanvasBackgroundOpacity(it) } },
+                onBackgroundOpacityFinished = { surface?.finishOpacityAdjustment() },
                 imageTransforming = imageTransforming,
                 onSelect = {
                     movingSelection = false
@@ -617,7 +618,8 @@ fun CanvasScreen(
                 },
                 onToggleSelection = { surface?.toggleLayerSelection(it) },
                 onToggleVisibility = { surface?.toggleLayerVisibility(it) },
-                onOpacity = { surface?.setSelectedLayerOpacity(it) },
+                onOpacity = { surface?.apply { beginOpacityAdjustment(); setSelectedLayerOpacity(it) } },
+                onOpacityFinished = { surface?.finishOpacityAdjustment() },
                 onRename = { surface?.renameSelectedLayer(it) },
                 onImageScale = { surface?.setSelectedImageScale(it) },
                 onFitImage = { surface?.fitSelectedImage() },
