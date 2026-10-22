@@ -260,6 +260,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         @Volatile var released: Boolean,
     ) {
         @Volatile var cancelled = false
+        @Volatile var progressPending = false
         var dropX = x
         var dropY = y
         // Main-thread continuation: either resume a paused worker or accept a ready result.
@@ -396,6 +397,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
         FillPreparation.executor.execute(object : Runnable {
             var fill: AnimatedFill? = null
+            var lastProgressAt = 0L
             override fun run() {
                 var masks = emptyMap<dev.tipstroke.core.geometry.TileCoordinate, android.graphics.Bitmap>()
                 val result = runCatching {
@@ -404,6 +406,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         val speculativeDeadline = System.nanoTime() + 150_000_000L
                         while (!active.complete && !request.cancelled) {
                             active.advance()
+                            val now = SystemClock.uptimeMillis()
+                            if (request.released && !request.cancelled && !request.progressPending &&
+                                !active.complete && now - lastProgressAt >= 80L) {
+                                lastProgressAt = now
+                                request.progressPending = true
+                                val preview = active.preparationPreview()
+                                gestureHandler.post {
+                                    request.progressPending = false
+                                    if (!request.cancelled && fillRequest === request && store.revision == request.revision) {
+                                        rasterView.updateFillPreparation(preview, active.progressCellSize)
+                                    } else preview.recycle()
+                                }
+                            }
                             if (!request.released && !request.cancelled && !active.complete && System.nanoTime() >= speculativeDeadline) {
                                 // Keep partial work, but spend no more CPU until release.
                                 val worker = this

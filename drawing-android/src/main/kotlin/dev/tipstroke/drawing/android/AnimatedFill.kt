@@ -27,6 +27,21 @@ internal class AnimatedFill(
     private val edgeDepths = mutableMapOf<TileCoordinate, ByteArray>()
     private var arrival = 0
     private var maximumArrival = 1
+    // Bounded loading silhouette, accumulated by the existing flood rather than a second search.
+    internal val progressCellSize = ((max(source.canvasWidth, source.canvasHeight) + 255) / 256).coerceAtLeast(1)
+    private val progressWidth = (source.canvasWidth + progressCellSize - 1) / progressCellSize
+    private val progressHeight = (source.canvasHeight + progressCellSize - 1) / progressCellSize
+    private val progressCounts = if (prepareReveal) IntArray(progressWidth * progressHeight) else null
+
+    fun preparationPreview(): android.graphics.Bitmap {
+        val counts = requireNotNull(progressCounts)
+        val pixels = IntArray(counts.size) { i ->
+            val width = min(progressCellSize, source.canvasWidth - (i % progressWidth) * progressCellSize)
+            val height = min(progressCellSize, source.canvasHeight - (i / progressWidth) * progressCellSize)
+            ((counts[i] * 255 / (width * height)).coerceAtMost(255) shl 24) or 0x00ffffff
+        }
+        return android.graphics.Bitmap.createBitmap(pixels, progressWidth, progressHeight, android.graphics.Bitmap.Config.ARGB_8888)
+    }
 
     fun takeRevealMasks(): Map<TileCoordinate, android.graphics.Bitmap> {
         val pixels = IntArray(256 * 256)
@@ -84,6 +99,7 @@ internal class AnimatedFill(
         arrivals?.getOrPut(TileCoordinate(x / 256, y / 256)) { ShortArray(256 * 256) }
             ?.set((y % 256) * 256 + x % 256, (arrival + 1).toShort())
         maximumArrival = max(maximumArrival, arrival + 1)
+        progressCounts?.let { it[(y / progressCellSize) * progressWidth + x / progressCellSize]++ }
         pixelCount++
     }
 

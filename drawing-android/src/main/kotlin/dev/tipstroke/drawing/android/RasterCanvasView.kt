@@ -64,22 +64,35 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     internal var fillFeedback: FillFeedback? = null
         private set
     private val fillFeedbackPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var fillScanShader: SweepGradient? = null
+    private var fillPreparationPreview: Bitmap? = null
+    private var fillPreparationCellSize = 1
+    private val fillPreparationBounds = RectF()
 
     fun showFillFeedback(x: Float, y: Float, color: Int) {
         clearFillFeedback()
         fillFeedback = FillFeedback(x, y, color, android.os.SystemClock.uptimeMillis())
-        val rgb = color and 0x00FFFFFF
-        fillScanShader = SweepGradient(0f, 0f,
-            intArrayOf(rgb, rgb, rgb or (90 shl 24), rgb),
-            floatArrayOf(0f, .65f, .995f, 1f))
+        fillFeedbackPaint.colorFilter = PorterDuffColorFilter(color or 0xff000000.toInt(), PorterDuff.Mode.SRC_IN)
         invalidateFillFeedback()
     }
 
-    fun clearFillFeedback() { invalidateFillFeedback(); fillFeedback = null; fillScanShader = null }
+    fun updateFillPreparation(preview: Bitmap, cellSize: Int) {
+        if (fillFeedback == null) { preview.recycle(); return }
+        fillPreparationPreview?.recycle()
+        fillPreparationPreview = preview
+        fillPreparationCellSize = cellSize
+        invalidate()
+    }
+
+    fun clearFillFeedback() {
+        if (fillPreparationPreview != null) invalidate() else invalidateFillFeedback()
+        fillPreparationPreview?.recycle()
+        fillPreparationPreview = null
+        fillFeedback = null
+    }
 
     fun invalidateFillFeedback() {
         val feedback = fillFeedback ?: return
+        if (fillPreparationPreview != null) return // Worker snapshots drive updates once progress arrives.
         val point = floatArrayOf(feedback.x, feedback.y)
         transformMatrix.mapPoints(point)
         val radius = 32f * resources.displayMetrics.density
@@ -89,53 +102,25 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
 
     private fun drawFillFeedback(canvas: Canvas) {
         val feedback = fillFeedback ?: return
-        val units = resources.displayMetrics.density / transform.scale
-        val elapsed = android.os.SystemClock.uptimeMillis() - feedback.startedAt
-        val sweep = (elapsed % 1200L) / 1200f
-        val ripple = (elapsed % 900L) / 900f
         val paint = fillFeedbackPaint
-        val radius = 27f * units
-        canvas.save()
-        canvas.translate(feedback.x, feedback.y)
-
-        // A small radar sweep indicates preparation, not a percentage or a guessed fill boundary.
-        canvas.save()
-        canvas.rotate(sweep * 360f - 90f)
         paint.style = Paint.Style.FILL
-        paint.alpha = 255
-        paint.shader = fillScanShader
-        canvas.drawCircle(0f, 0f, radius, paint)
-        paint.shader = null
-        paint.color = feedback.color
-        paint.alpha = 210
-        paint.strokeWidth = 1.5f * units
-        canvas.drawLine(4f * units, 0f, radius, 0f, paint)
-        canvas.restore()
-
-        // Contrasting hairlines keep even a white or black drop visible on matching artwork.
-        paint.style = Paint.Style.STROKE
-        paint.color = Color.BLACK
-        paint.alpha = 65
-        paint.strokeWidth = 2.5f * units
-        canvas.drawCircle(0f, 0f, radius, paint)
-        paint.color = Color.WHITE
-        paint.alpha = 130
-        paint.strokeWidth = units
-        canvas.drawCircle(0f, 0f, radius, paint)
-        paint.color = feedback.color
-        repeat(2) { ring ->
-            val phase = (ripple + ring * .5f) % 1f
-            paint.alpha = ((1f - phase) * 150).toInt()
-            canvas.drawCircle(0f, 0f, (5f + 22f * phase) * units, paint)
+        paint.isFilterBitmap = true
+        val preview = fillPreparationPreview
+        if (preview != null) {
+            // A translucent skeleton of the reachable region, not permanent paint.
+            paint.alpha = 72
+            fillPreparationBounds.set(0f, 0f, (preview.width * fillPreparationCellSize).toFloat(),
+                (preview.height * fillPreparationCellSize).toFloat())
+            canvas.drawBitmap(preview, null, fillPreparationBounds, paint)
+        } else {
+            // Immediate outward response before the worker returns its first bounded batch.
+            val units = resources.displayMetrics.density / transform.scale
+            val elapsed = (android.os.SystemClock.uptimeMillis() - feedback.startedAt).coerceAtLeast(0L)
+            val progress = (elapsed / 120f).coerceAtMost(1f)
+            paint.color = feedback.color
+            paint.alpha = 60
+            canvas.drawCircle(feedback.x, feedback.y, (3f + 9f * progress) * units, paint)
         }
-        paint.style = Paint.Style.FILL
-        paint.color = Color.WHITE
-        paint.alpha = 220
-        canvas.drawCircle(0f, 0f, 4.5f * units, paint)
-        paint.color = feedback.color
-        paint.alpha = 255
-        canvas.drawCircle(0f, 0f, 3f * units, paint)
-        canvas.restore()
     }
 
     fun setPencilPreview(store: TileStore?, layerId: LayerId?) {
