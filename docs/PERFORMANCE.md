@@ -65,5 +65,5 @@ Only one speculative attempt is allowed per drag. It runs for at most about
 partial result without polling or doing more CPU work. Release resumes it;
 movement away, cancellation, or detachment disposes it. Ready results still check
 layer identity/revision and connected-region membership before reuse. The native
-drop pulse invalidates a small screen-space area at about 30 Hz during remaining
+drop scan reuses a gradient created once per drop and invalidates a small screen-space area at about 30 Hz during remaining
 preparation. Ordinary stylus hover does not trigger fill computation.
