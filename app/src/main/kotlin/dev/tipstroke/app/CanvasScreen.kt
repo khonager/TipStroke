@@ -632,6 +632,7 @@ fun CanvasScreen(
                 onReorder = { source, target, front -> surface?.reorderLayer(source, target, front) },
                 onGroup = { source, target -> surface?.groupLayer(source, target) },
                 onUngroup = { groupId -> surface?.ungroupLayers(groupId) },
+                onSelectGroup = { groupId -> movingSelection = false; imageTransforming = false; surface?.selectLayerGroup(groupId) },
                 onDuplicate = { imageTransforming = false; surface?.duplicateSelectedLayers() },
                 onDelete = { surface?.deleteSelectedLayer() },
                 modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)

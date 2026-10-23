@@ -122,6 +122,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val rasterizedLive: Boolean = false,
         val reveal: StrokeRecording? = null,
     )
+    private var multiEraseTargets = emptyList<Pair<StrokeTarget, StrokeStyle>>()
+    private val multiEraseSamples = mutableListOf<StrokeSample>()
     private val pendingTargets = mutableMapOf<Int, StrokeTarget>()
     private var customPreviewStyle: StrokeStyle? = null
     private var rasterPreviewStyle: StrokeStyle? = null
@@ -248,6 +250,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     override fun onDetachedFromWindow() {
         cancelFill()
+        cancelMultiErase()
+        clearMovePreview()
         stopAnimationPlayback()
         gestureHandler.removeCallbacks(hideBrushPreview)
         rasterView.stylusHoverPreview = null
@@ -561,6 +565,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map {
         animation?.register(layerStack.selected()); notifyLayers(); notifyHistory(); publishAnimation()
     }
+    fun selectLayerGroup(groupId: String) { layerStack.selectGroup(groupId); notifyLayers(); notifyHistory() }
     fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
     fun toggleLayerSelection(id: LayerId) { layerStack.toggleAdditionalSelection(id); notifyLayers(); notifyHistory() }
     fun beginOpacityAdjustment() { opacityAdjustmentInProgress = true }
@@ -601,12 +606,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(true, selectionRegion != null)
     }
     fun setSelectionMoveMode(enabled: Boolean) {
+        if (enabled && selectionRegion == null) selectAll()
+        if (!enabled) clearMovePreview()
         selectionMoveMode = enabled && selectionRegion != null &&
             (layerStack.selectedRasters().isNotEmpty() || layerStack.selectedImages().isNotEmpty())
         if (selectionMoveMode) selectionMode = false
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
     fun clearSelection() {
+        clearMovePreview()
         selectionRegion = null
         selectionPoints.clear()
         selectionMoveStart = null
@@ -1045,6 +1053,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun handleStylus(event: MotionEvent): Boolean {
+        val startsMultiErase = event.actionMasked == MotionEvent.ACTION_DOWN &&
+            layerStack.selectedLayerIds().size > 1 && currentStyle(event, event.actionIndex).blend == BlendBehavior.ERASE
+        if (multiEraseTargets.isNotEmpty() || startsMultiErase) return handleMultiErase(event)
         val pointerId = activeDrawingPointerId ?: event.getPointerId(event.actionIndex)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
@@ -1375,41 +1386,143 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
 
+    private fun clearMovePreview() {
+        selectionMoveStart = null
+        rasterView.movingLayerIds = emptySet()
+        rasterView.movingSelectionPath = null
+        rasterView.selectionPreviewOffset = Point(0f, 0f)
+    }
+
     private fun handleSelectionMove(event: MotionEvent): Boolean {
         val selection = selectionRegion ?: return true
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val point = rasterView.screenToDocument(event.x, event.y)
                 selectionMoveStart = point.takeIf { selection.contains(Point(it.x, it.y)) }
+                if (selectionMoveStart != null) {
+                    requestUnbufferedDispatch(event)
+                    rasterView.movingLayerIds = layerStack.selectedLayerIds()
+                    rasterView.movingSelectionPath = selection.toAndroidPath()
+                }
             }
             MotionEvent.ACTION_MOVE -> selectionMoveStart?.let { start ->
                 val point = rasterView.screenToDocument(event.x, event.y)
                 rasterView.selectionPreviewOffset = Point(point.x - start.x, point.y - start.y)
             }
             MotionEvent.ACTION_UP -> selectionMoveStart?.let { start ->
+                if (Build.VERSION.SDK_INT >= 33 && event.flags and MotionEvent.FLAG_CANCELED != 0) {
+                    clearMovePreview()
+                    return true
+                }
                 val point = rasterView.screenToDocument(event.x, event.y)
                 val deltaX = point.x - start.x
                 val deltaY = point.y - start.y
-                val stores = layerStack.selectedRasters().map { it.tiles }
-                val images = layerStack.selectedImages()
-                if (stores.isNotEmpty() || images.isNotEmpty()) {
-                    val dirty = stores.flatMapTo(mutableSetOf()) { it.moveSelection(selection, deltaX, deltaY) }
-                    rasterView.invalidateTiles(dirty)
-                    layerStack.translateSelectedImages(deltaX, deltaY)
+                val edits = mutableListOf<UndoTransaction>()
+                val movingLayers = layerStack.layers.filter { it.id in rasterView.movingLayerIds && it.activeAtFrame }
+                if (abs(deltaX) >= .01f || abs(deltaY) >= .01f) {
+                    movingLayers.forEach { layer ->
+                        when (layer) {
+                            is RasterLayerRuntime -> {
+                                if (layer.tiles.moveSelection(selection, deltaX, deltaY).isNotEmpty()) {
+                                    layer.tiles.history.takeLatestUndoTransaction()?.let(edits::add)
+                                }
+                            }
+                            is ImageLayerRuntime -> {
+                                val before = layer.transform
+                                val after = before.changedBy(deltaX, deltaY)
+                                layer.transform = after
+                                edits += object : UndoTransaction {
+                                    override val estimatedBytes = 64L
+                                    override fun undo() { layer.transform = before }
+                                    override fun redo() { layer.transform = after }
+                                }
+                            }
+                        }
+                    }
+                    commitCompoundEdit(edits)
                     selectionRegion = selection.translated(deltaX, deltaY)
                     rasterView.selectionRegion = selectionRegion
-                    notifyHistory()
-                    notifyLayers()
                 }
-                rasterView.selectionPreviewOffset = Point(0f, 0f)
-                selectionMoveStart = null
+                clearMovePreview()
+                notifyHistory(); notifyLayers(); notifyVisiblePalette()
             }
-            MotionEvent.ACTION_CANCEL -> {
-                rasterView.selectionPreviewOffset = Point(0f, 0f)
-                selectionMoveStart = null
-            }
+            MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> clearMovePreview()
         }
         return true
+    }
+
+    /** Owns the constituent snapshots once, under the primary layer's bounded history. */
+    private fun commitCompoundEdit(edits: List<UndoTransaction>) {
+        if (edits.isEmpty()) return
+        layerStack.selectedStore()?.history?.push(object : UndoTransaction {
+            override val estimatedBytes = edits.sumOf { it.estimatedBytes }
+            override fun undo() { edits.asReversed().forEach { it.undo() } }
+            override fun redo() { edits.forEach { it.redo() } }
+        })
+    }
+
+    private fun handleMultiErase(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                cancelColorPick()
+                val baseStyle = currentStyle(event, event.actionIndex)
+                val ids = layerStack.selectedLayerIds()
+                multiEraseTargets = layerStack.layers.filter { it.id in ids && it.activeAtFrame }.map { layer ->
+                    val target = when (layer) {
+                        is RasterLayerRuntime -> StrokeTarget(layer.tiles)
+                        is ImageLayerRuntime -> StrokeTarget(layer.mask, layer)
+                    }
+                    target.store.beginLiveStroke()
+                    target to styleForTarget(baseStyle, target)
+                }
+                if (multiEraseTargets.isEmpty()) return true
+                requestUnbufferedDispatch(event)
+                activeDrawingPointerId = event.getPointerId(event.actionIndex)
+                multiEraseSamples.clear()
+                appendMultiErase(listOf(sample(event, event.actionIndex)))
+                updateChromeOcclusion(event, event.actionIndex)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val index = event.findPointerIndex(activeDrawingPointerId ?: return true)
+                if (index >= 0) appendMultiErase(buildList {
+                    for (history in 0 until event.historySize) add(sample(event, index, history))
+                    add(sample(event, index))
+                })
+                if (index >= 0) updateChromeOcclusion(event, index)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (event.getPointerId(event.actionIndex) != activeDrawingPointerId) return true
+                if (Build.VERSION.SDK_INT >= 33 && event.flags and MotionEvent.FLAG_CANCELED != 0) {
+                    cancelMultiErase(); return true
+                }
+                appendMultiErase(listOf(sample(event, event.actionIndex)))
+                val edits = multiEraseTargets.mapNotNull { (target, style) ->
+                    val stroke = CompletedStroke(multiEraseSamples.map { it.forTarget(target) }, style)
+                    if (target.store.finishLiveStroke(stroke).isNotEmpty()) target.store.history.takeLatestUndoTransaction() else null
+                }
+                commitCompoundEdit(edits)
+                multiEraseTargets = emptyList(); multiEraseSamples.clear(); activeDrawingPointerId = null
+                setChromeOccludedByStroke(false)
+                notifyHistory(); notifyLayers(); notifyVisiblePalette()
+            }
+            MotionEvent.ACTION_CANCEL -> cancelMultiErase()
+        }
+        emitDiagnostics(event, event.actionIndex)
+        return true
+    }
+
+    private fun appendMultiErase(additions: List<StrokeSample>) {
+        val segment = multiEraseSamples.takeLast(1) + additions
+        multiEraseSamples += additions
+        multiEraseTargets.forEach { (target, style) ->
+            invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(segment.map { it.forTarget(target) }, style)))
+        }
+    }
+
+    private fun cancelMultiErase() {
+        multiEraseTargets.forEach { (target, _) -> invalidateTarget(target, target.store.cancelLiveStroke()) }
+        multiEraseTargets = emptyList(); multiEraseSamples.clear(); activeDrawingPointerId = null
+        setChromeOccludedByStroke(false)
     }
 
     private fun scheduleHold(documentPoint: android.graphics.PointF) {
@@ -1548,6 +1661,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun cancelActiveStroke(event: MotionEvent, pointerId: Int) {
+        if (multiEraseTargets.isNotEmpty()) { cancelMultiErase(); return }
         if (customPreviewStyle == null && rasterPreviewStyle == null) {
             liveView.cancelStroke(event, pointerId)
         }

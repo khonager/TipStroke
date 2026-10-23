@@ -41,6 +41,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         set(value) { field = value; invalidate() }
     var selectionDraftPoints: List<Point> = emptyList()
         set(value) { field = value; invalidate() }
+    var movingLayerIds: Set<LayerId> = emptySet()
+    var movingSelectionPath: Path? = null
     var selectionPreviewOffset = Point(0f, 0f)
         set(value) { field = value; invalidate() }
     var showImageTransformBounds = false
@@ -214,7 +216,10 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             when (layer) {
                 is RasterLayerRuntime -> {
                     val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
-                    if (preview == null) {
+                    val movingPath = movingSelectionPath.takeIf { layer.id in movingLayerIds }
+                    if (movingPath != null) {
+                        drawMovingRaster(canvas, layer, movingPath)
+                    } else if (preview == null) {
                         bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
                         layer.tiles.draw(canvas, bitmapPaint)
                     } else if (layer.opacity >= .999f) {
@@ -237,7 +242,11 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                 }
                 is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { bitmap ->
                     bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
-                    drawImageLayer(canvas, layer, bitmap)
+                    val offset = selectionPreviewOffset
+                    val imageTransform = if (layer.id in movingLayerIds) layer.transform.copy(
+                        centerX = layer.transform.centerX + offset.x, centerY = layer.transform.centerY + offset.y,
+                    ) else layer.transform
+                    drawImageLayer(canvas, layer, bitmap, imageTransform)
                 }
             }
         }
@@ -264,6 +273,27 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             canvas.drawCircle(sample.position.x, sample.position.y, radius, previewOutlinePaint)
             canvas.restore()
         }
+    }
+
+    /** Reuses sparse source tiles; pointer moves only update a translation and invalidate. */
+    private fun drawMovingRaster(canvas: Canvas, layer: RasterLayerRuntime, path: Path) {
+        val opacity = (layer.opacity * 255).toInt().coerceIn(0, 255)
+        val group = if (opacity < 255) {
+            layerOpacityPaint.alpha = opacity
+            val bounds = canvas.clipBounds
+            canvas.saveLayer(RectF(bounds), layerOpacityPaint)
+        } else canvas.save()
+        bitmapPaint.alpha = 255
+        val stationary = canvas.save()
+        canvas.clipOutPath(path)
+        layer.tiles.draw(canvas, bitmapPaint)
+        canvas.restoreToCount(stationary)
+        val moving = canvas.save()
+        canvas.translate(selectionPreviewOffset.x, selectionPreviewOffset.y)
+        canvas.clipPath(path)
+        layer.tiles.draw(canvas, bitmapPaint)
+        canvas.restoreToCount(moving)
+        canvas.restoreToCount(group)
     }
 
     private fun drawOnionForLayer(canvas: Canvas, layer: CanvasLayerRuntime) {

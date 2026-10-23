@@ -662,13 +662,13 @@ class TileStore(
             canvas.save()
             canvas.translate((-destination.x * tileSize).toFloat(), (-destination.y * tileSize).toFloat())
             canvas.clipPath(destinationPath)
-            selectedPixels.forEach { (source, snapshot) ->
-                canvas.drawBitmap(
-                    snapshot,
-                    source.x * tileSize + deltaX,
-                    source.y * tileSize + deltaY,
-                    copyPaint,
-                )
+            // A translated destination tile overlaps at most four source tiles.
+            // Avoid scanning the entire selection for every destination tile.
+            val sourceLeft = floor((destination.x * tileSize - deltaX) / tileSize).toInt()
+            val sourceTop = floor((destination.y * tileSize - deltaY) / tileSize).toInt()
+            for (y in sourceTop..sourceTop + 1) for (x in sourceLeft..sourceLeft + 1) {
+                val snapshot = selectedPixels[TileCoordinate(x, y)] ?: continue
+                canvas.drawBitmap(snapshot, x * tileSize + deltaX, y * tileSize + deltaY, copyPaint)
             }
             canvas.restore()
         }

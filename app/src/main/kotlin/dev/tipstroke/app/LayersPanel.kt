@@ -65,6 +65,7 @@ internal fun LayersPanel(
     onReorder: (LayerId, LayerId, Boolean) -> Unit = { _, _, _ -> },
     onGroup: (LayerId, LayerId) -> Unit = { _, _ -> },
     onUngroup: (String) -> Unit = {},
+    onSelectGroup: (String) -> Unit = {},
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
@@ -189,8 +190,9 @@ internal fun LayersPanel(
                     Column {
                         if (layer.groupId != null && layers.getOrNull(layers.indexOf(layer) - 1)?.groupId != layer.groupId) {
                             Row(Modifier.fillMaxWidth().padding(top = 5.dp, start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Group · ${layers.count { it.groupId == layer.groupId }} layers", color = Color(0xFFB8C9E5), fontSize = 11.sp,
-                                    modifier = Modifier.weight(1f))
+                                Text("${if (layers.filter { it.groupId == layer.groupId }.all { it.id in selectedIds }) "✓ " else ""}Group · ${layers.count { it.groupId == layer.groupId }} layers", color = Color(0xFFB8C9E5), fontSize = 11.sp,
+                                    modifier = Modifier.weight(1f).clickable { onSelectGroup(layer.groupId!!) }
+                                        .padding(vertical = 8.dp).semantics { contentDescription = "Select group" })
                                 TextButton(onClick = { onUngroup(layer.groupId!!) }, modifier = Modifier.height(28.dp),
                                     contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Ungroup", fontSize = 10.sp) }
                             }

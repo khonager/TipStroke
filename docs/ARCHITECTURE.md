@@ -142,3 +142,9 @@ resumes any paused continuation only to release its resources. Native drop feedb
 is transient view decoration, separate from artwork, history, and Pencil previews.
 
 During released fill preparation, the existing worker accumulates a bounded coverage grid and publishes immutable low-resolution snapshots to the native view at most every 80 ms. The faint loading silhouette grows from real reached pixels, with a small outward bloom until the first snapshot. Request identity and document revision gate delivery; completion/cancellation clears the preview. It remains outside tiles and history and does not delay the full-resolution reveal.
+
+## Multi-layer editing and move previews
+
+Group selection expands to stable member layer IDs. A multi-layer erase captures its targets at pointer-down, transforms samples and the selection into each image’s source coordinates, and edits only newly touched tiles. Completed target transactions are transferred into one compound transaction in the primary layer’s bounded history; cancelled gestures restore all live targets. Image sources remain immutable.
+
+During a selection move, `RasterCanvasView` draws each selected raster layer outside the original selection and draws the selected portion again with the live translation. Selected images use translated render transforms. The selection path and layer IDs are captured once; pointer samples update only native preview coordinates. No per-sample tile snapshots, thumbnail rendering, palette sampling, or Compose state are involved. Partial-opacity raster layers use a visible-region compositing pass to apply layer opacity once. On release, sparse tile movement commits once. Each destination tile looks up at most four translated source tiles instead of scanning the entire source selection.

@@ -235,6 +235,15 @@ internal class LayerStack(
         }
     }
 
+    fun selectGroup(groupId: String) {
+        val members = layers.filter { it.groupId == groupId }
+        if (members.isEmpty()) return
+        selectedIds.clear()
+        selectedIds += members.map { it.id }
+        if (selectedId !in selectedIds) selectedId = members.last().id
+        invalidate()
+    }
+
     fun toggleAdditionalSelection(id: LayerId) {
         if (layers.none { it.id == id }) return
         if (id in selectedIds) {

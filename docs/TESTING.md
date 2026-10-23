@@ -127,3 +127,12 @@ change the duration in Settings, and check pan/drawing responsiveness on a large
 fill. Preparation can still take time; the duration setting controls the reveal.
 
 Export regressions: `AnimationExporterTest` decodes all GIF pixels with the host JVM ImageIO decoder, exercising LZW dictionary growth/reset over several noisy odd-sized frames. `ProcessImageGestureTest` checks that many drag moves create exactly one release action. Device `ProcessRecordingInstrumentedTest` also decodes short, single-frame, odd-sized MP4s and overwrites an existing export; `ProcessRecordingPlayerTest` checks stable control bounds while awaiting playback frames.
+
+## Layer interaction regression checks
+
+- Select a layer: its settings stay closed. Open ⋮, close with Done or outside dismissal, and confirm the same layer remains selected.
+- Long-press a row and move in both axes, including edge scrolling. The floating row must retain the original finger grab point and rows must reveal the pending insertion slot. Release over a name to reorder, over a preview to group, or cancel to keep the original order.
+- Select a group by its heading; add/remove individual layers with right swipes. Erase across selected paint and image layers, then cancel or undo/redo. Unselected layers and original image assets must remain unchanged.
+- Move a marquee across several selected layers. Artwork must follow before release. Cancel must leave pixels untouched; release and undo/redo must affect all targets together. Move with no marquee selects the full canvas.
+
+`LayerDropTargetTest` covers insertion/group boundaries. `DrawingSurfaceMultiLayerTest` covers live native move rendering, cancellation, mixed paint/image erasing, unselected-layer isolation, and compound undo/redo.

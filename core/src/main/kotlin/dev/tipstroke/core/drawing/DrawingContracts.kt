@@ -71,6 +71,10 @@ class UndoHistory(private val memoryBudgetBytes: Long) {
     }
     fun undo(): Boolean = undo.removeLastOrNull()?.let { it.undo(); redo.addLast(it); true } ?: false
     fun redo(): Boolean = redo.removeLastOrNull()?.let { it.redo(); undo.addLast(it); true } ?: false
+    /** Transfers ownership of the newest edit into a compound operation. */
+    fun takeLatestUndoTransaction(): UndoTransaction? = undo.removeLastOrNull()?.also {
+        estimatedBytes -= it.estimatedBytes
+    }
     fun canUndo() = undo.isNotEmpty()
     fun canRedo() = redo.isNotEmpty()
     fun clear() { undo.clear(); redo.clear(); estimatedBytes = 0 }
