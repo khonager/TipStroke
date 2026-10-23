@@ -97,3 +97,5 @@ strokes. A drop outside the canvas, a transparent color, or an identical seed co
 changes nothing.
 
 Drawing-progress recording stores an image transform only when the last finger releases it (or a cancelled gesture retains its final position). Drag/pinch/twist intermediate positions remain visible live but do not create replay steps.
+
+Layer dragging uses pointer positions in the stationary list container and a separate floating row. Rows slide aside to preview the insertion slot before release, including group boundaries. Auto-scroll does not change the pointer grab offset; cancelling a drag leaves the order unchanged.

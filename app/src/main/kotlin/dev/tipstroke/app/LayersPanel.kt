@@ -2,6 +2,7 @@ package dev.tipstroke.app
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.*
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -82,19 +84,36 @@ internal fun LayersPanel(
     var backgroundHex by remember(backgroundPickerOpen) { mutableStateOf("%06X".format(backgroundColor and 0xFFFFFF)) }
     val listState = rememberLazyListState()
     val rowBounds = remember { mutableStateMapOf<LayerId, Rect>() }
-    val previewBounds = remember { mutableStateMapOf<LayerId, Rect>() }
+    val previewCoordinates = remember { mutableStateMapOf<LayerId, LayoutCoordinates>() }
+    fun previewBounds() = previewCoordinates.filterValues { it.isAttached }.mapValues { it.value.boundsInRoot() }
     var listBounds by remember { mutableStateOf(Rect.Zero) }
     var draggedId by remember { mutableStateOf<LayerId?>(null) }
     var dragPoint by remember { mutableStateOf(Offset.Unspecified) }
-    var dragTranslation by remember { mutableStateOf(Offset.Zero) }
+    var grabOffset by remember { mutableStateOf(Offset.Zero) }
+    var draggedRowSize by remember { mutableStateOf(Size.Zero) }
+    var listCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val latestReorder by rememberUpdatedState(onReorder)
     val latestGroup by rememberUpdatedState(onGroup)
-    val targetId = if (draggedId != null && dragPoint != Offset.Unspecified) {
-        rowBounds.entries.firstOrNull { (id, bounds) ->
-            id != draggedId && bounds.contains(dragPoint) && listBounds.contains(dragPoint)
-        }?.key
-    } else null
-    val groupDrop = targetId?.let { previewBounds[it]?.contains(dragPoint) == true } ?: false
+    val drop = resolveLayerDrop(layers, draggedId, dragPoint, listBounds, rowBounds, previewBounds())
+    val targetId = drop?.targetId
+    val groupDrop = drop?.group == true
+    val sourceIndex = layers.indexOfFirst { it.id == draggedId }
+    var previewDestination by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(drop?.destinationIndex, groupDrop, draggedId) {
+        // Keep the insertion layout fixed while hovering a visible thumbnail so
+        // the group target cannot move away and oscillate beneath the pointer.
+        if (!groupDrop) previewDestination = drop?.destinationIndex ?: sourceIndex
+    }
+    val rowStride = draggedRowSize.height + with(LocalDensity.current) { 7.dp.toPx() }
+    fun rowShift(index: Int): Float {
+        val destination = previewDestination
+        if (destination < 0 || sourceIndex < 0) return 0f
+        return when {
+            sourceIndex < destination && index in (sourceIndex + 1)..destination -> -rowStride
+            destination < sourceIndex && index in destination until sourceIndex -> rowStride
+            else -> 0f
+        }
+    }
     val scrollEdge = with(LocalDensity.current) { 40.dp.toPx() }
     LaunchedEffect(draggedId) {
         while (draggedId != null) {
@@ -110,16 +129,14 @@ internal fun LayersPanel(
 
     fun finishDrag() {
         val source = draggedId
-        val target = rowBounds.entries.firstOrNull { (id, bounds) ->
-            id != source && bounds.contains(dragPoint) && listBounds.contains(dragPoint)
-        }?.key
-        if (source != null && target != null) {
-            if (previewBounds[target]?.contains(dragPoint) == true) latestGroup(source, target)
-            else latestReorder(source, target, dragPoint.y < (rowBounds[target]?.center?.y ?: dragPoint.y))
+        val finalDrop = resolveLayerDrop(layers, source, dragPoint, listBounds, rowBounds, previewBounds())
+        if (source != null && finalDrop != null) {
+            if (finalDrop.group) latestGroup(source, finalDrop.targetId)
+            else latestReorder(source, finalDrop.targetId, finalDrop.towardFront)
         }
         draggedId = null
         dragPoint = Offset.Unspecified
-        dragTranslation = Offset.Zero
+        grabOffset = Offset.Zero
     }
     val latestFinishDrag by rememberUpdatedState(::finishDrag)
     Surface(
@@ -140,11 +157,34 @@ internal fun LayersPanel(
             Text("Hold and drag to reorder · release over a preview to group", color = Color(0xFF777A81), fontSize = 10.sp)
             Text("Swipe right to select another layer", color = Color(0xFF777A81), fontSize = 10.sp)
             Spacer(Modifier.height(10.dp))
-            LazyColumn(Modifier.weight(1f).onGloballyPositioned { listBounds = it.boundsInRoot() }, state = listState,
+            Box(Modifier.weight(1f).onGloballyPositioned {
+                listCoordinates = it
+                listBounds = it.boundsInRoot()
+            }.pointerInput(Unit) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { local ->
+                        val point = listCoordinates?.localToRoot(local) ?: return@detectDragGesturesAfterLongPress
+                        val source = rowBounds.entries.firstOrNull { it.value.contains(point) } ?: return@detectDragGesturesAfterLongPress
+                        draggedId = source.key
+                        draggedRowSize = source.value.size
+                        grabOffset = point - source.value.topLeft
+                        dragPoint = point
+                    },
+                    onDrag = { change, _ ->
+                        if (draggedId != null) {
+                            change.consume()
+                            dragPoint = listCoordinates?.localToRoot(change.position) ?: dragPoint
+                        }
+                    },
+                    onDragEnd = { latestFinishDrag() },
+                    onDragCancel = { draggedId = null; dragPoint = Offset.Unspecified },
+                )
+            }) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState,
                 verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 items(layers, key = { it.id.value }) { layer ->
                     DisposableEffect(layer.id) {
-                        onDispose { rowBounds.remove(layer.id); previewBounds.remove(layer.id) }
+                        onDispose { rowBounds.remove(layer.id); previewCoordinates.remove(layer.id) }
                     }
                     Column {
                         if (layer.groupId != null && layers.getOrNull(layers.indexOf(layer) - 1)?.groupId != layer.groupId) {
@@ -155,6 +195,9 @@ internal fun LayersPanel(
                                     contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Ungroup", fontSize = 10.sp) }
                             }
                         }
+                        val shift by animateFloatAsState(rowShift(layers.indexOf(layer)), label = "layer insertion")
+                        Box(Modifier.padding(start = if (layer.groupId != null) 12.dp else 0.dp)
+                            .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }) {
                         LayerRow(
                             layer = layer,
                             preview = previews[layer.id],
@@ -164,43 +207,28 @@ internal fun LayersPanel(
                             onToggleSelection = { onToggleSelection(layer.id) },
                             onVisibility = { onToggleVisibility(layer.id) },
                             onSettings = { onSelect(layer.id); settingsLayerId = layer.id },
-                            modifier = Modifier
-                                .padding(start = if (layer.groupId != null) 12.dp else 0.dp)
-                                .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }
-                                .graphicsLayer {
-                                    alpha = if (draggedId == layer.id) .72f else 1f
-                                    if (draggedId == layer.id) {
-                                        translationX = dragTranslation.x
-                                        translationY = dragTranslation.y
-                                    }
-                                }
-                                .pointerInput(layer.id) {
-                                    detectDragGesturesAfterLongPress(
-                                        onDragStart = { local ->
-                                            draggedId = layer.id
-                                            dragPoint = (rowBounds[layer.id]?.topLeft ?: Offset.Zero) + local
-                                            dragTranslation = Offset.Zero
-                                        },
-                                        onDrag = { change, amount ->
-                                            change.consume()
-                                            dragPoint += amount
-                                            dragTranslation += amount
-                                        },
-                                        onDragEnd = { latestFinishDrag() },
-                                        onDragCancel = {
-                                            draggedId = null
-                                            dragPoint = Offset.Unspecified
-                                            dragTranslation = Offset.Zero
-                                        },
-                                    )
-                                },
-                            onPreviewBounds = { previewBounds[layer.id] = it },
+                            modifier = Modifier.graphicsLayer {
+                                alpha = if (draggedId == layer.id) 0f else 1f
+                                translationY = shift
+                            },
+                            onPreviewBounds = { previewCoordinates[layer.id] = it },
                             dropTarget = targetId == layer.id,
                             groupTarget = targetId == layer.id && groupDrop,
                         )
-
+                        }
                     }
                 }
+            }
+            // The floating row lives outside the scrolling/rearranging items. Pointer
+            // coordinates come from this stationary Box, so translation cannot feed back.
+            layers.firstOrNull { it.id == draggedId }?.let { layer ->
+                LayerRow(layer, previews[layer.id], primary = true, selected = true,
+                    onSelect = {}, onToggleSelection = {}, onVisibility = {},
+                    modifier = Modifier.width(with(LocalDensity.current) { draggedRowSize.width.toDp() }).offset {
+                        val local = dragPoint - listBounds.topLeft - grabOffset
+                        IntOffset(local.x.roundToInt(), local.y.roundToInt())
+                    }.graphicsLayer { alpha = .88f; shadowElevation = 12.dp.toPx() })
+            }
             }
             HorizontalDivider(Modifier.padding(top = 10.dp, bottom = 8.dp), color = Color(0xFF3B3D42))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -385,7 +413,7 @@ private fun LayerRow(
     onVisibility: () -> Unit,
     onSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
-    onPreviewBounds: (Rect) -> Unit = {},
+    onPreviewBounds: (LayoutCoordinates) -> Unit = {},
     dropTarget: Boolean = false,
     groupTarget: Boolean = false,
 ) {
@@ -416,7 +444,7 @@ private fun LayerRow(
             .clickable(onClick = onSelect).padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.onGloballyPositioned { onPreviewBounds(it.boundsInRoot()) }
+        Box(Modifier.onGloballyPositioned { onPreviewBounds(it) }
             .border(if (groupTarget) 2.dp else 0.dp, Color(0xFF75A7FF), RoundedCornerShape(10.dp))) {
             LayerThumbnail(layer.kind, preview)
         }
@@ -490,4 +518,34 @@ private fun ValueHeader(label: String, value: String) {
 @Composable
 private fun PanelButton(label: String, onClick: () -> Unit) {
     OutlinedButton(onClick, contentPadding = PaddingValues(horizontal = 11.dp), modifier = Modifier.height(40.dp)) { Text(label, fontSize = 12.sp) }
+}
+
+internal data class LayerDropTarget(
+    val targetId: LayerId,
+    val towardFront: Boolean,
+    val group: Boolean,
+    val destinationIndex: Int,
+)
+
+/** Hit tests in the stationary list's root coordinates, independent of the drag overlay. */
+internal fun resolveLayerDrop(
+    layers: List<LayerSummary>, sourceId: LayerId?, point: Offset, viewport: Rect,
+    rows: Map<LayerId, Rect>, previews: Map<LayerId, Rect>,
+): LayerDropTarget? {
+    val source = layers.indexOfFirst { it.id == sourceId }
+    if (source < 0 || point == Offset.Unspecified || !viewport.contains(point)) return null
+    val previewTarget = layers.firstOrNull { it.id != sourceId && previews[it.id]?.contains(point) == true }
+    if (previewTarget != null && (previewTarget.groupId == null || previewTarget.groupId != layers[source].groupId)) {
+        return LayerDropTarget(previewTarget.id, true, true, source)
+    }
+    val target = layers.filter { it.id != sourceId && rows[it.id]?.overlaps(viewport) == true }
+        .minByOrNull { kotlin.math.abs(rows.getValue(it.id).center.y - point.y) } ?: return null
+    val towardFront = point.y < rows.getValue(target.id).center.y
+    val sameGroup = target.groupId != null && target.groupId == layers[source].groupId
+    val anchor = if (target.groupId != null && !sameGroup) {
+        if (towardFront) layers.indexOfFirst { it.groupId == target.groupId }
+        else layers.indexOfLast { it.groupId == target.groupId }
+    } else layers.indexOf(target)
+    val insertion = anchor + if (towardFront) 0 else 1
+    return LayerDropTarget(target.id, towardFront, false, insertion - if (source < insertion) 1 else 0)
 }
