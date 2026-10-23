@@ -75,6 +75,7 @@ internal fun LayersPanel(
             latestOpacityFinished()
         }
     }
+    var settingsLayerId by remember { mutableStateOf<LayerId?>(null) }
     var renameLayer by remember { mutableStateOf<LayerSummary?>(null) }
     var renameText by remember { mutableStateOf("") }
     var backgroundPickerOpen by remember { mutableStateOf(false) }
@@ -162,6 +163,7 @@ internal fun LayersPanel(
                             onSelect = { onSelect(layer.id) },
                             onToggleSelection = { onToggleSelection(layer.id) },
                             onVisibility = { onToggleVisibility(layer.id) },
+                            onSettings = { onSelect(layer.id); settingsLayerId = layer.id },
                             modifier = Modifier
                                 .padding(start = if (layer.groupId != null) 12.dp else 0.dp)
                                 .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }
@@ -196,22 +198,7 @@ internal fun LayersPanel(
                             dropTarget = targetId == layer.id,
                             groupTarget = targetId == layer.id && groupDrop,
                         )
-                        if (layer.id == selectedId) {
-                            LayerControls(
-                                layer = layer,
-                                imageTransforming = imageTransforming,
-                                onRename = {
-                                    renameLayer = layer
-                                    renameText = layer.name
-                                },
-                                onOpacity = onOpacity,
-                                onOpacityFinished = onOpacityFinished,
-                                onImageScale = onImageScale,
-                                onFitImage = onFitImage,
-                                onOriginalImageSize = onOriginalImageSize,
-                                onImageTransforming = onImageTransforming,
-                            )
-                        }
+
                     }
                 }
             }
@@ -238,6 +225,33 @@ internal fun LayersPanel(
                 TextButton(onClick = onDelete, enabled = layers.size > 1, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED6A5A))) { Text("Delete") }
             }
         }
+    }
+    layers.firstOrNull { it.id == settingsLayerId }?.let { layer ->
+        AlertDialog(
+            onDismissRequest = { onOpacityFinished(); settingsLayerId = null },
+            title = { Text("Layer settings") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    LayerControls(
+                        layer = layer,
+                        imageTransforming = imageTransforming,
+                        onRename = { renameLayer = layer; renameText = layer.name },
+                        onOpacity = onOpacity,
+                        onOpacityFinished = onOpacityFinished,
+                        onImageScale = onImageScale,
+                        onFitImage = onFitImage,
+                        onOriginalImageSize = onOriginalImageSize,
+                        onImageTransforming = {
+                            onImageTransforming(it)
+                            if (it) settingsLayerId = null
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onOpacityFinished(); settingsLayerId = null }) { Text("Done") }
+            },
+        )
     }
     renameLayer?.let {
         AlertDialog(
@@ -369,6 +383,7 @@ private fun LayerRow(
     onSelect: () -> Unit,
     onToggleSelection: () -> Unit,
     onVisibility: () -> Unit,
+    onSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
     onPreviewBounds: (Rect) -> Unit = {},
     dropTarget: Boolean = false,
@@ -413,7 +428,9 @@ private fun LayerRow(
                 color = Color(0xFF9EA0A6), fontSize = 10.sp,
             )
         }
-        Text("${(layer.opacity * 100).roundToInt()}%", color = Color(0xFFB9BBC0), fontSize = 10.sp)
+        IconButton(onSettings, Modifier.size(36.dp).semantics { contentDescription = "Settings for ${layer.name}" }) {
+            Text("⋮", color = Color(0xFFB9BBC0), fontSize = 22.sp)
+        }
         IconButton(onVisibility, Modifier.size(40.dp).semantics { contentDescription = if (layer.visible) "Hide ${layer.name}" else "Show ${layer.name}" }) {
             EyeIcon(layer.visible)
         }
