@@ -23,7 +23,7 @@ import dev.tipstroke.core.geometry.SelectionRegion
 import dev.tipstroke.core.model.*
 import kotlin.math.*
 
-enum class SelectionTool { RECTANGLE, LASSO }
+enum class SelectionTool { RECTANGLE, LASSO, ELLIPSE }
 
 internal fun galleryQuarterTurns(rotationDegrees: Float): Int = (rotationDegrees / 90f).roundToInt().mod(4)
 
@@ -180,6 +180,34 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var imageTransformMode = false
     private var imageGestureInProgress = false
     private var opacityAdjustmentInProgress = false
+    private var referenceLayerId: LayerId? = null
+    var referenceStrokesListener: ((LayerId?) -> Unit)? = null
+    private var selectionOperation = dev.tipstroke.core.geometry.SelectionOperation.REPLACE
+    private var previousSelection: SelectionRegion? = null
+    fun setSelectionOperation(value: dev.tipstroke.core.geometry.SelectionOperation) { selectionOperation = value }
+    fun setReferenceStrokes(id: LayerId?) {
+        if (activeDrawingPointerId != null) return
+        cancelFill()
+        referenceLayerId = id?.takeIf { candidate -> layerStack.layers.any { it.id == candidate && it is RasterLayerRuntime } }
+        referenceStrokesListener?.invoke(referenceLayerId)
+        if (referenceLayerId != null) setSelectionMode(false)
+    }
+    fun invertSelection() {
+        val all = SelectionRegion.rectangle(Rect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat()))
+        selectionRegion = selectionRegion?.let { all.combined(it, dev.tipstroke.core.geometry.SelectionOperation.SUBTRACT) } ?: all
+        rasterView.selectionRegion = selectionRegion
+        selectionListener?.invoke(selectionMode, true)
+    }
+    fun deleteSelection() {
+        val selection = selectionRegion ?: return
+        val edits = layerStack.selectedRasters().mapNotNull { layer ->
+            val dirty = layer.tiles.cutSelection(selection)
+            rasterView.invalidateTiles(dirty)
+            if (dirty.isEmpty()) null else layer.tiles.history.takeLatestUndoTransaction()
+        }
+        commitCompoundEdit(edits)
+        notifyLayers(); notifyHistory(); notifyVisiblePalette()
+    }
     private var selectionMode = false
     private var selectionTool = SelectionTool.LASSO
     private val selectionPoints = mutableListOf<Point>()
@@ -389,6 +417,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun prepareFill(target: RasterLayerRuntime, x: Int, y: Int, color: Int, selection: SelectionRegion?, released: Boolean = true) {
+        if (referenceLayerId != null) {
+            fillListener?.invoke(false, "Turn off Reference strokes to use Color Drop.")
+            return
+        }
         val store = target.tiles
         val source = try { store.fillSnapshot(gestureHandler) } catch (error: IllegalStateException) {
             fillListener?.invoke(false, error.message)
@@ -614,6 +646,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
     fun clearSelection() {
+        previousSelection = null
         clearMovePreview()
         selectionRegion = null
         selectionPoints.clear()
@@ -1066,6 +1099,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     is RasterLayerRuntime -> StrokeTarget(selected.tiles)
                     is ImageLayerRuntime -> if (baseStyle.blend == BlendBehavior.ERASE) StrokeTarget(selected.mask, selected) else return true
                 }
+                if (target.image != null && referenceLayerId != null) return true
                 requestUnbufferedDispatch(event)
                 activeDrawingPointerId = pointerId
                 strokeDownAt = event.downTime
@@ -1073,7 +1107,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
                 updateChromeOcclusion(event, event.actionIndex)
                 val style = styleForTarget(baseStyle, target)
-                if (target.image != null || style.blend == BlendBehavior.ERASE) {
+                if (target.image != null || style.blend == BlendBehavior.ERASE ||
+                    (style.referenceStrokes != null && style.pixelTool != PixelTool.LINE)) {
                     customPreviewStyle = style
                     target.store.beginLiveStroke()
                 } else if (style.pixelTool != null || style.brush.engine == BrushEngine.AIRBRUSH) {
@@ -1262,7 +1297,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 singleStart = android.graphics.PointF(event.x, event.y)
                 singleLast = android.graphics.PointF(event.x, event.y)
                 singleLastDocument = rasterView.screenToDocument(event.x, event.y)
-                if (!isTransformingImage() && settings.gestures.oneFingerDrag == FingerAction.SMUDGE) {
+                if (!isTransformingImage() && settings.gestures.oneFingerDrag == FingerAction.SMUDGE && referenceLayerId == null) {
                     smudgeTarget = layerStack.selectedRaster()?.also { it.tiles.beginSmudge() }
                 }
                 if (!isTransformingImage()) scheduleHold(singleLastDocument)
@@ -1348,6 +1383,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val point = rasterView.screenToDocument(event.x, event.y)
+                previousSelection = selectionRegion
                 selectionPoints.clear()
                 selectionPoints += Point(point.x, point.y)
                 selectionRegion = null
@@ -1356,10 +1392,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             MotionEvent.ACTION_MOVE -> selectionPoints.firstOrNull()?.let { start ->
                 val point = rasterView.screenToDocument(event.x, event.y)
-                if (selectionTool == SelectionTool.RECTANGLE) {
+                if (selectionTool != SelectionTool.LASSO) {
                     val bounds = Rect(start.x, start.y, point.x, point.y).normalized()
                     if (bounds.right - bounds.left >= 2f && bounds.bottom - bounds.top >= 2f) {
-                        selectionRegion = SelectionRegion.rectangle(bounds)
+                        selectionRegion = if (selectionTool == SelectionTool.ELLIPSE) SelectionRegion.ellipse(bounds) else SelectionRegion.rectangle(bounds)
                         rasterView.selectionRegion = selectionRegion
                     }
                 } else {
@@ -1376,12 +1412,27 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     selectionPoints += Point(point.x, point.y)
                     selectionRegion = selectionPoints.takeIf { it.size >= 3 }?.let { SelectionRegion(it.toList()) }
                 }
+                if (selectionTool != SelectionTool.LASSO) selectionPoints.firstOrNull()?.let { start ->
+                    val point = rasterView.screenToDocument(event.x, event.y)
+                    val bounds = Rect(start.x, start.y, point.x, point.y).normalized()
+                    selectionRegion = if (bounds.right - bounds.left < 2f || bounds.bottom - bounds.top < 2f) null
+                        else if (selectionTool == SelectionTool.ELLIPSE) SelectionRegion.ellipse(bounds) else SelectionRegion.rectangle(bounds)
+                }
+                selectionRegion = selectionRegion?.let { draft -> previousSelection?.combined(draft, selectionOperation) ?: draft } ?: previousSelection
+                previousSelection = null
                 rasterView.selectionDraftPoints = emptyList()
                 rasterView.selectionRegion = selectionRegion
                 selectionPoints.clear()
                 if (selectionRegion == null) clearSelection() else selectionListener?.invoke(true, true)
             }
-            MotionEvent.ACTION_CANCEL -> clearSelection()
+            MotionEvent.ACTION_CANCEL -> {
+                selectionRegion = previousSelection
+                previousSelection = null
+                selectionPoints.clear()
+                rasterView.selectionDraftPoints = emptyList()
+                rasterView.selectionRegion = selectionRegion
+                selectionListener?.invoke(selectionMode, selectionRegion != null)
+            }
         }
         return true
     }
@@ -1467,11 +1518,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 cancelColorPick()
                 val baseStyle = currentStyle(event, event.actionIndex)
                 val ids = layerStack.selectedLayerIds()
-                multiEraseTargets = layerStack.layers.filter { it.id in ids && it.activeAtFrame }.map { layer ->
+                multiEraseTargets = layerStack.layers.filter { it.id in ids && it.activeAtFrame }.mapNotNull { layer ->
                     val target = when (layer) {
                         is RasterLayerRuntime -> StrokeTarget(layer.tiles)
-                        is ImageLayerRuntime -> StrokeTarget(layer.mask, layer)
+                        is ImageLayerRuntime -> if (referenceLayerId == null) StrokeTarget(layer.mask, layer) else null
                     }
+                    if (target == null) return@mapNotNull null
                     target.store.beginLiveStroke()
                     target to styleForTarget(baseStyle, target)
                 }
@@ -1701,11 +1753,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val brush = if (erasing) settings.brush.copy(hardness = settings.eraserHardness) else settings.brush
         return StrokeStyle(brush, settings.sizePx, settings.opacity, settings.color,
             if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
-            pixelTool = settings.pixelTool)
+            pixelTool = settings.pixelTool,
+            referenceStrokes = referenceLayerId?.let { id ->
+                (layerStack.layers.firstOrNull { it.id == id } as? RasterLayerRuntime)?.let { ReferenceStrokes(it.tiles, id == layerStack.selectedId) }
+            })
     }
 
     private fun styleForTarget(style: StrokeStyle, target: StrokeTarget): StrokeStyle {
-        val image = target.image ?: return style
+        val image = target.image ?: return style.copy(referenceStrokes = (style.referenceStrokes as? ReferenceStrokes)?.forTarget(target.store))
         val localSelection = style.selection?.let { selection -> imageLocalSelection(image, selection) }
         return style.copy(
             brush = style.brush.copy(engine = BrushEngine.AIRBRUSH),
@@ -1723,10 +1778,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return copy(position = Point(local.x, local.y))
     }
 
-    private fun imageLocalSelection(image: ImageLayerRuntime, selection: SelectionRegion) = SelectionRegion(selection.points.map { point ->
-        val local = layerStack.imagePointFromDocument(image, android.graphics.PointF(point.x, point.y))
-        Point(local.x, local.y)
-    })
+    private fun imageLocalSelection(image: ImageLayerRuntime, selection: SelectionRegion): SelectionRegion = SelectionRegion(
+        selection.points.map { point ->
+            val local = layerStack.imagePointFromDocument(image, android.graphics.PointF(point.x, point.y))
+            Point(local.x, local.y)
+        },
+        selection.left?.let { imageLocalSelection(image, it) },
+        selection.right?.let { imageLocalSelection(image, it) },
+        selection.operation,
+    )
 
     private fun invalidateTarget(target: StrokeTarget, dirty: Set<dev.tipstroke.core.geometry.TileCoordinate>) {
         if (target.image == null) rasterView.invalidateTiles(dirty) else rasterView.invalidate()
@@ -1806,6 +1866,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
     private fun notifyLayers() {
+        if (referenceLayerId != null && layerStack.layers.none { it.id == referenceLayerId }) {
+            referenceLayerId = null
+            referenceStrokesListener?.invoke(null)
+        }
         if (!imageGestureInProgress && !opacityAdjustmentInProgress) processRecorder?.sync(layerStack, animation != null)
         layersListener?.invoke(
             layerStack.summariesFrontToBack(),

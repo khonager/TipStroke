@@ -131,6 +131,21 @@ internal object StrokeCanvasPainter {
     }
 
     fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke)) {
+        val reference = stroke.style.referenceStrokes as? ReferenceStrokes
+        if (reference != null) {
+            val bounds = stroke.bounds
+            val clip = canvas.clipBounds
+            if (!clip.intersect(floor(bounds.left).toInt(), floor(bounds.top).toInt(), ceil(bounds.right).toInt(), ceil(bounds.bottom).toInt())) return
+            val restorePaint = Paint().apply { xfermode = PorterDuffXfermode(
+                if (stroke.style.blend == BlendBehavior.ERASE) PorterDuff.Mode.DST_OUT
+                else if (reference.sameLayer) PorterDuff.Mode.SRC_ATOP else PorterDuff.Mode.SRC_OVER) }
+            val saved = canvas.saveLayer(RectF(clip), restorePaint)
+            val unconstrained = stroke.copy(style = stroke.style.copy(referenceStrokes = null, blend = BlendBehavior.PAINT))
+            draw(canvas, unconstrained)
+            reference.drawCoverage(canvas, clip)
+            canvas.restoreToCount(saved)
+            return
+        }
         val saveCount = canvas.save()
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
         if (stroke.style.pixelTool != null) {
@@ -225,6 +240,21 @@ internal object StrokeCanvasPainter {
         capEnd: Boolean = false,
         skipFirstSegment: Boolean = false,
     ) {
+        val reference = stroke.style.referenceStrokes as? ReferenceStrokes
+        if (reference != null) {
+            val bounds = stroke.bounds
+            val clip = canvas.clipBounds
+            if (!clip.intersect(floor(bounds.left).toInt(), floor(bounds.top).toInt(), ceil(bounds.right).toInt(), ceil(bounds.bottom).toInt())) return
+            val restorePaint = Paint().apply { xfermode = PorterDuffXfermode(
+                if (stroke.style.blend == BlendBehavior.ERASE) PorterDuff.Mode.DST_OUT
+                else if (reference.sameLayer) PorterDuff.Mode.SRC_ATOP else PorterDuff.Mode.SRC_OVER) }
+            val saved = canvas.saveLayer(RectF(clip), restorePaint)
+            val unconstrained = stroke.copy(style = stroke.style.copy(referenceStrokes = null, blend = BlendBehavior.PAINT))
+            draw(canvas, unconstrained)
+            reference.drawCoverage(canvas, clip)
+            canvas.restoreToCount(saved)
+            return
+        }
         val saveCount = canvas.save()
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
         drawPencil(

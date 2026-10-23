@@ -140,3 +140,28 @@ Canvas background color opens the same Wheel, Sliders, and Values editor as brus
 color. Changes appear live; Values includes hex, RGB, and HSV fields. Background
 opacity stays in this editor. The editor hides brush-specific image sampling,
 palette, and history controls.
+
+### Selection and Reference strokes
+
+Select offers lasso, rectangle and ellipse, with Replace, Add, Subtract and
+Intersect modes. Invert selects the rest of the canvas. Clear removes the shape;
+Done returns to painting while keeping its boundary active. Cancelled selection
+gestures restore the previous boundary. Duplicate copies selected paint to new
+layers; Cut to layer moves it; Delete pixels removes it with undo support.
+Move and the existing selected-layer editing actions also respect combined shapes.
+
+Choose a paint layer under Select → Reference strokes, or choose Use as Reference
+strokes in its layer settings. Its painted coverage constrains brush and eraser
+strokes on the active paint layer. Keep that layer active to shade in place with
+its transparency preserved, or select/add another paint layer to shade separately.
+Soft source edges give proportional coverage on another layer. Geometric selections
+further restrict painting. Source visibility and layer opacity do not change its
+stored coverage. The source updates between strokes; reached source tiles are
+frozen for the duration of a stroke. Turn off releases the reference independently
+of Clear selection. Deleting the source releases it as well.
+
+Reference strokes is transient editing state, not a saved mask or a permanent
+layer relationship. Sources and destinations are paint layers; image erasing,
+Color Drop and finger smudging require Reference strokes to be off. Color Drop
+shows an explanation instead of filling outside the reference. Feather/expand,
+selection rotation and scaling are not included in this selection toolset.

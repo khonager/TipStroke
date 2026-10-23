@@ -148,3 +148,21 @@ During released fill preparation, the existing worker accumulates a bounded cove
 Group selection expands to stable member layer IDs. A multi-layer erase captures its targets at pointer-down, transforms samples and the selection into each image’s source coordinates, and edits only newly touched tiles. Completed target transactions are transferred into one compound transaction in the primary layer’s bounded history; cancelled gestures restore all live targets. Image sources remain immutable.
 
 During a selection move, `RasterCanvasView` draws each selected raster layer outside the original selection and draws the selected portion again with the live translation. Selected images use translated render transforms. The selection path and layer IDs are captured once; pointer samples update only native preview coordinates. No per-sample tile snapshots, thumbnail rendering, palette sampling, or Compose state are involved. Partial-opacity raster layers use a visible-region compositing pass to apply layer opacity once. On release, sparse tile movement commits once. Each destination tile looks up at most four translated source tiles instead of scanning the entire source selection.
+
+### Transient selection composition and reference coverage
+
+`SelectionRegion` composes polygon/ellipse boundaries using platform-free boolean
+operations; Android converts them to native `Path` operations for clipping and
+editing. Region containment evaluates the same composition for fill/input tests.
+Image erasing transforms the complete region tree into image coordinates.
+
+`StrokeStyle.referenceStrokes` carries a platform-free coverage contract.
+Android `ReferenceStrokes` lazily captures alpha bytes only for reached 256 px
+source tiles, shared by the targets of a multi-layer erase. No whole-layer copy is
+made at stroke start. Rendering isolates the stroke, applies source alpha, then
+composites onto the destination. Same-layer paint uses source-atop to preserve
+existing alpha. Reference painting uses cancellable native sparse-tile updates
+and the existing bounded undo transactions. Pixel Line retains its endpoint preview.
+The source layer ID is session state; document schemas are unchanged. Process
+recordings encode tile patches for reference/compound-selection strokes so replay
+never silently drops their constraints when using the older stroke codec.

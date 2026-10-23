@@ -47,6 +47,8 @@ internal fun LayersPanel(
     previews: Map<LayerId, Bitmap>,
     selectedId: LayerId?,
     selectedIds: Set<LayerId>,
+    referenceLayerId: LayerId? = null,
+    onReferenceStrokes: (LayerId?) -> Unit = {},
     backgroundColor: Int = android.graphics.Color.WHITE,
     backgroundOpacity: Float = 1f,
     onBackgroundColor: (Int) -> Unit = {},
@@ -301,6 +303,12 @@ internal fun LayersPanel(
                         PanelButton("Back", onMoveBackward)
                         PanelButton("Front", onMoveForward)
                         PanelButton("Duplicate", { onDuplicate(); settingsLayerId = null })
+                    }
+                    if (layer.kind == LayerKind.RASTER) {
+                        TextButton(onClick = {
+                            onReferenceStrokes(if (referenceLayerId == layer.id) null else layer.id)
+                            settingsLayerId = null
+                        }) { Text(if (referenceLayerId == layer.id) "Turn off Reference strokes" else "Use as Reference strokes") }
                     }
                     TextButton(onClick = { onDelete(); settingsLayerId = null }, enabled = layers.size > 1) { Text("Delete layer") }
 

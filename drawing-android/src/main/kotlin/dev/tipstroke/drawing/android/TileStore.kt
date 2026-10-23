@@ -447,6 +447,13 @@ class TileStore(
         return dirty
     }
 
+    internal fun referenceAlpha(coordinate: TileCoordinate): ByteArray? {
+        val bitmap = tiles[coordinate] ?: return null
+        val pixels = IntArray(tileSize * tileSize)
+        bitmap.getPixels(pixels, 0, tileSize, 0, 0, tileSize, tileSize)
+        return ByteArray(pixels.size) { Color.alpha(pixels[it]).toByte() }
+    }
+
     internal fun colorAt(x: Int, y: Int): Int {
         if (x !in 0 until canvasWidth || y !in 0 until canvasHeight) return Color.TRANSPARENT
         val coordinate = TileCoordinate(x / tileSize, y / tileSize)

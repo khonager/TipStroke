@@ -151,7 +151,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
     }
 
     private fun capture(id: String, capturedCommands: List<ReplayPaint>?, patches: Map<TileCoordinate, Bitmap?>, recycle: Boolean = false) {
-        val commands = capturedCommands?.takeIf { ops -> ops.sumOf { it.stroke.samples.size.toLong() + (it.ink?.inputs?.size ?: 0) } <= 100_000 }
+        val commands = capturedCommands?.takeIf { ops -> ops.none { it.stroke.style.referenceStrokes != null || it.stroke.style.selection?.left != null } }?.takeIf { ops -> ops.sumOf { it.stroke.samples.size.toLong() + (it.ink?.inputs?.size ?: 0) } <= 100_000 }
         val cost = commands?.sumOf { it.stroke.samples.size.toLong() * 64 + (it.ink?.inputs?.size ?: 0) * 48L + 512 }
             ?: patches.values.sumOf { it?.allocationByteCount?.toLong() ?: 32L }
         enqueue(cost, { if (recycle) patches.values.forEach { it?.recycle() } }) { out ->

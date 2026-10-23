@@ -23,6 +23,9 @@ data class StrokeSample(
     /** Pressure used only for opacity; may be stabilized without changing size taper. */
     val opacityPressure: Float = pressure,
 )
+/** Transient paint coverage, sampled in document pixels. */
+interface StrokeCoverage { fun alphaAt(x: Int, y: Int): Int }
+
 data class StrokeStyle(
     val brush: BrushPreset,
     val sizePx: Float,
@@ -33,6 +36,7 @@ data class StrokeStyle(
     val selection: SelectionRegion? = null,
     /** Transient pixel tool; it does not change the saved raster document format. */
     val pixelTool: PixelTool? = null,
+    val referenceStrokes: StrokeCoverage? = null,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     val bounds: Rect by lazy {

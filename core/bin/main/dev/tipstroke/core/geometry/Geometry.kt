@@ -10,14 +10,27 @@ data class Rect(val left: Float, val top: Float, val right: Float, val bottom: F
 data class TileCoordinate(val x: Int, val y: Int)
 
 /** A transient polygonal editing boundary. Rectangle selections are represented by four points. */
-class SelectionRegion(points: List<Point>) {
+enum class SelectionOperation { REPLACE, ADD, SUBTRACT, INTERSECT }
+
+class SelectionRegion(points: List<Point>, val left: SelectionRegion? = null, val right: SelectionRegion? = null, val operation: SelectionOperation = SelectionOperation.REPLACE) {
     val points: List<Point> = points.toList()
     init { require(this.points.size >= 3) }
     val bounds: Rect = Rect(
         points.minOf { it.x }, points.minOf { it.y }, points.maxOf { it.x }, points.maxOf { it.y },
     )
-    fun translated(deltaX: Float, deltaY: Float) = SelectionRegion(points.map { Point(it.x + deltaX, it.y + deltaY) })
+    fun translated(deltaX: Float, deltaY: Float): SelectionRegion = SelectionRegion(points.map { Point(it.x + deltaX, it.y + deltaY) }, left?.translated(deltaX, deltaY), right?.translated(deltaX, deltaY), operation)
+    fun combined(other: SelectionRegion, operation: SelectionOperation): SelectionRegion {
+        if (operation == SelectionOperation.REPLACE) return other
+        val bounds = Rect(min(bounds.left, other.bounds.left), min(bounds.top, other.bounds.top), max(bounds.right, other.bounds.right), max(bounds.bottom, other.bounds.bottom))
+        return SelectionRegion(rectangle(bounds).points, this, other, operation)
+    }
     fun contains(point: Point): Boolean {
+        if (left != null && right != null) return when (operation) {
+            SelectionOperation.ADD -> left.contains(point) || right.contains(point)
+            SelectionOperation.SUBTRACT -> left.contains(point) && !right.contains(point)
+            SelectionOperation.INTERSECT -> left.contains(point) && right.contains(point)
+            SelectionOperation.REPLACE -> right.contains(point)
+        }
         var inside = false
         var previous = points.last()
         points.forEach { current ->
@@ -30,11 +43,19 @@ class SelectionRegion(points: List<Point>) {
         return inside
     }
 
-    override fun equals(other: Any?) = other is SelectionRegion && points == other.points
-    override fun hashCode() = points.hashCode()
+    override fun equals(other: Any?) = other is SelectionRegion && points == other.points && left == other.left && right == other.right && operation == other.operation
+    override fun hashCode(): Int = 31 * (31 * (31 * points.hashCode() + (left?.hashCode() ?: 0)) + (right?.hashCode() ?: 0)) + operation.hashCode()
     override fun toString() = "SelectionRegion(points=$points)"
 
     companion object {
+        fun ellipse(rect: Rect): SelectionRegion {
+            val r = rect.normalized()
+            return SelectionRegion(List(128) { i ->
+                val angle = i * 2.0 * PI / 128
+                Point(((r.left + r.right) / 2 + cos(angle) * (r.right - r.left) / 2).toFloat(),
+                    ((r.top + r.bottom) / 2 + sin(angle) * (r.bottom - r.top) / 2).toFloat())
+            })
+        }
         fun rectangle(rect: Rect): SelectionRegion {
             val value = rect.normalized()
             return SelectionRegion(listOf(

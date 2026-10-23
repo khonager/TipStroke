@@ -113,6 +113,8 @@ fun CanvasScreen(
     var pendingAnimationExport by remember { mutableStateOf<AnimationExportRequest?>(null) }
     var imageTransforming by remember { mutableStateOf(false) }
     var selectionMode by remember { mutableStateOf(initialSelectionOpen) }
+    var referenceLayerId by remember { mutableStateOf<LayerId?>(null) }
+    var selectionOperation by remember { mutableStateOf(dev.tipstroke.core.geometry.SelectionOperation.REPLACE) }
     var selectionTool by remember { mutableStateOf(SelectionTool.LASSO) }
     var movingSelection by remember { mutableStateOf(false) }
     var hasSelection by remember { mutableStateOf(false) }
@@ -392,6 +394,7 @@ fun CanvasScreen(
                 view.visiblePaletteListener = { drawingPalette = it }
                 view.drawnColorListener = { drawn -> colorHistory = colorHistoryPreferences.record(drawn) }
                 view.stylusButtonListener = ::performStylusButton
+                view.referenceStrokesListener = { referenceLayerId = it }
                 view.selectionListener = { active, selected -> selectionMode = active; hasSelection = selected }
                 if (library != null && documentId != null) {
                     ready = false
@@ -425,7 +428,7 @@ fun CanvasScreen(
                 zoomPercent = (diagnostics.zoom * 100).roundToInt(),
                 onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
                 onReset = { surface?.resetView() }, onDebug = { debug = !debug },
-                selectionActive = selectionMode || hasSelection,
+                selectionActive = selectionMode || hasSelection || referenceLayerId != null,
                 onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
                 layersOpen = layersOpen, onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
                 showTopColorSwitcher = !portrait,
@@ -446,7 +449,7 @@ fun CanvasScreen(
                 canRedo = canRedo,
                 touchDrawing = touchDrawing,
                 layersOpen = layersOpen,
-                selectionActive = selectionMode || hasSelection,
+                selectionActive = selectionMode || hasSelection || referenceLayerId != null,
                 color = color,
                 menuOpen = phoneMenuOpen,
                 onMenuOpenChange = { phoneMenuOpen = it },
@@ -585,7 +588,15 @@ fun CanvasScreen(
             )
         }
 
-        if (selectionMode || hasSelection) SelectionBar(
+        if (selectionMode || hasSelection || referenceLayerId != null) SelectionBar(
+            referenceName = layers.firstOrNull { it.id == referenceLayerId }?.name,
+            referenceLayers = layers.filter { it.kind == LayerKind.RASTER }.map { it.id to it.name },
+            onReference = { surface?.setReferenceStrokes(it); movingSelection = false },
+            operation = selectionOperation,
+            onOperation = { selectionOperation = it; surface?.setSelectionOperation(it) },
+            onInvert = { surface?.invertSelection() },
+            onCut = { surface?.moveSelectionToNewLayer() },
+            onDelete = { surface?.deleteSelection() },
             selecting = selectionMode,
             hasSelection = hasSelection,
             tool = selectionTool,
@@ -615,6 +626,8 @@ fun CanvasScreen(
                 previews = layerPreviews,
                 selectedId = selectedLayerId,
                 selectedIds = selectedLayerIds,
+                referenceLayerId = referenceLayerId,
+                onReferenceStrokes = { surface?.setReferenceStrokes(it); movingSelection = false; layersOpen = false },
                 backgroundColor = backgroundColor,
                 backgroundOpacity = backgroundOpacity,
                 onBackgroundColor = { surface?.setCanvasBackgroundColor(it) },
@@ -1224,20 +1237,45 @@ private fun PhoneBrushDock(
     }
 }
 
-@Composable private fun SelectionBar(selecting: Boolean, hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, canDuplicate: Boolean, selectedLayerCount: Int, onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit, onDuplicate: () -> Unit, onClear: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
+@Composable private fun SelectionBar(referenceName: String?, referenceLayers: List<Pair<LayerId, String>>, onReference: (LayerId?) -> Unit, operation: dev.tipstroke.core.geometry.SelectionOperation, onOperation: (dev.tipstroke.core.geometry.SelectionOperation) -> Unit, onInvert: () -> Unit, onCut: () -> Unit, onDelete: () -> Unit, selecting: Boolean, hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, canDuplicate: Boolean, selectedLayerCount: Int, onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit, onDuplicate: () -> Unit, onClear: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
+    var referenceMenu by remember { mutableStateOf(false) }
     Surface(modifier.fillMaxWidth(.94f).widthIn(max = 620.dp), color = Color(0xED202125), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (moving) "Drag to move content on $selectedLayerCount selected layer${if (selectedLayerCount == 1) "" else "s"}" else if (selecting) "Draw a selection" else "Selection active", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                Text(if (moving) "Drag to move content on $selectedLayerCount selected layer${if (selectedLayerCount == 1) "" else "s"}" else if (selecting) "Draw a selection" else if (referenceName != null) "Reference strokes · $referenceName" else "Selection active", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
                 TextButton(onClick = onDone) { Text("Done") }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { onTool(SelectionTool.LASSO) }, colors = ButtonDefaults.textButtonColors(contentColor = if (tool == SelectionTool.LASSO && selecting) Color(0xFFED6A5A) else Color.White)) { Text("Lasso") }
                 TextButton(onClick = { onTool(SelectionTool.RECTANGLE) }, colors = ButtonDefaults.textButtonColors(contentColor = if (tool == SelectionTool.RECTANGLE && selecting) Color(0xFFED6A5A) else Color.White)) { Text("Rectangle") }
+                TextButton(onClick = { onTool(SelectionTool.ELLIPSE) }, colors = ButtonDefaults.textButtonColors(contentColor = if (tool == SelectionTool.ELLIPSE && selecting) Color(0xFFED6A5A) else Color.White)) { Text("Ellipse") }
+                Box {
+                    TextButton(onClick = { referenceMenu = true }) { Text("Reference strokes") }
+                    DropdownMenu(expanded = referenceMenu, onDismissRequest = { referenceMenu = false }) {
+                        DropdownMenuItem(text = { Text("Off") }, onClick = { onReference(null); referenceMenu = false })
+                        referenceLayers.forEach { (id, name) ->
+                            DropdownMenuItem(text = { Text(name) }, onClick = { onReference(id); referenceMenu = false })
+                        }
+                    }
+                }
                 TextButton(onClick = onMove, enabled = hasSelection && canMove, colors = ButtonDefaults.textButtonColors(contentColor = if (moving) Color(0xFFED6A5A) else Color.White)) { Text("Move") }
                 TextButton(onClick = onDuplicate, enabled = hasSelection && canDuplicate) { Text("Duplicate") }
+                TextButton(onClick = onCut, enabled = hasSelection && canDuplicate) { Text("Cut to layer") }
+                TextButton(onClick = onDelete, enabled = hasSelection && canDuplicate) { Text("Delete pixels") }
+                TextButton(onClick = onInvert) { Text("Invert") }
                 TextButton(onClick = onSelectAll) { Text("All") }
                 TextButton(onClick = onClear, enabled = hasSelection) { Text("Clear") }
+            }
+            if (selecting) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                dev.tipstroke.core.geometry.SelectionOperation.entries.forEach { mode ->
+                    TextButton(onClick = { onOperation(mode) }, colors = ButtonDefaults.textButtonColors(contentColor = if (mode == operation) Color(0xFFED6A5A) else Color.White)) {
+                        Text(mode.name.lowercase().replaceFirstChar { it.uppercase() })
+                    }
+                }
+            }
+            if (referenceName != null) Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Paint inside $referenceName on your active paint layer.", color = Color.LightGray, fontSize = 12.sp, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                TextButton(onClick = { onReference(null) }) { Text("Turn off") }
             }
         }
     }

@@ -154,3 +154,8 @@ portrait/landscape and resized-window screenshots alongside these cases.
 its three color modes, and verifies a hex value updates the background. Inspect
 the layer drag outline on a device for visual confirmation: the selected layer
 should retain orange, while a potential insertion uses a blue line.
+
+Selection regression coverage: `SelectionRegionTest` checks boolean containment,
+translation and reverse-drag ellipses. Native-graphics `ReferenceStrokesTest` checks
+cross-tile soft coverage, source preservation, same-layer alpha preservation,
+live cancellation, undo/redo, empty sources and selection-constrained erasing.
