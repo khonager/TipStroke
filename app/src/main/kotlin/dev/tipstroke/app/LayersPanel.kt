@@ -4,7 +4,10 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -68,6 +71,7 @@ internal fun LayersPanel(
     onSelectGroup: (String) -> Unit = {},
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
+    onDismiss: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val latestBackgroundOpacityFinished by rememberUpdatedState(onBackgroundOpacityFinished)
@@ -81,6 +85,7 @@ internal fun LayersPanel(
     var settingsLayerId by remember { mutableStateOf<LayerId?>(null) }
     var renameLayer by remember { mutableStateOf<LayerSummary?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var addMenuOpen by remember { mutableStateOf(false) }
     var backgroundPickerOpen by remember { mutableStateOf(false) }
     var backgroundHex by remember(backgroundPickerOpen) { mutableStateOf("%06X".format(backgroundColor and 0xFFFFFF)) }
     val listState = rememberLazyListState()
@@ -141,7 +146,7 @@ internal fun LayersPanel(
     }
     val latestFinishDrag by rememberUpdatedState(::finishDrag)
     Surface(
-        modifier.width(324.dp).fillMaxHeight(.9f).semantics { contentDescription = "Layers panel" },
+        modifier.widthIn(max = 420.dp).fillMaxWidth().fillMaxHeight().semantics { contentDescription = "Layers panel" },
         color = Color(0xE6202125),
         shape = RoundedCornerShape(24.dp),
         border = BorderStroke(1.dp, Color(0xFF47494F)),
@@ -151,35 +156,54 @@ internal fun LayersPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Layers", color = Color(0xFFF5F5F2), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onAddPaint, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("+ Paint") }
-                TextButton(onClick = onImportImage, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("+ Image") }
+                Box {
+                    TextButton(onClick = { addMenuOpen = true }) { Text("＋ Add") }
+                    DropdownMenu(addMenuOpen, { addMenuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Paint layer") }, onClick = { addMenuOpen = false; onAddPaint() })
+                        DropdownMenuItem(text = { Text("Import image") }, onClick = { addMenuOpen = false; onImportImage() })
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Done") }
             }
-            Text("Front to back", color = Color(0xFF9B9DA3), fontSize = 11.sp)
-            Text("Hold and drag to reorder · release over a preview to group", color = Color(0xFF777A81), fontSize = 10.sp)
-            Text("Swipe right to select another layer", color = Color(0xFF777A81), fontSize = 10.sp)
+            Text("Hold to reorder · drop on a preview to group", color = Color(0xFF9B9DA3), fontSize = 12.sp)
+            Text("Swipe right to select more layers", color = Color(0xFF9B9DA3), fontSize = 12.sp)
             Spacer(Modifier.height(10.dp))
             Box(Modifier.weight(1f).onGloballyPositioned {
                 listCoordinates = it
                 listBounds = it.boundsInRoot()
             }.pointerInput(Unit) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { local ->
-                        val point = listCoordinates?.localToRoot(local) ?: return@detectDragGesturesAfterLongPress
-                        val source = rowBounds.entries.firstOrNull { it.value.contains(point) } ?: return@detectDragGesturesAfterLongPress
-                        draggedId = source.key
-                        draggedRowSize = source.value.size
-                        grabOffset = point - source.value.topLeft
-                        dragPoint = point
-                    },
-                    onDrag = { change, _ ->
-                        if (draggedId != null) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val held = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+                    val point = listCoordinates?.takeIf { it.isAttached }?.localToRoot(held.position)
+                        ?: return@awaitEachGesture
+                    val source = rowBounds.entries.firstOrNull { it.value.contains(point) }
+                        ?: return@awaitEachGesture
+                    draggedId = source.key
+                    draggedRowSize = source.value.size
+                    grabOffset = point - source.value.topLeft
+                    dragPoint = point
+                    try {
+                        while (true) {
+                            // Once held, own the drag before the child list can scroll it.
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == held.id } ?: break
+                            if (change.isConsumed) break
+                            if (!change.pressed) {
+                                if (event.changes.none { it.pressed }) latestFinishDrag()
+                                change.consume()
+                                break
+                            }
                             change.consume()
-                            dragPoint = listCoordinates?.localToRoot(change.position) ?: dragPoint
+                            dragPoint = listCoordinates?.takeIf { it.isAttached }?.localToRoot(change.position) ?: dragPoint
                         }
-                    },
-                    onDragEnd = { latestFinishDrag() },
-                    onDragCancel = { draggedId = null; dragPoint = Offset.Unspecified },
-                )
+                    } finally {
+                        draggedId = null
+                        dragPoint = Offset.Unspecified
+                        grabOffset = Offset.Zero
+                    }
+                }
+
             }) {
             LazyColumn(Modifier.fillMaxSize(), state = listState,
                 verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -220,40 +244,27 @@ internal fun LayersPanel(
                         }
                     }
                 }
+                item(key = "canvas-background") {
+                    TextButton(onClick = { backgroundPickerOpen = true }, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        Box(Modifier.size(24.dp).background(Color(backgroundColor), RoundedCornerShape(6.dp)))
+                        Spacer(Modifier.width(12.dp))
+                        Text("Canvas background")
+                    }
+                }
             }
             // The floating row lives outside the scrolling/rearranging items. Pointer
             // coordinates come from this stationary Box, so translation cannot feed back.
             layers.firstOrNull { it.id == draggedId }?.let { layer ->
+                // Capture a finite position for this composition. A pending placement
+                // must not read cleared drag state after release/cancellation.
+                val floatingOffset = layerDragOffset(dragPoint, listBounds.topLeft, grabOffset)
                 LayerRow(layer, previews[layer.id], primary = true, selected = true,
                     onSelect = {}, onToggleSelection = {}, onVisibility = {},
-                    modifier = Modifier.width(with(LocalDensity.current) { draggedRowSize.width.toDp() }).offset {
-                        val local = dragPoint - listBounds.topLeft - grabOffset
-                        IntOffset(local.x.roundToInt(), local.y.roundToInt())
-                    }.graphicsLayer { alpha = .88f; shadowElevation = 12.dp.toPx() })
+                    modifier = Modifier.width(with(LocalDensity.current) { draggedRowSize.width.toDp() })
+                        .offset { floatingOffset }.graphicsLayer { alpha = .88f; shadowElevation = 12.dp.toPx() })
             }
             }
-            HorizontalDivider(Modifier.padding(top = 10.dp, bottom = 8.dp), color = Color(0xFF3B3D42))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(9.dp))
-                    .background(Color(backgroundColor)).border(1.dp, Color(0xFF777A81), RoundedCornerShape(9.dp))
-                    .clickable { backgroundPickerOpen = true }
-                    .semantics { contentDescription = "Choose background color" })
-                Spacer(Modifier.width(10.dp))
-                Text("Background", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                TextButton(onClick = { backgroundPickerOpen = true }) { Text("Color") }
-            }
-            ValueHeader("Background opacity", "${(backgroundOpacity * 100).roundToInt()}%")
-            Slider(backgroundOpacity, onBackgroundOpacity, onValueChangeFinished = onBackgroundOpacityFinished, valueRange = 0f..1f,
-                modifier = Modifier.fillMaxWidth().height(40.dp))
-            HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color(0xFF3B3D42))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PanelButton("Back", onMoveBackward)
-                    PanelButton("Front", onMoveForward)
-                    PanelButton("Duplicate", onDuplicate)
-                }
-                TextButton(onClick = onDelete, enabled = layers.size > 1, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFED6A5A))) { Text("Delete") }
-            }
+
         }
     }
     layers.firstOrNull { it.id == settingsLayerId }?.let { layer ->
@@ -276,6 +287,13 @@ internal fun LayersPanel(
                             if (it) settingsLayerId = null
                         },
                     )
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PanelButton("Back", onMoveBackward)
+                        PanelButton("Front", onMoveForward)
+                        PanelButton("Duplicate", { onDuplicate(); settingsLayerId = null })
+                    }
+                    TextButton(onClick = { onDelete(); settingsLayerId = null }, enabled = layers.size > 1) { Text("Delete layer") }
+
                 }
             },
             confirmButton = {
@@ -306,10 +324,14 @@ internal fun LayersPanel(
     }
     if (backgroundPickerOpen) {
         AlertDialog(
-            onDismissRequest = { backgroundPickerOpen = false },
+            onDismissRequest = { onBackgroundOpacityFinished(); backgroundPickerOpen = false },
             title = { Text("Background color") },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    ValueHeader("Background opacity", "${(backgroundOpacity * 100).roundToInt()}%")
+                    Slider(backgroundOpacity, onBackgroundOpacity, onValueChangeFinished = onBackgroundOpacityFinished,
+                        valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
+
                     OutlinedTextField(
                         value = backgroundHex,
                         onValueChange = { backgroundHex = it.removePrefix("#").take(6).uppercase().filter { char -> char in "0123456789ABCDEF" } },
@@ -330,10 +352,11 @@ internal fun LayersPanel(
             confirmButton = {
                 TextButton(enabled = backgroundHex.length == 6, onClick = {
                     onBackgroundColor(0xFF000000.toInt() or backgroundHex.toInt(16))
+                    onBackgroundOpacityFinished()
                     backgroundPickerOpen = false
                 }) { Text("Apply") }
             },
-            dismissButton = { TextButton(onClick = { backgroundPickerOpen = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { onBackgroundOpacityFinished(); backgroundPickerOpen = false }) { Text("Cancel") } },
         )
     }
 }
@@ -550,4 +573,10 @@ internal fun resolveLayerDrop(
     } else layers.indexOf(target)
     val insertion = anchor + if (towardFront) 0 else 1
     return LayerDropTarget(target.id, towardFront, false, insertion - if (source < insertion) 1 else 0)
+}
+
+/** Also safe during the last placement frame after drag state has been cleared. */
+internal fun layerDragOffset(point: Offset, origin: Offset, grab: Offset): IntOffset {
+    val local = point - origin - grab
+    return if (local.x.isFinite() && local.y.isFinite()) IntOffset(local.x.roundToInt(), local.y.roundToInt()) else IntOffset.Zero
 }

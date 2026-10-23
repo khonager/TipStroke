@@ -101,3 +101,16 @@ Drawing-progress recording stores an image transform only when the last finger r
 Layer dragging uses pointer positions in the stationary list container and a separate floating row. Rows slide aside to preview the insertion slot before release, including group boundaries. Auto-scroll does not change the pointer grab offset; cancelling a drag leaves the order unchanged.
 
 Tap a group heading to select every member; swipe individual rows right to add or remove layers from the selection. Erasing applies each native segment to all selected paint layers and selected image masks, respecting the marquee in each target’s coordinates. Cancelling restores every target. A completed multi-layer erase is one bounded undo operation on the primary layer.
+
+### Layer panel drag lifecycle and space
+
+After a long press, the stationary layer-list container consumes movement in the
+initial pointer pass, before the scrolling list can steal the gesture. Ordinary
+swipes still scroll/select. Release and cancellation remove the floating row;
+its placement uses a captured finite offset so cleared coordinates cannot reach
+pixel rounding. Detached layout coordinates are ignored.
+
+The layer overlay uses available safe height (up to 420 dp wide), with an explicit
+Done action. Background color and opacity open from a scrolling list item. Layer
+ordering buttons, duplicate and delete live in the manually opened settings dialog,
+leaving the list free of a pinned settings footer.

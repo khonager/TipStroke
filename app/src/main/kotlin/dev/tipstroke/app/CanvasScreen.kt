@@ -635,12 +635,9 @@ fun CanvasScreen(
                 onSelectGroup = { groupId -> movingSelection = false; imageTransforming = false; surface?.selectLayerGroup(groupId) },
                 onDuplicate = { imageTransforming = false; surface?.duplicateSelectedLayers() },
                 onDelete = { surface?.deleteSelectedLayer() },
+                onDismiss = { layersOpen = false },
                 modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
-                    .padding(
-                        top = 66.dp,
-                        bottom = if (portrait) (if (compactPhone) 76.dp else 106.dp) else 16.dp,
-                        end = if (portrait) 0.dp else 116.dp,
-                    ),
+                    .safeDrawingPadding().padding(12.dp),
             )
         }
 

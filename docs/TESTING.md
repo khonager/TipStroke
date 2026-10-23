@@ -136,3 +136,9 @@ Export regressions: `AnimationExporterTest` decodes all GIF pixels with the host
 - Move a marquee across several selected layers. Artwork must follow before release. Cancel must leave pixels untouched; release and undo/redo must affect all targets together. Move with no marquee selects the full canvas.
 
 `LayerDropTargetTest` covers insertion/group boundaries. `DrawingSurfaceMultiLayerTest` covers live native move rendering, cancellation, mixed paint/image erasing, unselected-layer isolation, and compound undo/redo.
+
+`LayerDragLifecycleTest` drives a real Compose long press, movement, release and
+cancellation with a composed floating row. It verifies reorder happens only on
+release and covers invalid drag-coordinate rounding. This runs under Robolectric;
+confirm physical tablet behavior separately, using Troubleshooting crash logs if
+any device-specific failure remains.
