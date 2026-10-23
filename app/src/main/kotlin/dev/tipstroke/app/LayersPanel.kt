@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
@@ -222,8 +223,16 @@ internal fun LayersPanel(
                             }
                         }
                         val shift by animateFloatAsState(rowShift(layers.indexOf(layer)), label = "layer insertion")
+                        val insertionEdge = if (targetId == layer.id && !groupDrop) drop.towardFront else null
                         Box(Modifier.padding(start = if (layer.groupId != null) 12.dp else 0.dp)
-                            .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }) {
+                            .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }
+                            .drawWithContent {
+                                drawContent()
+                                if (insertionEdge != null) {
+                                    val y = if (insertionEdge) 0f else size.height
+                                    drawLine(Color(0xFF75A7FF), Offset(0f, y), Offset(size.width, y), 2.dp.toPx())
+                                }
+                            }) {
                         LayerRow(
                             layer = layer,
                             preview = previews[layer.id],
@@ -238,7 +247,6 @@ internal fun LayersPanel(
                                 translationY = shift
                             },
                             onPreviewBounds = { previewCoordinates[layer.id] = it },
-                            dropTarget = targetId == layer.id,
                             groupTarget = targetId == layer.id && groupDrop,
                         )
                         }
@@ -258,7 +266,8 @@ internal fun LayersPanel(
                 // Capture a finite position for this composition. A pending placement
                 // must not read cleared drag state after release/cancellation.
                 val floatingOffset = layerDragOffset(dragPoint, listBounds.topLeft, grabOffset)
-                LayerRow(layer, previews[layer.id], primary = true, selected = true,
+                LayerRow(layer, previews[layer.id], primary = layer.id == selectedId,
+                    selected = layer.id in selectedIds,
                     onSelect = {}, onToggleSelection = {}, onVisibility = {},
                     modifier = Modifier.width(with(LocalDensity.current) { draggedRowSize.width.toDp() })
                         .offset { floatingOffset }.graphicsLayer { alpha = .88f; shadowElevation = 12.dp.toPx() })
@@ -439,7 +448,6 @@ private fun LayerRow(
     onSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
     onPreviewBounds: (LayoutCoordinates) -> Unit = {},
-    dropTarget: Boolean = false,
     groupTarget: Boolean = false,
 ) {
     val shape = RoundedCornerShape(15.dp)
@@ -448,9 +456,8 @@ private fun LayerRow(
     Row(
         modifier.fillMaxWidth().offset { IntOffset(dragDistance.coerceIn(0f, swipeThreshold).roundToInt(), 0) }.clip(shape)
             .background(if (selected) Color(0xFF343034) else Color(0xFF292A2E))
-            .border(if (dropTarget) 2.dp else if (selected) 1.5.dp else .5.dp,
-                if (dropTarget) if (groupTarget) Color(0xFF75A7FF) else Color(0xFFED6A5A)
-                else if (primary) Color(0xFFED6A5A) else if (selected) Color(0xFF75A7FF) else Color(0xFF414349), shape)
+            .border(if (selected) 1.5.dp else .5.dp,
+                if (primary) Color(0xFFED6A5A) else if (selected) Color(0xFF75A7FF) else Color(0xFF414349), shape)
             .pointerInput(layer.id, selected) {
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { change, amount ->
