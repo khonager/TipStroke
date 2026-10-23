@@ -3,7 +3,12 @@ package dev.tipstroke.app
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import org.robolectric.Robolectric
+import org.robolectric.android.controller.ActivityController
+import org.junit.After
 import androidx.compose.ui.unit.IntOffset
 import dev.tipstroke.core.model.*
 import org.junit.Assert.*
@@ -18,12 +23,14 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "w800dp-h600dp-land-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LayerDragLifecycleTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createEmptyComposeRule()
+    private var activity: ActivityController<ComponentActivity>? = null
+    @After fun closeActivity() { activity?.close() }
 
     @Test fun releaseAndCancelFloatingRowWithoutInvalidPlacement() {
         val layers = (0..7).map { LayerSummary(LayerId("layer-$it"), "Layer $it", LayerKind.RASTER, true, 1f) }
         var reorderCount = 0
-        compose.setContent {
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme {
                 LayersPanel(layers, emptyMap(), layers.first().id, setOf(layers.first().id),
                     onBackgroundOpacityFinished = {}, imageTransforming = false,

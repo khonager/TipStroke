@@ -354,6 +354,11 @@ fun CanvasScreen(
         val viewportHeight = maxHeight
         val compactPhone = minOf(maxWidth, maxHeight) < 600.dp
         val compactLandscape = !portrait && maxHeight < 760.dp
+        val safeWidth = viewportWidth - with(density) {
+            (WindowInsets.safeDrawing.getLeft(this, androidx.compose.ui.unit.LayoutDirection.Ltr) +
+                WindowInsets.safeDrawing.getRight(this, androidx.compose.ui.unit.LayoutDirection.Ltr)).toDp()
+        }
+        val landscapeDock = compactPhone && !portrait && safeWidth >= 640.dp
         fun manuallyHidePhoneChrome() {
             if (!compactPhone) return
             phoneChromeManuallyHidden = true
@@ -407,8 +412,8 @@ fun CanvasScreen(
                     phoneChromeOccludedByStroke = occluded
                 }) else null
                 view.setChromeOcclusionInsets(
-                    topPx = with(density) { 72.dp.toPx() },
-                    bottomPx = with(density) { (if (phoneAdjustmentsOpen) 196.dp else 72.dp).toPx() },
+                    topPx = with(density) { (if (landscapeDock && phoneAdjustmentsOpen) 196.dp else 72.dp).toPx() },
+                    bottomPx = with(density) { (if (landscapeDock) 0.dp else if (phoneAdjustmentsOpen) 196.dp else 72.dp).toPx() },
                     approachMarginPx = with(density) { 36.dp.toPx() },
                 )
             },
@@ -433,7 +438,7 @@ fun CanvasScreen(
                 onResize = { if (ready) resizeOpen = true },
                 animationOpen = animationOpen,
                 onAnimation = ::openAnimation,
-                modifier = Modifier.fillMaxSize().statusBarsPadding(),
+                modifier = Modifier.fillMaxSize().safeDrawingPadding(),
             )
         } else if (phoneChromeVisible) {
             PhoneEditorChrome(
@@ -463,7 +468,8 @@ fun CanvasScreen(
                 onAnimation = ::openAnimation,
                 onDebug = { debug = !debug },
                 onHide = ::manuallyHidePhoneChrome,
-                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(8.dp),
+                modifier = Modifier.align(if (landscapeDock) Alignment.TopStart else Alignment.TopCenter)
+                    .safeDrawingPadding().padding(8.dp).then(if (landscapeDock) Modifier.width(308.dp) else Modifier),
             )
         } else if (phoneChromeManuallyHidden) {
             PhoneChromeHandle(
@@ -473,7 +479,7 @@ fun CanvasScreen(
         }
 
         if (!compactPhone) Box(
-            Modifier.fillMaxSize().then(if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp)),
+            Modifier.fillMaxSize().safeDrawingPadding().then(if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp)),
         ) {
             BrushRail(
                 selected = brush, erasing = erasing,
@@ -486,7 +492,7 @@ fun CanvasScreen(
                 },
                 onAdjust = { brushStudioOpen = true },
                 modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
-                    .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(start = 20.dp))
+                    .then(if (portrait) Modifier.padding(12.dp) else Modifier.padding(start = 20.dp))
                     .then(if (portrait) Modifier.width((viewportWidth - 430.dp).coerceIn(170.dp, 440.dp))
                         else Modifier.heightIn(max = (viewportHeight - 110.dp).coerceAtLeast(220.dp))),
                 horizontal = portrait,
@@ -523,42 +529,15 @@ fun CanvasScreen(
                 },
                 showColorSwitcher = portrait,
                 modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
-                    .then(if (portrait) Modifier.navigationBarsPadding().padding(12.dp) else Modifier.padding(end = 20.dp)),
+                    .then(if (portrait) Modifier.padding(12.dp) else Modifier.padding(end = 20.dp)),
             )
         } else if (phoneChromeVisible) {
             Column(
-                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
+                Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
+                    .safeDrawingPadding().padding(8.dp)
+                    .then(if (landscapeDock) Modifier.width(safeWidth - 340.dp) else Modifier.widthIn(max = 520.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (phoneAdjustmentsOpen) {
-                    TipControls(
-                        size = size,
-                        sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
-                        opacity = opacity,
-                        color = color,
-                        frequentColors = drawingPalette,
-                        onSize = {
-                            size = it
-                            if (pixelTool != null) pixelSize = it
-                            surface?.settings?.sizePx = it
-                            surface?.showBrushAdjustmentPreview()
-                        },
-                        onOpacity = {
-                            opacity = it
-                            surface?.settings?.opacity = it
-                            surface?.showBrushAdjustmentPreview()
-                        },
-                        onColor = { color = it },
-                        onOpenColorPicker = { colorPickerOpen = true },
-                        onAdjustmentStart = { sync(); surface?.showBrushAdjustmentPreview() },
-                        onAdjustmentEnd = { surface?.hideBrushAdjustmentPreview() },
-                        horizontal = true,
-                        showColorSwitcher = false,
-                        horizontalWidthFraction = 1f,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(6.dp))
-                }
                 PhoneBrushDock(
                     selected = brush,
                     erasing = erasing,
@@ -573,6 +552,37 @@ fun CanvasScreen(
                     onBrushStudio = { brushStudioOpen = true },
                 )
             }
+        }
+
+        if (compactPhone && phoneChromeVisible && phoneAdjustmentsOpen) {
+            TipControls(
+                size = size,
+                sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
+                opacity = opacity,
+                color = color,
+                frequentColors = drawingPalette,
+                onSize = {
+                    size = it
+                    if (pixelTool != null) pixelSize = it
+                    surface?.settings?.sizePx = it
+                    surface?.showBrushAdjustmentPreview()
+                },
+                onOpacity = {
+                    opacity = it
+                    surface?.settings?.opacity = it
+                    surface?.showBrushAdjustmentPreview()
+                },
+                onColor = { color = it },
+                onOpenColorPicker = { colorPickerOpen = true },
+                onAdjustmentStart = { sync(); surface?.showBrushAdjustmentPreview() },
+                onAdjustmentEnd = { surface?.hideBrushAdjustmentPreview() },
+                horizontal = true,
+                showColorSwitcher = false,
+                horizontalWidthFraction = 1f,
+                modifier = Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
+                    .safeDrawingPadding().padding(start = 8.dp, end = 8.dp, top = if (landscapeDock) 80.dp else 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
+                    .widthIn(max = 390.dp).fillMaxWidth(),
+            )
         }
 
         if (selectionMode || hasSelection) SelectionBar(
@@ -703,7 +713,7 @@ fun CanvasScreen(
                 },
                 compact = portrait || maxHeight < 620.dp,
                 modifier = Modifier.align(if (portrait) Alignment.Center else Alignment.CenterEnd)
-                    .padding(end = if (portrait) 12.dp else 116.dp, top = 12.dp, bottom = 12.dp),
+                    .safeDrawingPadding().padding(12.dp),
             )
         }
 
@@ -984,7 +994,7 @@ private fun PhoneEditorChrome(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier.fillMaxWidth().widthIn(max = 520.dp),
+        modifier.widthIn(max = 520.dp).fillMaxWidth(),
         color = Color(0xE6202125),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, Color(0xB345474D)),
@@ -1074,7 +1084,7 @@ private fun PhoneBrushDock(
         listState.scrollToItem(toolScrollStart(activeIndex))
     }
     Surface(
-        Modifier.fillMaxWidth().widthIn(max = 520.dp),
+        Modifier.widthIn(max = 520.dp).fillMaxWidth(),
         color = Color(0xE6202125),
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, Color(0xB345474D)),

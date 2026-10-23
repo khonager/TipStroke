@@ -142,3 +142,10 @@ cancellation with a composed floating row. It verifies reorder happens only on
 release and covers invalid drag-coordinate rounding. This runs under Robolectric;
 confirm physical tablet behavior separately, using Troubleshooting crash logs if
 any device-specific failure remains.
+
+`GalleryLandscapeTest` verifies a 800 × 360 dp window with twelve extreme portrait
+drawings: thumbnail heights remain bounded, the grid keeps most of the viewport,
+and scrolling reaches the last drawing while the heading scrolls away. Phone
+landscape screenshot cases now set matching Android display qualifiers as well as
+view dimensions, including gallery and layers. Review phone portrait, tablet
+portrait/landscape and resized-window screenshots alongside these cases.

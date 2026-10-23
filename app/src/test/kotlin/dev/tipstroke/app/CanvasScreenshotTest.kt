@@ -47,7 +47,16 @@ class CanvasScreenshotTest {
         CanvasScreen(canvasWidthPx = 32, canvasHeightPx = 32, onBackToGallery = {})
     }
 
+    @Config(sdk = [35], qualifiers = "w800dp-h360dp-land-xhdpi")
     @Test fun renderCompactLandscapeCanvasForVisualReview() = render(1600, 720, "tipstroke-compact-landscape.png") { CanvasScreen() }
+
+    @Config(sdk = [35], qualifiers = "w800dp-h360dp-land-xhdpi")
+    @Test fun renderPhoneLandscapeLayersForVisualReview() = render(1600, 720, "tipstroke-phone-landscape-layers.png") { CanvasScreen(initialLayersOpen = true) }
+
+    @Config(sdk = [35], qualifiers = "w800dp-h360dp-land-xhdpi")
+    @Test fun renderPhoneLandscapeGalleryForVisualReview() = render(1600, 720, "tipstroke-phone-landscape-gallery.png") { activity ->
+        GalleryScreen(galleryWithExamples(activity), {}, {}, {})
+    }
 
     @Test fun renderMediumLandscapeCanvasForVisualReview() = render(1600, 1200, "tipstroke-medium-landscape.png") { CanvasScreen() }
 

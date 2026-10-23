@@ -114,3 +114,17 @@ The layer overlay uses available safe height (up to 420 dp wide), with an explic
 Done action. Background color and opacity open from a scrolling list item. Layer
 ordering buttons, duplicate and delete live in the manually opened settings dialog,
 leaving the list free of a pinned settings footer.
+
+### Responsive gallery and editor
+
+Gallery headings and transfer actions scroll with the drawing grid. Thumbnails
+use a shared height derived from the safe window height (100–220 dp), preserving
+the artwork aspect ratio inside that frame. Short windows use smaller grid cells;
+the heading/actions wrap with available width. Only the main gallery bar stays
+fixed, leaving the grid usable in phone landscape and resized desktop windows.
+
+Phone landscape windows with at least 640 dp of safe width place navigation and
+brush controls side by side at the top. Size/opacity open separately beneath the
+dock; portrait and narrower windows keep the bottom brush dock. Floating docks
+are capped in width. Editor controls and overlays respect safe system insets;
+color and layer panels use available space without reserving a permanent side rail.

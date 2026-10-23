@@ -8,6 +8,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -186,59 +187,59 @@ fun GalleryScreen(
             )
         }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF17181B))) {
-        GalleryTopBar(onNew = { creating = true }, onSettings = onSettings)
-        Row(Modifier.horizontalScroll(rememberScrollState())) {
-            TextButton(onClick = { transferIds = null; transferOpen = true }) { Text("Import") }
-            TextButton(onClick = {
-                transferIds = items.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }
-                transferOpen = true
-            }) { Text("Export / select drawings") }
-        }
-        Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 22.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (openStack != null) {
-                    TextButton(onClick = { openStackId = null }) { Text("‹  Gallery") }
-                    Spacer(Modifier.width(8.dp))
-                }
-                Text(openStack?.name ?: "Your drawings", color = Color(0xFFF5F5F2), fontSize = 30.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.weight(1f))
-                if (openStack != null) {
-                    TextButton(onClick = { renameStack = openStack }) { Text("Rename") }
-                    TextButton(onClick = { library.unstack(openStack.id); refreshGallery() }) { Text("Unstack") }
-                }
-            }
-            Text(
-                if (openStack == null) "Long-press and drag to reorder. Drop in the center of a drawing or stack to group it."
-                else "Long-press and drag to reorder drawings inside this stack.",
-                color = Color(0xFF9EA0A6), fontSize = 12.sp,
-            )
-            Spacer(Modifier.height(20.dp))
-            if (visibleItems.isEmpty()) {
-                EmptyGallery { creating = true }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(260.dp),
-                    state = gridState,
-                    modifier = Modifier.fillMaxSize().onGloballyPositioned { gridBounds = it.boundsInRoot() },
-                    horizontalArrangement = Arrangement.spacedBy(22.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
-                    items(visibleItems, key = GalleryItem::key) { item ->
-                        when (item) {
-                            is GalleryDrawing -> DrawingCard(
-                                item.drawing,
-                                { onOpen(item.drawing) },
-                                { duplicateDrawing(item.drawing) },
-                                { deleteCandidate = item.drawing },
-                                dragModifier(item),
-                                onExport = { transferIds = listOf(item.drawing.id); transferOpen = true },
-                                onMoveOut = openStack?.let { stack -> { library.moveOutOfStack(stack.id, item.drawing.id); refreshGallery() } },
-                            )
-                            is GalleryStack -> StackCard(item, { openStackId = item.id }, dragModifier(item))
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF17181B)).safeDrawingPadding()) {
+        val shortWindow = maxHeight < 500.dp
+        val gutter = if (maxWidth < 600.dp || shortWindow) 16.dp else 28.dp
+        val thumbnailHeight = (maxHeight * .32f).coerceIn(100.dp, 220.dp)
+        Column {
+            GalleryTopBar(onNew = { creating = true }, onSettings = onSettings)
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(if (shortWindow) 180.dp else 240.dp),
+                state = gridState,
+                modifier = Modifier.weight(1f).fillMaxWidth().semantics { contentDescription = "Gallery drawings" }.onGloballyPositioned { gridBounds = it.boundsInRoot() },
+                contentPadding = PaddingValues(gutter),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                item(key = "gallery-heading", span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                                if (openStack != null) TextButton(onClick = { openStackId = null }) { Text("‹ Gallery") }
+                                Text(openStack?.name ?: "Your drawings", color = Color(0xFFF5F5F2), fontSize = if (shortWindow) 22.sp else 28.sp, fontWeight = FontWeight.SemiBold)
+                                if (openStack != null) {
+                                    TextButton(onClick = { renameStack = openStack }) { Text("Rename") }
+                                    TextButton(onClick = { library.unstack(openStack.id); refreshGallery() }) { Text("Unstack") }
+                                }
+                            }
+                            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                                TextButton(onClick = { transferIds = null; transferOpen = true }) { Text("Import") }
+                                TextButton(onClick = {
+                                    transferIds = items.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }
+                                    transferOpen = true
+                                }) { Text("Export / select drawings") }
+                            }
                         }
+                        Text(if (openStack == null) "Hold to reorder · drop in the center to group"
+                            else "Hold to reorder drawings in this stack",
+                            color = Color(0xFF9EA0A6), fontSize = 12.sp)
                     }
-                    if (openStack == null) item { NewDrawingCard { creating = true } }
+                }
+                items(visibleItems, key = GalleryItem::key) { item ->
+                    when (item) {
+                        is GalleryDrawing -> DrawingCard(
+                            item.drawing, { onOpen(item.drawing) }, { duplicateDrawing(item.drawing) },
+                            { deleteCandidate = item.drawing }, dragModifier(item),
+                            onExport = { transferIds = listOf(item.drawing.id); transferOpen = true },
+                            onMoveOut = openStack?.let { stack -> { library.moveOutOfStack(stack.id, item.drawing.id); refreshGallery() } },
+                            thumbnailHeight = thumbnailHeight,
+                        )
+                        is GalleryStack -> StackCard(item, { openStackId = item.id }, dragModifier(item), thumbnailHeight)
+                    }
+                }
+                if (openStack == null) item { NewDrawingCard(thumbnailHeight) { creating = true } }
+                if (visibleItems.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text("Your drawings are saved locally on this device.", color = Color(0xFF9EA0A6), fontSize = 13.sp)
                 }
             }
         }
@@ -281,7 +282,7 @@ fun GalleryScreen(
 
 @Composable
 private fun GalleryTopBar(onNew: () -> Unit, onSettings: () -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth().statusBarsPadding()) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
         val compact = maxWidth < 560.dp
         Row(
             Modifier.fillMaxWidth().height(62.dp).border(.5.dp, Color(0xFF34363A)).padding(horizontal = if (compact) 16.dp else 28.dp),
@@ -316,18 +317,6 @@ private fun GalleryTopBar(onNew: () -> Unit, onSettings: () -> Unit) {
 }
 
 @Composable
-private fun EmptyGallery(onNew: () -> Unit) {
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.size(150.dp).border(1.dp, Color(0xFF555860), RoundedCornerShape(24.dp)).clickable(onClick = onNew), contentAlignment = Alignment.Center) {
-            Text("＋", color = Color(0xFFED6A5A), fontSize = 52.sp, fontWeight = FontWeight.Light)
-        }
-        Spacer(Modifier.height(20.dp))
-        Text("Start a new drawing", color = Color(0xFFF3F3F0), fontSize = 20.sp, fontWeight = FontWeight.Medium)
-        Text("Your work is saved locally on this device.", color = Color(0xFF9EA0A6), fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-    }
-}
-
-@Composable
 private fun DrawingCard(
     drawing: DrawingSummary,
     onOpen: () -> Unit,
@@ -336,19 +325,15 @@ private fun DrawingCard(
     modifier: Modifier = Modifier,
     onExport: () -> Unit,
     onMoveOut: (() -> Unit)? = null,
+    thumbnailHeight: Dp = 180.dp,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().clickable(onClick = onOpen).padding(2.dp)) {
         val image = remember(drawing.thumbnailFile.absolutePath, drawing.modifiedAtMillis) {
             BitmapFactory.decodeFile(drawing.thumbnailFile.absolutePath)?.asImageBitmap()
         }
-        val documentAspect = (if (drawing.galleryRotationQuarterTurns % 2 == 0) {
-            drawing.widthPx.toFloat() / drawing.heightPx
-        } else {
-            drawing.heightPx.toFloat() / drawing.widthPx
-        }).coerceIn(.125f, 8f)
-        Box(Modifier.fillMaxWidth().aspectRatio(documentAspect).clip(RoundedCornerShape(12.dp)).background(Color.White)) {
-            image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
+        Box(Modifier.fillMaxWidth().height(thumbnailHeight).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)), contentAlignment = Alignment.Center) {
+            image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
         }
         Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
@@ -372,10 +357,10 @@ private fun DrawingCard(
 }
 
 @Composable
-private fun StackCard(stack: GalleryStack, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+private fun StackCard(stack: GalleryStack, onOpen: () -> Unit, modifier: Modifier = Modifier, thumbnailHeight: Dp = 180.dp) {
     Column(modifier.fillMaxWidth().clickable(onClick = onOpen).padding(2.dp)) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(1.48f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)).padding(8.dp),
+            Modifier.fillMaxWidth().height(thumbnailHeight).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)).padding(8.dp),
         ) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 repeat(2) { column ->
@@ -413,10 +398,10 @@ private fun RenameStackDialog(currentName: String, onDismiss: () -> Unit, onRena
 }
 
 @Composable
-private fun NewDrawingCard(onClick: () -> Unit) {
+private fun NewDrawingCard(thumbnailHeight: Dp = 180.dp, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(1.48f).border(1.dp, Color(0xFF555860), RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+            Modifier.fillMaxWidth().height(thumbnailHeight).border(1.dp, Color(0xFF555860), RoundedCornerShape(12.dp)).clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) { Text("＋", color = Color(0xFFF2F2EF), fontSize = 42.sp, fontWeight = FontWeight.Light) }
         Text("New drawing", color = Color(0xFFF3F3F0), fontSize = 16.sp, modifier = Modifier.padding(top = 9.dp))
