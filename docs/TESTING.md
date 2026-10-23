@@ -149,3 +149,8 @@ and scrolling reaches the last drawing while the heading scrolls away. Phone
 landscape screenshot cases now set matching Android display qualifiers as well as
 view dimensions, including gallery and layers. Review phone portrait, tablet
 portrait/landscape and resized-window screenshots alongside these cases.
+
+`LayerDragLifecycleTest` also opens the canvas background editor, switches among
+its three color modes, and verifies a hex value updates the background. Inspect
+the layer drag outline on a device for visual confirmation: the selected layer
+should retain orange, while a potential insertion uses a blue line.

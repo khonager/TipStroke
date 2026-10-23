@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.window.Dialog
 import dev.tipstroke.core.model.*
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -88,7 +89,7 @@ internal fun LayersPanel(
     var renameText by remember { mutableStateOf("") }
     var addMenuOpen by remember { mutableStateOf(false) }
     var backgroundPickerOpen by remember { mutableStateOf(false) }
-    var backgroundHex by remember(backgroundPickerOpen) { mutableStateOf("%06X".format(backgroundColor and 0xFFFFFF)) }
+    var backgroundPickerMode by remember { mutableStateOf(ColorPickerMode.HSV_WHEEL) }
     val listState = rememberLazyListState()
     val rowBounds = remember { mutableStateMapOf<LayerId, Rect>() }
     val previewCoordinates = remember { mutableStateMapOf<LayerId, LayoutCoordinates>() }
@@ -332,41 +333,47 @@ internal fun LayersPanel(
         )
     }
     if (backgroundPickerOpen) {
-        AlertDialog(
-            onDismissRequest = { onBackgroundOpacityFinished(); backgroundPickerOpen = false },
-            title = { Text("Background color") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    ValueHeader("Background opacity", "${(backgroundOpacity * 100).roundToInt()}%")
-                    Slider(backgroundOpacity, onBackgroundOpacity, onValueChangeFinished = onBackgroundOpacityFinished,
-                        valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
-
-                    OutlinedTextField(
-                        value = backgroundHex,
-                        onValueChange = { backgroundHex = it.removePrefix("#").take(6).uppercase().filter { char -> char in "0123456789ABCDEF" } },
-                        label = { Text("Hex color") },
-                        prefix = { Text("#") },
-                        singleLine = true,
-                    )
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(0xFFFFFF, 0xF2F1ED, 0x000000, 0xDDE8F5).forEach { preset ->
-                            Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF000000 or preset.toLong()))
-                                .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
-                                .clickable { backgroundHex = "%06X".format(preset) })
+        val closeBackgroundPicker = {
+            onBackgroundOpacityFinished()
+            backgroundPickerOpen = false
+        }
+        Dialog(onDismissRequest = closeBackgroundPicker) {
+            BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                ColorPickerPanel(
+                    initialColor = RgbaColor(
+                        ((backgroundColor shr 16) and 0xFF) / 255f,
+                        ((backgroundColor shr 8) and 0xFF) / 255f,
+                        (backgroundColor and 0xFF) / 255f,
+                    ),
+                    mode = backgroundPickerMode,
+                    drawingPalette = emptyList(), paletteColorCount = 0,
+                    colorHistory = emptyList(),
+                    onColorSelected = { color ->
+                        val packed = android.graphics.Color.rgb(
+                            (color.red * 255f).roundToInt(),
+                            (color.green * 255f).roundToInt(),
+                            (color.blue * 255f).roundToInt(),
+                        )
+                        if (packed != backgroundColor) onBackgroundColor(packed)
+                    },
+                    onModeChanged = { backgroundPickerMode = it },
+                    onPaletteColorCountChanged = {}, onClearHistory = {},
+                    compact = maxHeight < 620.dp,
+                    title = "Canvas background",
+                    showOriginalImageColors = false,
+                    showPaletteAndHistory = false,
+                    footer = {
+                        ValueHeader("Background opacity", "${(backgroundOpacity * 100).roundToInt()}%")
+                        Slider(backgroundOpacity, onBackgroundOpacity,
+                            onValueChangeFinished = onBackgroundOpacityFinished,
+                            valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
+                        TextButton(onClick = closeBackgroundPicker, modifier = Modifier.align(Alignment.End)) {
+                            Text("Done")
                         }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = backgroundHex.length == 6, onClick = {
-                    onBackgroundColor(0xFF000000.toInt() or backgroundHex.toInt(16))
-                    onBackgroundOpacityFinished()
-                    backgroundPickerOpen = false
-                }) { Text("Apply") }
-            },
-            dismissButton = { TextButton(onClick = { onBackgroundOpacityFinished(); backgroundPickerOpen = false }) { Text("Cancel") } },
-        )
+                    },
+                )
+            }
+        }
     }
 }
 

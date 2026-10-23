@@ -1,6 +1,9 @@
 package dev.tipstroke.app
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -69,5 +72,29 @@ class LayerDragLifecycleTest {
         assertEquals(IntOffset.Zero, layerDragOffset(Offset.Unspecified, Offset.Zero, Offset.Zero))
         assertEquals(IntOffset.Zero, layerDragOffset(Offset(Float.POSITIVE_INFINITY, 0f), Offset.Zero, Offset.Zero))
         assertEquals(IntOffset(24, 38), layerDragOffset(Offset(34f, 58f), Offset(5f, 10f), Offset(5f, 10f)))
+    }
+
+    @Test fun backgroundUsesAllThreeColorEditorsAndAppliesHexValue() {
+        val layer = LayerSummary(LayerId("paint"), "Paint", LayerKind.RASTER, true, 1f)
+        var background by mutableIntStateOf(android.graphics.Color.WHITE)
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            MaterialTheme {
+                LayersPanel(listOf(layer), emptyMap(), layer.id, setOf(layer.id),
+                    backgroundColor = background, onBackgroundColor = { background = it },
+                    onBackgroundOpacityFinished = {}, imageTransforming = false,
+                    onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {},
+                    onOpacityFinished = {}, onRename = {}, onImageScale = {}, onFitImage = {},
+                    onOriginalImageSize = {}, onImageTransforming = {}, onAddPaint = {}, onImportImage = {},
+                    onMoveForward = {}, onMoveBackward = {}, onDuplicate = {}, onDelete = {})
+            }
+        }
+        compose.onNodeWithText("Canvas background").performClick()
+        compose.onNodeWithContentDescription("Wheel color picker").assertExists()
+        compose.onNodeWithContentDescription("Sliders color picker").performClick()
+        compose.onNodeWithContentDescription("Values color picker").performClick()
+        compose.onNodeWithContentDescription("Hex color value").performTextReplacement("#336699")
+        compose.waitForIdle()
+        assertEquals(0xFF336699.toInt(), background)
+        compose.onNodeWithText("Background opacity").assertExists()
     }
 }

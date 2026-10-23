@@ -81,6 +81,10 @@ internal fun ColorPickerPanel(
     onOriginalImageColorsChanged: (Boolean) -> Unit = {},
     onClearHistory: () -> Unit,
     compact: Boolean = false,
+    title: String = "Colors",
+    showOriginalImageColors: Boolean = true,
+    showPaletteAndHistory: Boolean = true,
+    footer: @Composable ColumnScope.() -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val previousColor = remember { initialColor }
@@ -114,7 +118,7 @@ internal fun ColorPickerPanel(
                 .verticalScroll(rememberScrollState()),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Colors", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
+                Text(title, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
                 ColorSwatch(previousColor, 30.dp, "Previous color", onClick = { choose(previousColor) })
                 Spacer(Modifier.width(6.dp))
@@ -123,13 +127,15 @@ internal fun ColorPickerPanel(
 
             Spacer(Modifier.height(14.dp))
             PickerModeTabs(mode, onMode = onModeChanged)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Original image colors", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                androidx.compose.material3.Switch(
-                    checked = originalImageColors,
-                    onCheckedChange = onOriginalImageColorsChanged,
-                    modifier = Modifier.semantics { contentDescription = "Sample original image colors" },
-                )
+            if (showOriginalImageColors) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Original image colors", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.Switch(
+                        checked = originalImageColors,
+                        onCheckedChange = onOriginalImageColorsChanged,
+                        modifier = Modifier.semantics { contentDescription = "Sample original image colors" },
+                    )
+                }
             }
             Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
 
@@ -162,15 +168,18 @@ internal fun ColorPickerPanel(
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
-            DrawingPaletteSection(
-                colors = drawingPalette.take(paletteColorCount),
-                requestedCount = paletteColorCount,
-                onCountChanged = onPaletteColorCountChanged,
-                onColor = ::choose,
-            )
-            Spacer(Modifier.height(18.dp))
-            HistorySection(colorHistory.take(10), onColor = ::choose, onClear = onClearHistory)
+            if (showPaletteAndHistory) {
+                Spacer(Modifier.height(18.dp))
+                DrawingPaletteSection(
+                    colors = drawingPalette.take(paletteColorCount),
+                    requestedCount = paletteColorCount,
+                    onCountChanged = onPaletteColorCountChanged,
+                    onColor = ::choose,
+                )
+                Spacer(Modifier.height(18.dp))
+                HistorySection(colorHistory.take(10), onColor = ::choose, onClear = onClearHistory)
+            }
+            footer()
         }
     }
 }

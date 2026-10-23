@@ -129,9 +129,14 @@ dock; portrait and narrower windows keep the bottom brush dock. Floating docks
 are capped in width. Editor controls and overlays respect safe system insets;
 color and layer panels use available space without reserving a permanent side rail.
 
-### Layer drag cues
+### Layer drag cues and canvas background color
 
 The orange row outline follows the actual primary layer selection during a drag.
 A dragged copy keeps its real selection styling, and the hovered row gets a thin
 blue insertion guide instead of another orange outline. Grouping remains indicated
 on the target preview only.
+
+Canvas background color opens the same Wheel, Sliders, and Values editor as brush
+color. Changes appear live; Values includes hex, RGB, and HSV fields. Background
+opacity stays in this editor. The editor hides brush-specific image sampling,
+palette, and history controls.
