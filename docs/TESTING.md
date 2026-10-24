@@ -182,3 +182,11 @@ The JVM shape tests cover Airbrush preview/commit and live-tile eraser rollback
 with each regular brush preset. Jetpack Ink's wet-preview replacement for Ink
 and Pencil requires a device/emulator: the Android Ink native library cannot be
 loaded by this project's desktop Robolectric runtime.
+
+Shape adjustment regressions cover anchored endpoint steering, proportional
+circle resizing with exact closure, the extra-finger arrow shortcut, final-position
+flush on lift, cancellation, and one-step undo. Raster tests check that moving
+Pencil strokes lose their provisional dot, keep textured ribbon ends, and match
+committed pixels; a translucent closed Ink loop must have the same opacity at
+its seam as on its opposite side. Device QA should include tilted Pencil starts
+and ends, circle seams, and repeated scale/rotation adjustments before lift.

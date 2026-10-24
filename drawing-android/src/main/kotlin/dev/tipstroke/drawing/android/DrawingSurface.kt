@@ -151,6 +151,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var shapeAnchor: Point? = null
     private var shapeSnapped = false
     private var shapeStyle: StrokeStyle? = null
+    private var fittedShape: QuickShape.Shape? = null
+    private var shapeGrab: Point? = null
+    private var fittedSamples: List<StrokeSample> = emptyList()
+    private var shapeAdjustmentEvent: MotionEvent? = null
+    private val shapeAdjustmentFrame = Runnable {
+        val event = shapeAdjustmentEvent
+        shapeAdjustmentEvent = null
+        if (event != null) {
+            try { activeDrawingPointerId?.let { if (shapeSnapped) adjustShape(event, it) } }
+            finally { event.recycle() }
+        }
+    }
     private var selectionPointerId: Int? = null
     private var colorPicking = false
     private var pendingPickedColor: RgbaColor? = null
@@ -1146,6 +1158,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val pointerId = activeDrawingPointerId ?: event.getPointerId(event.actionIndex)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                if (shapeSnapped && event.actionMasked == MotionEvent.ACTION_POINTER_DOWN &&
+                    event.getToolType(event.actionIndex) == MotionEvent.TOOL_TYPE_FINGER && fittedShape?.kind == QuickShape.Kind.LINE) {
+                    addShapeArrowhead(event, pointerId)
+                    return true
+                }
                 if (activeDrawingPointerId != null || !isDrawingPointer(event, event.actionIndex)) return true
                 cancelColorPick()
                 val baseStyle = currentStyle(event, event.actionIndex)
@@ -1182,7 +1199,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (shapeSnapped) return true
+                if (shapeSnapped) {
+                    if (shapeAdjustmentEvent == null) gestureHandler.postDelayed(shapeAdjustmentFrame, 16L)
+                    shapeAdjustmentEvent?.recycle()
+                    shapeAdjustmentEvent = MotionEvent.obtainNoHistory(event)
+                    return true
+                }
                 val index = event.findPointerIndex(pointerId)
                 if (index >= 0) {
                     val list = pendingSamples[pointerId] ?: return true
@@ -1202,6 +1224,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 if (event.getPointerId(event.actionIndex) != pointerId) return true
+                if (shapeSnapped && event.flags and MotionEvent.FLAG_CANCELED == 0) adjustShape(event, pointerId)
                 clearShapeHold()
                 strokeRecording?.let { recording ->
                     val tick = ((event.eventTime - recording.startedAt).coerceAtLeast(0L) * (animation?.fps ?: 1) / 1000L)
@@ -1281,6 +1304,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
                 activeDrawingPointerId = null
                 shapeSnapped = false
+                fittedShape = null
+                shapeGrab = null
+                fittedSamples = emptyList()
                 shapeStyle = null
                 setChromeOccludedByStroke(false)
             }
@@ -1778,6 +1804,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun clearShapeHold() {
+        gestureHandler.removeCallbacks(shapeAdjustmentFrame)
+        shapeAdjustmentEvent?.recycle()
+        shapeAdjustmentEvent = null
         shapeHold?.let(gestureHandler::removeCallbacks)
         shapeHold = null
         shapeEvent?.recycle()
@@ -1805,10 +1834,20 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             val extent = maxOf(samples.maxOf { it.position.x } - samples.minOf { it.position.x },
                 samples.maxOf { it.position.y } - samples.minOf { it.position.y })
             if (extent * rasterView.transform.scale < 24f * resources.displayMetrics.density) return@Runnable
+            // Closed geometry has no beginning/end pressure taper. Use the gesture's average
+            // contact so the seam cannot expose a pen-down/lift-off pressure discontinuity.
+            val contact = samples[samples.size / 2].copy(
+                pressure = samples.map { it.pressure }.average().toFloat(),
+                opacityPressure = samples.map { it.opacityPressure }.average().toFloat(),
+                tiltRadians = samples.map { it.tiltRadians }.average().toFloat(),
+            )
             val fitted = geometry.points.mapIndexed { i, point ->
                 val original = samples[i * samples.lastIndex / geometry.points.lastIndex]
-                original.copy(position = point)
+                (if (geometry.closed) contact.copy(elapsedNanos = original.elapsedNanos) else original).copy(position = point)
             }
+            fittedShape = geometry
+            shapeGrab = samples.last().position
+            fittedSamples = fitted
             if (customPreviewStyle != null) {
                 invalidateTarget(target, target.store.cancelLiveStroke())
                 target.store.beginLiveStroke()
@@ -1828,6 +1867,44 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }.also { gestureHandler.postDelayed(it, 650L) }
     }
 
+    private fun addShapeArrowhead(event: MotionEvent, pointerId: Int) {
+        clearShapeHold()
+        adjustShape(event, pointerId)
+        val samples = pendingSamples[pointerId] ?: return
+        val arrow = QuickShape.arrow(QuickShape.Shape(QuickShape.Kind.LINE, samples.map { it.position }))
+        val target = pendingTargets[pointerId] ?: return
+        val index = event.findPointerIndex(pointerId)
+        if (index < 0) return
+        fittedSamples = arrow.points.mapIndexed { i, point ->
+            samples[i * samples.lastIndex / arrow.points.lastIndex].copy(position = point)
+        }
+        fittedShape = arrow
+        shapeGrab = sample(event, index).forTarget(target).position
+        adjustShape(event, pointerId)
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+    }
+
+    private fun adjustShape(event: MotionEvent, pointerId: Int) {
+        val shape = fittedShape ?: return
+        val grab = shapeGrab ?: return
+        val index = event.findPointerIndex(pointerId)
+        if (index < 0) return
+        val target = pendingTargets[pointerId] ?: return
+        val style = shapeStyle ?: return
+        val position = sample(event, index).forTarget(target).position
+        val adjusted = QuickShape.adjust(shape, grab, position)
+        val samples = adjusted.points.mapIndexed { i, point -> fittedSamples[i].copy(position = point) }
+        pendingSamples[pointerId]?.apply { clear(); addAll(samples) }
+        if (customPreviewStyle != null) {
+            invalidateTarget(target, target.store.cancelLiveStroke())
+            target.store.beginLiveStroke()
+            invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
+        } else {
+            rasterView.previewStroke = CompletedStroke(samples, style)
+        }
+        updateChromeOcclusion(event, index)
+    }
+
     private fun rebaseToRemainingPointer(event: MotionEvent) {
         val remainingIndex = (0 until event.pointerCount).firstOrNull { it != event.actionIndex } ?: return
         val x = event.getX(remainingIndex)
@@ -1842,6 +1919,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun cancelActiveStroke(event: MotionEvent, pointerId: Int) {
         clearShapeHold()
         shapeSnapped = false
+        fittedShape = null
+        shapeGrab = null
+        fittedSamples = emptyList()
         shapeStyle = null
         if (multiEraseTargets.isNotEmpty()) { cancelMultiErase(); return }
         if (customPreviewStyle == null && rasterPreviewStyle == null) {

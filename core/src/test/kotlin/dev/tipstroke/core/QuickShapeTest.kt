@@ -39,6 +39,34 @@ class QuickShapeTest {
         assertEquals(QuickShape.Kind.RECTANGLE, QuickShape.recognize(points)?.kind)
     }
 
+    @Test fun adjustedLineKeepsItsStartAndFollowsThePen() {
+        val line = requireNotNull(QuickShape.recognize(path(Point(10f, 20f), Point(110f, 20f))))
+        val adjusted = QuickShape.adjust(line, Point(113f, 22f), Point(13f, 222f))
+        assertEquals(line.points.first(), adjusted.points.first())
+        assertTrue(hypot(adjusted.points.last().x - 10f, adjusted.points.last().y - 220f) < .001f)
+        assertEquals(line, QuickShape.adjust(line, Point(110f, 20f), Point(110f, 20f)))
+    }
+
+    @Test fun resizedCircleStaysClosedAndCircular() {
+        val circle = requireNotNull(QuickShape.recognize(List(181) { i ->
+            val angle = i * PI / 90
+            Point(100f * cos(angle).toFloat(), 100f * sin(angle).toFloat())
+        }))
+        val resized = QuickShape.adjust(circle, Point(100f, 0f), Point(0f, 200f))
+        assertEquals(resized.points.first(), resized.points.last())
+        resized.points.forEach { assertTrue(abs(hypot(it.x, it.y) - 200f) < .01f) }
+    }
+
+    @Test fun arrowShortcutProducesSymmetricHeadAndRemainsAdjustable() {
+        val line = requireNotNull(QuickShape.recognize(path(Point(0f, 0f), Point(100f, 0f))))
+        val arrow = QuickShape.arrow(line)
+        assertEquals(QuickShape.Kind.ARROW, arrow.kind)
+        assertEquals(-arrow.points.minOf { it.y }, arrow.points.maxOf { it.y })
+        val adjusted = QuickShape.adjust(arrow, Point(100f, 0f), Point(0f, 200f))
+        assertEquals(Point(0f, 0f), adjusted.points.first())
+        assertTrue(abs(adjusted.points.maxOf { it.y } - 200f) < .01f)
+    }
+
     @Test fun constraintsWorkInEveryQuadrant() {
         for (x in listOf(-1, 1)) for (y in listOf(-1, 1)) {
             val bounds = QuickShape.selectionBounds(Point(10f, 20f), Point(10f + 80 * x, 20f + 40 * y), true)

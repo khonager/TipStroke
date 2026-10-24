@@ -5,7 +5,40 @@ import kotlin.math.*
 /** Geometry only: recognition runs once after a hold, never on the sample hot path. */
 object QuickShape {
     enum class Kind { LINE, CIRCLE, ELLIPSE, RECTANGLE, SQUARE, TRIANGLE, ARROW }
-    data class Shape(val kind: Kind, val points: List<Point>)
+    data class Shape(val kind: Kind, val points: List<Point>) {
+        val closed: Boolean get() = kind in setOf(Kind.CIRCLE, Kind.ELLIPSE, Kind.RECTANGLE, Kind.SQUARE, Kind.TRIANGLE)
+    }
+
+    /** Adjust from the original fit, never from the previous preview (no cumulative drift). */
+    fun adjust(shape: Shape, grab: Point, pointer: Point): Shape {
+        val anchor = if (shape.closed) Point(
+            (shape.points.minOf { it.x } + shape.points.maxOf { it.x }) / 2f,
+            (shape.points.minOf { it.y } + shape.points.maxOf { it.y }) / 2f,
+        ) else shape.points.first()
+        val handle = if (shape.closed) grab else if (shape.kind == Kind.ARROW)
+            shape.points.maxBy { distance(it, anchor) } else shape.points.last()
+        val from = Point(handle.x - anchor.x, handle.y - anchor.y)
+        val to = Point(from.x + pointer.x - grab.x, from.y + pointer.y - grab.y)
+        val radius = hypot(from.x, from.y)
+        if (radius < .001f) return shape
+        val scale = (hypot(to.x, to.y) / radius).coerceIn(.02f, 100f)
+        val angle = if (hypot(to.x, to.y) < .001f) 0f else atan2(to.y, to.x) - atan2(from.y, from.x)
+        val c = cos(angle) * scale; val s = sin(angle) * scale
+        return shape.copy(points = shape.points.map {
+            val x = it.x - anchor.x; val y = it.y - anchor.y
+            Point(anchor.x + x * c - y * s, anchor.y + x * s + y * c)
+        })
+    }
+
+    /** A deliberate shortcut: snap a line, then touch with an extra finger for an arrowhead. */
+    fun arrow(line: Shape): Shape {
+        require(line.kind == Kind.LINE)
+        val a = line.points.first(); val b = line.points.last()
+        val dx = b.x - a.x; val dy = b.y - a.y
+        val wingA = Point(b.x - dx * .22f - dy * .13f, b.y - dy * .22f + dx * .13f)
+        val wingB = Point(b.x - dx * .22f + dy * .13f, b.y - dy * .22f - dx * .13f)
+        return Shape(Kind.ARROW, densify(listOf(a, b, wingA, b, wingB)))
+    }
 
     fun selectionBounds(start: Point, end: Point, constrained: Boolean): Rect {
         val dx = end.x - start.x
@@ -94,10 +127,11 @@ object QuickShape {
         val yRadius = if (circle) xRadius else ry
         val start = atan2((points.first().y - cy) / ry, (points.first().x - cx) / rx)
         val direction = if (points.zipWithNext().sumOf { (a, b) -> ((a.x - cx) * (b.y - cy) - (a.y - cy) * (b.x - cx)).toDouble() } < 0) -1 else 1
-        return Shape(if (circle) Kind.CIRCLE else Kind.ELLIPSE, List(257) { i ->
+        val outline = List(256) { i ->
             val angle = start + direction * 2 * PI * i / 256
             Point(cx + xRadius * cos(angle).toFloat(), cy + yRadius * sin(angle).toFloat())
-        })
+        }
+        return Shape(if (circle) Kind.CIRCLE else Kind.ELLIPSE, outline + outline.first())
     }
 
     private fun distance(a: Point, b: Point) = hypot(a.x - b.x, a.y - b.y)

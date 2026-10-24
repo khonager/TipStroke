@@ -18,6 +18,7 @@ class TileStore(
     internal var recordingListener: ((List<ReplayPaint>?, Map<TileCoordinate, Bitmap?>) -> Unit)? = null
     internal var captureReplayPreview = false
     private val replayPreview = ReplayCapture()
+    private var pencilPreviewDot = false
     private val replayLive = ReplayCapture()
     private val tiles = mutableMapOf<TileCoordinate, Bitmap>()
     private var fillTileReader: ((TileCoordinate) -> Bitmap?)? = null
@@ -154,6 +155,13 @@ class TileStore(
         capEnd: Boolean = false,
         skipFirstSegment: Boolean = false,
     ): Set<TileCoordinate> {
+        val moving = stroke.samples.zipWithNext().any { (a, b) ->
+            hypot(a.position.x - b.position.x, a.position.y - b.position.y) >= .05f
+        }
+        // Replace the provisional contact mark once the stroke becomes a ribbon. Only the
+        // sparse dot tiles are discarded, once per stroke; no layer pixels are touched.
+        val removed = if (pencilPreviewDot && moving) tiles.keys.toSet().also { discard() } else emptySet()
+        if (capStart && !moving && tiles.isEmpty()) pencilPreviewDot = true
         if (captureReplayPreview) replayPreview.add(ReplayPaint(stroke, true, capStart, capEnd, skipFirstSegment))
         val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
         dirty.forEach { coordinate ->
@@ -165,8 +173,8 @@ class TileStore(
                 restore()
             }
         }
-        lastDirtyTiles = dirty
-        return dirty
+        lastDirtyTiles = dirty + removed
+        return lastDirtyTiles
     }
 
     /** Composites an isolated sparse preview once and records the result as one undo step. */
@@ -193,6 +201,7 @@ class TileStore(
 
     /** Releases all pixels owned by a transient preview store. */
     internal fun discard() {
+        pencilPreviewDot = false
         tiles.values.forEach(Bitmap::recycle)
         tiles.clear()
         tileContentBounds.clear()

@@ -39,6 +39,8 @@ data class StrokeStyle(
     val referenceStrokes: StrokeCoverage? = null,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
+    /** Exact closure is emitted by fitted shapes and survives ordinary sample serialization. */
+    val isClosed: Boolean get() = samples.size > 3 && samples.first().position == samples.last().position
     val bounds: Rect by lazy {
         require(samples.isNotEmpty())
         // Custom tips can extend beyond half of the nominal brush size. Keep bounds

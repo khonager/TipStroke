@@ -58,6 +58,60 @@ class DrawingSurfaceShapeTest {
         assertFalse(undo)
     }
 
+    @Test fun snappedLineCanBeAimedAndConvertedToArrowBeforeLift() {
+        val surface = surface()
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        send(surface, MotionEvent.ACTION_DOWN, 250f, 350f)
+        send(surface, MotionEvent.ACTION_MOVE, 350f, 353f)
+        send(surface, MotionEvent.ACTION_MOVE, 450f, 350f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(700))
+        val start = requireNotNull(raster.previewStroke).samples.first().position
+        send(surface, MotionEvent.ACTION_MOVE, 450f, 450f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(20))
+        val line = requireNotNull(raster.previewStroke)
+        assertEquals(start, line.samples.first().position)
+        val end = raster.screenToDocument(450f, 450f)
+        assertEquals(end.x, line.samples.last().position.x, .01f)
+        assertEquals(end.y, line.samples.last().position.y, .01f)
+        send(surface, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 450f, 450f, true)
+        val arrow = requireNotNull(raster.previewStroke)
+        assertTrue(arrow.samples.any { it.position.x < end.x && it.position.y > end.y - 10f })
+        assertNotEquals(line.samples.last().position, arrow.samples.last().position)
+        send(surface, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 450f, 450f, true)
+        assertNotNull(raster.previewStroke)
+        send(surface, MotionEvent.ACTION_MOVE, 450f, 500f)
+        // Lift flushes the final position even if the scheduled preview has not run yet.
+        send(surface, MotionEvent.ACTION_UP, 450f, 500f)
+        assertNull(raster.previewStroke)
+        val store = raster.layerStack.selectedRaster()!!.tiles
+        assertTrue(store.history.canUndo())
+        surface.undo()
+        assertFalse(store.history.canUndo())
+        assertEquals(0, store.allocatedTileCount)
+    }
+
+    @Test fun circleResizesWithoutOpeningItsSeam() {
+        val surface = surface()
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        for (i in 0..90) {
+            val angle = i * 2 * Math.PI / 90
+            send(surface, if (i == 0) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_MOVE,
+                400f + 100f * kotlin.math.cos(angle).toFloat(), 400f + 100f * kotlin.math.sin(angle).toFloat())
+        }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(700))
+        val original = requireNotNull(raster.previewStroke)
+        assertTrue(original.isClosed)
+        send(surface, MotionEvent.ACTION_MOVE, 550f, 400f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(20))
+        val enlarged = requireNotNull(raster.previewStroke)
+        assertTrue(enlarged.isClosed)
+        assertTrue(enlarged.bounds.right - enlarged.bounds.left > original.bounds.right - original.bounds.left)
+        send(surface, MotionEvent.ACTION_CANCEL, 550f, 400f)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(20))
+        assertNull(raster.previewStroke)
+        assertFalse(raster.layerStack.selectedRaster()!!.tiles.history.canUndo())
+    }
+
     @Test fun eraserShapeRollsBackLiveTilesOnCancellation() {
         for (brush in listOf(BrushPreset.Ink, BrushPreset.Pencil, BrushPreset.Airbrush)) {
             val surface = surface().apply { settings.brush = brush; settings.erasing = true }

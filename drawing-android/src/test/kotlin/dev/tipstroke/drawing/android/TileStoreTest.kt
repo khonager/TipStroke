@@ -196,6 +196,42 @@ class TileStoreTest {
         dry.recycle()
     }
 
+    @Test fun movingPencilReplacesContactDotWithTexturedRibbonEnds() {
+        val style = ink.copy(brush = BrushPreset.Pencil, sizePx = 100f, opacity = .65f)
+        val first = sample(Point(70f, 128f), 0).copy(tiltRadians = 1.2f, orientationRadians = 0f)
+        val last = first.copy(position = Point(180f, 128f), elapsedNanos = 50_000_000L)
+        val stroke = CompletedStroke(listOf(first, last), style)
+        val preview = TileStore(256, 256)
+        preview.appendPencilPreview(CompletedStroke(listOf(first), style), capStart = true)
+        assertTrue((30..65).any { Color.alpha(preview.colorAt(it, 128)) > 0 })
+        preview.appendPencilPreview(stroke)
+        preview.appendPencilPreview(stroke, capEnd = true, skipFirstSegment = true)
+        // No separate full nib stamp projects beyond either end after movement.
+        assertTrue((30..67).all { Color.alpha(preview.colorAt(it, 128)) == 0 })
+        assertTrue((183..220).all { Color.alpha(preview.colorAt(it, 128)) == 0 })
+        val alphas = (72..90).flatMap { x -> (125..131).map { y -> Color.alpha(preview.colorAt(x, y)) } }
+        assertTrue(alphas.distinct().size > 3)
+        val committed = TileStore(256, 256)
+        committed.commit(stroke)
+        for (x in 30..220) for (y in 100..155) {
+            assertEquals("Ribbon preview and commit at $x,$y", preview.colorAt(x, y), committed.colorAt(x, y))
+        }
+    }
+
+    @Test fun closedInkHasNoDarkerOrMissingEndpointSeam() {
+        val samples = (0 until 128).map { i ->
+            val angle = i * 2 * Math.PI / 128
+            sample(Point(128f + 70f * kotlin.math.cos(angle).toFloat(), 128f + 70f * kotlin.math.sin(angle).toFloat()), i * 1_000_000L)
+        }.let { it + it.first().copy(elapsedNanos = 128_000_000L) }
+        val style = ink.copy(opacity = .5f, sizePx = 12f)
+        val store = TileStore(256, 256)
+        store.commit(CompletedStroke(samples, style))
+        val seam = Color.alpha(store.colorAt(198, 128))
+        val opposite = Color.alpha(store.colorAt(58, 128))
+        assertTrue(seam > 0)
+        assertEquals(opposite.toFloat(), seam.toFloat(), 2f)
+    }
+
     @Test fun pencilGrainIsContinuousAcrossSparseTileSeams() {
         val pencil = StrokeStyle(
             BrushPreset.Pencil,

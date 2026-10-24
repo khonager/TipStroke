@@ -189,3 +189,11 @@ or rolls back the affected live raster tiles, then previews the fitted samples
 through the current brush's raster path. Pen-up commits one ordinary raster
 stroke; no persistent shape objects or project-format changes are introduced.
 Selection aspect constraints use the same platform-free geometry helper.
+
+While a snapped shape is held, its original fitted geometry and contact samples
+remain transient. Pointer movement adjusts from that original fit, coalesced at
+16 ms intervals; pen-up flushes the final position immediately. Custom live
+raster previews roll back only their touched tiles before replacing the shape,
+and normal brush previews use the native raster view. All intermediate versions
+remain outside undo history. Exact point closure is derived from stroke samples
+and survives ordinary stroke replay without a project format change.

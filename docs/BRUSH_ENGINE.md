@@ -39,3 +39,19 @@ Eraser gestures still use a cancellable sparse-tile transaction while the pointe
 Process recording v1 stores complete brush parameters rather than mutable preset IDs alone. `ReplayPainterV1`, `ReplayBrushMathV1`, and `ReplayInkBrushesV1` are frozen compatibility implementations, including texture generation and pressure/tilt math. Never update them to match a new brush look. Introduce a new renderer version and keep v1 dispatch for earlier actions. Any new production brush algorithm must update recording dispatch as part of the same change; production-vs-replay pixel tests guard that seam.
 
 Native Ink is pinned to 1.1.0-alpha08. A dependency guard test requires explicit compatibility review before upgrading it; a string version tag alone cannot preserve an old native implementation. Run the connected native round-trip test and retain compatibility or migrate recordings before removing native support. Checked-in `recording/v1.tsr` and `v1.png` fixtures guard older raster recordings independently of current presets. Do not regenerate these fixtures to accommodate a brush change.
+
+### Pencil ends and closed shapes
+
+Continuous Pencil strokes terminate in the same textured contact ribbon used
+along the stroke, without separate oval end stamps. A stationary tap uses a
+textured, bevelled nib footprint. Once that tap becomes a moving stroke, its
+provisional sparse dot tiles are replaced once by the ribbon; normal subsequent
+samples continue to render incrementally. Tap texture uses the same tint/grain
+composition as the ribbon.
+
+Fitted closed outlines repeat their first point exactly. Closed Pencil ribbons
+join the final tangent to the initial tangent instead of drawing terminal caps;
+closed Ink/erase outlines use a closed path rather than overlapping endpoint
+stamps. Fitted closed shapes use average contact pressure/tilt and disable speed
+taper to avoid a visible pressure discontinuity at the seam. No new persistent
+shape types or project schema fields are required.

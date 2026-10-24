@@ -168,7 +168,17 @@ internal object StrokeCanvasPainter {
             canvas.restoreToCount(saveCount)
             return
         }
-        if (samples.size == 1) {
+        if (stroke.isClosed) {
+            val sample = samples.first()
+            paint.strokeWidth = stroke.style.sizePx * sample.pressureSize(stroke)
+            paint.alpha = (stroke.style.opacity * stroke.style.color.alpha * sample.pressureOpacity(stroke) * 255).roundToInt().coerceIn(0, 255)
+            val outline = Path().apply {
+                moveTo(sample.position.x, sample.position.y)
+                samples.drop(1).dropLast(1).forEach { lineTo(it.position.x, it.position.y) }
+                close()
+            }
+            canvas.drawPath(outline, paint)
+        } else if (samples.size == 1) {
             val sample = samples.first()
             paint.style = Paint.Style.FILL
             paint.alpha = (stroke.style.opacity * stroke.style.color.alpha * sample.pressureOpacity(stroke) * 255)
@@ -285,7 +295,8 @@ internal object StrokeCanvasPainter {
         skipFirstSegment: Boolean = false,
     ) {
         val samples = buildList<StrokeSample> {
-            stroke.samples.forEach { sample ->
+            val source = if (stroke.isClosed) stroke.samples + stroke.samples[1] else stroke.samples
+            source.forEach { sample ->
                 val previous = lastOrNull()
                 if (previous == null || hypot(
                         sample.position.x - previous.position.x,
@@ -313,16 +324,28 @@ internal object StrokeCanvasPainter {
 
         fun drawCap(sample: StrokeSample, speedScale: Float = 1f) {
             val dynamics = pencilTipDynamics(stroke, sample, speedScale)
-            paint.alpha = dynamics.alpha
             configureGrain(sample)
+            val grain = paint.shader!!
+            val color = stroke.style.color.toOpaqueRgb()
+            val tint = Color.argb(dynamics.alpha, Color.red(color), Color.green(color), Color.blue(color))
+            paint.shader = ComposeShader(LinearGradient(0f, 0f, 1f, 0f, tint, tint, Shader.TileMode.CLAMP), grain, PorterDuff.Mode.DST_IN)
+            paint.colorFilter = null
+            paint.alpha = 255
             val halfWidth = dynamics.width / 2f
             val halfHeight = dynamics.height / 2f
-            val cap = Path().apply { addOval(RectF(
-                sample.position.x - halfWidth,
-                sample.position.y - halfHeight,
-                sample.position.x + halfWidth,
-                sample.position.y + halfHeight,
-            ), Path.Direction.CW) }
+            // A tap uses a textured, bevelled graphite contact, not a round brush stamp.
+            val cap = Path().apply {
+                val x = sample.position.x; val y = sample.position.y
+                moveTo(x - halfWidth * .8f, y - halfHeight)
+                lineTo(x + halfWidth * .8f, y - halfHeight)
+                lineTo(x + halfWidth, y - halfHeight * .7f)
+                lineTo(x + halfWidth, y + halfHeight * .7f)
+                lineTo(x + halfWidth * .8f, y + halfHeight)
+                lineTo(x - halfWidth * .8f, y + halfHeight)
+                lineTo(x - halfWidth, y + halfHeight * .7f)
+                lineTo(x - halfWidth, y - halfHeight * .7f)
+                close()
+            }
             cap.transform(Matrix().apply {
                 setRotate(Math.toDegrees(sample.orientationRadians.toDouble()).toFloat(), sample.position.x, sample.position.y)
             })
@@ -330,7 +353,7 @@ internal object StrokeCanvasPainter {
         }
 
         if (samples.size == 1) {
-            if (capStart || capEnd) drawCap(samples.first())
+            if (capStart) drawCap(samples.first())
         } else {
             data class Section(val left: Point, val right: Point)
             data class Segment(
@@ -467,8 +490,8 @@ internal object StrokeCanvasPainter {
                 }
             }
             paint.colorFilter = PorterDuffColorFilter(stroke.style.color.toOpaqueRgb(), PorterDuff.Mode.SRC_IN)
-            if (capStart) drawCap(samples.first(), samples[1].speedSize(stroke, samples.first()))
-            if (capEnd) drawCap(samples.last(), samples.last().speedSize(stroke, samples[samples.lastIndex - 1]))
+            // Continuous strokes end in the textured ribbon itself. Separate tip ellipses
+            // protruded from tilted ribbons and made both freehand and fitted ends bulbous.
         }
         paint.shader = null
         paint.colorFilter = null
@@ -605,6 +628,7 @@ internal object StrokeCanvasPainter {
     private fun StrokeSample.pressureSize(stroke: CompletedStroke) = stroke.style.brush.pressureToSize.map(pressure)
     private fun StrokeSample.pressureOpacity(stroke: CompletedStroke) = stroke.style.brush.pressureToOpacity.map(opacityPressure)
     private fun StrokeSample.speedSize(stroke: CompletedStroke, previous: StrokeSample): Float {
+        if (stroke.isClosed) return 1f
         val taper = stroke.style.brush.speedTaper
         if (taper <= 0f) return 1f
         val elapsedMillis = ((elapsedNanos - previous.elapsedNanos).coerceAtLeast(1L)) / 1_000_000f

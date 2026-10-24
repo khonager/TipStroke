@@ -201,11 +201,23 @@ confirmation. Near-circular and near-square outlines become exact circles and
 squares. Rectangles may be rotated; ellipse fitting uses document axes. Draw an
 arrow in one continuous stroke: tail → tip → first wing → tip → second wing.
 Hold at its end to regularize the shaft and make the two wings symmetric.
-Unrecognized strokes and tiny marks stay freehand. After snapping, lift to commit;
-the fitted shape stays fixed until lift. Cancellation discards it.
+The easier arrow shortcut is to draw a line, hold until it snaps, then tap the
+canvas with an extra finger while keeping the pen down. This adds a symmetric
+arrowhead which remains after the finger lifts.
 
-Quick shapes retain the active brush, color, pressure/tilt samples, selection,
-and raster history semantics. Pencil, Ink, Airbrush, single-layer Eraser, Pixel,
+Unrecognized strokes and tiny marks stay freehand. After snapping, keep the pen
+down and drag: lines and arrows keep their starting point anchored while their
+endpoint follows the pen; circles, ellipses, rectangles, squares and triangles
+scale uniformly and rotate about their fitted bounding-box center. Circles stay
+circular and squares stay square. The adjustment starts from the original fit,
+without a jump or cumulative drift. Lift to commit the final shape as one undo
+step. Cancellation discards the entire provisional shape. Editing is available
+before lift; committed artwork remains raster pixels.
+
+Quick shapes retain the active brush, color, selection,
+and raster history semantics. Open shapes retain sampled pressure and tilt;
+closed shapes use average contact pressure/tilt and no speed taper so a loop has
+no pen-down/lift-off seam. Pencil, Ink, Airbrush, single-layer Eraser, Pixel,
 and Shade use their existing raster painters. The dedicated pixel Line tool
 already constrains its stroke and does not run recognition. Multi-layer erase
 retains its existing freehand gesture. Finger drawing and mouse drawing also
