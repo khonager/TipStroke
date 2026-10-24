@@ -199,6 +199,93 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var chromeApproachMarginPx = 0f
     private var pressedStylusButtons = 0
     private var imageTransformMode = false
+    var photoEditTool = PhotoEditTool.MOVE
+    var photoSnapping = false
+    /** Brush radius as a fraction of image height. */
+    var photoWarpRadius = .25f
+    private var photoBefore: Pair<ImageLayerRuntime, ImageTransform>? = null
+    private var photoUnsnapped: ImageTransform? = null
+    private var photoCenter = Point(.5f,.5f)
+
+    private fun beginPhotoEdit() {
+        val image = layerStack.selectedImage() ?: return
+        photoBefore = image to image.transform
+        photoUnsnapped = image.transform
+        photoCenter = image.transform.copy(warp=null).sourcePoint(
+            singleLastDocument.x,singleLastDocument.y,image.source.width,image.source.height)!!
+    }
+
+    private fun finishPhotoEdit(cancel: Boolean = false) {
+        val (image,before) = photoBefore ?: return
+        photoBefore = null; photoUnsnapped = null
+        rasterView.photoBrushArea = null
+        val after = image.transform
+        if (cancel) image.transform = before
+        else if (before != after) image.mask.history.push(object : UndoTransaction {
+            override val estimatedBytes = 128L + ((before.warp?.points?.size ?: 0)+(after.warp?.points?.size ?: 0))*32L
+            override fun undo() { image.transform = before }
+            override fun redo() { image.transform = after }
+        })
+        rasterView.invalidate(); notifyHistory(); notifyLayers()
+    }
+
+    fun resetPhotoShape() {
+        finishPhotoEdit()
+        beginPhotoEdit()
+        layerStack.selectedImage()?.let { it.transform = it.transform.copy(stretchX=1f,stretchY=1f,warp=null) }
+        finishPhotoEdit()
+    }
+
+    private fun editPhoto(dx: Float, dy: Float, scale: Float = 1f, angle: Float = 0f, navigation: Boolean = false) {
+        val image = layerStack.selectedImage() ?: return
+        val old = photoUnsnapped ?: image.transform
+        val radians = Math.toRadians(-old.rotationDegrees.toDouble())
+        val localX = (dx*cos(radians)-dy*sin(radians)).toFloat()/(image.source.width*old.scale*old.stretchX)
+        val localY = (dx*sin(radians)+dy*cos(radians)).toFloat()/(image.source.height*old.scale*old.stretchY)
+        val tool = if(navigation) PhotoEditTool.MOVE else photoEditTool
+        val next = when(tool) {
+            PhotoEditTool.MOVE -> old.changedBy(dx,dy,scale,angle)
+            PhotoEditTool.STRETCH -> old.copy(
+                stretchX=(old.stretchX*exp(localX*(if(photoCenter.x<.5f) -2f else 2f))).coerceIn(.02f,50f),
+                stretchY=(old.stretchY*exp(localY*(if(photoCenter.y<.5f) -2f else 2f))).coerceIn(.02f,50f))
+            else -> {
+                val center = if(tool == PhotoEditTool.PUSH) {
+                    old.copy(warp=null).sourcePoint(singleLastDocument.x,singleLastDocument.y,image.source.width,image.source.height)!!
+                } else photoCenter
+                old.copy(warp=(old.warp ?: PhotoWarp.identity()).deform(tool,center,Point(localX,localY),photoWarpRadius,
+                    image.source.width*old.stretchX/(image.source.height*old.stretchY)))
+            }
+        }
+        rasterView.photoBrushArea = if(tool in listOf(PhotoEditTool.PUSH,PhotoEditTool.BULGE,PhotoEditTool.PINCH)) {
+            val center = if(tool == PhotoEditTool.PUSH) Point(singleLastDocument.x,singleLastDocument.y)
+                else old.copy(warp=null).documentPoint(photoCenter.x,photoCenter.y,image.source.width,image.source.height)
+            center to (photoWarpRadius*image.source.height*old.scale*old.stretchY)
+        } else null
+        photoUnsnapped = next
+        image.transform = if(photoSnapping && tool==PhotoEditTool.MOVE) snapPhoto(image,next) else next
+        rasterView.invalidate()
+    }
+
+    private fun snapPhoto(image: ImageLayerRuntime, proposed: ImageTransform): ImageTransform {
+        val candidates = listOf((proposed.rotationDegrees/15f).roundToInt()*15f) +
+            layerStack.layers.filterIsInstance<ImageLayerRuntime>().filter { it.id != image.id && it.visible }.map {
+                it.transform.rotationDegrees + ((proposed.rotationDegrees-it.transform.rotationDegrees)/360f).roundToInt()*360f
+            }
+        val angle=candidates.minBy { abs(it-proposed.rotationDegrees) }
+        val rotated=if(abs(angle-proposed.rotationDegrees)<3f) proposed.copy(rotationDegrees=angle) else proposed
+        val bounds=rotated.photoBounds(image.source.width,image.source.height)
+        val targets=mutableListOf(android.graphics.RectF(0f,0f,layerStack.canvasWidth.toFloat(),layerStack.canvasHeight.toFloat()))
+        layerStack.layers.filterIsInstance<ImageLayerRuntime>().filter { it.id != image.id && it.visible }.forEach {
+            targets += it.transform.photoBounds(it.source.width,it.source.height)
+        }
+        val tolerance=10f*resources.displayMetrics.density/rasterView.transform.scale
+        fun closest(values: List<Float>, anchors: List<Float>): Float = values.flatMap { v -> anchors.map { it-v } }
+            .filter { abs(it)<tolerance }.minByOrNull { abs(it) } ?: 0f
+        val x=closest(listOf(bounds.left,bounds.centerX(),bounds.right),targets.flatMap { listOf(it.left,it.centerX(),it.right) })
+        val y=closest(listOf(bounds.top,bounds.centerY(),bounds.bottom),targets.flatMap { listOf(it.top,it.centerY(),it.bottom) })
+        return rotated.changedBy(x,y)
+    }
+
     private var imageGestureInProgress = false
     private var opacityAdjustmentInProgress = false
     private var referenceLayerId: LayerId? = null
@@ -686,8 +773,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun setSelectedImageScale(value: Float) { layerStack.setImageScale(value); notifyLayers() }
     fun setImageTransformMode(enabled: Boolean) {
+        if (!enabled) finishPhotoEdit()
         imageTransformMode = enabled && layerStack.selectedImage() != null
+        if (imageTransformMode) { selectionMode = false; selectionMoveMode = false; clearMovePreview() }
         rasterView.showImageTransformBounds = imageTransformMode
+        rasterView.invalidate()
     }
     fun setSelectionMode(enabled: Boolean) {
         selectionMode = enabled
@@ -1065,7 +1155,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (handleMousePan(event, actionIndex)) return true
         if (selectionMoveMode) return handleSelectionMove(event)
         if (selectionMode) return handleSelection(event)
-        if (isTransformingImage() && !isStylus(event, actionIndex)) return handleTouchGesture(event)
+        if (isTransformingImage()) return handleTouchGesture(event)
 
         // The emulator maps a host click to a finger. If a simulated second finger is
         // added for pinch, cancel the provisional mark and hand the full event to the
@@ -1385,6 +1475,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 singleStart = android.graphics.PointF(event.x, event.y)
                 singleLast = android.graphics.PointF(event.x, event.y)
                 singleLastDocument = rasterView.screenToDocument(event.x, event.y)
+                if (isTransformingImage()) beginPhotoEdit()
                 if (!isTransformingImage() && settings.gestures.oneFingerDrag == FingerAction.SMUDGE && referenceLayerId == null) {
                     smudgeTarget = layerStack.selectedRaster()?.also { it.tiles.beginSmudge() }
                 }
@@ -1406,7 +1497,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (colorPicking) {
                     updateColorPick(event.x, event.y, document)
                 } else if (isTransformingImage() && gestureMoved) {
-                    layerStack.transformSelectedImage(document.x - singleLastDocument.x, document.y - singleLastDocument.y)
+                    editPhoto(document.x - singleLastDocument.x, document.y - singleLastDocument.y)
                 } else when (settings.gestures.oneFingerDrag) {
                     FingerAction.NAVIGATE -> if (gestureMoved) {
                         val old = rasterView.transform
@@ -1442,6 +1533,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     return true
                 }
                 if (isTransformingImage()) {
+                    finishPhotoEdit()
                     imageGestureInProgress = false
                     notifyLayers(); notifyVisiblePalette()
                     if (event.actionMasked == MotionEvent.ACTION_UP) finishImageRecording(event.eventTime)
@@ -1460,7 +1552,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             MotionEvent.ACTION_CANCEL -> {
                 cancelHold(); cancelColorPick(); smudgeTarget?.tiles?.finishSmudge(); smudgeTarget = null; gestureStart = emptyMap()
                 motionRecording = null; publishAnimation()
-                if (imageGestureInProgress) { imageGestureInProgress = false; notifyLayers(); notifyVisiblePalette() }
+                if (imageGestureInProgress) { finishPhotoEdit(cancel = true); imageGestureInProgress = false; notifyLayers(); notifyVisiblePalette() }
             }
         }
         if (event.actionMasked == MotionEvent.ACTION_MOVE && isTransformingImage()) recordImageSample(event.eventTime)
@@ -1743,11 +1835,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (isTransformingImage()) {
             val previousDocument = rasterView.screenToDocument(lastGestureCentroid.x, lastGestureCentroid.y)
             val currentDocument = rasterView.screenToDocument(center.x, center.y)
-            layerStack.transformSelectedImage(
+            editPhoto(
                 currentDocument.x - previousDocument.x,
                 currentDocument.y - previousDocument.y,
                 scaleFactor,
                 Math.toDegrees(rawAngleDelta.toDouble()).toFloat(),
+                navigation = true,
             )
         } else {
             val old = rasterView.transform

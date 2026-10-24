@@ -90,7 +90,6 @@ internal fun LayersPanel(
     var settingsLayerId by remember { mutableStateOf<LayerId?>(null) }
     var renameLayer by remember { mutableStateOf<LayerSummary?>(null) }
     var renameText by remember { mutableStateOf("") }
-    var addMenuOpen by remember { mutableStateOf(false) }
     var backgroundPickerOpen by remember { mutableStateOf(false) }
     var backgroundPickerMode by remember { mutableStateOf(ColorPickerMode.HSV_WHEEL) }
     val listState = rememberLazyListState()
@@ -161,13 +160,8 @@ internal fun LayersPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Layers", color = Color(0xFFF5F5F2), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                Box {
-                    TextButton(onClick = { addMenuOpen = true }) { Text("＋ Add") }
-                    DropdownMenu(addMenuOpen, { addMenuOpen = false }) {
-                        DropdownMenuItem(text = { Text("Paint layer") }, onClick = { addMenuOpen = false; onAddPaint() })
-                        DropdownMenuItem(text = { Text("Import image") }, onClick = { addMenuOpen = false; onImportImage() })
-                    }
-                }
+                TextButton(onClick = onImportImage) { Text("Import") }
+                TextButton(onClick = onAddPaint) { Text("＋ Layer") }
                 TextButton(onClick = onDismiss) { Text("Done") }
             }
             Text("Hold to reorder · drop on a preview to group", color = Color(0xFF9B9DA3), fontSize = 12.sp)
@@ -438,7 +432,7 @@ private fun LayerControls(
                     containerColor = if (imageTransforming) Color(0xFFED6A5A) else Color(0xFF34363B),
                     contentColor = Color.White,
                 ),
-            ) { Text(if (imageTransforming) "Finish transforming" else "Move & resize on canvas") }
+            ) { Text(if (imageTransforming) "Finish transforming" else "Edit photo on canvas") }
             Text(
                 "Drag to move · pinch to resize · twist to rotate",
                 color = Color(0xFFAAAEB4), fontSize = 11.sp,

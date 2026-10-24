@@ -193,3 +193,14 @@ and ends, circle seams, and repeated scale/rotation adjustments before lift.
 Process-recording verification includes a Pencil preview that starts as a
 provisional dot, becomes a ribbon, and is followed by a live eraser stroke.
 Its final replay frame must match every pixel of the canvas.
+
+## Photo editing and layer creation
+
+1. Tap **＋ Layer** once: one paint layer appears immediately, without a menu. Tap **Import** separately and select a photo.
+2. In Move, drag, pinch and twist. Enable Snap; approach canvas corners/centers, another photo's edges, and 15-degree angles. Move away slowly to confirm magnets release; disable Snap and repeat freely. Repeat with a rotated/zoomed camera.
+3. Stretch horizontally and vertically. Push individual landmarks. Bulge an eye with a small area, then use a large area for a spherical bulge; Pinch should shrink the same region. Confirm edits remain local and the grid does not fold over.
+4. Undo/redo each gesture, cancel a pointer gesture, and reset shape. Repeat with pen and finger, then a two-finger-to-one-finger handoff. After Done, draw and erase normally.
+5. Combine two photo layers at reduced opacity, align/reshape them, then erase overlapping unwanted regions and draw on a paint layer above. Check masks remain aligned after further warping.
+6. Save/reopen, duplicate the photo, export PNG, inspect the gallery preview and process playback. Repeat with animated image cels. Check positions, stretch, warp and masks agree in each output.
+
+Automated coverage: `PhotoWarpTest` checks local deformation/inversion/foldover rejection; `PhotoEditingTest` checks transform metadata compatibility, rendered mask alignment, gesture undo and cancellation. Physical-device latency and visual review remain required; the Linux desktop renderer does not expose Android photo tools.

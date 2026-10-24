@@ -223,3 +223,13 @@ already constrains its stroke and does not run recognition. Multi-layer erase
 retains its existing freehand gesture. Finger drawing and mouse drawing also
 support hold-to-shape; adding a second finger during finger drawing still cancels
 the mark for navigation. An extra finger never ends an active stylus stroke.
+
+## Photo editing
+
+The Layers **＋ Layer** button immediately creates a paint layer; **Import** is a separate action. Imported photos open in photo editing mode, also reachable through an image layer's **Edit photo on canvas** action. **Done** returns the pen to drawing/erasing.
+
+Photo edits use the native touch/stylus surface. Move supports one-pointer translation and two-pointer scale/rotation. Stretch uses horizontal/vertical drags for independent image-axis scaling. Push moves a local area; Bulge enlarges features and creates spherical bulges; Pinch shrinks features. Adjust **Area size** to control the affected radius (relative to image height); the circle appears while dragging. Two fingers always move/scale/rotate the image regardless of the selected photo tool.
+
+Optional **Snap** aligns image bounds to canvas/visible photo edges and centers within 10 screen dp, and rotation to 15-degree increments or another visible photo's angle within 3 degrees. Unsnapped gesture coordinates are retained so magnets release smoothly. Snapping applies in Move and two-finger navigation. Each completed gesture is one bounded undo entry; canceled gestures restore their initial transform. Reset shape clears stretching/warping with undo, preserving placement and rotation.
+
+For composites, import the source photos as separate layers, lower opacity to align landmarks, reshape with Push/Bulge/Pinch, finish editing, and erase unwanted image regions. Draw the reference on a paint layer above. This is manual compositing; it does not generate missing anatomy or blend two subjects automatically.

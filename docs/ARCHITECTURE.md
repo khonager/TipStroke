@@ -197,3 +197,5 @@ raster previews roll back only their touched tiles before replacing the shape,
 and normal brush previews use the native raster view. All intermediate versions
 remain outside undo history. Exact point closure is derived from stroke samples
 and survives ordinary stroke replay without a project format change.
+
+Photo transforms include independent X/Y stretch and an optional normalized 16×16 deformation mesh in `:core`. The immutable mesh is metadata; source assets and sparse source-coordinate masks remain authoritative. Local deformation rejects triangle inversions. Native input mutates transform metadata without per-sample Compose state or canvas bitmap copies. A shared Android photo renderer handles canvas display, thumbnails, export and process playback; inverse mesh mapping supports source-coordinate color sampling and erase placement. Photo gesture history stores bounded before/after transform metadata alongside the image mask's existing history.

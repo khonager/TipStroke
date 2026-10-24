@@ -115,12 +115,13 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
             layer.clipSourceId?.let { item.put("clipSourceId", it.value) }
             if (layer is ImageLayerRuntime) {
                 item.put("image", true).put("x", layer.transform.centerX).put("y", layer.transform.centerY)
-                    .put("scale", layer.transform.scale).put("rotation", layer.transform.rotationDegrees)
+                    .put("scale", layer.transform.scale).put("rotation", layer.transform.rotationDegrees).putPhotoTransform(layer.transform)
                     .put("width", layer.source.width).put("height", layer.source.height)
             }
             layers.put(item)
         }
         val state = json.put("layers", layers).toString()
+        if (state.toByteArray(Charsets.UTF_8).size > 60_000) { stop("Recording stopped: photo edit metadata exceeds the recording limit."); detach(); return }
         if (!restore && (metadata != state || recovering)) enqueue(2048) { out -> out.writeByte(0); out.writeUTF(state) }
         metadata = state
         stack.layers.forEach { layer ->
@@ -313,19 +314,10 @@ class ProcessReplay internal constructor(
                     val encoded = images[id] ?: return@drawWithLayerClip // metadata precedes the initial image asset
                     val bitmap = requireNotNull(BitmapFactory.decodeByteArray(encoded, 0, encoded.size))
                     try {
-                        val save = canvas.save()
-                        canvas.translate(layer.getDouble("x").toFloat(), layer.getDouble("y").toFloat())
-                        canvas.rotate(layer.getDouble("rotation").toFloat())
-                        val imageScale = layer.getDouble("scale").toFloat()
-                        canvas.scale(imageScale, imageScale)
-                        canvas.translate(-layer.getInt("width") / 2f, -layer.getInt("height") / 2f)
-                        val group = canvas.saveLayer(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat(), paint)
-                        val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-                        canvas.drawBitmap(bitmap, 0f, 0f, imagePaint)
-                        imagePaint.isFilterBitmap = false
-                        imagePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-                        layers["$id:mask"]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,imagePaint) }
-                        canvas.restoreToCount(group); canvas.restoreToCount(save)
+                        val transform = layer.readPhotoTransform(dev.tipstroke.core.model.ImageTransform(
+                            layer.getDouble("x").toFloat(), layer.getDouble("y").toFloat(),
+                            layer.getDouble("scale").toFloat(), layer.getDouble("rotation").toFloat()))
+                        canvas.drawPhoto(bitmap, layer.getInt("width"), layer.getInt("height"), transform, paint, visitMasks = layers["$id:mask"]?.let { mask -> { draw -> mask.forEach(draw) } })
                     } finally { bitmap.recycle() }
                 } else layers[id]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
             }

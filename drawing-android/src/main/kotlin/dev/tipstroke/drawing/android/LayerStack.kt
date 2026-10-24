@@ -450,13 +450,10 @@ internal class LayerStack(
                 is RasterLayerRuntime -> layer.tiles.colorAt(x.roundToInt(), y.roundToInt())
                 is ImageLayerRuntime -> {
                     val bitmap = layer.source.bitmapOrRequest() ?: return android.graphics.Color.TRANSPARENT
-                    val radians = Math.toRadians((-layer.transform.rotationDegrees).toDouble())
-                    val dx = x - layer.transform.centerX
-                    val dy = y - layer.transform.centerY
-                    val unrotatedX = (dx * cos(radians) - dy * sin(radians)).toFloat()
-                    val unrotatedY = (dx * sin(radians) + dy * cos(radians)).toFloat()
-                    val imageX = (unrotatedX / layer.transform.scale + layer.source.width / 2f).toInt()
-                    val imageY = (unrotatedY / layer.transform.scale + layer.source.height / 2f).toInt()
+                    val point = layer.transform.sourcePoint(x,y,layer.source.width,layer.source.height)
+                        ?: return android.graphics.Color.TRANSPARENT
+                    val imageX = kotlin.math.floor(point.x * layer.source.width).toInt()
+                    val imageY = kotlin.math.floor(point.y * layer.source.height).toInt()
                     if (imageX in 0 until layer.source.width && imageY in 0 until layer.source.height) {
                         val color = bitmap.getPixel(imageX * bitmap.width / layer.source.width, imageY * bitmap.height / layer.source.height)
                         val alpha = android.graphics.Color.alpha(color) * (255 - android.graphics.Color.alpha(layer.mask.colorAt(imageX, imageY))) / 255
@@ -621,57 +618,20 @@ internal class LayerStack(
             when (layer) {
                 is RasterLayerRuntime -> layer.tiles.draw(canvas, paint)
                 is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { source ->
-                    val width = layer.source.width * layer.transform.scale
-                    val height = layer.source.height * layer.transform.scale
-                    val destination = RectF(
-                        layer.transform.centerX - width / 2f,
-                        layer.transform.centerY - height / 2f,
-                        layer.transform.centerX + width / 2f,
-                        layer.transform.centerY + height / 2f,
-                    )
-                    canvas.save()
-                    canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
-                    if (layer.mask.allocatedTileCount == 0) {
-                        canvas.drawBitmap(source, null, destination, paint)
-                    } else {
-                        val saved = canvas.saveLayer(destination, paint)
-                        canvas.drawBitmap(source, null, destination, paint)
-                        canvas.save()
-                        canvas.translate(destination.left, destination.top)
-                        canvas.scale(layer.transform.scale, layer.transform.scale)
-                        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-                        layer.mask.draw(canvas, paint)
-                        paint.xfermode = null
-                        canvas.restore()
-                        canvas.restoreToCount(saved)
-                    }
-                    canvas.restore()
+                    canvas.drawPhoto(source, layer.source.width, layer.source.height, layer.transform, paint, layer.mask.photoMaskTiles())
                 }
             }
         }
     }
 
     private fun imageDocumentBounds(layer: ImageLayerRuntime): RectF {
-        val width = layer.source.width * layer.transform.scale
-        val height = layer.source.height * layer.transform.scale
-        val radians = Math.toRadians(layer.transform.rotationDegrees.toDouble())
-        val rotatedWidth = kotlin.math.abs(cos(radians)) * width + kotlin.math.abs(sin(radians)) * height
-        val rotatedHeight = kotlin.math.abs(sin(radians)) * width + kotlin.math.abs(cos(radians)) * height
-        return RectF(
-            layer.transform.centerX - rotatedWidth.toFloat() / 2f,
-            layer.transform.centerY - rotatedHeight.toFloat() / 2f,
-            layer.transform.centerX + rotatedWidth.toFloat() / 2f,
-            layer.transform.centerY + rotatedHeight.toFloat() / 2f,
-        )
+        return layer.transform.photoBounds(layer.source.width, layer.source.height)
     }
 
     fun imagePointFromDocument(image: ImageLayerRuntime, point: android.graphics.PointF): android.graphics.PointF {
-        val radians = Math.toRadians((-image.transform.rotationDegrees).toDouble())
-        val dx = point.x - image.transform.centerX
-        val dy = point.y - image.transform.centerY
-        val x = (dx * cos(radians) - dy * sin(radians)).toFloat() / image.transform.scale + image.source.width / 2f
-        val y = (dx * sin(radians) + dy * cos(radians)).toFloat() / image.transform.scale + image.source.height / 2f
-        return android.graphics.PointF(x, y)
+        val p = image.transform.sourcePoint(point.x, point.y, image.source.width, image.source.height)
+        val local = p ?: image.transform.copy(warp = null).sourcePoint(point.x, point.y, image.source.width, image.source.height)!!
+        return android.graphics.PointF(local.x * image.source.width, local.y * image.source.height)
     }
 
     private fun sourceOver(source: Int, destination: Int, layerOpacity: Float): Int {

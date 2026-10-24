@@ -418,7 +418,7 @@ internal data class LoadedImage(
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    private const val SCHEMA_VERSION = 4
+    internal const val SCHEMA_VERSION = 5
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -455,7 +455,7 @@ internal object ProjectPersistence {
                         json.put("kind", "image")
                             .put("originalWidthPx", layer.originalWidthPx).put("originalHeightPx", layer.originalHeightPx)
                             .put("centerX", layer.transform.centerX).put("centerY", layer.transform.centerY)
-                            .put("scale", layer.transform.scale).put("rotationDegrees", layer.transform.rotationDegrees)
+                            .put("scale", layer.transform.scale).put("rotationDegrees", layer.transform.rotationDegrees).putPhotoTransform(layer.transform)
                         val asset = File(temporary, "assets/${layer.id.value}.source")
                         asset.parentFile?.mkdirs()
                         val sourceStream = if (layer.sourceUri.scheme == ContentResolver.SCHEME_FILE) {
@@ -505,7 +505,7 @@ internal object ProjectPersistence {
                             cels.forEach { (frameId, transform) -> put(JSONObject()
                                 .put("frameId", frameId.value)
                                 .put("centerX", transform.centerX).put("centerY", transform.centerY)
-                                .put("scale", transform.scale).put("rotationDegrees", transform.rotationDegrees)) }
+                                .put("scale", transform.scale).put("rotationDegrees", transform.rotationDegrees).putPhotoTransform(transform)) }
                         }))
                     } })
             }
@@ -587,10 +587,10 @@ internal object ProjectPersistence {
                     val maskTiles = loadTiles(maskDirectory)
                     add(LoadedImage(
                         id, name, visible, opacity, File(directory, "assets/${id.value}.source"),
-                        ImageTransform(
+                        layer.readPhotoTransform(ImageTransform(
                             layer.getDouble("centerX").toFloat(), layer.getDouble("centerY").toFloat(),
                             layer.getDouble("scale").toFloat(), layer.optDouble("rotationDegrees", 0.0).toFloat(),
-                        ),
+                        )),
                         originalWidth, originalHeight, maskTiles, groupId, clipSourceId,
                     ))
                 }
@@ -625,10 +625,10 @@ internal object ProjectPersistence {
                     put(LayerId(entry.getString("layerId")), buildMap {
                         for (frameIndex in 0 until frameEntries.length()) {
                             val item = frameEntries.getJSONObject(frameIndex)
-                            put(FrameId(item.getString("frameId")), ImageTransform(
+                            put(FrameId(item.getString("frameId")), item.readPhotoTransform(ImageTransform(
                                 item.getDouble("centerX").toFloat(), item.getDouble("centerY").toFloat(),
                                 item.getDouble("scale").toFloat(), item.optDouble("rotationDegrees", 0.0).toFloat(),
-                            ))
+                            )))
                         }
                     })
                 }
@@ -722,29 +722,7 @@ internal object ProjectPersistence {
                         val source = imageCache?.getOrPut(layer.sourceUri) { decodeBitmap(resolver, layer.sourceUri) }
                             ?: decodeBitmap(resolver, layer.sourceUri)
                         try {
-                            val width = layer.originalWidthPx * imageTransform.scale
-                            val height = layer.originalHeightPx * imageTransform.scale
-                            val outerSave = canvas.save()
-                            canvas.rotate(imageTransform.rotationDegrees, imageTransform.centerX, imageTransform.centerY)
-                            val destination = RectF(imageTransform.centerX - width / 2, imageTransform.centerY - height / 2, imageTransform.centerX + width / 2, imageTransform.centerY + height / 2)
-                            if (layer.maskTiles.isEmpty()) {
-                                canvas.drawBitmap(source, null, destination, paint)
-                            } else {
-                                val layerSave = canvas.saveLayer(destination, paint)
-                                paint.alpha = 255
-                                canvas.drawBitmap(source, null, destination, paint)
-                                canvas.save()
-                                canvas.translate(destination.left, destination.top)
-                                canvas.scale(imageTransform.scale, imageTransform.scale)
-                                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-                                layer.maskTiles.forEach { (coordinate, bitmap) ->
-                                    canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
-                                }
-                                paint.xfermode = null
-                                canvas.restore()
-                                canvas.restoreToCount(layerSave)
-                            }
-                            canvas.restoreToCount(outerSave)
+                            canvas.drawPhoto(source, layer.originalWidthPx, layer.originalHeightPx, imageTransform, paint, layer.maskTiles)
                         } finally { if (imageCache == null) source.recycle() }
                     }
                 }

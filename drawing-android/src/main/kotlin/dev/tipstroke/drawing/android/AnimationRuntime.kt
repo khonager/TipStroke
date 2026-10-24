@@ -238,6 +238,12 @@ internal class AnimationRuntime(
             lerp(a.second.centerY, b.second.centerY),
             lerp(a.second.scale, b.second.scale),
             lerp(a.second.rotationDegrees, b.second.rotationDegrees),
+            lerp(a.second.stretchX, b.second.stretchX),
+            lerp(a.second.stretchY, b.second.stretchY),
+            if (a.second.warp == null && b.second.warp == null) null else dev.tipstroke.core.model.PhotoWarp(
+                (a.second.warp ?: dev.tipstroke.core.model.PhotoWarp.identity()).points.zip(
+                    (b.second.warp ?: dev.tipstroke.core.model.PhotoWarp.identity()).points) { p,q ->
+                    dev.tipstroke.core.geometry.Point(lerp(p.x,q.x),lerp(p.y,q.y)) }),
         )
     }
 

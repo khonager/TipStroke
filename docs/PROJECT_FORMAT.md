@@ -51,3 +51,5 @@ pixels. Absence means unclipped. Versions 1–3 still load as before; invalid li
 are removed when constructing runtime layers. Version 4 prevents older readers
 from silently displaying clipped artwork incorrectly. Portable import/export and
 process-recording layer metadata preserve clipping IDs.
+
+Version 5 adds optional `stretchX`, `stretchY` (positive finite floats, default 1) and `warp` to image transforms, including animation cels. `warp` is a row-major flat array of 578 finite normalized coordinates: X/Y pairs for the 17×17 vertices of a 16×16 mesh. Absent mesh means identity. Original assets and source-coordinate sparse masks are unchanged. Readers accept versions 1–5; older readers reject version 5 instead of silently displaying an undeformed image. Process metadata includes the same optional fields; recordings stop with an explicit status if metadata would exceed the legacy UTF record size.

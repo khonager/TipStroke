@@ -115,6 +115,10 @@ fun CanvasScreen(
     var pendingExport by remember { mutableStateOf<ExportRequest?>(null) }
     var pendingAnimationExport by remember { mutableStateOf<AnimationExportRequest?>(null) }
     var imageTransforming by remember { mutableStateOf(false) }
+    var photoTool by remember { mutableStateOf(PhotoEditTool.MOVE) }
+    var photoSnapping by remember { mutableStateOf(false) }
+    var photoRadius by remember { mutableFloatStateOf(.25f) }
+
     var selectToolActive by remember { mutableStateOf(initialSelectionOpen) }
     var selectionMode by remember { mutableStateOf(initialSelectionOpen) }
     var referenceLayerId by remember { mutableStateOf<LayerId?>(null) }
@@ -164,10 +168,10 @@ fun CanvasScreen(
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             surface?.addImage(uri)?.fold(
-                onSuccess = { imageTransforming = true },
+                onSuccess = { imageTransforming = true; selectionMode = false; movingSelection = false; selectToolActive = false },
                 onFailure = { message = it.message ?: "This image could not be opened." },
             )
-            layersOpen = true
+            layersOpen = !imageTransforming
         }
     }
 
@@ -285,6 +289,9 @@ fun CanvasScreen(
             surface?.publishDiagnostics()
             delay(2_000)
         }
+    }
+    LaunchedEffect(surface, photoTool, photoSnapping, photoRadius) {
+        surface?.let { target -> target.photoEditTool = photoTool; target.photoSnapping = photoSnapping; target.photoWarpRadius = photoRadius }
     }
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
@@ -674,6 +681,38 @@ fun CanvasScreen(
                 .safeDrawingPadding().padding(if (portrait) 12.dp else 20.dp).width(if (portrait) 360.dp else 180.dp),
         )
 
+        if (imageTransforming && !layersOpen && !resizeOpen) Surface(
+            modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding()
+                .padding(start=12.dp,end=12.dp,bottom=88.dp).widthIn(max=520.dp),
+            color = Color(0xEE202125), shape = RoundedCornerShape(18.dp),
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    PhotoEditTool.entries.forEach { tool ->
+                        FilterChip(selected=photoTool==tool,onClick={ photoTool=tool },label={ Text(tool.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                    }
+                }
+                Text(when(photoTool) {
+                    PhotoEditTool.MOVE -> "Drag to move · pinch to resize · twist to rotate"
+                    PhotoEditTool.STRETCH -> "Drag horizontally or vertically to stretch the photo"
+                    PhotoEditTool.PUSH -> "Drag over a feature to reshape it"
+                    PhotoEditTool.BULGE -> "Drag over a feature to enlarge it or create a spherical bulge"
+                    PhotoEditTool.PINCH -> "Drag over a feature to shrink it"
+                },color=Color.White,fontSize=12.sp)
+                if(photoTool in listOf(PhotoEditTool.PUSH,PhotoEditTool.BULGE,PhotoEditTool.PINCH)) {
+                    Text("Area size ${(photoRadius*100).roundToInt()}%",color=Color.White,fontSize=12.sp)
+                    Slider(photoRadius,{ photoRadius=it },valueRange=.08f..1f)
+                }
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    Checkbox(photoSnapping,{ photoSnapping=it },Modifier.semantics { contentDescription = "Snap photo edges and angles" })
+                    Text("Snap",color=Color.White)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick={ surface?.resetPhotoShape() }) { Text("Reset shape") }
+                    TextButton(onClick={ imageTransforming=false }) { Text("Done") }
+                }
+            }
+        }
+
         if (layersOpen) {
             val dismissInteraction = remember { MutableInteractionSource() }
             Box(
@@ -709,8 +748,11 @@ fun CanvasScreen(
                 onImageScale = { surface?.setSelectedImageScale(it) },
                 onFitImage = { surface?.fitSelectedImage() },
                 onOriginalImageSize = { surface?.originalSizeSelectedImage() },
-                onImageTransforming = { imageTransforming = it },
-                onAddPaint = { surface?.addPaintLayer() },
+                onImageTransforming = {
+                    imageTransforming = it
+                    if (it) { layersOpen = false; selectionMode = false; movingSelection = false; selectToolActive = false }
+                },
+                onAddPaint = { imageTransforming = false; movingSelection = false; surface?.addPaintLayer() },
                 onImportImage = { message = null; importImage.launch(arrayOf("image/*")) },
                 onMoveForward = { surface?.moveSelectedLayer(true) },
                 onMoveBackward = { surface?.moveSelectedLayer(false) },

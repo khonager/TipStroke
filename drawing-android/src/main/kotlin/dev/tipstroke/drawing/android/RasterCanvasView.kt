@@ -45,6 +45,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var movingSelectionPath: Path? = null
     var selectionPreviewOffset = Point(0f, 0f)
         set(value) { field = value; invalidate() }
+    var photoBrushArea: Pair<dev.tipstroke.core.geometry.Point, Float>? = null
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
     var previewStroke: CompletedStroke? = null
@@ -255,7 +256,10 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         drawFillFeedback(canvas)
         previewStroke?.let { stroke -> layerStack.withClip(canvas, layerStack.selected()) { StrokeCanvasPainter.draw(canvas, stroke) } }
         stylusHoverPreview?.let { preview -> drawStylusHoverPreview(canvas, preview) }
-        if (showImageTransformBounds) drawSelectedImageBounds(canvas)
+        if (showImageTransformBounds) {
+            drawSelectedImageBounds(canvas)
+            photoBrushArea?.let { (center,radius) -> canvas.drawCircle(center.x,center.y,radius,transformBorderPaint) }
+        }
         drawSelection(canvas)
         bitmapPaint.alpha = 255
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), borderPaint)
@@ -351,32 +355,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     }
 
     private fun drawImageLayer(canvas: Canvas, layer: ImageLayerRuntime, bitmap: Bitmap, imageTransform: dev.tipstroke.core.model.ImageTransform = layer.transform) {
-        val displayedWidth = layer.source.width * imageTransform.scale
-        val displayedHeight = layer.source.height * imageTransform.scale
-        val destination = RectF(
-            imageTransform.centerX - displayedWidth / 2f,
-            imageTransform.centerY - displayedHeight / 2f,
-            imageTransform.centerX + displayedWidth / 2f,
-            imageTransform.centerY + displayedHeight / 2f,
-        )
-        val outerSave = canvas.save()
-        canvas.rotate(imageTransform.rotationDegrees, imageTransform.centerX, imageTransform.centerY)
-        if (layer.mask.allocatedTileCount == 0) {
-            canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
-        } else {
-            val layerSave = canvas.saveLayer(destination, bitmapPaint)
-            bitmapPaint.alpha = 255
-            canvas.drawBitmap(bitmap, null, destination, bitmapPaint)
-            canvas.save()
-            canvas.translate(destination.left, destination.top)
-            canvas.scale(imageTransform.scale, imageTransform.scale)
-            bitmapPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-            layer.mask.draw(canvas, bitmapPaint)
-            bitmapPaint.xfermode = null
-            canvas.restore()
-            canvas.restoreToCount(layerSave)
-        }
-        canvas.restoreToCount(outerSave)
+        canvas.drawPhoto(bitmap, layer.source.width, layer.source.height, imageTransform, bitmapPaint, layer.mask.photoMaskTiles())
     }
 
     private fun drawSelection(canvas: Canvas) {
@@ -396,24 +375,24 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
 
     private fun drawSelectedImageBounds(canvas: Canvas) {
         val image = layerStack.selectedImage() ?: return
-        val halfWidth = image.source.width * image.transform.scale / 2f
-        val halfHeight = image.source.height * image.transform.scale / 2f
-        val bounds = RectF(
-            image.transform.centerX - halfWidth,
-            image.transform.centerY - halfHeight,
-            image.transform.centerX + halfWidth,
-            image.transform.centerY + halfHeight,
-        )
-        val lineWidth = 2f / transform.scale.coerceAtLeast(.08f)
+        val lineWidth = 1f / transform.scale.coerceAtLeast(.08f)
         val handleRadius = 5f / transform.scale.coerceAtLeast(.08f)
         transformBorderPaint.strokeWidth = lineWidth
-        canvas.save()
-        canvas.rotate(image.transform.rotationDegrees, image.transform.centerX, image.transform.centerY)
-        canvas.drawRect(bounds, transformBorderPaint)
-        listOf(bounds.left to bounds.top, bounds.right to bounds.top, bounds.right to bounds.bottom, bounds.left to bounds.bottom).forEach { (x, y) ->
-            canvas.drawCircle(x, y, handleRadius, transformHandlePaint)
-            canvas.drawCircle(x, y, handleRadius, transformBorderPaint)
+        fun point(u: Float,v: Float) = image.transform.documentPoint(u,v,image.source.width,image.source.height)
+        for (row in 0..4) {
+            val horizontal = android.graphics.Path()
+            val vertical = android.graphics.Path()
+            for (i in 0..16) {
+                val h=point(i/16f,row/4f); val v=point(row/4f,i/16f)
+                if(i==0) { horizontal.moveTo(h.x,h.y);vertical.moveTo(v.x,v.y) }
+                else { horizontal.lineTo(h.x,h.y);vertical.lineTo(v.x,v.y) }
+            }
+            canvas.drawPath(horizontal,transformBorderPaint);canvas.drawPath(vertical,transformBorderPaint)
         }
-        canvas.restore()
+        listOf(0f to 0f,1f to 0f,1f to 1f,0f to 1f).forEach { (u,v) ->
+            val p=point(u,v)
+            canvas.drawCircle(p.x,p.y,handleRadius,transformHandlePaint)
+            canvas.drawCircle(p.x,p.y,handleRadius,transformBorderPaint)
+        }
     }
 }

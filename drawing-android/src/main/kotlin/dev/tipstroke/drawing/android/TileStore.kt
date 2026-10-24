@@ -269,6 +269,8 @@ class TileStore(
         return dirty
     }
 
+    internal fun photoMaskTiles(): Map<TileCoordinate, Bitmap> = tiles
+
     fun draw(canvas: Canvas, paint: Paint) {
         val visible = canvas.clipBounds
         tiles.forEach { (coordinate, bitmap) ->

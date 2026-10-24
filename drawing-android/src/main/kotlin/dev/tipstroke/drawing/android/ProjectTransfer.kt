@@ -116,7 +116,7 @@ object ProjectTransfer {
         val manifest = File(directory, "manifest.json")
         require(manifest.length() in 1..8_388_608) { "Invalid drawing manifest" }
         val json = JSONObject(manifest.readText())
-        require(json.getInt("schemaVersion") in 1..4) { "Unsupported drawing version" }
+        require(json.getInt("schemaVersion") in 1..ProjectPersistence.SCHEMA_VERSION) { "Unsupported drawing version" }
         require(json.getInt("widthPx") in 1..32768 && json.getInt("heightPx") in 1..32768) { "Invalid canvas dimensions" }
         json.getString("name")
         json.getLong("modifiedAtMillis")
