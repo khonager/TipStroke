@@ -214,42 +214,42 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             drawOnionForLayer(canvas, layer)
             if (!layer.visible || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
             layerStack.withClip(canvas, layer) {
-            when (layer) {
-                is RasterLayerRuntime -> {
-                    val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
-                    val movingPath = movingSelectionPath.takeIf { layer.id in movingLayerIds }
-                    if (movingPath != null) {
-                        drawMovingRaster(canvas, layer, movingPath)
-                    } else if (preview == null) {
+                when (layer) {
+                    is RasterLayerRuntime -> {
+                        val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
+                        val movingPath = movingSelectionPath.takeIf { layer.id in movingLayerIds }
+                        if (movingPath != null) {
+                            drawMovingRaster(canvas, layer, movingPath)
+                        } else if (preview == null) {
+                            bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
+                            layer.tiles.draw(canvas, bitmapPaint)
+                        } else if (layer.opacity >= .999f) {
+                            bitmapPaint.alpha = 255
+                            layer.tiles.draw(canvas, bitmapPaint)
+                            preview.draw(canvas, bitmapPaint)
+                        } else {
+                            layerOpacityPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
+                            val visible = canvas.clipBounds
+                            val group = canvas.saveLayer(
+                                visible.left.toFloat(), visible.top.toFloat(),
+                                visible.right.toFloat(), visible.bottom.toFloat(),
+                                layerOpacityPaint,
+                            )
+                            bitmapPaint.alpha = 255
+                            layer.tiles.draw(canvas, bitmapPaint)
+                            preview.draw(canvas, bitmapPaint)
+                            canvas.restoreToCount(group)
+                        }
+                    }
+                    is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { bitmap ->
                         bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
-                        layer.tiles.draw(canvas, bitmapPaint)
-                    } else if (layer.opacity >= .999f) {
-                        bitmapPaint.alpha = 255
-                        layer.tiles.draw(canvas, bitmapPaint)
-                        preview.draw(canvas, bitmapPaint)
-                    } else {
-                        layerOpacityPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
-                        val visible = canvas.clipBounds
-                        val group = canvas.saveLayer(
-                            visible.left.toFloat(), visible.top.toFloat(),
-                            visible.right.toFloat(), visible.bottom.toFloat(),
-                            layerOpacityPaint,
-                        )
-                        bitmapPaint.alpha = 255
-                        layer.tiles.draw(canvas, bitmapPaint)
-                        preview.draw(canvas, bitmapPaint)
-                        canvas.restoreToCount(group)
+                        val offset = selectionPreviewOffset
+                        val imageTransform = if (layer.id in movingLayerIds) layer.transform.copy(
+                            centerX = layer.transform.centerX + offset.x, centerY = layer.transform.centerY + offset.y,
+                        ) else layer.transform
+                        drawImageLayer(canvas, layer, bitmap, imageTransform)
                     }
                 }
-                is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { bitmap ->
-                    bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
-                    val offset = selectionPreviewOffset
-                    val imageTransform = if (layer.id in movingLayerIds) layer.transform.copy(
-                        centerX = layer.transform.centerX + offset.x, centerY = layer.transform.centerY + offset.y,
-                    ) else layer.transform
-                    drawImageLayer(canvas, layer, bitmap, imageTransform)
-                }
-            }
             }
         }
         drawFillFeedback(canvas)

@@ -305,26 +305,26 @@ class ProcessReplay internal constructor(
             if (id in ancestors || (!coverage && !layer.getBoolean("visible"))) return
             val source = ordered.firstOrNull { it.getString("id") == layer.optString("clipSourceId") }
             drawWithLayerClip(canvas, source?.let { { drawLayer(it, true, ancestors + id) } }) {
-            val paint=Paint().apply { alpha=if (coverage) 255 else (layer.getDouble("opacity")*255).roundToInt() }
-            if (layer.optBoolean("image")) {
-                val encoded = images[id] ?: return@drawWithLayerClip // metadata precedes the initial image asset
-                val bitmap = requireNotNull(BitmapFactory.decodeByteArray(encoded, 0, encoded.size))
-                try {
-                    val save = canvas.save()
-                    canvas.translate(layer.getDouble("x").toFloat(), layer.getDouble("y").toFloat())
-                    canvas.rotate(layer.getDouble("rotation").toFloat())
-                    val imageScale = layer.getDouble("scale").toFloat()
-                    canvas.scale(imageScale, imageScale)
-                    canvas.translate(-layer.getInt("width") / 2f, -layer.getInt("height") / 2f)
-                    val group = canvas.saveLayer(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat(), paint)
-                    val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-                    canvas.drawBitmap(bitmap, 0f, 0f, imagePaint)
-                    imagePaint.isFilterBitmap = false
-                    imagePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-                    layers["$id:mask"]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,imagePaint) }
-                    canvas.restoreToCount(group); canvas.restoreToCount(save)
-                } finally { bitmap.recycle() }
-            } else layers[id]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
+                val paint=Paint().apply { alpha=if (coverage) 255 else (layer.getDouble("opacity")*255).roundToInt() }
+                if (layer.optBoolean("image")) {
+                    val encoded = images[id] ?: return@drawWithLayerClip // metadata precedes the initial image asset
+                    val bitmap = requireNotNull(BitmapFactory.decodeByteArray(encoded, 0, encoded.size))
+                    try {
+                        val save = canvas.save()
+                        canvas.translate(layer.getDouble("x").toFloat(), layer.getDouble("y").toFloat())
+                        canvas.rotate(layer.getDouble("rotation").toFloat())
+                        val imageScale = layer.getDouble("scale").toFloat()
+                        canvas.scale(imageScale, imageScale)
+                        canvas.translate(-layer.getInt("width") / 2f, -layer.getInt("height") / 2f)
+                        val group = canvas.saveLayer(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat(), paint)
+                        val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+                        canvas.drawBitmap(bitmap, 0f, 0f, imagePaint)
+                        imagePaint.isFilterBitmap = false
+                        imagePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+                        layers["$id:mask"]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,imagePaint) }
+                        canvas.restoreToCount(group); canvas.restoreToCount(save)
+                    } finally { bitmap.recycle() }
+                } else layers[id]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
             }
         }
         ordered.forEach { drawLayer(it) }

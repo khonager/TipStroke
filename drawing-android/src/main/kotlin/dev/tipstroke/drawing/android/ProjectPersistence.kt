@@ -709,45 +709,45 @@ internal object ProjectPersistence {
             if (!coverage && (!layer.visible || layer.opacity <= 0f)) return
             val source = layer.clipSourceId?.let { id -> snapshot.layers.firstOrNull { it.id == id } }
             drawWithLayerClip(canvas, source?.let { { drawLayer(it, true, ancestors + layer.id) } }) {
-            val shared = animation == null || layer.id in animation.backgroundLayerIds
-            paint.alpha = (if (coverage) 255f else layer.opacity * 255).roundToInt().coerceIn(0, 255)
-            when (layer) {
-                is SavedRasterSnapshot -> (if (shared) layer.tiles else animation?.rasterCels?.get(layer.id)?.get(frameId).orEmpty())
-                    .forEach { (coordinate, bitmap) ->
-                    canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
-                }
-                is SavedImageSnapshot -> {
-                    val imageTransform = if (shared) layer.transform else animation?.imageCels?.get(layer.id)?.get(frameId)
-                        ?: return@drawWithLayerClip
-                    val source = imageCache?.getOrPut(layer.sourceUri) { decodeBitmap(resolver, layer.sourceUri) }
-                        ?: decodeBitmap(resolver, layer.sourceUri)
-                    try {
-                        val width = layer.originalWidthPx * imageTransform.scale
-                        val height = layer.originalHeightPx * imageTransform.scale
-                        val outerSave = canvas.save()
-                        canvas.rotate(imageTransform.rotationDegrees, imageTransform.centerX, imageTransform.centerY)
-                        val destination = RectF(imageTransform.centerX - width / 2, imageTransform.centerY - height / 2, imageTransform.centerX + width / 2, imageTransform.centerY + height / 2)
-                        if (layer.maskTiles.isEmpty()) {
-                            canvas.drawBitmap(source, null, destination, paint)
-                        } else {
-                            val layerSave = canvas.saveLayer(destination, paint)
-                            paint.alpha = 255
-                            canvas.drawBitmap(source, null, destination, paint)
-                            canvas.save()
-                            canvas.translate(destination.left, destination.top)
-                            canvas.scale(imageTransform.scale, imageTransform.scale)
-                            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-                            layer.maskTiles.forEach { (coordinate, bitmap) ->
-                                canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
+                val shared = animation == null || layer.id in animation.backgroundLayerIds
+                paint.alpha = (if (coverage) 255f else layer.opacity * 255).roundToInt().coerceIn(0, 255)
+                when (layer) {
+                    is SavedRasterSnapshot -> (if (shared) layer.tiles else animation?.rasterCels?.get(layer.id)?.get(frameId).orEmpty())
+                        .forEach { (coordinate, bitmap) ->
+                        canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
+                    }
+                    is SavedImageSnapshot -> {
+                        val imageTransform = if (shared) layer.transform else animation?.imageCels?.get(layer.id)?.get(frameId)
+                            ?: return@drawWithLayerClip
+                        val source = imageCache?.getOrPut(layer.sourceUri) { decodeBitmap(resolver, layer.sourceUri) }
+                            ?: decodeBitmap(resolver, layer.sourceUri)
+                        try {
+                            val width = layer.originalWidthPx * imageTransform.scale
+                            val height = layer.originalHeightPx * imageTransform.scale
+                            val outerSave = canvas.save()
+                            canvas.rotate(imageTransform.rotationDegrees, imageTransform.centerX, imageTransform.centerY)
+                            val destination = RectF(imageTransform.centerX - width / 2, imageTransform.centerY - height / 2, imageTransform.centerX + width / 2, imageTransform.centerY + height / 2)
+                            if (layer.maskTiles.isEmpty()) {
+                                canvas.drawBitmap(source, null, destination, paint)
+                            } else {
+                                val layerSave = canvas.saveLayer(destination, paint)
+                                paint.alpha = 255
+                                canvas.drawBitmap(source, null, destination, paint)
+                                canvas.save()
+                                canvas.translate(destination.left, destination.top)
+                                canvas.scale(imageTransform.scale, imageTransform.scale)
+                                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+                                layer.maskTiles.forEach { (coordinate, bitmap) ->
+                                    canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
+                                }
+                                paint.xfermode = null
+                                canvas.restore()
+                                canvas.restoreToCount(layerSave)
                             }
-                            paint.xfermode = null
-                            canvas.restore()
-                            canvas.restoreToCount(layerSave)
-                        }
-                        canvas.restoreToCount(outerSave)
-                    } finally { if (imageCache == null) source.recycle() }
+                            canvas.restoreToCount(outerSave)
+                        } finally { if (imageCache == null) source.recycle() }
+                    }
                 }
-            }
             }
         }
         snapshot.layers.forEach { drawLayer(it) }

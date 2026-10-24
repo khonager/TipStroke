@@ -1111,7 +1111,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 updateChromeOcclusion(event, event.actionIndex)
                 val style = styleForTarget(baseStyle, target)
                 if (target.image != null || style.blend == BlendBehavior.ERASE ||
-                    (style.referenceStrokes != null && style.pixelTool != PixelTool.LINE)) {
+                    ((style.referenceStrokes != null || layerStack.selected().clipSourceId != null) && style.pixelTool != PixelTool.LINE)) {
                     customPreviewStyle = style
                     target.store.beginLiveStroke()
                 } else if (style.pixelTool != null || style.brush.engine == BrushEngine.AIRBRUSH) {

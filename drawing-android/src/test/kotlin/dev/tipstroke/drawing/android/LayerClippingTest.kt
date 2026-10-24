@@ -57,6 +57,33 @@ class LayerClippingTest {
         assertNull(stack.layers.single().clipSourceId)
         assertEquals(Color.RED, render(stack).getPixel(245, 20))
     }
+    @Test fun imageSourceUsesItsTransformAndErasedPixelsDuringExport() {
+        val sourceFile = File(context.cacheDir, "clip-source.png")
+        val outputFile = File(context.cacheDir, "clip-image-output.png")
+        val source = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+        sourceFile.outputStream().use { source.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val mask = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {
+            Canvas(this).drawRect(128f, 0f, 256f, 256f, Paint().apply { color = Color.WHITE })
+        }
+        val destination = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val baseId = LayerId("image-source")
+        val paintId = LayerId("paint")
+        val snapshot = DrawingSnapshot(512, 256, paintId, listOf(
+            SavedImageSnapshot(baseId, "Image", false, 0f, Uri.fromFile(sourceFile), 256, 256,
+                dev.tipstroke.core.model.ImageTransform(256f, 128f), mapOf(dev.tipstroke.core.geometry.TileCoordinate(0, 0) to mask)),
+            SavedRasterSnapshot(paintId, "Paint", true, 1f, mapOf(dev.tipstroke.core.geometry.TileCoordinate(0, 0) to destination,
+                dev.tipstroke.core.geometry.TileCoordinate(1, 0) to destination.copy(Bitmap.Config.ARGB_8888, false)), clipSourceId = baseId),
+        ))
+        try {
+            ProjectPersistence.export(context.contentResolver, Uri.fromFile(outputFile), snapshot, ExportFormat.PNG, 100, 1f, true).getOrThrow()
+            val output = BitmapFactory.decodeFile(outputFile.path)
+            assertEquals(0, Color.alpha(output.getPixel(100, 20)))
+            assertEquals(Color.RED, output.getPixel(200, 20))
+            assertEquals(0, Color.alpha(output.getPixel(300, 20)))
+            output.recycle()
+        } finally { snapshot.recycle(); source.recycle(); sourceFile.delete(); outputFile.delete() }
+    }
+
     @Test fun clippingSurvivesSaveLoadExportAndRecording() {
         val stack = fixture()
         val library = DrawingLibrary(context)

@@ -201,6 +201,8 @@ internal class LayerStack(
         if (originals.isEmpty()) return emptyList()
         val insertionIndex = indexAboveGroupAt(originals.maxOf { layers.indexOf(it) })
         val duplicates = originals.map(::duplicateLayer)
+        val copiedIds = originals.zip(duplicates).associate { (source, copy) -> source.id to copy.id }
+        duplicates.forEach { copy -> copy.clipSourceId = copiedIds[copy.clipSourceId] ?: copy.clipSourceId }
         layers.addAll(insertionIndex, duplicates)
         val primaryIndex = originals.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
         selectedId = duplicates[primaryIndex].id
@@ -455,9 +457,11 @@ internal class LayerStack(
                     val unrotatedY = (dx * sin(radians) + dy * cos(radians)).toFloat()
                     val imageX = (unrotatedX / layer.transform.scale + layer.source.width / 2f).toInt()
                     val imageY = (unrotatedY / layer.transform.scale + layer.source.height / 2f).toInt()
-                    if (imageX in 0 until bitmap.width && imageY in 0 until bitmap.height &&
-                        android.graphics.Color.alpha(layer.mask.colorAt(imageX, imageY)) == 0
-                    ) bitmap.getPixel(imageX, imageY) else android.graphics.Color.TRANSPARENT
+                    if (imageX in 0 until layer.source.width && imageY in 0 until layer.source.height) {
+                        val color = bitmap.getPixel(imageX * bitmap.width / layer.source.width, imageY * bitmap.height / layer.source.height)
+                        val alpha = android.graphics.Color.alpha(color) * (255 - android.graphics.Color.alpha(layer.mask.colorAt(imageX, imageY))) / 255
+                        (color and 0x00ffffff) or (alpha shl 24)
+                    } else android.graphics.Color.TRANSPARENT
                 }
             }
         val reference = layer.clipSourceId?.let { id -> layers.firstOrNull { it.id == id } }
@@ -613,37 +617,37 @@ internal class LayerStack(
     private fun drawLayerContent(canvas: Canvas, layer: CanvasLayerRuntime) {
         if (!layer.activeAtFrame) return
         withClip(canvas, layer) {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        when (layer) {
-            is RasterLayerRuntime -> layer.tiles.draw(canvas, paint)
-            is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { source ->
-                val width = layer.source.width * layer.transform.scale
-                val height = layer.source.height * layer.transform.scale
-                val destination = RectF(
-                    layer.transform.centerX - width / 2f,
-                    layer.transform.centerY - height / 2f,
-                    layer.transform.centerX + width / 2f,
-                    layer.transform.centerY + height / 2f,
-                )
-                canvas.save()
-                canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
-                if (layer.mask.allocatedTileCount == 0) {
-                    canvas.drawBitmap(source, null, destination, paint)
-                } else {
-                    val saved = canvas.saveLayer(destination, paint)
-                    canvas.drawBitmap(source, null, destination, paint)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            when (layer) {
+                is RasterLayerRuntime -> layer.tiles.draw(canvas, paint)
+                is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { source ->
+                    val width = layer.source.width * layer.transform.scale
+                    val height = layer.source.height * layer.transform.scale
+                    val destination = RectF(
+                        layer.transform.centerX - width / 2f,
+                        layer.transform.centerY - height / 2f,
+                        layer.transform.centerX + width / 2f,
+                        layer.transform.centerY + height / 2f,
+                    )
                     canvas.save()
-                    canvas.translate(destination.left, destination.top)
-                    canvas.scale(layer.transform.scale, layer.transform.scale)
-                    paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
-                    layer.mask.draw(canvas, paint)
-                    paint.xfermode = null
+                    canvas.rotate(layer.transform.rotationDegrees, layer.transform.centerX, layer.transform.centerY)
+                    if (layer.mask.allocatedTileCount == 0) {
+                        canvas.drawBitmap(source, null, destination, paint)
+                    } else {
+                        val saved = canvas.saveLayer(destination, paint)
+                        canvas.drawBitmap(source, null, destination, paint)
+                        canvas.save()
+                        canvas.translate(destination.left, destination.top)
+                        canvas.scale(layer.transform.scale, layer.transform.scale)
+                        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+                        layer.mask.draw(canvas, paint)
+                        paint.xfermode = null
+                        canvas.restore()
+                        canvas.restoreToCount(saved)
+                    }
                     canvas.restore()
-                    canvas.restoreToCount(saved)
                 }
-                canvas.restore()
             }
-        }
         }
     }
 
