@@ -70,6 +70,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
     }
     private lateinit var rasterView: RasterCanvasView
+    private var resizeOverlay: CanvasResizeOverlay? = null
+    private var transformBeforeResize: dev.tipstroke.core.geometry.CanvasTransform? = null
     private lateinit var colorLoupe: ColorPickerLoupeView
     private var layerStack: LayerStack = createLayerStack(2048, 2048)
     private var animation: AnimationRuntime? = null
@@ -546,6 +548,44 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun resetView() = rasterView.fitCanvas()
     val canvasWidthPx: Int get() = layerStack.canvasWidth
     val canvasHeightPx: Int get() = layerStack.canvasHeight
+    val hasCanvasResizeChanges: Boolean get() = resizeOverlay?.hasChanges == true
+
+    fun beginCanvasResize(onChange: (Int, Int) -> Unit): Boolean {
+        if (resizeOverlay != null) return true
+        cancelFill()
+        if (activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return false
+        transformBeforeResize = rasterView.transform
+        rasterView.fitCanvas(rasterView.transform.rotationDegrees)
+        rasterView.transform.let { fitted ->
+            rasterView.updateTransform(fitted.panX, fitted.panY, fitted.scale * .67f, fitted.rotationDegrees)
+        }
+        CanvasResizeOverlay(context, rasterView, canvasWidthPx, canvasHeightPx, onChange).also {
+            resizeOverlay = it
+            addView(it, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+            onChange(it.resizedWidth, it.resizedHeight)
+        }
+        return true
+    }
+
+    fun resetCanvasResizePreview() { resizeOverlay?.reset() }
+
+    fun cancelCanvasResize(restoreView: Boolean = true) {
+        resizeOverlay?.let(::removeView)
+        resizeOverlay = null
+        transformBeforeResize?.let { previous ->
+            if (restoreView) rasterView.updateTransform(previous.panX, previous.panY, previous.scale, previous.rotationDegrees)
+        }
+        transformBeforeResize = null
+    }
+
+    fun applyCanvasResize(): Boolean {
+        val preview = resizeOverlay ?: return false
+        if (!preview.hasChanges) return false
+        val left = preview.leftDelta; val top = preview.topDelta; val right = preview.rightDelta; val bottom = preview.bottomDelta
+        val resized = resizeCanvas(left, top, right, bottom)
+        if (resized) cancelCanvasResize(restoreView = false)
+        return resized
+    }
 
     /** Edge deltas are in document pixels: positive adds paper, negative crops it. */
     fun resizeCanvas(left: Int, top: Int, right: Int, bottom: Int): Boolean {
@@ -1000,6 +1040,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (!isEnabled) return true
+        resizeOverlay?.let { return it.dispatchTouchEvent(event) }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             stopAnimationPlayback()
             gestureHandler.removeCallbacks(hideBrushPreview)

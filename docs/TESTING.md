@@ -61,6 +61,10 @@ Before subjective pen testing, run `./tipstroke brushes` with a device attached.
 4. Relaunch TipStroke and verify top-level order, stack name, membership, and internal order persist.
 5. Delete a stacked drawing and verify its project is removed while the gallery index remains valid. Unstack and confirm all project contents and thumbnails are unchanged.
 
+## Canvas resize
+
+Open **Resize canvas**. Drag each edge and a corner inward and outward; confirm the pixel size updates, added paper previews in the document background color, and cropped artwork is shaded. Extend far enough to require a second drag, then verify the bounds refit and handles remain reachable. Reset and Cancel must preserve the original pixels and size. Repeat and Apply; verify the new size and pixel placement after saving and reopening.
+
 ## Stress
 
 1. Fill marks across all four canvas quadrants and watch allocated/dirty tile counts remain local to strokes.

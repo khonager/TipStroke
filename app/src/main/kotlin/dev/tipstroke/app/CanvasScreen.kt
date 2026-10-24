@@ -67,6 +67,9 @@ fun CanvasScreen(
     var editorWidthPx by remember { mutableIntStateOf(canvasWidthPx) }
     var editorHeightPx by remember { mutableIntStateOf(canvasHeightPx) }
     var resizeOpen by remember { mutableStateOf(false) }
+    var resizePreviewWidth by remember { mutableIntStateOf(canvasWidthPx) }
+    var resizePreviewHeight by remember { mutableIntStateOf(canvasHeightPx) }
+    var resizeChanged by remember { mutableStateOf(false) }
     var brush by remember { mutableStateOf(BrushPreset.Ink) }
     var erasing by remember { mutableStateOf(false) }
     val smallCanvas = editorWidthPx <= 128 && editorHeightPx <= 128
@@ -345,11 +348,34 @@ fun CanvasScreen(
     BackHandler(enabled = colorPickerOpen) { colorPickerOpen = false }
     BackHandler(enabled = layersOpen) { layersOpen = false }
     BackHandler(enabled = animationOpen) { animationOpen = false }
+    BackHandler(enabled = resizeOpen) { surface?.cancelCanvasResize(); resizeOpen = false }
+    LaunchedEffect(resizeOpen, surface) {
+        val view = surface ?: return@LaunchedEffect
+        if (resizeOpen) {
+            val started = view.beginCanvasResize { width, height ->
+                resizePreviewWidth = width
+                resizePreviewHeight = height
+                resizeChanged = view.hasCanvasResizeChanges
+            }
+            if (!started) {
+                resizeOpen = false
+                message = "Finish the current stroke before resizing the canvas."
+            }
+        } else view.cancelCanvasResize()
+    }
 
     fun openAnimation() {
         layersOpen = false
         colorPickerOpen = false
         if (animationState == null) animationActivationOpen = true else animationOpen = !animationOpen
+    }
+    fun openCanvasResize() {
+        if (!ready) return
+        layersOpen = false
+        animationOpen = false
+        colorPickerOpen = false
+        phoneMenuOpen = false
+        resizeOpen = true
     }
 
     CompositionLocalProvider(LocalColorDrop provides { position, droppedColor, released ->
@@ -432,7 +458,33 @@ fun CanvasScreen(
             },
         )
 
-        if (!compactPhone) {
+        if (resizeOpen) {
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(12.dp).widthIn(max = 520.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp,
+                shadowElevation = 8.dp,
+            ) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Resize canvas · $resizePreviewWidth × $resizePreviewHeight px", style = MaterialTheme.typography.titleSmall)
+                    Text("Drag an edge or corner to add or crop paper", style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { surface?.cancelCanvasResize(); resizeOpen = false }) { Text("Cancel") }
+                        TextButton(onClick = { surface?.resetCanvasResizePreview() }) { Text("Reset") }
+                        Button(onClick = {
+                            if (surface?.applyCanvasResize() == true) {
+                                editorWidthPx = surface!!.canvasWidthPx
+                                editorHeightPx = surface!!.canvasHeightPx
+                                resizeOpen = false
+                            } else message = "Canvas could not be resized while drawing."
+                        }, enabled = resizeChanged) { Text("Apply") }
+                    }
+                }
+            }
+        }
+
+        if (!resizeOpen && !compactPhone) {
             EditorChrome(
                 canUndo = canUndo, canRedo = canRedo, debug = debug,
                 zoomPercent = (diagnostics.zoom * 100).roundToInt(),
@@ -446,12 +498,12 @@ fun CanvasScreen(
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
                 onBack = if (onBackToGallery != null) leaveEditor else null,
                 onExport = { if (ready) exportChoiceOpen = true },
-                onResize = { if (ready) resizeOpen = true },
+                onResize = ::openCanvasResize,
                 animationOpen = animationOpen,
                 onAnimation = ::openAnimation,
                 modifier = Modifier.fillMaxSize().safeDrawingPadding(),
             )
-        } else if (phoneChromeVisible) {
+        } else if (!resizeOpen && phoneChromeVisible) {
             PhoneEditorChrome(
                 canUndo = canUndo,
                 canRedo = canRedo,
@@ -473,21 +525,21 @@ fun CanvasScreen(
                 onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
                 onReset = { surface?.resetView() },
                 onExport = { if (ready) exportChoiceOpen = true },
-                onResize = { if (ready) resizeOpen = true },
+                onResize = ::openCanvasResize,
                 onAnimation = ::openAnimation,
                 onDebug = { debug = !debug },
                 onHide = ::manuallyHidePhoneChrome,
                 modifier = Modifier.align(if (landscapeDock) Alignment.TopStart else Alignment.TopCenter)
                     .safeDrawingPadding().padding(8.dp).then(if (landscapeDock) Modifier.width(308.dp) else Modifier),
             )
-        } else if (phoneChromeManuallyHidden) {
+        } else if (!resizeOpen && phoneChromeManuallyHidden) {
             PhoneChromeHandle(
                 onClick = { phoneChromeManuallyHidden = false },
                 modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
             )
         }
 
-        if (!compactPhone) Box(
+        if (!resizeOpen && !compactPhone) Box(
             Modifier.fillMaxSize().safeDrawingPadding().then(if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp)),
         ) {
             BrushRail(
@@ -541,7 +593,7 @@ fun CanvasScreen(
                 modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
                     .then(if (portrait) Modifier.padding(12.dp) else Modifier.padding(end = 20.dp)),
             )
-        } else if (phoneChromeVisible) {
+        } else if (!resizeOpen && phoneChromeVisible) {
             Column(
                 Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
                     .safeDrawingPadding().padding(8.dp)
@@ -565,7 +617,7 @@ fun CanvasScreen(
             }
         }
 
-        if (compactPhone && phoneChromeVisible && phoneAdjustmentsOpen && !selectToolActive) {
+        if (!resizeOpen && compactPhone && phoneChromeVisible && phoneAdjustmentsOpen && !selectToolActive) {
             TipControls(
                 size = size,
                 sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
@@ -596,7 +648,7 @@ fun CanvasScreen(
             )
         }
 
-        if (selectToolActive && (!compactPhone || phoneChromeVisible)) SelectionControls(
+        if (!resizeOpen && selectToolActive && (!compactPhone || phoneChromeVisible)) SelectionControls(
             referenceName = layers.firstOrNull { it.id == referenceLayerId }?.name,
             referenceLayers = layers.filter { it.kind == LayerKind.RASTER }.map { it.id to it.name },
             onReference = { surface?.setReferenceStrokes(it); selectRegularBrush() },
@@ -906,15 +958,6 @@ fun CanvasScreen(
             type = request.format.mimeType
             putExtra(Intent.EXTRA_TITLE, request.fileName)
         })
-    }
-
-    if (resizeOpen) ResizeCanvasDialog(editorWidthPx, editorHeightPx, onDismiss = { resizeOpen = false }) { left, top, right, bottom ->
-        val resized = surface?.resizeCanvas(left, top, right, bottom) == true
-        if (resized) {
-            editorWidthPx = surface!!.canvasWidthPx
-            editorHeightPx = surface!!.canvasHeightPx
-            resizeOpen = false
-        } else message = "Canvas could not be resized while drawing, or the new size is outside 16–8192 px."
     }
 
     if (animationActivationOpen) AlertDialog(
