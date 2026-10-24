@@ -55,3 +55,8 @@ closed Ink/erase outlines use a closed path rather than overlapping endpoint
 stamps. Fitted closed shapes use average contact pressure/tilt and disable speed
 taper to avoid a visible pressure discontinuity at the seam. No new persistent
 shape types or project schema fields are required.
+
+The existing version-one process replay painter predates the joined Pencil
+ribbon and exact closed outlines. New recordings store the affected sparse
+raster tiles for those strokes so replay matches the committed artwork exactly;
+older recordings keep using their original version-one drawing commands.

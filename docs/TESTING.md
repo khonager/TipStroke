@@ -190,3 +190,6 @@ Pencil strokes lose their provisional dot, keep textured ribbon ends, and match
 committed pixels; a translucent closed Ink loop must have the same opacity at
 its seam as on its opposite side. Device QA should include tilted Pencil starts
 and ends, circle seams, and repeated scale/rotation adjustments before lift.
+Process-recording verification includes a Pencil preview that starts as a
+provisional dot, becomes a ribbon, and is followed by a live eraser stroke.
+Its final replay frame must match every pixel of the canvas.
