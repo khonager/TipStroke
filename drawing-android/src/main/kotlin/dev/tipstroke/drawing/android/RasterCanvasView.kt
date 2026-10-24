@@ -213,6 +213,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         layerStack.layers.forEach { layer ->
             drawOnionForLayer(canvas, layer)
             if (!layer.visible || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
+            layerStack.withClip(canvas, layer) {
             when (layer) {
                 is RasterLayerRuntime -> {
                     val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
@@ -249,9 +250,10 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                     drawImageLayer(canvas, layer, bitmap, imageTransform)
                 }
             }
+            }
         }
         drawFillFeedback(canvas)
-        previewStroke?.let { StrokeCanvasPainter.draw(canvas, it) }
+        previewStroke?.let { stroke -> layerStack.withClip(canvas, layerStack.selected()) { StrokeCanvasPainter.draw(canvas, stroke) } }
         stylusHoverPreview?.let { preview -> drawStylusHoverPreview(canvas, preview) }
         if (showImageTransformBounds) drawSelectedImageBounds(canvas)
         drawSelection(canvas)

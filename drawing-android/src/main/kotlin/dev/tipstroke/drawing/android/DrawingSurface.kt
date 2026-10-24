@@ -606,6 +606,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         opacityAdjustmentInProgress = false
         if (!imageGestureInProgress) processRecorder?.sync(layerStack, animation != null)
     }
+    fun setSelectedLayerClip(sourceId: LayerId?) {
+        if (layerStack.setClipSource(sourceId)) { notifyLayers(); notifyVisiblePalette(); notifyHistory() }
+    }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
     fun setCanvasBackgroundColor(color: Int) { layerStack.setBackground(color = color); notifyLayers() }
     fun setCanvasBackgroundOpacity(opacity: Float) { layerStack.setBackground(opacity = opacity); notifyLayers() }

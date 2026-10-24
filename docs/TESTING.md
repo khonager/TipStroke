@@ -159,3 +159,9 @@ Selection regression coverage: `SelectionRegionTest` checks boolean containment,
 translation and reverse-drag ellipses. Native-graphics `ReferenceStrokesTest` checks
 cross-tile soft coverage, source preservation, same-layer alpha preservation,
 live cancellation, undo/redo, empty sources and selection-constrained erasing.
+
+`LayerClippingTest` exercises sparse/soft clipping, non-destructive removal,
+source edits, undo/redo, cycle rejection, source deletion, project save/load,
+transparent PNG export and process replay. Selection screenshot fixtures cover
+portrait and phone controls in the former slider area; no Android device was
+required for these native-graphics Robolectric checks.

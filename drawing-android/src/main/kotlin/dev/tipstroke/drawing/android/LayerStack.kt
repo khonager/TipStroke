@@ -29,6 +29,7 @@ internal sealed class CanvasLayerRuntime {
     abstract var opacity: Float
     var activeAtFrame: Boolean = true
     var groupId: String? = null
+    var clipSourceId: LayerId? = null
     abstract fun summary(): LayerSummary
 }
 
@@ -39,7 +40,7 @@ internal class RasterLayerRuntime(
     override var opacity: Float = 1f,
     var tiles: TileStore,
 ) : CanvasLayerRuntime() {
-    override fun summary() = LayerSummary(id, name, LayerKind.RASTER, visible, opacity, groupId = groupId)
+    override fun summary() = LayerSummary(id, name, LayerKind.RASTER, visible, opacity, groupId = groupId, clipSourceId = clipSourceId)
 }
 
 internal class ImageLayerRuntime(
@@ -54,7 +55,7 @@ internal class ImageLayerRuntime(
 ) : CanvasLayerRuntime() {
     override fun summary() = LayerSummary(
         id, name, LayerKind.IMAGE, visible, opacity,
-        source.width, source.height, transform.scale, groupId,
+        source.width, source.height, transform.scale, groupId, clipSourceId,
     )
 }
 
@@ -375,6 +376,7 @@ internal class LayerStack(
         if (layers.size == 1) return false
         val index = layers.indexOfFirst { it.id == selectedId }
         val removed = layers.removeAt(index)
+        layers.forEach { if (it.clipSourceId == removed.id) it.clipSourceId = null }
         dissolveSingleMemberGroups()
         if (removed is ImageLayerRuntime) removed.source.close()
         selectedId = layers[index.coerceAtMost(layers.lastIndex)].id
@@ -391,11 +393,11 @@ internal class LayerStack(
                 is RasterLayerRuntime -> SavedRasterSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity,
                     if (animation == null || animation.isBackground(layer.id)) layer.tiles.snapshotTiles() else emptyMap(),
-                    layer.tiles.snapshotColorUsage(), layer.groupId,
+                    layer.tiles.snapshotColorUsage(), layer.groupId, layer.clipSourceId,
                 )
                 is ImageLayerRuntime -> SavedImageSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity, layer.source.uri,
-                    layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(), layer.groupId,
+                    layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(), layer.groupId, layer.clipSourceId,
                 )
             }
         }, galleryRotationQuarterTurns.mod(4), animation?.snapshot(), backgroundColor, backgroundOpacity,
@@ -419,7 +421,10 @@ internal class LayerStack(
                     OriginalImageSource(resolver, Uri.fromFile(layer.assetFile), invalidate), layer.transform,
                     mask = TileStore(layer.originalWidthPx, layer.originalHeightPx).apply { replaceTiles(layer.maskTiles) },
                 )
-            }).also { it.groupId = layer.groupId }
+            }).also { it.groupId = layer.groupId; it.clipSourceId = layer.clipSourceId }
+        }
+        layers.forEach { layer ->
+            layer.clipSourceId?.let { if (!canClipTo(layer.id, it)) layer.clipSourceId = null }
         }
         selectedId = loaded.selectedId
         selectedIds.clear()
@@ -437,16 +442,12 @@ internal class LayerStack(
         )
     }
 
-    private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean, originalImageColors: Boolean = false): Int {
-        var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else
-            (backgroundColor and 0x00ffffff) or ((backgroundOpacity * 255).roundToInt() shl 24)
-        layers.forEach { layer ->
-            if (!layer.visible || !layer.activeAtFrame ||
-                (layer.opacity <= 0f && !(originalImageColors && layer is ImageLayerRuntime))) return@forEach
-            val source = when (layer) {
+    private fun layerColorAt(layer: CanvasLayerRuntime, x: Float, y: Float): Int {
+        if (!layer.activeAtFrame) return android.graphics.Color.TRANSPARENT
+        val source = when (layer) {
                 is RasterLayerRuntime -> layer.tiles.colorAt(x.roundToInt(), y.roundToInt())
                 is ImageLayerRuntime -> {
-                    val bitmap = layer.source.bitmapOrRequest() ?: return@forEach
+                    val bitmap = layer.source.bitmapOrRequest() ?: return android.graphics.Color.TRANSPARENT
                     val radians = Math.toRadians((-layer.transform.rotationDegrees).toDouble())
                     val dx = x - layer.transform.centerX
                     val dy = y - layer.transform.centerY
@@ -459,6 +460,19 @@ internal class LayerStack(
                     ) bitmap.getPixel(imageX, imageY) else android.graphics.Color.TRANSPARENT
                 }
             }
+        val reference = layer.clipSourceId?.let { id -> layers.firstOrNull { it.id == id } }
+        val alpha = android.graphics.Color.alpha(source)
+        val clippedAlpha = reference?.let { alpha * android.graphics.Color.alpha(layerColorAt(it, x, y)) / 255 } ?: alpha
+        return (source and 0x00ffffff) or (clippedAlpha shl 24)
+    }
+
+    private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean, originalImageColors: Boolean = false): Int {
+        var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else
+            (backgroundColor and 0x00ffffff) or ((backgroundOpacity * 255).roundToInt() shl 24)
+        layers.forEach { layer ->
+            if (!layer.visible || !layer.activeAtFrame ||
+                (layer.opacity <= 0f && !(originalImageColors && layer is ImageLayerRuntime))) return@forEach
+            val source = layerColorAt(layer, x, y)
             result = sourceOver(source, result, if (originalImageColors && layer is ImageLayerRuntime) 1f else layer.opacity)
         }
         return result
@@ -532,7 +546,7 @@ internal class LayerStack(
     private fun newRaster(name: String) = RasterLayerRuntime(newId(), name, tiles = TileStore(canvasWidth, canvasHeight))
     private fun newId() = LayerId(UUID.randomUUID().toString())
 
-    private fun duplicateLayer(layer: CanvasLayerRuntime): CanvasLayerRuntime = when (layer) {
+    private fun duplicateLayer(layer: CanvasLayerRuntime): CanvasLayerRuntime = (when (layer) {
         is RasterLayerRuntime -> RasterLayerRuntime(
             newId(), "${layer.name} copy", layer.visible, layer.opacity, layer.tiles.duplicate(),
         )
@@ -541,7 +555,7 @@ internal class LayerStack(
             OriginalImageSource(resolver, layer.source.uri, invalidate), layer.transform,
             layer.mask.duplicate(),
         )
-    }
+    }).also { it.clipSourceId = layer.clipSourceId }
 
     private fun renderPreview(layer: CanvasLayerRuntime, sizePx: Int): Bitmap {
         val preview = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
@@ -556,6 +570,49 @@ internal class LayerStack(
         val scale = minOf(sizePx * .82f / contentWidth, sizePx * .82f / contentHeight)
         canvas.translate(sizePx / 2f - contentBounds.centerX() * scale, sizePx / 2f - contentBounds.centerY() * scale)
         canvas.scale(scale, scale)
+        drawLayerContent(canvas, layer)
+        return preview
+    }
+
+    fun canClipTo(layerId: LayerId, sourceId: LayerId): Boolean {
+        val visited = mutableSetOf(layerId)
+        var current: LayerId? = sourceId
+        while (current != null) {
+            if (!visited.add(current)) return false
+            val source = layers.firstOrNull { it.id == current } ?: return false
+            current = source.clipSourceId
+        }
+        return true
+    }
+
+    fun setClipSource(sourceId: LayerId?): Boolean {
+        val layer = selected()
+        if (sourceId != null && !canClipTo(layer.id, sourceId)) return false
+        if (layer.clipSourceId == sourceId) return false
+        val previous = layer.clipSourceId
+        layer.clipSourceId = sourceId
+        selectedStore()?.history?.push(object : dev.tipstroke.core.drawing.UndoTransaction {
+            override val estimatedBytes = 64L
+            private fun apply(id: LayerId?) {
+                layer.clipSourceId = id?.takeIf { canClipTo(layer.id, it) }
+                invalidate()
+            }
+            override fun undo() = apply(previous)
+            override fun redo() = apply(sourceId)
+        })
+        invalidate()
+        return true
+    }
+
+    fun withClip(canvas: Canvas, layer: CanvasLayerRuntime, content: () -> Unit) {
+        val source = layer.clipSourceId?.let { id -> layers.firstOrNull { it.id == id } }
+        drawWithLayerClip(canvas, source?.let { { drawLayerContent(canvas, it) } }, content)
+    }
+
+    /** Raw painted coverage ignores layer visibility/opacity but follows nested clipping. */
+    private fun drawLayerContent(canvas: Canvas, layer: CanvasLayerRuntime) {
+        if (!layer.activeAtFrame) return
+        withClip(canvas, layer) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         when (layer) {
             is RasterLayerRuntime -> layer.tiles.draw(canvas, paint)
@@ -587,7 +644,7 @@ internal class LayerStack(
                 canvas.restore()
             }
         }
-        return preview
+        }
     }
 
     private fun imageDocumentBounds(layer: ImageLayerRuntime): RectF {

@@ -44,3 +44,10 @@ A `.tipstroke` file is a ZIP archive with `tipstroke.json` (`format: "TipStroke"
 Gallery **Import** opens Android's document picker. Imports are staged privately, checked for supported versions, safe paths, duplicate IDs, required assets and valid tile dimensions, then installed as new document IDs. Layer and frame IDs are retained. Existing drawings are never replaced; repeated imports make separate copies. Failed imports remove staged/new directories. Packages have limits of 2 GiB expanded bytes, 100,000 entries, and 10,000 drawings. Future unsupported package/project versions are rejected. Import does not interpret media ZIP exports as editable projects.
 
 Gallery **Export / select drawings** supports individual or multiple selections and **Select whole gallery**. Each drawing's menu also provides Export. TipStroke export preserves editability; PNG/JPEG/WebP flatten the selected frame, and MP4/GIF/PNG-sequence require animation in every selected drawing. Multiple media exports are bundled in an ordinary ZIP with numbered filenames. Media render sequentially, holding one drawing at a time; package copying and rendering use the serial project I/O executor. The editor also offers editable TipStroke export after committing its current state.
+
+Version 4 adds optional `clipSourceId` to raster and image layer records. It names
+another stable layer ID and changes compositing without modifying either layer's
+pixels. Absence means unclipped. Versions 1–3 still load as before; invalid links
+are removed when constructing runtime layers. Version 4 prevents older readers
+from silently displaying clipped artwork incorrectly. Portable import/export and
+process-recording layer metadata preserve clipping IDs.

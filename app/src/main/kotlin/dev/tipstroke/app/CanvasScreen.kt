@@ -112,6 +112,7 @@ fun CanvasScreen(
     var pendingExport by remember { mutableStateOf<ExportRequest?>(null) }
     var pendingAnimationExport by remember { mutableStateOf<AnimationExportRequest?>(null) }
     var imageTransforming by remember { mutableStateOf(false) }
+    var selectToolActive by remember { mutableStateOf(initialSelectionOpen) }
     var selectionMode by remember { mutableStateOf(initialSelectionOpen) }
     var referenceLayerId by remember { mutableStateOf<LayerId?>(null) }
     var selectionOperation by remember { mutableStateOf(dev.tipstroke.core.geometry.SelectionOperation.REPLACE) }
@@ -231,21 +232,30 @@ fun CanvasScreen(
         pencilShadeTransitionRadians = tuning.pencilShadeTransitionRadians
     }
     fun toggleEraser() {
+        selectToolActive = false; selectionMode = false; movingSelection = false
         erasing = !erasing
         if (pixelTool == null) applyTuning(if (erasing) brushPreferences.loadEraser() else brushPreferences.load(brush))
         sync()
     }
     fun selectPixelTool(tool: PixelTool) {
+        selectToolActive = false; selectionMode = false; movingSelection = false
         if (pixelTool == null) opacity = 1f
         pixelTool = tool
         erasing = false
         size = pixelSize
     }
     fun selectRegularBrush(preset: BrushPreset = brush) {
+        selectToolActive = false; selectionMode = false; movingSelection = false
         pixelTool = null
         brush = preset
         erasing = false
         applyTuning(brushPreferences.load(preset))
+    }
+    fun selectSelectionTool() {
+        selectToolActive = true; selectionMode = true; movingSelection = false
+        imageTransforming = false; layersOpen = false; colorPickerOpen = false
+        phoneAdjustmentsOpen = true
+        surface?.setSelectionTool(selectionTool)
     }
     val pixelToolsAvailable = smallCanvas || diagnostics.zoom >= 8f || pixelTool != null
     fun performStylusButton(button: StylusButton) {
@@ -428,8 +438,6 @@ fun CanvasScreen(
                 zoomPercent = (diagnostics.zoom * 100).roundToInt(),
                 onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
                 onReset = { surface?.resetView() }, onDebug = { debug = !debug },
-                selectionActive = selectionMode || hasSelection || referenceLayerId != null,
-                onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
                 layersOpen = layersOpen, onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
                 showTopColorSwitcher = !portrait,
                 color = color,
@@ -449,7 +457,6 @@ fun CanvasScreen(
                 canRedo = canRedo,
                 touchDrawing = touchDrawing,
                 layersOpen = layersOpen,
-                selectionActive = selectionMode || hasSelection || referenceLayerId != null,
                 color = color,
                 menuOpen = phoneMenuOpen,
                 onMenuOpenChange = { phoneMenuOpen = it },
@@ -465,7 +472,6 @@ fun CanvasScreen(
                 onColorPicker = { layersOpen = false; colorPickerOpen = true },
                 onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
                 onReset = { surface?.resetView() },
-                onSelection = { selectionMode = !selectionMode; movingSelection = false; imageTransforming = false; layersOpen = false; colorPickerOpen = false },
                 onExport = { if (ready) exportChoiceOpen = true },
                 onResize = { if (ready) resizeOpen = true },
                 onAnimation = ::openAnimation,
@@ -486,6 +492,7 @@ fun CanvasScreen(
         ) {
             BrushRail(
                 selected = brush, erasing = erasing,
+                selecting = selectToolActive, onSelect = ::selectSelectionTool,
                 pixelTool = pixelTool, pixelToolsAvailable = pixelToolsAvailable,
                 pixelToolsFirst = smallCanvas,
                 onPixelTool = ::selectPixelTool,
@@ -502,7 +509,7 @@ fun CanvasScreen(
                 compact = compactLandscape,
             )
 
-            TipControls(
+            if (!selectToolActive) TipControls(
                 size = size, opacity = opacity, color = color, frequentColors = drawingPalette,
                 sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
                 onSize = {
@@ -543,6 +550,7 @@ fun CanvasScreen(
             ) {
                 PhoneBrushDock(
                     selected = brush,
+                    selecting = selectToolActive, onSelect = ::selectSelectionTool,
                     erasing = erasing,
                     pixelTool = pixelTool,
                     pixelToolsAvailable = pixelToolsAvailable,
@@ -557,7 +565,7 @@ fun CanvasScreen(
             }
         }
 
-        if (compactPhone && phoneChromeVisible && phoneAdjustmentsOpen) {
+        if (compactPhone && phoneChromeVisible && phoneAdjustmentsOpen && !selectToolActive) {
             TipControls(
                 size = size,
                 sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
@@ -588,29 +596,30 @@ fun CanvasScreen(
             )
         }
 
-        if (selectionMode || hasSelection || referenceLayerId != null) SelectionBar(
+        if (selectToolActive && (!compactPhone || phoneChromeVisible)) SelectionControls(
             referenceName = layers.firstOrNull { it.id == referenceLayerId }?.name,
             referenceLayers = layers.filter { it.kind == LayerKind.RASTER }.map { it.id to it.name },
-            onReference = { surface?.setReferenceStrokes(it); movingSelection = false },
+            onReference = { surface?.setReferenceStrokes(it); selectRegularBrush() },
             operation = selectionOperation,
             onOperation = { selectionOperation = it; surface?.setSelectionOperation(it) },
             onInvert = { surface?.invertSelection() },
             onCut = { surface?.moveSelectionToNewLayer() },
             onDelete = { surface?.deleteSelection() },
-            selecting = selectionMode,
             hasSelection = hasSelection,
             tool = selectionTool,
             moving = movingSelection,
             canMove = selectedLayerIds.isNotEmpty(),
             canDuplicate = selectedLayerIds.any { selectedId -> layers.any { it.id == selectedId && it.kind == LayerKind.RASTER } },
-            selectedLayerCount = selectedLayerIds.size,
             onTool = { tool -> selectionTool = tool; movingSelection = false; selectionMode = true; surface?.setSelectionTool(tool) },
             onMove = { movingSelection = !movingSelection; selectionMode = false },
             onSelectAll = { surface?.selectAll() },
             onDuplicate = { surface?.duplicateSelection() },
             onClear = { movingSelection = false; surface?.clearSelection() },
-            onDone = { selectionMode = false; movingSelection = false },
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = if (compactPhone) 66.dp else 72.dp),
+            modifier = if (compactPhone) Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
+                .safeDrawingPadding().padding(start = 8.dp, end = 8.dp, top = if (landscapeDock) 80.dp else 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
+                .widthIn(max = 390.dp).fillMaxWidth()
+            else Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
+                .safeDrawingPadding().padding(if (portrait) 12.dp else 20.dp).width(if (portrait) 360.dp else 180.dp),
         )
 
         if (layersOpen) {
@@ -627,6 +636,7 @@ fun CanvasScreen(
                 selectedId = selectedLayerId,
                 selectedIds = selectedLayerIds,
                 referenceLayerId = referenceLayerId,
+                onClipLayer = { surface?.setSelectedLayerClip(it) },
                 onReferenceStrokes = { surface?.setReferenceStrokes(it); movingSelection = false; layersOpen = false },
                 backgroundColor = backgroundColor,
                 backgroundOpacity = backgroundOpacity,
@@ -931,7 +941,6 @@ private fun EditorChrome(
     canRedo: Boolean,
     debug: Boolean,
     layersOpen: Boolean,
-    selectionActive: Boolean,
     zoomPercent: Int,
     showTopColorSwitcher: Boolean,
     color: RgbaColor,
@@ -940,7 +949,6 @@ private fun EditorChrome(
     onRedo: () -> Unit,
     onReset: () -> Unit,
     onDebug: () -> Unit,
-    onSelection: () -> Unit,
     onLayers: () -> Unit,
     onColor: (RgbaColor) -> Unit,
     onOpenColorPicker: () -> Unit,
@@ -959,7 +967,6 @@ private fun EditorChrome(
                 IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
                 TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 13.dp)) { Text("Fit", fontSize = 13.sp) }
                 Text("$zoomPercent%", color = Color(0xFFD8D9DC), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp))
-                TextButton(onClick = onSelection, colors = ButtonDefaults.textButtonColors(contentColor = if (selectionActive) Color(0xFFED6A5A) else Color.White)) { Text("Select", fontSize = 13.sp) }
             }
         }
         ChromeGroup(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
@@ -987,7 +994,6 @@ private fun PhoneEditorChrome(
     canRedo: Boolean,
     touchDrawing: Boolean,
     layersOpen: Boolean,
-    selectionActive: Boolean,
     color: RgbaColor,
     menuOpen: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
@@ -998,7 +1004,6 @@ private fun PhoneEditorChrome(
     onColorPicker: () -> Unit,
     onLayers: () -> Unit,
     onReset: () -> Unit,
-    onSelection: () -> Unit,
     onExport: () -> Unit,
     onResize: () -> Unit,
     onAnimation: () -> Unit,
@@ -1049,10 +1054,6 @@ private fun PhoneEditorChrome(
                 ) { MoreIcon() }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
                     DropdownMenuItem(text = { Text("Fit canvas") }, onClick = { onMenuOpenChange(false); onReset() })
-                    DropdownMenuItem(
-                        text = { Text(if (selectionActive) "Close selection" else "Select") },
-                        onClick = { onMenuOpenChange(false); onSelection() },
-                    )
                     DropdownMenuItem(text = { Text("Export") }, onClick = { onMenuOpenChange(false); onExport() })
                     DropdownMenuItem(text = { Text("Resize canvas") }, onClick = { onMenuOpenChange(false); onResize() })
                     DropdownMenuItem(text = { Text("Animate") }, onClick = { onMenuOpenChange(false); onAnimation() })
@@ -1079,6 +1080,8 @@ private fun PhoneChromeHandle(onClick: () -> Unit, modifier: Modifier = Modifier
 
 @Composable
 private fun PhoneBrushDock(
+    selecting: Boolean,
+    onSelect: () -> Unit,
     selected: BrushPreset,
     erasing: Boolean,
     pixelTool: PixelTool?,
@@ -1092,7 +1095,7 @@ private fun PhoneBrushDock(
     onBrushStudio: () -> Unit,
 ) {
     val listState = rememberLazyListState()
-    val activeIndex = toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
+    val activeIndex = if (selecting) BrushPreset.builtIns.size + (if (pixelToolsAvailable) PixelTool.entries.size + 1 else 0) else toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
     LaunchedEffect(activeIndex, pixelToolsAvailable, pixelToolsFirst) {
         listState.scrollToItem(toolScrollStart(activeIndex))
     }
@@ -1103,7 +1106,7 @@ private fun PhoneBrushDock(
         border = BorderStroke(1.dp, Color(0xB345474D)),
     ) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val toolWidth = (maxWidth - (if (pixelTool == null) 96.dp else 54.dp)).coerceAtLeast(88.dp)
+            val toolWidth = (maxWidth - (if (selecting) 8.dp else if (pixelTool == null) 96.dp else 54.dp)).coerceAtLeast(88.dp)
             Row(
                 Modifier.fillMaxWidth().padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1117,14 +1120,14 @@ private fun PhoneBrushDock(
                 ) {
                     if (pixelToolsAvailable && pixelToolsFirst) {
                         items(PixelTool.entries, key = { it.name }) { tool ->
-                            ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
+                            ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
                         }
                         item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
                     }
                     items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
                         ToolButton(
                             preset.displayName,
-                            pixelTool == null && selected.id == preset.id && !erasing,
+                            pixelTool == null && selected.id == preset.id && !erasing && !selecting,
                             { onBrush(preset) },
                             preset.glyph,
                             compact = true,
@@ -1134,18 +1137,19 @@ private fun PhoneBrushDock(
                     if (pixelToolsAvailable && !pixelToolsFirst) {
                         item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
                         items(PixelTool.entries, key = { it.name }) { tool ->
-                            ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
+                            ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
                         }
                     }
+                    item(key = "select") { ToolButton("Select", selecting, onSelect, ToolGlyph.SELECT, compact = true, phone = true) }
                     item(key = "eraser") {
-                        ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact = true, phone = true)
+                        ToolButton("Eraser", erasing && !selecting, onEraser, ToolGlyph.ERASER, compact = true, phone = true)
                     }
                 }
-                IconButton(
+                if (!selecting) IconButton(
                     onClick = onAdjustments,
-                    modifier = Modifier.size(42.dp).semantics { contentDescription = if (adjustmentsOpen) "Hide size and opacity" else "Show size and opacity" },
+                    modifier = Modifier.size(42.dp).semantics { contentDescription = if (selecting) "Selection options" else if (adjustmentsOpen) "Hide size and opacity" else "Show size and opacity" },
                 ) { TuneIcon(if (adjustmentsOpen) Color(0xFFED6A5A) else Color.White) }
-                if (pixelTool == null) TextButton(onClick = onBrushStudio, modifier = Modifier.size(width = 42.dp, height = 50.dp), contentPadding = PaddingValues(0.dp)) {
+                if (pixelTool == null && !selecting) TextButton(onClick = onBrushStudio, modifier = Modifier.size(width = 42.dp, height = 50.dp), contentPadding = PaddingValues(0.dp)) {
                     Text("Studio", fontSize = 8.sp)
                 }
             }
@@ -1163,6 +1167,8 @@ private fun PhoneBrushDock(
 }
 
 @Composable private fun BrushRail(
+    selecting: Boolean,
+    onSelect: () -> Unit,
     selected: BrushPreset,
     erasing: Boolean,
     pixelTool: PixelTool?,
@@ -1178,7 +1184,7 @@ private fun PhoneBrushDock(
 ) {
     val shape = RoundedCornerShape(22.dp)
     val listState = rememberLazyListState()
-    val activeIndex = toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
+    val activeIndex = if (selecting) BrushPreset.builtIns.size + (if (pixelToolsAvailable) PixelTool.entries.size + 1 else 0) else toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
     LaunchedEffect(activeIndex, pixelToolsAvailable, pixelToolsFirst) {
         listState.scrollToItem(toolScrollStart(activeIndex))
     }
@@ -1192,21 +1198,22 @@ private fun PhoneBrushDock(
     ) {
         if (pixelToolsAvailable && pixelToolsFirst) {
             items(PixelTool.entries, key = { it.name }) { tool ->
-                ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact)
+                ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
             }
             item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
         }
         items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
-            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing, { onBrush(preset) }, preset.glyph, compact)
+            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing && !selecting, { onBrush(preset) }, preset.glyph, compact)
         }
         if (pixelToolsAvailable && !pixelToolsFirst) {
             item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
             items(PixelTool.entries, key = { it.name }) { tool ->
-                ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact)
+                ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
             }
         }
-        item(key = "eraser") { ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact) }
-        if (pixelTool == null) item(key = "adjust") {
+        item(key = "select") { ToolButton("Select", selecting, onSelect, ToolGlyph.SELECT, compact) }
+        item(key = "eraser") { ToolButton("Eraser", erasing && !selecting, onEraser, ToolGlyph.ERASER, compact) }
+        if (pixelTool == null && !selecting) item(key = "adjust") {
             TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
         }
     } else LazyColumn(
@@ -1217,65 +1224,70 @@ private fun PhoneBrushDock(
     ) {
         if (pixelToolsAvailable && pixelToolsFirst) {
             items(PixelTool.entries, key = { it.name }) { tool ->
-                ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact)
+                ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
             }
             item(key = "pixel-divider") { Box(Modifier.width(36.dp).height(1.dp).background(Color(0xFF55575D))) }
         }
         items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
-            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing, { onBrush(preset) }, preset.glyph, compact)
+            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing && !selecting, { onBrush(preset) }, preset.glyph, compact)
         }
         if (pixelToolsAvailable && !pixelToolsFirst) {
             item(key = "pixel-divider") { Box(Modifier.width(36.dp).height(1.dp).background(Color(0xFF55575D))) }
             items(PixelTool.entries, key = { it.name }) { tool ->
-                ToolButton(tool.displayName, pixelTool == tool && !erasing, { onPixelTool(tool) }, tool.glyph, compact)
+                ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
             }
         }
-        item(key = "eraser") { ToolButton("Eraser", erasing, onEraser, ToolGlyph.ERASER, compact) }
-        if (pixelTool == null) item(key = "adjust") {
+        item(key = "select") { ToolButton("Select", selecting, onSelect, ToolGlyph.SELECT, compact) }
+        item(key = "eraser") { ToolButton("Eraser", erasing && !selecting, onEraser, ToolGlyph.ERASER, compact) }
+        if (pixelTool == null && !selecting) item(key = "adjust") {
             TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
         }
     }
 }
 
-@Composable private fun SelectionBar(referenceName: String?, referenceLayers: List<Pair<LayerId, String>>, onReference: (LayerId?) -> Unit, operation: dev.tipstroke.core.geometry.SelectionOperation, onOperation: (dev.tipstroke.core.geometry.SelectionOperation) -> Unit, onInvert: () -> Unit, onCut: () -> Unit, onDelete: () -> Unit, selecting: Boolean, hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, canDuplicate: Boolean, selectedLayerCount: Int, onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit, onDuplicate: () -> Unit, onClear: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
-    var referenceMenu by remember { mutableStateOf(false) }
-    Surface(modifier.fillMaxWidth(.94f).widthIn(max = 620.dp), color = Color(0xED202125), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (moving) "Drag to move content on $selectedLayerCount selected layer${if (selectedLayerCount == 1) "" else "s"}" else if (selecting) "Draw a selection" else if (referenceName != null) "Reference strokes · $referenceName" else "Selection active", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f))
-                TextButton(onClick = onDone) { Text("Done") }
+@Composable private fun SelectionControls(
+    referenceName: String?, referenceLayers: List<Pair<LayerId, String>>, onReference: (LayerId?) -> Unit,
+    operation: dev.tipstroke.core.geometry.SelectionOperation, onOperation: (dev.tipstroke.core.geometry.SelectionOperation) -> Unit,
+    onInvert: () -> Unit, onCut: () -> Unit, onDelete: () -> Unit,
+    hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, canDuplicate: Boolean,
+    onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit,
+    onDuplicate: () -> Unit, onClear: () -> Unit, modifier: Modifier = Modifier,
+) {
+    var menu by remember { mutableStateOf<String?>(null) }
+    Surface(modifier, color = Color(0xED202125), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
+        Column(Modifier.padding(4.dp)) {
+            Row {
+                Box(Modifier.weight(1f)) {
+                    TextButton(onClick = { menu = "shape" }, modifier = Modifier.fillMaxWidth()) { Text(if (moving) "Move ▾" else tool.name.lowercase().replaceFirstChar { it.uppercase() } + " ▾", maxLines = 1) }
+                    DropdownMenu(menu == "shape", { menu = null }) {
+                        SelectionTool.entries.forEach { shape -> DropdownMenuItem(text = { Text(shape.name.lowercase().replaceFirstChar { it.uppercase() }) }, onClick = { onTool(shape); menu = null }) }
+                        DropdownMenuItem(text = { Text("Move pixels") }, enabled = hasSelection && canMove, onClick = { onMove(); menu = null })
+                    }
+                }
+                Box(Modifier.weight(1f)) {
+                    TextButton(onClick = { menu = "mode" }, modifier = Modifier.fillMaxWidth()) { Text(operation.name.lowercase().replaceFirstChar { it.uppercase() } + " ▾", maxLines = 1) }
+                    DropdownMenu(menu == "mode", { menu = null }) {
+                        dev.tipstroke.core.geometry.SelectionOperation.entries.forEach { mode -> DropdownMenuItem(text = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) }, onClick = { onOperation(mode); onTool(tool); menu = null }) }
+                    }
+                }
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { onTool(SelectionTool.LASSO) }, colors = ButtonDefaults.textButtonColors(contentColor = if (tool == SelectionTool.LASSO && selecting) Color(0xFFED6A5A) else Color.White)) { Text("Lasso") }
-                TextButton(onClick = { onTool(SelectionTool.RECTANGLE) }, colors = ButtonDefaults.textButtonColors(contentColor = if (tool == SelectionTool.RECTANGLE && selecting) Color(0xFFED6A5A) else Color.White)) { Text("Rectangle") }
-                TextButton(onClick = { onTool(SelectionTool.ELLIPSE) }, colors = ButtonDefaults.textButtonColors(contentColor = if (tool == SelectionTool.ELLIPSE && selecting) Color(0xFFED6A5A) else Color.White)) { Text("Ellipse") }
-                Box {
-                    TextButton(onClick = { referenceMenu = true }) { Text("Reference strokes") }
-                    DropdownMenu(expanded = referenceMenu, onDismissRequest = { referenceMenu = false }) {
-                        DropdownMenuItem(text = { Text("Off") }, onClick = { onReference(null); referenceMenu = false })
-                        referenceLayers.forEach { (id, name) ->
-                            DropdownMenuItem(text = { Text(name) }, onClick = { onReference(id); referenceMenu = false })
+            Row {
+                Box(Modifier.weight(1f)) {
+                    TextButton(onClick = { menu = "edit" }, modifier = Modifier.fillMaxWidth()) { Text("Actions ▾") }
+                    DropdownMenu(menu == "edit", { menu = null }) {
+                        listOf("Select all" to onSelectAll, "Invert" to onInvert, "Clear" to onClear,
+                            "Duplicate" to onDuplicate, "Cut to layer" to onCut, "Delete pixels" to onDelete).forEachIndexed { index, (label, action) ->
+                            DropdownMenuItem(text = { Text(label) }, enabled = index < 2 || (hasSelection && (index == 2 || canDuplicate)), onClick = { action(); menu = null })
                         }
                     }
                 }
-                TextButton(onClick = onMove, enabled = hasSelection && canMove, colors = ButtonDefaults.textButtonColors(contentColor = if (moving) Color(0xFFED6A5A) else Color.White)) { Text("Move") }
-                TextButton(onClick = onDuplicate, enabled = hasSelection && canDuplicate) { Text("Duplicate") }
-                TextButton(onClick = onCut, enabled = hasSelection && canDuplicate) { Text("Cut to layer") }
-                TextButton(onClick = onDelete, enabled = hasSelection && canDuplicate) { Text("Delete pixels") }
-                TextButton(onClick = onInvert) { Text("Invert") }
-                TextButton(onClick = onSelectAll) { Text("All") }
-                TextButton(onClick = onClear, enabled = hasSelection) { Text("Clear") }
-            }
-            if (selecting) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                dev.tipstroke.core.geometry.SelectionOperation.entries.forEach { mode ->
-                    TextButton(onClick = { onOperation(mode) }, colors = ButtonDefaults.textButtonColors(contentColor = if (mode == operation) Color(0xFFED6A5A) else Color.White)) {
-                        Text(mode.name.lowercase().replaceFirstChar { it.uppercase() })
+                Box(Modifier.weight(1f)) {
+                    TextButton(onClick = { menu = "reference" }, modifier = Modifier.fillMaxWidth()) { Text(if (referenceName == null) "Reference ▾" else "Reference •", maxLines = 1) }
+                    DropdownMenu(menu == "reference", { menu = null }) {
+                        DropdownMenuItem(text = { Text("Reference strokes: Off") }, onClick = { onReference(null); menu = null })
+                        referenceLayers.forEach { (id, name) -> DropdownMenuItem(text = { Text(name) }, onClick = { onReference(id); menu = null }) }
                     }
                 }
-            }
-            if (referenceName != null) Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Paint inside $referenceName on your active paint layer.", color = Color.LightGray, fontSize = 12.sp, modifier = Modifier.weight(1f).padding(start = 8.dp))
-                TextButton(onClick = { onReference(null) }) { Text("Turn off") }
             }
         }
     }
@@ -1307,9 +1319,9 @@ private fun toolIndex(
     pixelToolsFirst: Boolean,
 ): Int {
     val regularIndex = BrushPreset.builtIns.indexOfFirst { it.id == brush.id }.coerceAtLeast(0)
-    if (!pixelToolsAvailable) return if (erasing) 3 else regularIndex
+    if (!pixelToolsAvailable) return if (erasing) 4 else regularIndex
     return when {
-        erasing -> 7
+        erasing -> 8
         pixelTool != null -> (if (pixelToolsFirst) 0 else 4) + pixelTool.ordinal
         else -> (if (pixelToolsFirst) 4 else 0) + regularIndex
     }
@@ -1318,7 +1330,7 @@ private fun toolIndex(
 private fun toolScrollStart(activeIndex: Int): Int =
     if (activeIndex == 4) 2 else (activeIndex - 1).coerceAtLeast(0)
 
-private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER, PIXEL, LINE, DITHER }
+private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER, PIXEL, LINE, DITHER, SELECT }
 
 @Composable private fun ToolButton(label: String, selected: Boolean, onClick: () -> Unit, icon: ToolGlyph, compact: Boolean = false, phone: Boolean = false) {
     val bg by animateColorAsState(if (selected) Color(0xFFF4F4F2) else Color.Transparent, label = "tool")
@@ -1329,6 +1341,7 @@ private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER, PIXEL, LINE, DITHE
     Column(Modifier.size(width = buttonWidth, height = buttonHeight).clip(RoundedCornerShape(if (phone) 13.dp else 16.dp)).background(bg).clickable(onClick = onClick).semantics { contentDescription = label }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Canvas(Modifier.size(iconSize)) {
             when (icon) {
+                ToolGlyph.SELECT -> { drawRect(fg, Offset(size.width * .12f, size.height * .12f), androidx.compose.ui.geometry.Size(size.width * .76f, size.height * .76f), style = Stroke(1.5.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())))) }
                 ToolGlyph.PENCIL -> { rotate(-40f) { drawRoundRect(fg, Offset(size.width*.42f, 1f), androidx.compose.ui.geometry.Size(size.width*.2f, size.height*.82f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f)); drawPath(Path().apply { moveTo(size.width*.42f, size.height*.82f); lineTo(size.width*.62f, size.height*.82f); lineTo(size.width*.52f, size.height); close() }, fg) } }
                 ToolGlyph.INK -> { drawPath(Path().apply { moveTo(size.width*.18f,size.height*.82f); cubicTo(size.width*.25f,size.height*.35f,size.width*.7f,size.height*.2f,size.width*.82f,size.height*.08f); cubicTo(size.width*.74f,size.height*.5f,size.width*.55f,size.height*.9f,size.width*.18f,size.height*.82f); close() }, fg) }
                 ToolGlyph.AIRBRUSH -> { for (i in 0..4) for (j in 0..4) drawCircle(fg.copy(alpha = .25f + .1f*j), 1.4.dp.toPx(), Offset(5.dp.toPx()+i*4.dp.toPx(), 5.dp.toPx()+j*4.dp.toPx())) }

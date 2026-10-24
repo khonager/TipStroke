@@ -166,3 +166,15 @@ and the existing bounded undo transactions. Pixel Line retains its endpoint prev
 The source layer ID is session state; document schemas are unchanged. Process
 recordings encode tile patches for reference/compound-selection strokes so replay
 never silently drops their constraints when using the older stroke codec.
+
+### Layer clipping
+
+Runtime layers and saved/loaded layer records carry an optional `clipSourceId`.
+Clipping is a compositing relationship: destination raster tiles and image assets
+remain untouched. Native Canvas isolates the destination and renders source
+coverage into a DST_IN group, including transparent gaps between sparse tiles.
+Only the current clip bounds are isolated; there is no per-stroke full-layer copy.
+Source coverage follows nested clipping and active animation cels while ignoring
+source visibility and layer opacity. Cycles and dangling IDs are sanitized on load.
+The canvas, layer previews, sampled composite colors, still/animation exports and
+process replay apply this same relationship. Source deletion releases dependents.

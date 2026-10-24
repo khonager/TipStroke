@@ -165,3 +165,22 @@ layer relationship. Sources and destinations are paint layers; image erasing,
 Color Drop and finger smudging require Reference strokes to be off. Color Drop
 shows an explanation instead of filling outside the reference. Feather/expand,
 selection rotation and scaling are not included in this selection toolset.
+
+### Select tool controls and layer clipping
+
+Select lives beside Pencil, Ink and Eraser in the tool rail/dock. Selecting it
+replaces size/opacity controls with compact Shape, Mode, Actions and Reference
+menus in the same area. Choosing a drawing tool restores brush controls without
+clearing an existing selection or Reference strokes. There is no permanent
+selection banner over the canvas. Move is in Shape; copy/cut/delete, all, invert
+and clear are in Actions.
+
+In layer settings, **Clip to layer** chooses another paint or image layer as live
+coverage for already-painted content. The destination keeps all of its original
+pixels, including newly drawn pixels outside the source. **None — show all pixels**
+reveals them again. Soft source alpha and nested clipping are honored; source
+visibility and its layer-opacity slider do not alter the coverage. Source image
+transforms and erased areas do. Clip relationships use stable IDs, survive
+reordering, and reject self-links/cycles. Deleting the source releases dependents.
+Clip changes support undo/redo on the destination layer. This differs from
+Reference strokes, which constrains pixels at painting time.

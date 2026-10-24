@@ -119,6 +119,10 @@ class CanvasScreenshotTest {
         CanvasScreen(initialSelectionOpen = true)
     }
 
+    @Test fun renderPhoneSelectionToolsForVisualReview() = render(720, 1440, "tipstroke-phone-selection.png") {
+        CanvasScreen(initialSelectionOpen = true, onBackToGallery = {})
+    }
+
     @Test fun renderGalleryForVisualReview() = render(2560, 1600, "tipstroke-gallery.png") { activity ->
         GalleryScreen(galleryWithExamples(activity), {}, {}, {})
     }

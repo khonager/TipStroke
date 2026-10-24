@@ -49,6 +49,7 @@ internal fun LayersPanel(
     selectedIds: Set<LayerId>,
     referenceLayerId: LayerId? = null,
     onReferenceStrokes: (LayerId?) -> Unit = {},
+    onClipLayer: (LayerId?) -> Unit = {},
     backgroundColor: Int = android.graphics.Color.WHITE,
     backgroundOpacity: Float = 1f,
     onBackgroundColor: (Int) -> Unit = {},
@@ -304,6 +305,28 @@ internal fun LayersPanel(
                         PanelButton("Front", onMoveForward)
                         PanelButton("Duplicate", { onDuplicate(); settingsLayerId = null })
                     }
+                    var clipMenuOpen by remember(layer.id) { mutableStateOf(false) }
+                    Box {
+                        TextButton(onClick = { clipMenuOpen = true }) {
+                            Text(layer.clipSourceId?.let { id -> "Clipped to ${layers.firstOrNull { it.id == id }?.name ?: "layer"} ▾" } ?: "Clip to layer ▾")
+                        }
+                        DropdownMenu(clipMenuOpen, { clipMenuOpen = false }) {
+                            DropdownMenuItem(text = { Text("None — show all pixels") }, onClick = { onClipLayer(null); clipMenuOpen = false })
+                            layers.filter { candidate ->
+                                val visited = mutableSetOf(layer.id)
+                                var cursor: LayerSummary? = candidate
+                                var allowed = true
+                                while (cursor != null) {
+                                    if (!visited.add(cursor.id)) { allowed = false; break }
+                                    val parent = cursor.clipSourceId
+                                    cursor = layers.firstOrNull { it.id == parent }
+                                }
+                                allowed
+                            }.forEach { source ->
+                                DropdownMenuItem(text = { Text(source.name) }, onClick = { onClipLayer(source.id); clipMenuOpen = false })
+                            }
+                        }
+                    }
                     if (layer.kind == LayerKind.RASTER) {
                         TextButton(onClick = {
                             onReferenceStrokes(if (referenceLayerId == layer.id) null else layer.id)
@@ -499,7 +522,7 @@ private fun LayerRow(
         Column(Modifier.weight(1f)) {
             Text(layer.name, color = Color(0xFFF1F1EF), fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                if (layer.kind == LayerKind.IMAGE) "Image · original linked" else "Paint layer",
+                if (layer.clipSourceId != null) "Clipped layer" else if (layer.kind == LayerKind.IMAGE) "Image · original linked" else "Paint layer",
                 color = Color(0xFF9EA0A6), fontSize = 10.sp,
             )
         }

@@ -319,6 +319,7 @@ internal sealed interface SavedLayerSnapshot {
     val visible: Boolean
     val opacity: Float
     val groupId: String?
+    val clipSourceId: LayerId?
 }
 
 internal data class SavedRasterSnapshot(
@@ -329,6 +330,7 @@ internal data class SavedRasterSnapshot(
     val tiles: Map<TileCoordinate, Bitmap>,
     val colorUsage: Map<Int, Long> = emptyMap(),
     override val groupId: String? = null,
+    override val clipSourceId: LayerId? = null,
 ) : SavedLayerSnapshot
 
 internal data class SavedImageSnapshot(
@@ -342,6 +344,7 @@ internal data class SavedImageSnapshot(
     val transform: ImageTransform,
     val maskTiles: Map<TileCoordinate, Bitmap> = emptyMap(),
     override val groupId: String? = null,
+    override val clipSourceId: LayerId? = null,
 ) : SavedLayerSnapshot
 
 internal data class DrawingSnapshot(
@@ -396,12 +399,14 @@ internal sealed interface LoadedLayer {
     val visible: Boolean
     val opacity: Float
     val groupId: String?
+    val clipSourceId: LayerId?
 }
 
 internal data class LoadedRaster(
     override val id: LayerId, override val name: String, override val visible: Boolean, override val opacity: Float,
     val tiles: Map<TileCoordinate, Bitmap>, val colorUsage: Map<Int, Long> = emptyMap(),
     override val groupId: String? = null,
+    override val clipSourceId: LayerId? = null,
 ) : LoadedLayer
 
 internal data class LoadedImage(
@@ -409,10 +414,11 @@ internal data class LoadedImage(
     val assetFile: File, val transform: ImageTransform, val originalWidthPx: Int, val originalHeightPx: Int,
     val maskTiles: Map<TileCoordinate, Bitmap> = emptyMap(),
     override val groupId: String? = null,
+    override val clipSourceId: LayerId? = null,
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    private const val SCHEMA_VERSION = 3
+    private const val SCHEMA_VERSION = 4
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -429,6 +435,7 @@ internal object ProjectPersistence {
                     .put("id", layer.id.value).put("name", layer.name)
                     .put("visible", layer.visible).put("opacity", layer.opacity)
                 layer.groupId?.let { json.put("groupId", it) }
+                layer.clipSourceId?.let { json.put("clipSourceId", it.value) }
                 when (layer) {
                     is SavedRasterSnapshot -> {
                         json.put("kind", "raster")
@@ -551,6 +558,7 @@ internal object ProjectPersistence {
                 val visible = layer.optBoolean("visible", true)
                 val opacity = layer.optDouble("opacity", 1.0).toFloat()
                 val groupId = layer.optString("groupId").takeIf { it.isNotBlank() }
+                val clipSourceId = layer.optString("clipSourceId").takeIf { it.isNotBlank() }?.let(::LayerId)
                 if (layer.getString("kind") == "raster") {
                     val tileDirectory = File(directory, "layers/${id.value}/tiles")
                     val tiles = tileDirectory.listFiles().orEmpty().mapNotNull { file ->
@@ -571,7 +579,7 @@ internal object ProjectPersistence {
                             }
                         }
                     } else inferColorUsage(tiles.values)
-                    add(LoadedRaster(id, name, visible, opacity, tiles, usage, groupId))
+                    add(LoadedRaster(id, name, visible, opacity, tiles, usage, groupId, clipSourceId))
                 } else {
                     val originalWidth = layer.getInt("originalWidthPx")
                     val originalHeight = layer.getInt("originalHeightPx")
@@ -583,7 +591,7 @@ internal object ProjectPersistence {
                             layer.getDouble("centerX").toFloat(), layer.getDouble("centerY").toFloat(),
                             layer.getDouble("scale").toFloat(), layer.optDouble("rotationDegrees", 0.0).toFloat(),
                         ),
-                        originalWidth, originalHeight, maskTiles, groupId,
+                        originalWidth, originalHeight, maskTiles, groupId, clipSourceId,
                     ))
                 }
             }
@@ -696,10 +704,13 @@ internal object ProjectPersistence {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val animation = snapshot.animation
         val frameId = animation?.frames?.getOrNull(frameIndex)?.id
-        snapshot.layers.forEach { layer ->
-            if (!layer.visible || layer.opacity <= 0f) return@forEach
+        fun drawLayer(layer: SavedLayerSnapshot, coverage: Boolean = false, ancestors: Set<LayerId> = emptySet()) {
+            if (layer.id in ancestors) return
+            if (!coverage && (!layer.visible || layer.opacity <= 0f)) return
+            val source = layer.clipSourceId?.let { id -> snapshot.layers.firstOrNull { it.id == id } }
+            drawWithLayerClip(canvas, source?.let { { drawLayer(it, true, ancestors + layer.id) } }) {
             val shared = animation == null || layer.id in animation.backgroundLayerIds
-            paint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
+            paint.alpha = (if (coverage) 255f else layer.opacity * 255).roundToInt().coerceIn(0, 255)
             when (layer) {
                 is SavedRasterSnapshot -> (if (shared) layer.tiles else animation?.rasterCels?.get(layer.id)?.get(frameId).orEmpty())
                     .forEach { (coordinate, bitmap) ->
@@ -707,7 +718,7 @@ internal object ProjectPersistence {
                 }
                 is SavedImageSnapshot -> {
                     val imageTransform = if (shared) layer.transform else animation?.imageCels?.get(layer.id)?.get(frameId)
-                        ?: return@forEach
+                        ?: return@drawWithLayerClip
                     val source = imageCache?.getOrPut(layer.sourceUri) { decodeBitmap(resolver, layer.sourceUri) }
                         ?: decodeBitmap(resolver, layer.sourceUri)
                     try {
@@ -737,7 +748,9 @@ internal object ProjectPersistence {
                     } finally { if (imageCache == null) source.recycle() }
                 }
             }
+            }
         }
+        snapshot.layers.forEach { drawLayer(it) }
         return output
     }
 

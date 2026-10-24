@@ -112,6 +112,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
         val layers = org.json.JSONArray()
         stack.layers.forEach { layer ->
             val item = JSONObject().put("id", layer.id.value).put("visible", layer.visible).put("opacity", layer.opacity)
+            layer.clipSourceId?.let { item.put("clipSourceId", it.value) }
             if (layer is ImageLayerRuntime) {
                 item.put("image", true).put("x", layer.transform.centerX).put("y", layer.transform.centerY)
                     .put("scale", layer.transform.scale).put("rotation", layer.transform.rotationDegrees)
@@ -298,12 +299,15 @@ class ProcessReplay internal constructor(
         val canvas=Canvas(output); canvas.drawColor(Color.WHITE); canvas.scale(scale,scale)
         canvas.drawColor(metadata.getInt("background").let { (it and 0xffffff) or ((metadata.getDouble("opacity")*255).roundToInt() shl 24) })
         val order=metadata.getJSONArray("layers")
-        for (i in 0 until order.length()) {
-            val layer=order.getJSONObject(i); if (!layer.getBoolean("visible")) continue
-            val paint=Paint().apply { alpha=(layer.getDouble("opacity")*255).roundToInt() }
+        val ordered = (0 until order.length()).map { order.getJSONObject(it) }
+        fun drawLayer(layer: JSONObject, coverage: Boolean = false, ancestors: Set<String> = emptySet()) {
             val id = layer.getString("id")
+            if (id in ancestors || (!coverage && !layer.getBoolean("visible"))) return
+            val source = ordered.firstOrNull { it.getString("id") == layer.optString("clipSourceId") }
+            drawWithLayerClip(canvas, source?.let { { drawLayer(it, true, ancestors + id) } }) {
+            val paint=Paint().apply { alpha=if (coverage) 255 else (layer.getDouble("opacity")*255).roundToInt() }
             if (layer.optBoolean("image")) {
-                val encoded = images[id] ?: continue // metadata precedes the initial image asset
+                val encoded = images[id] ?: return@drawWithLayerClip // metadata precedes the initial image asset
                 val bitmap = requireNotNull(BitmapFactory.decodeByteArray(encoded, 0, encoded.size))
                 try {
                     val save = canvas.save()
@@ -321,7 +325,9 @@ class ProcessReplay internal constructor(
                     canvas.restoreToCount(group); canvas.restoreToCount(save)
                 } finally { bitmap.recycle() }
             } else layers[id]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
+            }
         }
+        ordered.forEach { drawLayer(it) }
         return output
     }
     private fun apply(bytes: ByteArray, cancelled: () -> Boolean) = DataInputStream(GZIPInputStream(ByteArrayInputStream(bytes))).use { input ->
