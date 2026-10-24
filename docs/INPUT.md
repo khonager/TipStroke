@@ -184,3 +184,29 @@ transforms and erased areas do. Clip relationships use stable IDs, survive
 reordering, and reject self-links/cycles. Deleting the source releases dependents.
 Clip changes support undo/redo on the destination layer. This differs from
 Reference strokes, which constrains pixels at painting time.
+
+### Quick shapes
+
+Rectangle and ellipse selections are unconstrained by default. While dragging,
+place an additional finger on the canvas to constrain the marquee to a square or
+circle, anchored at the drag's starting point in document space. Lifting that
+finger restores the unconstrained proportions. The original pointer owns the
+selection; lifting it commits even if the modifier finger is still down.
+
+To straighten a hand-drawn shape, keep the drawing pointer in contact and still
+for 650 ms at the end of the stroke. Recognized lines, circles, ellipses,
+triangles, rectangles, and squares snap in the live preview, with a short haptic
+confirmation. Near-circular and near-square outlines become exact circles and
+squares. Rectangles may be rotated; ellipse fitting uses document axes. Draw an
+arrow in one continuous stroke: tail → tip → first wing → tip → second wing.
+Hold at its end to regularize the shaft and make the two wings symmetric.
+Unrecognized strokes and tiny marks stay freehand. After snapping, lift to commit;
+the fitted shape stays fixed until lift. Cancellation discards it.
+
+Quick shapes retain the active brush, color, pressure/tilt samples, selection,
+and raster history semantics. Pencil, Ink, Airbrush, single-layer Eraser, Pixel,
+and Shade use their existing raster painters. The dedicated pixel Line tool
+already constrains its stroke and does not run recognition. Multi-layer erase
+retains its existing freehand gesture. Finger drawing and mouse drawing also
+support hold-to-shape; adding a second finger during finger drawing still cancels
+the mark for navigation. An extra finger never ends an active stylus stroke.

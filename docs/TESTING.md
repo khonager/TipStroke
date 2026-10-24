@@ -165,3 +165,16 @@ source edits, undo/redo, cycle rejection, source deletion, project save/load,
 transparent PNG export and process replay. Selection screenshot fixtures cover
 portrait and phone controls in the former slider area; no Android device was
 required for these native-graphics Robolectric checks.
+
+Quick-shape regressions: `QuickShapeTest` exercises fitted geometry, rotated
+rectangles, arrows, degenerate strokes, and selection constraints in all drag
+quadrants. `DrawingSurfaceShapeTest` exercises native hold timing, preview,
+commit/undo, cancellation, and modifier-pointer ownership. On a stylus device,
+check 650 ms holds with Pencil, Ink, Airbrush and Eraser, including selections
+under a rotated/zoomed camera, and check that palm/finger release never commits
+the pen stroke. Check that a moving stroke remains freehand and short pauses do
+not snap; inspect pressure/tilt appearance before and after recognition.
+The JVM shape tests cover Airbrush preview/commit and live-tile eraser rollback
+with each regular brush preset. Jetpack Ink's wet-preview replacement for Ink
+and Pencil requires a device/emulator: the Android Ink native library cannot be
+loaded by this project's desktop Robolectric runtime.

@@ -17,6 +17,7 @@ import androidx.ink.strokes.Stroke
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.input.motionprediction.MotionEventPredictor
 import dev.tipstroke.core.drawing.*
+import dev.tipstroke.core.geometry.QuickShape
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.Rect
 import dev.tipstroke.core.geometry.SelectionRegion
@@ -143,6 +144,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private val hideBrushPreview = Runnable { rasterView.adjustmentPreviewStroke = null }
     private var holdRunnable: Runnable? = null
     private var holdTriggered = false
+    private var shapeHold: Runnable? = null
+    private var shapeEvent: MotionEvent? = null
+    private var shapeAnchor: Point? = null
+    private var shapeSnapped = false
+    private var shapeStyle: StrokeStyle? = null
+    private var selectionPointerId: Int? = null
     private var colorPicking = false
     private var pendingPickedColor: RgbaColor? = null
     private var singleStart = android.graphics.PointF()
@@ -277,6 +284,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun onDetachedFromWindow() {
+        clearShapeHold()
         cancelFill()
         cancelMultiErase()
         clearMovePreview()
@@ -649,6 +657,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
     fun clearSelection() {
+        selectionPointerId = null
         previousSelection = null
         clearMovePreview()
         selectionRegion = null
@@ -1010,6 +1019,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         // normal multi-touch navigation path.
         if ((settings.emulateMouseWithTouch || settings.gestures.oneFingerDrag == FingerAction.DRAW) &&
             activeDrawingPointerId != null &&
+            event.findPointerIndex(activeDrawingPointerId!!).let { it >= 0 && !isStylus(event, it) } &&
             event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && event.pointerCount >= 2
         ) {
             cancelActiveStroke(event, activeDrawingPointerId!!)
@@ -1095,7 +1105,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val pointerId = activeDrawingPointerId ?: event.getPointerId(event.actionIndex)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                if (!isDrawingPointer(event, event.actionIndex)) return true
+                if (activeDrawingPointerId != null || !isDrawingPointer(event, event.actionIndex)) return true
                 cancelColorPick()
                 val baseStyle = currentStyle(event, event.actionIndex)
                 val target = when (val selected = layerStack.selected()) {
@@ -1110,6 +1120,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
                 updateChromeOcclusion(event, event.actionIndex)
                 val style = styleForTarget(baseStyle, target)
+                shapeStyle = style
+                shapeSnapped = false
                 if (target.image != null || style.blend == BlendBehavior.ERASE ||
                     ((style.referenceStrokes != null || layerStack.selected().clipSourceId != null) && style.pixelTool != PixelTool.LINE)) {
                     customPreviewStyle = style
@@ -1129,6 +1141,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
             }
             MotionEvent.ACTION_MOVE -> {
+                if (shapeSnapped) return true
                 val index = event.findPointerIndex(pointerId)
                 if (index >= 0) {
                     val list = pendingSamples[pointerId] ?: return true
@@ -1147,6 +1160,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                if (event.getPointerId(event.actionIndex) != pointerId) return true
+                clearShapeHold()
                 strokeRecording?.let { recording ->
                     val tick = ((event.eventTime - recording.startedAt).coerceAtLeast(0L) * (animation?.fps ?: 1) / 1000L)
                     advanceLiveRecording(recording, recording.start + tick.toInt())
@@ -1160,7 +1175,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     cancelActiveStroke(event, pointerId)
                     return true
                 }
-                if (index >= 0) pendingSamples[pointerId]?.let { list ->
+                if (index >= 0 && !shapeSnapped) pendingSamples[pointerId]?.let { list ->
                     pendingTargets[pointerId]?.let { target ->
                         appendSamples(pointerId, list, listOf(sample(event, index).copy(opacityPressure = terminalPressure).forTarget(target)))
                     }
@@ -1224,12 +1239,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     pencilPreviewStyle = null
                 }
                 activeDrawingPointerId = null
+                shapeSnapped = false
+                shapeStyle = null
                 setChromeOccludedByStroke(false)
             }
             MotionEvent.ACTION_CANCEL -> {
                 cancelActiveStroke(event, pointerId)
             }
         }
+        if (activeDrawingPointerId != null && !shapeSnapped) updateShapeHold(event, pointerId)
         emitDiagnostics(event, event.actionIndex.coerceIn(0, event.pointerCount - 1))
         return true
     }
@@ -1383,9 +1401,22 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun handleSelection(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) selectionPointerId = event.getPointerId(event.actionIndex)
+        val index = selectionPointerId?.let(event::findPointerIndex) ?: -1
+        if (index < 0) return true
+        val primaryUp = event.actionMasked in intArrayOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP) &&
+            event.getPointerId(event.actionIndex) == selectionPointerId
+        val constrained = (0 until event.pointerCount).any {
+            it != index && event.getToolType(it) == MotionEvent.TOOL_TYPE_FINGER &&
+                !(event.actionMasked == MotionEvent.ACTION_POINTER_UP && it == event.actionIndex)
+        }
+        val canceled = event.actionMasked == MotionEvent.ACTION_CANCEL || (primaryUp &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && event.flags and MotionEvent.FLAG_CANCELED != 0)
+        val action = if (canceled) MotionEvent.ACTION_CANCEL else if (primaryUp) MotionEvent.ACTION_UP else if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
+            event.actionMasked == MotionEvent.ACTION_POINTER_UP) MotionEvent.ACTION_MOVE else event.actionMasked
+        when (action) {
             MotionEvent.ACTION_DOWN -> {
-                val point = rasterView.screenToDocument(event.x, event.y)
+                val point = rasterView.screenToDocument(event.getX(index), event.getY(index))
                 previousSelection = selectionRegion
                 selectionPoints.clear()
                 selectionPoints += Point(point.x, point.y)
@@ -1394,13 +1425,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 rasterView.selectionDraftPoints = selectionPoints.toList()
             }
             MotionEvent.ACTION_MOVE -> selectionPoints.firstOrNull()?.let { start ->
-                val point = rasterView.screenToDocument(event.x, event.y)
+                val point = rasterView.screenToDocument(event.getX(index), event.getY(index))
                 if (selectionTool != SelectionTool.LASSO) {
-                    val bounds = Rect(start.x, start.y, point.x, point.y).normalized()
-                    if (bounds.right - bounds.left >= 2f && bounds.bottom - bounds.top >= 2f) {
-                        selectionRegion = if (selectionTool == SelectionTool.ELLIPSE) SelectionRegion.ellipse(bounds) else SelectionRegion.rectangle(bounds)
-                        rasterView.selectionRegion = selectionRegion
-                    }
+                    val bounds = QuickShape.selectionBounds(start, Point(point.x, point.y), constrained)
+                    selectionRegion = if (bounds.right - bounds.left < 2f || bounds.bottom - bounds.top < 2f) null
+                        else if (selectionTool == SelectionTool.ELLIPSE) SelectionRegion.ellipse(bounds) else SelectionRegion.rectangle(bounds)
+                    rasterView.selectionRegion = selectionRegion
                 } else {
                     val candidate = Point(point.x, point.y)
                     val previous = selectionPoints.last()
@@ -1411,17 +1441,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             MotionEvent.ACTION_UP -> {
                 if (selectionTool == SelectionTool.LASSO) {
-                    val point = rasterView.screenToDocument(event.x, event.y)
+                    val point = rasterView.screenToDocument(event.getX(index), event.getY(index))
                     selectionPoints += Point(point.x, point.y)
                     selectionRegion = selectionPoints.takeIf { it.size >= 3 }?.let { SelectionRegion(it.toList()) }
                 }
                 if (selectionTool != SelectionTool.LASSO) selectionPoints.firstOrNull()?.let { start ->
-                    val point = rasterView.screenToDocument(event.x, event.y)
-                    val bounds = Rect(start.x, start.y, point.x, point.y).normalized()
+                    val point = rasterView.screenToDocument(event.getX(index), event.getY(index))
+                    val bounds = QuickShape.selectionBounds(start, Point(point.x, point.y), constrained)
                     selectionRegion = if (bounds.right - bounds.left < 2f || bounds.bottom - bounds.top < 2f) null
                         else if (selectionTool == SelectionTool.ELLIPSE) SelectionRegion.ellipse(bounds) else SelectionRegion.rectangle(bounds)
                 }
                 selectionRegion = selectionRegion?.let { draft -> previousSelection?.combined(draft, selectionOperation) ?: draft } ?: previousSelection
+                selectionPointerId = null
                 previousSelection = null
                 rasterView.selectionDraftPoints = emptyList()
                 rasterView.selectionRegion = selectionRegion
@@ -1430,6 +1461,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             MotionEvent.ACTION_CANCEL -> {
                 selectionRegion = previousSelection
+                selectionPointerId = null
                 previousSelection = null
                 selectionPoints.clear()
                 rasterView.selectionDraftPoints = emptyList()
@@ -1704,6 +1736,57 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
     }
 
+    private fun clearShapeHold() {
+        shapeHold?.let(gestureHandler::removeCallbacks)
+        shapeHold = null
+        shapeEvent?.recycle()
+        shapeEvent = null
+        shapeAnchor = null
+    }
+
+    private fun updateShapeHold(event: MotionEvent, pointerId: Int) {
+        val index = event.findPointerIndex(pointerId)
+        if (index < 0 || shapeStyle?.pixelTool == PixelTool.LINE) return
+        val point = Point(event.getX(index), event.getY(index))
+        val anchor = shapeAnchor
+        val moved = anchor == null || hypot(point.x - anchor.x, point.y - anchor.y) > 8f * resources.displayMetrics.density
+        if (moved) clearShapeHold()
+        shapeEvent?.recycle()
+        shapeEvent = MotionEvent.obtainNoHistory(event)
+        if (!moved) return
+        shapeAnchor = point
+        shapeHold = Runnable {
+            val samples = pendingSamples[pointerId] ?: return@Runnable
+            val target = pendingTargets[pointerId] ?: return@Runnable
+            val style = shapeStyle ?: return@Runnable
+            val geometry = QuickShape.recognize(samples.map { it.position }) ?: return@Runnable
+            // Tiny marks and dots are never promoted to shapes.
+            val extent = maxOf(samples.maxOf { it.position.x } - samples.minOf { it.position.x },
+                samples.maxOf { it.position.y } - samples.minOf { it.position.y })
+            if (extent * rasterView.transform.scale < 24f * resources.displayMetrics.density) return@Runnable
+            val fitted = geometry.points.mapIndexed { i, point ->
+                val original = samples[i * samples.lastIndex / geometry.points.lastIndex]
+                original.copy(position = point)
+            }
+            if (customPreviewStyle != null) {
+                invalidateTarget(target, target.store.cancelLiveStroke())
+                target.store.beginLiveStroke()
+                invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(fitted, style)))
+            } else {
+                if (rasterPreviewStyle == null) shapeEvent?.let { liveView.cancelStroke(it, pointerId) }
+                clearPencilPreview()
+                pencilPreviewStyle = null
+                rasterPreviewStyle = style
+                rasterView.previewStroke = CompletedStroke(fitted, style)
+            }
+            samples.clear()
+            samples.addAll(fitted)
+            shapeSnapped = true
+            clearShapeHold()
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        }.also { gestureHandler.postDelayed(it, 650L) }
+    }
+
     private fun rebaseToRemainingPointer(event: MotionEvent) {
         val remainingIndex = (0 until event.pointerCount).firstOrNull { it != event.actionIndex } ?: return
         val x = event.getX(remainingIndex)
@@ -1716,6 +1799,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun cancelActiveStroke(event: MotionEvent, pointerId: Int) {
+        clearShapeHold()
+        shapeSnapped = false
+        shapeStyle = null
         if (multiEraseTargets.isNotEmpty()) { cancelMultiErase(); return }
         if (customPreviewStyle == null && rasterPreviewStyle == null) {
             liveView.cancelStroke(event, pointerId)

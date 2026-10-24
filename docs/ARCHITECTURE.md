@@ -178,3 +178,14 @@ Source coverage follows nested clipping and active animation cels while ignoring
 source visibility and layer opacity. Cycles and dangling IDs are sanitized on load.
 The canvas, layer previews, sampled composite colors, still/animation exports and
 process replay apply this same relationship. Source deletion releases dependents.
+
+### Transient shape recognition
+
+`QuickShape` in `:core` fits geometric paths without platform types. Recognition
+is deferred until a 650 ms stationary hold, capped at 512 input points, and
+returns bounded sampled geometry. `DrawingSurface` owns the native hold timer,
+pointer IDs, and temporary preview. On recognition it cancels the wet Ink mesh
+or rolls back the affected live raster tiles, then previews the fitted samples
+through the current brush's raster path. Pen-up commits one ordinary raster
+stroke; no persistent shape objects or project-format changes are introduced.
+Selection aspect constraints use the same platform-free geometry helper.
