@@ -94,6 +94,7 @@ internal fun LayersPanel(
     var backgroundPickerMode by remember { mutableStateOf(ColorPickerMode.HSV_WHEEL) }
     val listState = rememberLazyListState()
     val rowBounds = remember { mutableStateMapOf<LayerId, Rect>() }
+    val itemBounds = remember { mutableStateMapOf<LayerId, Rect>() }
     val previewCoordinates = remember { mutableStateMapOf<LayerId, LayoutCoordinates>() }
     fun previewBounds() = previewCoordinates.filterValues { it.isAttached }.mapValues { it.value.boundsInRoot() }
     var listBounds by remember { mutableStateOf(Rect.Zero) }
@@ -105,19 +106,23 @@ internal fun LayersPanel(
     var listCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val latestReorder by rememberUpdatedState(onReorder)
     val latestGroup by rememberUpdatedState(onGroup)
-    val drop = resolveLayerDrop(layers, draggedId, dragPoint, listBounds, rowBounds, previewBounds())
+    val drop by remember(layers) {
+        derivedStateOf { resolveLayerDrop(layers, draggedId, dragPoint, listBounds, rowBounds, previewBounds()) }
+    }
     val targetId = drop?.targetId
     val groupDrop = drop?.group == true
-    val sourceIndex = layers.indexOfFirst { it.id == draggedId }
+    val sourceIndex by remember(layers) { derivedStateOf { layers.indexOfFirst { it.id == draggedId } } }
     var previewDestination by remember { mutableIntStateOf(-1) }
     LaunchedEffect(drop?.destinationIndex, groupDrop, draggedId) {
         // Keep the insertion layout fixed while hovering a visible thumbnail so
         // the group target cannot move away and oscillate beneath the pointer.
         if (!groupDrop) previewDestination = drop?.destinationIndex ?: sourceIndex
     }
-    val rowStride = draggedRowSize.height + with(LocalDensity.current) { 7.dp.toPx() }
+    val activeDestination = if (groupDrop) previewDestination else drop?.destinationIndex ?: sourceIndex
+    val rowStride = (draggedId?.let(itemBounds::get)?.height ?: draggedRowSize.height) +
+        with(LocalDensity.current) { 7.dp.toPx() }
     fun rowShift(index: Int): Float {
-        val destination = previewDestination
+        val destination = activeDestination
         if (destination < 0 || sourceIndex < 0) return 0f
         return when {
             sourceIndex < destination && index in (sourceIndex + 1)..destination -> -rowStride
@@ -140,7 +145,9 @@ internal fun LayersPanel(
 
     fun finishDrag() {
         val source = draggedId
-        val finalDrop = resolveLayerDrop(layers, source, dragPoint, listBounds, rowBounds, previewBounds())
+        // Use the same derived target for the gap, line, and release. A separate
+        // hit test here could pick a different position as preview bounds move.
+        val finalDrop = drop
         if (source != null && finalDrop != null) {
             if (finalDrop.group) latestGroup(source, finalDrop.targetId)
             else {
@@ -176,6 +183,17 @@ internal fun LayersPanel(
             Box(Modifier.weight(1f).onGloballyPositioned {
                 listCoordinates = it
                 listBounds = it.boundsInRoot()
+            }.drawWithContent {
+                drawContent()
+                val visibleDrop = drop
+                val lineY = if (visibleDrop != null && !visibleDrop.group && visibleDrop.destinationIndex != sourceIndex)
+                    insertionLineY(layers, sourceIndex, visibleDrop.destinationIndex, itemBounds) else null
+                if (lineY != null) {
+                    val localY = lineY - listBounds.top
+                    if (localY in 0f..size.height) {
+                        drawLine(Color(0xFF75A7FF), Offset(0f, localY), Offset(size.width, localY), 2.dp.toPx())
+                    }
+                }
             }.pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -215,9 +233,9 @@ internal fun LayersPanel(
                 verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 items(layers, key = { it.id.value }) { layer ->
                     DisposableEffect(layer.id) {
-                        onDispose { rowBounds.remove(layer.id); previewCoordinates.remove(layer.id) }
+                        onDispose { rowBounds.remove(layer.id); itemBounds.remove(layer.id); previewCoordinates.remove(layer.id) }
                     }
-                    Column {
+                    Column(Modifier.onGloballyPositioned { itemBounds[layer.id] = it.boundsInRoot() }) {
                         if (layer.groupId != null && layers.getOrNull(layers.indexOf(layer) - 1)?.groupId != layer.groupId) {
                             Row(Modifier.fillMaxWidth().padding(top = 5.dp, start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("${if (layers.filter { it.groupId == layer.groupId }.all { it.id in selectedIds }) "✓ " else ""}Group · ${layers.count { it.groupId == layer.groupId }} layers", color = Color(0xFFB8C9E5), fontSize = 11.sp,
@@ -229,16 +247,8 @@ internal fun LayersPanel(
                         }
                         val animatedShift by animateFloatAsState(rowShift(layers.indexOf(layer)), label = "layer insertion")
                         val shift = if (committedReorder) 0f else animatedShift
-                        val insertionEdge = if (targetId == layer.id && !groupDrop) drop.towardFront else null
                         Box(Modifier.padding(start = if (layer.groupId != null) 12.dp else 0.dp)
-                            .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }
-                            .drawWithContent {
-                                drawContent()
-                                if (insertionEdge != null) {
-                                    val y = if (insertionEdge) 0f else size.height
-                                    drawLine(Color(0xFF75A7FF), Offset(0f, y), Offset(size.width, y), 2.dp.toPx())
-                                }
-                            }) {
+                            .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }) {
                         LayerRow(
                             layer = layer,
                             preview = previews[layer.id],
@@ -598,6 +608,17 @@ internal data class LayerDropTarget(
     val group: Boolean,
     val destinationIndex: Int,
 )
+
+/** Top of the dragged item's final slot, using measured item heights. */
+internal fun insertionLineY(
+    layers: List<LayerSummary>, sourceIndex: Int, destinationIndex: Int,
+    items: Map<LayerId, Rect>,
+): Float? {
+    val destination = layers.getOrNull(destinationIndex)?.let { items[it.id] } ?: return null
+    if (destinationIndex <= sourceIndex) return destination.top
+    val source = layers.getOrNull(sourceIndex)?.let { items[it.id] } ?: return null
+    return destination.bottom - source.height
+}
 
 /** Hit tests in the stationary list's root coordinates, independent of the drag overlay. */
 internal fun resolveLayerDrop(

@@ -235,3 +235,4 @@ Optional **Snap** aligns image bounds to canvas/visible photo edges and centers 
 For composites, import the source photos as separate layers, lower opacity to align landmarks, reshape with Push/Bulge/Pinch, finish editing, and erase unwanted image regions. Draw the reference on a paint layer above. This is manual compositing; it does not generate missing anatomy or blend two subjects automatically.
 
 Layer reorder previews move the intervening rows into their final positions while the dragged layer floats. Releasing the layer uses the same before/after insertion edge shown by the preview and removes the preview translation immediately as the list adopts the new order. Canceled drags can animate back to their original positions.
+The blue line is drawn at the destination slot, using measured item positions and heights. Adjacent hit targets that resolve to the same destination share one line position. Release commits the placement shown by the preview.

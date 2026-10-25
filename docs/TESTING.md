@@ -162,6 +162,9 @@ Drag a layer across at least two rows in both directions and release it. The row
 that opened the gap should stay in place on release while the dragged layer lands
 in that gap. Repeat before and after a grouped layer, and cancel one drag; the
 cancel should leave the order unchanged.
+Move slowly across the boundary between the lower half of one layer and the upper
+half of the next. When both resolve to the same insertion slot, the blue line
+must stay still; releasing on either side must place the layer at that line.
 
 Selection regression coverage: `SelectionRegionTest` checks boolean containment,
 translation and reverse-drag ellipses. Native-graphics `ReferenceStrokesTest` checks

@@ -35,6 +35,24 @@ class LayerDropTargetTest {
         assertEquals(ids[2], actualPreview.targetId)
     }
 
+    @Test fun insertionLineStaysOnOneSlotAcrossTargetBoundary() {
+        val belowFirst = resolveLayerDrop(layers, ids[0], Offset(140f, 125f), viewport, rows, previews)!!
+        val aboveSecond = resolveLayerDrop(layers, ids[0], Offset(140f, 150f), viewport, rows, previews)!!
+        assertEquals(1, belowFirst.destinationIndex)
+        assertEquals(1, aboveSecond.destinationIndex)
+        assertNotEquals(belowFirst.targetId, aboveSecond.targetId)
+        val itemBounds = rows + (ids[1] to Rect(0f, 64f, 296f, 135f))
+        assertEquals(71f, insertionLineY(layers, 0, belowFirst.destinationIndex, itemBounds))
+        assertEquals(71f, insertionLineY(layers, 0, aboveSecond.destinationIndex, itemBounds))
+
+        val upwardFromFirst = resolveLayerDrop(layers, ids[3], Offset(140f, 60f), viewport, rows, previews)!!
+        val upwardFromSecond = resolveLayerDrop(layers, ids[3], Offset(140f, 80f), viewport, rows, previews)!!
+        assertEquals(1, upwardFromFirst.destinationIndex)
+        assertEquals(1, upwardFromSecond.destinationIndex)
+        assertEquals(64f, insertionLineY(layers, 3, upwardFromFirst.destinationIndex, itemBounds))
+        assertEquals(64f, insertionLineY(layers, 3, upwardFromSecond.destinationIndex, itemBounds))
+    }
+
     @Test fun outsideLayerSnapsBeyondWholeGroup() {
         val grouped = layers.mapIndexed { i, layer -> layer.copy(groupId = if (i in 1..2) "group" else null) }
         val drop = resolveLayerDrop(grouped, ids[3], Offset(140f, 80f), viewport, rows, previews)!!
