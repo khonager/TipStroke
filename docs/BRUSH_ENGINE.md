@@ -60,3 +60,13 @@ The existing version-one process replay painter predates the joined Pencil
 ribbon and exact closed outlines. New recordings store the affected sparse
 raster tiles for those strokes so replay matches the committed artwork exactly;
 older recordings keep using their original version-one drawing commands.
+
+## iOS compatibility brushes
+
+The first native iOS renderer uses pressure-scaled, round Core Graphics segments
+for Ink and a lower-opacity Pencil variant; it does not emulate Jetpack Ink's
+textured pencil family. Eraser uses destination-out blending on the active layer.
+Size is in document pixels; brush settings are frozen at touch-down. Segment
+overlap can accumulate opacity, so translucent marks differ from Android brush
+semantics. Airbrush, tilt shading, custom assets and Brush Studio are not ported.
+Only reached 256 px tiles are changed, with a cancellable before-image transaction.

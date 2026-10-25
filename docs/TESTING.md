@@ -1,4 +1,50 @@
-# Xiaomi Pad 6 + Smart Pen manual checklist
+# Platform testing
+
+## iPhone and iPad
+
+Run Codemagic **ios-simulator** (no signing required), or `./tipstroke ios-test`
+on macOS/Xcode. The script discovers available iPhone and iPad simulators and
+runs the shared scheme on each. It saves `.xcresult` artifacts under `build/ios/`.
+The **ios-release** workflow repeats those tests before signing an App Store IPA.
+See [IOS.md](IOS.md) for signing and distribution setup.
+
+Automated XCTest coverage includes tile-edge clipping; transparent erase and
+undo/redo; cancellation; immutable save snapshots; PNG coordinate round trips;
+failed-save recovery; corrupt tiles; layer isolation; schema/coordinate validation;
+and stroke-budget rollback. XCUITest exercises create → draw → undo/redo → add
+layer → save → terminate → reopen, with a landscape transition on both families.
+These tests are added but require an Apple SDK runner; Linux syntax/configuration
+checks do not establish an iOS build or device pass.
+
+Before distributing, test on an actual iPhone and an iPad with compatible Pencil:
+
+1. Create a canvas, draw to every edge and across 256 px seams; verify continuous
+   lines, dots, slow curves and fast flicks. Compare export orientation with the screen.
+2. On iPad, vary Pencil pressure; use a pressureless Pencil if available. Confirm
+   the fallback, double-tap eraser switch and finger-drawing toggle. Check palms
+   do not add marks during Pencil input. Tilt/hover/squeeze are not supported yet.
+3. Add a second finger during finger drawing: the provisional mark must disappear
+   before pan/pinch, with no undo entry for that mark. Cancel via system interruption.
+4. Draw on two layers. Hide, reorder, rename, change opacity and erase the upper
+   layer. Verify the lower pixels survive; undo/redo applies to the original layer.
+5. Rotate iPhone/iPad; use narrow iPad Split View and large text. Controls and sheets
+   must remain reachable, sharing must anchor a valid iPad popover, and fit must
+   preserve pixels. Check VoiceOver labels on the drawing controls.
+6. Draw, immediately background, return, close to gallery and reopen. Relaunch after
+   **Saved on this device** appears. Artwork, layers and selected layer must survive.
+   iOS termination before a save commits can lose the uncommitted changes.
+7. Interrupt a save or exhaust storage. Verify a save error remains visible, retry
+   works, the prior revision opens, and a failed load never creates blank replacement
+   artwork. Gallery navigation must stay in the editor after a failed final save.
+8. Share PNG to Files, inspect dimensions and orientation, and compare visible layers
+   and opacity. Export is flattened over white; editable project transfer is absent.
+9. Profile sustained painting and repeated save/export on the smallest supported
+   physical devices. Verify history stays bounded and oversized strokes roll back
+   without losing earlier artwork. Memory/latency claims require device measurements.
+10. Install a signed Codemagic build through your chosen TestFlight or ad-hoc route.
+    Verify cold launch and offline use on both device families.
+
+## Xiaomi Pad 6 + Smart Pen manual checklist
 
 ## Linux laptop loop
 

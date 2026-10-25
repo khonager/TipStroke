@@ -53,3 +53,30 @@ from silently displaying clipped artwork incorrectly. Portable import/export and
 process-recording layer metadata preserve clipping IDs.
 
 Version 5 adds optional `stretchX`, `stretchY` (positive finite floats, default 1) and `warp` to image transforms, including animation cels. `warp` is a row-major flat array of 578 finite normalized coordinates: X/Y pairs for the 17×17 vertices of a 16×16 mesh. Absent mesh means identity. Original assets and source-coordinate sparse masks are unchanged. Readers accept versions 1–5; older readers reject version 5 instead of silently displaying an undeformed image. Process metadata includes the same optional fields; recordings stop with an explicit status if metadata would exceed the legacy UTF record size.
+
+## iOS local projects (separate format)
+
+The first iOS port uses `format: "dev.tipstroke.ios.raster"`, `schemaVersion: 1`.
+This is not Android schema version 1 and is not a `.tipstroke` interchange format.
+It lives under Application Support/TipStroke in the app sandbox:
+
+```text
+<document UUID>/current                       # atomic revision UUID pointer
+<document UUID>/<revision UUID>/manifest.json
+<document UUID>/<revision UUID>/<layer UUID>/<x>_<y>.png
+```
+
+The manifest stores identity, name, finite dimensions, modified date, selected
+layer ID and back-to-front layer metadata (ID, name, visibility, opacity and tile
+coordinates). Tiles are 256×256 sRGB PNGs; unallocated pixels are transparent over
+white paper. Dimensions are 16–4096 px per side, with at most 32 layers and 512
+allocated tiles across the document. Undo history is transient.
+
+Save writes a fresh revision completely, then atomically replaces `current`.
+A failed save leaves the prior pointer intact. Old revisions are removed only
+after publication; unpublished initial revisions are excluded from the gallery.
+Open validates versions, dimensions, IDs, opacity, coordinate ranges, counts and
+PNG dimensions, and fails explicitly on missing/corrupt tiles. An unreadable
+project is preserved rather than overwritten with blank artwork. Process death
+can still lose edits whose save has not completed. iOS project transfer is not
+implemented; PNG sharing exports a flattened image only.

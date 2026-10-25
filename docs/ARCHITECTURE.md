@@ -199,3 +199,33 @@ remain outside undo history. Exact point closure is derived from stroke samples
 and survives ordinary stroke replay without a project format change.
 
 Photo transforms include independent X/Y stretch and an optional normalized 16×16 deformation mesh in `:core`. The immutable mesh is metadata; source assets and sparse source-coordinate masks remain authoritative. Local deformation rejects triangle inversions. Native input mutates transform metadata without per-sample Compose state or canvas bitmap copies. A shared Android photo renderer handles canvas display, thumbnails, export and process playback; inverse mesh mapping supports source-coordinate color sampling and erase placement. Photo gesture history stores bounded before/after transform metadata alongside the image mask's existing history.
+
+## Native iOS target
+
+`ios/` is a separate UIKit application targeting iPhone and iPad on iOS 16+.
+It does not convert the JVM `:core` module to Kotlin Multiplatform or change the
+Android drawing pipeline. `DocumentRecord` defines explicitly versioned Swift
+metadata with UUID document/layer identities. `RasterDocument` owns immutable
+256×256 RGBA tile images per paint layer and tile-local before/after stroke history.
+
+`CanvasView` consumes `UITouch` and coalesced events directly. Each segment changes
+only intersecting tiles; cancellation restores the before images. A native
+`CALayer` per visible composite tile supplies display pixels at document resolution.
+There is no full-document UIView backing bitmap, per-sample UI model publication,
+or retained vector-stroke document. `CanvasViewport` uses native two-finger scroll
+and pinch gestures. View resizing fits the canvas without changing document pixels.
+The first port rasterizes directly during input; there is no separate predictive
+wet-ink renderer. Native latency and brush quality require physical-device review.
+
+The editor debounces saves after completed operations. Immutable CGImage references
+capture consistent snapshots; encoding and filesystem work run on one serial
+project queue. At most one save runs and one latest pending snapshot is retained.
+Autosave defers during an active stroke. Backgrounding cancels provisional input,
+captures the committed state and requests a finite iOS background execution task.
+Returning to the gallery waits for the save and keeps the editor open on failure.
+Initial document creation is persisted before editing is allowed. Failed loads
+never open or save a replacement blank document.
+
+The first iOS port has a separate format namespace and deliberately rejects other
+formats. See `IOS.md` for implemented features and limitations; Android package
+compatibility needs a lossless migration/import design before it can be enabled.

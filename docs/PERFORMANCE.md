@@ -68,3 +68,20 @@ layer identity/revision and connected-region membership before reuse. The native
 drop bloom invalidates a small screen-space area at about 30 Hz until the first preparation snapshot. The existing flood accumulates coverage in a grid of at most 256 × 256 cells; immutable loading silhouettes publish no more often than every 80 ms, with at most one queued delivery. After that, worker snapshots alone trigger preview redraws. No second flood or full-resolution layer copy is needed. Ordinary stylus hover does not trigger fill computation.
 
 Photo editing changes a fixed 17×17 vertex mesh, independent stretch and placement metadata; it does not resample or copy a full-resolution photo per pointer sample. Gesture history accounts for both meshes (about 18.2 KiB conservatively accounted per edit, including point objects) in the existing bounded history. Source masks remain sparse 256 px tiles and are mapped on the photo's mesh triangles. Full-resolution exports run on the existing project worker. Validate warp rendering and mask-heavy photos on the tablet before increasing mesh density; current local warps have a fixed spatial resolution.
+
+## iOS first-port budgets
+
+The UIKit renderer allocates sparse 256×256 RGBA artwork tiles and limits their
+count to 512 (128 MiB) across 32 layers. Stroke undo/redo retains at most 32 MiB
+of conservative before/after tile costs; an individual stroke cannot exceed that
+budget and is rolled back if it would. Display caches composite only visible tiles
+in separate native CALayers and refreshes only reached tiles during input. These
+caches, the in-progress transaction, save snapshots, PNG decoding and export
+buffers are additional memory, not included in the 128 MiB artwork limit.
+
+Save snapshots share immutable tile images and copy only dictionary metadata;
+subsequent painting replaces reached tiles. A single serial worker encodes PNGs
+and writes revision files. The editor coalesces pending saves to one latest snapshot.
+A full bitmap is allocated only for explicit flattened export, capped by the
+4096 px canvas limit. No full canvas/layer copy occurs per stroke. The first port
+still needs device profiling for latency, memory pressure and long-session behavior.

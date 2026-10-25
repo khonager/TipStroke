@@ -1,6 +1,6 @@
 # TipStroke
 
-An Android-first, local-first raster drawing app with a lightweight Linux desktop companion. Android remains the high-fidelity stylus target; the desktop app provides a fast native-window development loop without an emulator.
+An Android-first, local-first raster drawing app with a native iPhone/iPad target and a lightweight Linux desktop companion. Android remains the most complete implementation; iOS adds its own native drawing surface and local library.
 
 [![Get it on Obtainium](https://img.shields.io/badge/Get_it_on-Obtainium-5c2d91?logo=android&logoColor=white)](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/khonager/TipStroke)
 
@@ -9,6 +9,19 @@ The current milestone is a local drawing library with editable layered canvases.
 ## Install
 
 Tap **Get it on Obtainium** above on an Android device to add TipStroke from its [GitHub releases](https://github.com/khonager/TipStroke/releases). Obtainium will then install new signed APKs as releases are published. You can also download the latest APK directly from the releases page.
+
+## iPhone and iPad
+
+The first native iOS port supports layered drawing, Apple Pencil and finger input,
+undo/redo, local saves, and PNG sharing on iOS/iPadOS 16+. It is not yet at Android
+feature parity and does not read Android project packages.
+
+Use the **ios-simulator** workflow in [codemagic.yaml](codemagic.yaml) for iPhone
+and iPad checks, or **ios-release** for a signed IPA after configuring Apple
+signing. See [iOS setup and scope](docs/IOS.md). On a Mac, open
+`ios/TipStroke.xcodeproj` or run `./tipstroke ios` and `./tipstroke ios-test`.
+The port requires its first successful Xcode/Codemagic run and device validation;
+it is not an App Store release.
 
 ## Build
 

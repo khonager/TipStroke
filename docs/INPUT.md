@@ -236,3 +236,19 @@ For composites, import the source photos as separate layers, lower opacity to al
 
 Layer reorder previews move the intervening rows into their final positions while the dragged layer floats. Releasing the layer uses the same before/after insertion edge shown by the preview and removes the preview translation immediately as the list adopts the new order. Canceled drags can animate back to their original positions.
 The blue line is drawn at the destination slot, using measured item positions and heights. Adjacent hit targets that resolve to the same destination share one line position. Release commits the placement shown by the preview.
+
+## iPhone and iPad input
+
+The native iOS port consumes coalesced UIKit touches directly. One finger draws
+by default; brush settings can disable finger drawing for Pencil use. A second
+finger cancels provisional finger pixels before native pan/pinch navigation.
+Pencil input takes priority over finger painting. Reported final Pencil force
+controls width; estimated/unavailable force uses a constant fallback. Pencil
+USB-C and fingers therefore remain usable without pressure hardware.
+
+The first port includes Pencil, Ink and transparent Eraser; size/opacity, native
+color picking, undo/redo buttons, fit, and Pencil double-tap eraser switching.
+It does not yet implement tilt, hover, predicted touches, late force correction,
+Pencil Pro squeeze/roll, rotation gestures or Android gesture preferences. Resizing
+or rotating the window refits the document without altering its pixels. All tools
+stay within the safe area; layer and brush controls open as system sheets.

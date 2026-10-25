@@ -8,6 +8,16 @@ case "${1:-help}" in
     ./gradlew assembleDebug
     printf '\nAPK: app/build/outputs/apk/debug/app-debug.apk\n'
     ;;
+  ios)
+    if ! command -v xcodebuild >/dev/null 2>&1; then
+      printf 'iOS builds require macOS with Xcode. Use the ios-simulator workflow in Codemagic.\n' >&2
+      exit 1
+    fi
+    xcodebuild -project ios/TipStroke.xcodeproj -scheme TipStroke -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios/DerivedData CODE_SIGNING_ALLOWED=NO build
+    ;;
+  ios-test)
+    bash tools/ios-test.sh
+    ;;
   install)
     ./gradlew installDebug
     ;;
@@ -50,6 +60,8 @@ case "${1:-help}" in
       'TipStroke developer commands:' \
       '  ./tipstroke build    Build a debug APK' \
       '  ./tipstroke install  Build and install on a connected phone/emulator' \
+      '  ./tipstroke ios      Build the iOS simulator app (macOS/Xcode)' \
+      '  ./tipstroke ios-test Test iPhone and iPad simulators (macOS/Xcode)' \
       '  ./tipstroke laptop   Run the native Linux desktop app' \
       '  ./tipstroke desktop-package  Build a self-contained desktop distribution' \
       '  ./tipstroke emulator-setup  Create the optional Android tablet emulator' \

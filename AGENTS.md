@@ -4,7 +4,8 @@ TipStroke is an Android-first, local-first drawing app. Optimize for “open can
 
 ## Non-negotiables
 
-- The latency-sensitive surface stays native Android (`MotionEvent` + Jetpack Ink/native views), never behind a cross-platform UI abstraction or per-sample Compose state.
+- The Android latency-sensitive surface stays native Android (`MotionEvent` + Jetpack Ink/native views), never behind a cross-platform UI abstraction or per-sample Compose state.
+- The iOS surface stays native UIKit/Core Graphics. Do not route pointer samples through cross-platform UI state.
 - Jetpack Ink authors wet strokes only. Raster tiles are the permanent painting source of truth.
 - `:core` stays free of Android, Compose, Bitmap, MotionEvent, and Jetpack Ink types.
 - Raster layers are sparse 256 px tiles. Never copy a full canvas/layer per stroke, redraw all tiles per sample, block the input thread on I/O, or keep unlimited history.
@@ -16,6 +17,7 @@ TipStroke is an Android-first, local-first drawing app. Optimize for “open can
 - `:core`: document/layer/brush models, transforms, tile math, drawing contracts, undo concepts.
 - `:drawing-android`: stylus routing, Jetpack Ink authoring, sparse Android bitmap tiles, compositing, gestures.
 - `:app`: lifecycle and minimal Compose controls around the native surface.
+- `ios/`: independent native iPhone/iPad app, sparse raster engine, local persistence and Xcode tests. See `docs/IOS.md`; builds run in Codemagic or macOS/Xcode.
 
 ## Commands
 

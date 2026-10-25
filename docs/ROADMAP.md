@@ -20,3 +20,16 @@ Additional brush families/effects, masks and blend modes, richer vector editing,
 ## Drawing-process replay preview
 
 Implemented: automatic bounded command recording for raster drawing, versioned/frozen brush replay, exact tile fallbacks for destructive edits, atomic sidecar persistence, native preview/scrubbing, GIF/MP4 export, and compatibility fixtures. Imported images, transforms, source-mask edits, and recovery from legacy image cutoffs are supported. First-version exclusions: animated documents, resize continuation, retrospective filtering, per-sample playback, recording reset/pause controls, and accelerated backward seeking. Before expanding support, measure real Pencil/Ink/Airbrush sessions on the tablet and verify native rendering/export after dependency updates.
+
+## iPhone and iPad port
+
+The initial native iOS source target and Codemagic workflows are implemented:
+local library, sparse raster painting, basic Pencil/finger input, editable paint
+layers, bounded stroke undo, autosave and PNG sharing. Apple SDK builds, simulator
+checks and device validation must pass before distributing the first release.
+
+Remaining parity work is explicit: lossless Android project import/export;
+Jetpack-Ink-like brush quality and advanced Pencil input; gallery thumbnails and
+organization; image import/editing, selections/fill/smudge; animation and process
+recording. Do not silently flatten or discard unsupported Android document data.
+The existing Android production surface remains native and independent.

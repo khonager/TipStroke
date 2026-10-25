@@ -1,0 +1,74 @@
+workflows:
+  ios-simulator:
+    name: iOS — iPhone and iPad checks
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      xcode: latest
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: stable
+          include: true
+          source: true
+        - pattern: unstable
+          include: true
+          source: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Verify generated Xcode project
+        script: |
+          python3 tools/generate-ios-project.py
+          git diff --exit-code -- ios/TipStroke.xcodeproj
+      - name: Test on iPhone and iPad
+        script: bash tools/ios-test.sh
+      - name: Build unsigned device app
+        script: |
+          xcodebuild build \
+            -project ios/TipStroke.xcodeproj -scheme TipStroke \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath build/ios/Device \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Package simulator preview
+        script: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/ios/DerivedData/Build/Products/Debug-iphonesimulator/TipStroke.app \
+            build/ios/TipStroke-simulator.zip
+    artifacts:
+      - build/ios/*.xcresult
+      - build/ios/TipStroke-simulator.zip
+      - build/ios/Device/Build/Products/Release-iphoneos/TipStroke.app
+      - /tmp/xcodebuild_logs/*.log
+
+  ios-release:
+    name: iOS — signed App Store IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    # Manual workflow: upload matching certificate and provisioning profile in Codemagic first.
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: dev.tipstroke.ios
+    scripts:
+      - name: Verify generated Xcode project
+        script: |
+          python3 tools/generate-ios-project.py
+          git diff --exit-code -- ios/TipStroke.xcodeproj
+      - name: Test on iPhone and iPad
+        script: bash tools/ios-test.sh
+      - name: Apply signing profiles
+        script: xcode-project use-profiles --project ios/TipStroke.xcodeproj
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project ios/TipStroke.xcodeproj \
+            --scheme TipStroke \
+            --archive-xcargs "CURRENT_PROJECT_VERSION=$BUILD_NUMBER"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/*.xcresult
+      - /tmp/xcodebuild_logs/*.log
+    # No publishing block: this workflow produces an artifact and does not submit it to Apple.
