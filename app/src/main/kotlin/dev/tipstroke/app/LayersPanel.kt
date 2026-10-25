@@ -101,6 +101,7 @@ internal fun LayersPanel(
     var dragPoint by remember { mutableStateOf(Offset.Unspecified) }
     var grabOffset by remember { mutableStateOf(Offset.Zero) }
     var draggedRowSize by remember { mutableStateOf(Size.Zero) }
+    var committedReorder by remember { mutableStateOf(false) }
     var listCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val latestReorder by rememberUpdatedState(onReorder)
     val latestGroup by rememberUpdatedState(onGroup)
@@ -142,7 +143,12 @@ internal fun LayersPanel(
         val finalDrop = resolveLayerDrop(layers, source, dragPoint, listBounds, rowBounds, previewBounds())
         if (source != null && finalDrop != null) {
             if (finalDrop.group) latestGroup(source, finalDrop.targetId)
-            else latestReorder(source, finalDrop.targetId, finalDrop.towardFront)
+            else {
+                // The preview has already put the intervening rows where the new
+                // list layout will put them. Do not animate that offset back to zero.
+                committedReorder = true
+                latestReorder(source, finalDrop.targetId, finalDrop.towardFront)
+            }
         }
         draggedId = null
         dragPoint = Offset.Unspecified
@@ -178,6 +184,7 @@ internal fun LayersPanel(
                         ?: return@awaitEachGesture
                     val source = rowBounds.entries.firstOrNull { it.value.contains(point) }
                         ?: return@awaitEachGesture
+                    committedReorder = false
                     draggedId = source.key
                     draggedRowSize = source.value.size
                     grabOffset = point - source.value.topLeft
@@ -220,7 +227,8 @@ internal fun LayersPanel(
                                     contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Ungroup", fontSize = 10.sp) }
                             }
                         }
-                        val shift by animateFloatAsState(rowShift(layers.indexOf(layer)), label = "layer insertion")
+                        val animatedShift by animateFloatAsState(rowShift(layers.indexOf(layer)), label = "layer insertion")
+                        val shift = if (committedReorder) 0f else animatedShift
                         val insertionEdge = if (targetId == layer.id && !groupDrop) drop.towardFront else null
                         Box(Modifier.padding(start = if (layer.groupId != null) 12.dp else 0.dp)
                             .onGloballyPositioned { rowBounds[layer.id] = it.boundsInRoot() }

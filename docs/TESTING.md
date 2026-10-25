@@ -158,6 +158,10 @@ portrait/landscape and resized-window screenshots alongside these cases.
 its three color modes, and verifies a hex value updates the background. Inspect
 the layer drag outline on a device for visual confirmation: the selected layer
 should retain orange, while a potential insertion uses a blue line.
+Drag a layer across at least two rows in both directions and release it. The rows
+that opened the gap should stay in place on release while the dragged layer lands
+in that gap. Repeat before and after a grouped layer, and cancel one drag; the
+cancel should leave the order unchanged.
 
 Selection regression coverage: `SelectionRegionTest` checks boolean containment,
 translation and reverse-drag ellipses. Native-graphics `ReferenceStrokesTest` checks

@@ -3,6 +3,7 @@ package dev.tipstroke.app
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
@@ -72,6 +73,45 @@ class LayerDragLifecycleTest {
         assertEquals(IntOffset.Zero, layerDragOffset(Offset.Unspecified, Offset.Zero, Offset.Zero))
         assertEquals(IntOffset.Zero, layerDragOffset(Offset(Float.POSITIVE_INFINITY, 0f), Offset.Zero, Offset.Zero))
         assertEquals(IntOffset(24, 38), layerDragOffset(Offset(34f, 58f), Offset(5f, 10f), Offset(5f, 10f)))
+    }
+
+    @Test fun releaseKeepsInterveningRowsInTheirPreviewedPositions() {
+        val initial = (0..4).map { LayerSummary(LayerId("layer-$it"), "Layer $it", LayerKind.RASTER, true, 1f) }
+        var layers by mutableStateOf(initial)
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            MaterialTheme {
+                LayersPanel(layers, emptyMap(), layers.first().id, setOf(layers.first().id),
+                    onBackgroundOpacityFinished = {}, imageTransforming = false,
+                    onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {},
+                    onOpacityFinished = {}, onRename = {}, onImageScale = {}, onFitImage = {},
+                    onOriginalImageSize = {}, onImageTransforming = {}, onAddPaint = {}, onImportImage = {},
+                    onMoveForward = {}, onMoveBackward = {}, onDuplicate = {}, onDelete = {},
+                    onReorder = { source, target, towardFront ->
+                        val reordered = layers.toMutableList()
+                        val moving = reordered.first { it.id == source }
+                        reordered.remove(moving)
+                        val targetIndex = reordered.indexOfFirst { it.id == target }
+                        reordered.add(targetIndex + if (towardFront) 0 else 1, moving)
+                        layers = reordered
+                    })
+            }
+        }
+        val panel = compose.onNodeWithContentDescription("Layers panel")
+        val origin = panel.fetchSemanticsNode().boundsInRoot.topLeft
+        val start = compose.onNodeWithText("Layer 0").fetchSemanticsNode().boundsInRoot.center - origin
+        val target = compose.onNodeWithText("Layer 2").fetchSemanticsNode().boundsInRoot
+        val end = target.center - origin + Offset(0f, target.height / 4f)
+        panel.performTouchInput { down(start) }
+        compose.waitForIdle()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(800))
+        panel.performTouchInput { advanceEventTime(800); moveTo(start); moveTo(end) }
+        compose.waitForIdle()
+        val previewTop = compose.onNodeWithText("Layer 1").fetchSemanticsNode().boundsInRoot.top
+        panel.performTouchInput { up() }
+        compose.waitForIdle()
+        assertEquals(listOf("layer-1", "layer-2", "layer-0", "layer-3", "layer-4"), layers.map { it.id.value })
+        val settledTop = compose.onNodeWithText("Layer 1").fetchSemanticsNode().boundsInRoot.top
+        assertEquals(previewTop, settledTop, 1f)
     }
 
     @Test fun backgroundUsesAllThreeColorEditorsAndAppliesHexValue() {
