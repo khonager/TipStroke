@@ -7,3 +7,12 @@ local.properties
 .DS_Store
 result
 result-*
+
+# iOS local build output and signing/user state
+ios/DerivedData/
+*.xcuserstate
+xcuserdata/
+*.ipa
+*.xcarchive/
+*.xcresult/
+ios/TipStroke/Assets.xcassets/AppIcon.appiconset/AppIcon.png
