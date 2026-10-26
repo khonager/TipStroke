@@ -35,21 +35,20 @@ class LayerDropTargetTest {
         assertEquals(ids[2], actualPreview.targetId)
     }
 
-    @Test fun insertionLineStaysOnOneSlotAcrossTargetBoundary() {
+    @Test fun insertionLineTracksDraggedRowAcrossSlotBoundary() {
         val belowFirst = resolveLayerDrop(layers, ids[0], Offset(140f, 125f), viewport, rows, previews)!!
         val aboveSecond = resolveLayerDrop(layers, ids[0], Offset(140f, 150f), viewport, rows, previews)!!
         assertEquals(1, belowFirst.destinationIndex)
-        assertEquals(1, aboveSecond.destinationIndex)
-        assertNotEquals(belowFirst.targetId, aboveSecond.targetId)
+        assertEquals(2, aboveSecond.destinationIndex)
         val itemBounds = rows + (ids[1] to Rect(0f, 64f, 296f, 135f))
         assertEquals(71f, insertionLineY(layers, 0, belowFirst.destinationIndex, itemBounds))
-        assertEquals(71f, insertionLineY(layers, 0, aboveSecond.destinationIndex, itemBounds))
+        assertEquals(142f, insertionLineY(layers, 0, aboveSecond.destinationIndex, itemBounds))
 
         val upwardFromFirst = resolveLayerDrop(layers, ids[3], Offset(140f, 60f), viewport, rows, previews)!!
         val upwardFromSecond = resolveLayerDrop(layers, ids[3], Offset(140f, 80f), viewport, rows, previews)!!
-        assertEquals(1, upwardFromFirst.destinationIndex)
+        assertEquals(0, upwardFromFirst.destinationIndex)
         assertEquals(1, upwardFromSecond.destinationIndex)
-        assertEquals(64f, insertionLineY(layers, 3, upwardFromFirst.destinationIndex, itemBounds))
+        assertEquals(0f, insertionLineY(layers, 3, upwardFromFirst.destinationIndex, itemBounds))
         assertEquals(64f, insertionLineY(layers, 3, upwardFromSecond.destinationIndex, itemBounds))
     }
 
@@ -58,5 +57,23 @@ class LayerDropTargetTest {
         val drop = resolveLayerDrop(grouped, ids[3], Offset(140f, 80f), viewport, rows, previews)!!
         assertEquals(1, drop.destinationIndex)
         assertTrue(drop.towardFront)
+    }
+
+    @Test fun draggingUpToAnotherRowsCenterLandsInThatRowsSlot() {
+        // The dragged row is grabbed at its center, so its top reaches row 2's
+        // original top when the finger reaches row 2's center.
+        val drop = resolveLayerDrop(layers, ids[3], rows.getValue(ids[2]).center, viewport, rows, previews)!!
+        assertFalse(drop.group)
+        assertEquals(2, drop.destinationIndex)
+        assertEquals(ids[2], drop.targetId)
+        assertTrue(drop.towardFront)
+    }
+
+    @Test fun landingSlotFollowsTheGrabbedPartOfTheFloatingRow() {
+        val finger = Offset(140f, 130f)
+        val nearBottom = resolveLayerDrop(layers, ids[3], finger, viewport, rows, previews, grabY = 48f)!!
+        val nearTop = resolveLayerDrop(layers, ids[3], finger, viewport, rows, previews, grabY = 8f)!!
+        assertEquals(1, nearBottom.destinationIndex)
+        assertEquals(2, nearTop.destinationIndex)
     }
 }

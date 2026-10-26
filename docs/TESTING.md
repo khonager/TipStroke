@@ -208,9 +208,10 @@ Drag a layer across at least two rows in both directions and release it. The row
 that opened the gap should stay in place on release while the dragged layer lands
 in that gap. Repeat before and after a grouped layer, and cancel one drag; the
 cancel should leave the order unchanged.
-Move slowly across the boundary between the lower half of one layer and the upper
-half of the next. When both resolve to the same insertion slot, the blue line
-must stay still; releasing on either side must place the layer at that line.
+Drag an item upward until its top reaches another row's original slot. Releasing
+at that row's center should put the item in that slot, rather than below it.
+Repeat while holding the dragged row near its top and bottom: the gap and blue
+line should follow the floating row, and release should match the preview.
 
 Selection regression coverage: `SelectionRegionTest` checks boolean containment,
 translation and reverse-drag ellipses. Native-graphics `ReferenceStrokesTest` checks

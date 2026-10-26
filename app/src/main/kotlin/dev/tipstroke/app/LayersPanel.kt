@@ -102,12 +102,17 @@ internal fun LayersPanel(
     var dragPoint by remember { mutableStateOf(Offset.Unspecified) }
     var grabOffset by remember { mutableStateOf(Offset.Zero) }
     var draggedRowSize by remember { mutableStateOf(Size.Zero) }
+    var draggedItemHeight by remember { mutableFloatStateOf(0f) }
+    var draggedItemTopInset by remember { mutableFloatStateOf(0f) }
     var committedReorder by remember { mutableStateOf(false) }
     var listCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val latestReorder by rememberUpdatedState(onReorder)
     val latestGroup by rememberUpdatedState(onGroup)
     val drop by remember(layers) {
-        derivedStateOf { resolveLayerDrop(layers, draggedId, dragPoint, listBounds, rowBounds, previewBounds()) }
+        derivedStateOf {
+            resolveLayerDrop(layers, draggedId, dragPoint, listBounds, rowBounds, previewBounds(),
+                grabOffset.y + draggedItemTopInset, itemBounds, draggedItemHeight)
+        }
     }
     val targetId = drop?.targetId
     val groupDrop = drop?.group == true
@@ -187,7 +192,7 @@ internal fun LayersPanel(
                 drawContent()
                 val visibleDrop = drop
                 val lineY = if (visibleDrop != null && !visibleDrop.group && visibleDrop.destinationIndex != sourceIndex)
-                    insertionLineY(layers, sourceIndex, visibleDrop.destinationIndex, itemBounds) else null
+                    insertionLineY(layers, sourceIndex, visibleDrop.destinationIndex, itemBounds, draggedItemHeight) else null
                 if (lineY != null) {
                     val localY = lineY - listBounds.top
                     if (localY in 0f..size.height) {
@@ -205,6 +210,9 @@ internal fun LayersPanel(
                     committedReorder = false
                     draggedId = source.key
                     draggedRowSize = source.value.size
+                    val sourceItem = itemBounds[source.key]
+                    draggedItemHeight = sourceItem?.height ?: source.value.height
+                    draggedItemTopInset = source.value.top - (sourceItem?.top ?: source.value.top)
                     grabOffset = point - source.value.topLeft
                     dragPoint = point
                     try {
@@ -612,18 +620,21 @@ internal data class LayerDropTarget(
 /** Top of the dragged item's final slot, using measured item heights. */
 internal fun insertionLineY(
     layers: List<LayerSummary>, sourceIndex: Int, destinationIndex: Int,
-    items: Map<LayerId, Rect>,
+    items: Map<LayerId, Rect>, sourceHeight: Float = layers.getOrNull(sourceIndex)?.let { items[it.id]?.height } ?: 0f,
 ): Float? {
     val destination = layers.getOrNull(destinationIndex)?.let { items[it.id] } ?: return null
     if (destinationIndex <= sourceIndex) return destination.top
-    val source = layers.getOrNull(sourceIndex)?.let { items[it.id] } ?: return null
-    return destination.bottom - source.height
+    if (sourceHeight <= 0f) return null
+    return destination.bottom - sourceHeight
 }
 
 /** Hit tests in the stationary list's root coordinates, independent of the drag overlay. */
 internal fun resolveLayerDrop(
     layers: List<LayerSummary>, sourceId: LayerId?, point: Offset, viewport: Rect,
     rows: Map<LayerId, Rect>, previews: Map<LayerId, Rect>,
+    grabY: Float = rows[sourceId]?.height?.div(2f) ?: 0f,
+    items: Map<LayerId, Rect> = rows,
+    sourceHeight: Float = items[sourceId]?.height ?: 0f,
 ): LayerDropTarget? {
     val source = layers.indexOfFirst { it.id == sourceId }
     if (source < 0 || point == Offset.Unspecified || !viewport.contains(point)) return null
@@ -631,14 +642,24 @@ internal fun resolveLayerDrop(
     if (previewTarget != null && (previewTarget.groupId == null || previewTarget.groupId != layers[source].groupId)) {
         return LayerDropTarget(previewTarget.id, true, true, source)
     }
-    val target = layers.filter { it.id != sourceId && rows[it.id]?.overlaps(viewport) == true }
-        .minByOrNull { kotlin.math.abs(rows.getValue(it.id).center.y - point.y) } ?: return null
-    val towardFront = point.y < rows.getValue(target.id).center.y
+    // Choose the nearest final slot for the dragged item's top edge. The rows
+    // beneath it can already be translated by the preview, so hit testing their
+    // original centers makes an upward drop land one row too low.
+    val draggedTop = point.y - grabY
+    val destinationIndex = layers.indices.mapNotNull { index ->
+        val item = items[layers[index].id] ?: return@mapNotNull null
+        if (!item.overlaps(viewport)) return@mapNotNull null
+        insertionLineY(layers, source, index, items, sourceHeight)?.let { index to it }
+    }.minByOrNull { (_, line) -> kotlin.math.abs(line - draggedTop) }?.first ?: return null
+    if (destinationIndex == source) return null
+    val targetIndex = destinationIndex
+    val target = layers[targetIndex]
+    val towardFront = destinationIndex < source
     val sameGroup = target.groupId != null && target.groupId == layers[source].groupId
     val anchor = if (target.groupId != null && !sameGroup) {
         if (towardFront) layers.indexOfFirst { it.groupId == target.groupId }
         else layers.indexOfLast { it.groupId == target.groupId }
-    } else layers.indexOf(target)
+    } else targetIndex
     val insertion = anchor + if (towardFront) 0 else 1
     return LayerDropTarget(target.id, towardFront, false, insertion - if (source < insertion) 1 else 0)
 }

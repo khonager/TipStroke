@@ -114,6 +114,41 @@ class LayerDragLifecycleTest {
         assertEquals(previewTop, settledTop, 1f)
     }
 
+    @Test fun upwardDropAtRowsCenterUsesThatRowsSlot() {
+        val initial = (0..4).map { LayerSummary(LayerId("layer-$it"), "Layer $it", LayerKind.RASTER, true, 1f) }
+        var layers by mutableStateOf(initial)
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            MaterialTheme {
+                LayersPanel(layers, emptyMap(), layers.last().id, setOf(layers.last().id),
+                    onBackgroundOpacityFinished = {}, imageTransforming = false,
+                    onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {},
+                    onOpacityFinished = {}, onRename = {}, onImageScale = {}, onFitImage = {},
+                    onOriginalImageSize = {}, onImageTransforming = {}, onAddPaint = {}, onImportImage = {},
+                    onMoveForward = {}, onMoveBackward = {}, onDuplicate = {}, onDelete = {},
+                    onReorder = { source, target, towardFront ->
+                        val reordered = layers.toMutableList()
+                        val moving = reordered.first { it.id == source }
+                        reordered.remove(moving)
+                        val targetIndex = reordered.indexOfFirst { it.id == target }
+                        reordered.add(targetIndex + if (towardFront) 0 else 1, moving)
+                        layers = reordered
+                    })
+            }
+        }
+        val panel = compose.onNodeWithContentDescription("Layers panel")
+        val origin = panel.fetchSemanticsNode().boundsInRoot.topLeft
+        val start = compose.onNodeWithText("Layer 4").fetchSemanticsNode().boundsInRoot.center - origin
+        val end = compose.onNodeWithText("Layer 2").fetchSemanticsNode().boundsInRoot.center - origin
+        panel.performTouchInput { down(start) }
+        compose.waitForIdle()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(800))
+        panel.performTouchInput { advanceEventTime(800); moveTo(start); moveTo(end) }
+        compose.waitForIdle()
+        panel.performTouchInput { up() }
+        compose.waitForIdle()
+        assertEquals(listOf("layer-0", "layer-1", "layer-4", "layer-2", "layer-3"), layers.map { it.id.value })
+    }
+
     @Test fun backgroundUsesAllThreeColorEditorsAndAppliesHexValue() {
         val layer = LayerSummary(LayerId("paint"), "Paint", LayerKind.RASTER, true, 1f)
         var background by mutableIntStateOf(android.graphics.Color.WHITE)
