@@ -756,7 +756,8 @@ fun CanvasScreen(
                 onImportImage = { message = null; importImage.launch(arrayOf("image/*")) },
                 onMoveForward = { surface?.moveSelectedLayer(true) },
                 onMoveBackward = { surface?.moveSelectedLayer(false) },
-                onReorder = { source, target, towardFront -> surface?.reorderLayer(source, target, !towardFront) },
+                // The panel is front-to-back; above means after the target in painter order.
+                onReorder = { source, target, towardFront -> surface?.reorderLayer(source, target, towardFront) },
                 onGroup = { source, target -> surface?.groupLayer(source, target) },
                 onUngroup = { groupId -> surface?.ungroupLayers(groupId) },
                 onSelectGroup = { groupId -> movingSelection = false; imageTransforming = false; surface?.selectLayerGroup(groupId) },

@@ -14,7 +14,7 @@
 - Two or more fingers continue to pan, zoom, and rotate the camera simultaneously; rotation can be locked. Scaling and rotation are anchored at the gesture centroid, so the document point between the fingers remains beneath that point while pinching. After a moved multi-finger gesture loses a pointer, navigation rebases to the remaining finger so a configured one-finger drag can continue without a jump.
 - Select mode temporarily routes a one-pointer finger or stylus drag to a freehand lasso, rectangle or ellipse in document space. The selection constrains subsequent paint-layer drawing and erasing. Move translates selected pixels on every selected paint layer and whole selected image layers together. Choosing Move without a marquee selects the whole canvas. Artwork follows the pointer live; releasing commits the move as one undo step on the primary layer. Cancelling discards the preview. Duplicate copies the selected pixels from each selected paint layer into a new sparse layer while preserving the originals. On an image layer the selection constrains edits to the image's original-resolution erase mask; whole-image movement remains the image transform mode. Select All and Clear live in the tool’s Actions menu; choosing a brush returns to drawing while retaining the selection.
 - Selecting a layer keeps the layer list compact. Its ⋮ button opens a scrollable settings overlay; Done or tapping outside closes the overlay while keeping that layer selected.
-- In the Layers panel, hold a layer row to drag it. The floating row snaps to the nearest insertion slot; releasing over a name, opacity, or eye control commits that previewed order. Grouping occurs only when the release point is inside another row's artwork preview. The panel scrolls when a dragged layer nears its top or bottom edge. A right swipe still adds a layer to the multi-layer selection.
+- In the Layers panel, hold a layer row to drag it. Rows stay in place until release. Over the name/control side, a blue line marks the nearest legal gap and a label says which layer or group it is above/below. The thumbnail column is reserved for grouping: a preview highlights and the label says Group with/Add to group; gaps in that column do nothing. The panel scrolls when a dragged layer nears its top or bottom edge, gradually speeding up toward the edge. A right swipe still adds a layer to the multi-layer selection.
 - A completed lasso owns a copy of its sampled points, so clearing the temporary gesture buffer cannot invalidate later hit testing or movement. Moving a large selection visits only tiles that contain selected pixels and their destination tiles.
 - Animation recording starts from the compact timeline. Image motion uses the existing finger drag/pinch/twist transform route and captures transform samples through finger-up; it requires at least two frames and offers Fit Range or Real Time timing. Record drawing live starts playback at the selected frame, advances at the chosen FPS, and adds frames as needed. Recorded drawing carries forward into each new frame, and each stroke progressively appears according to its sampled time. The native pen/touch route stays active for as many strokes as the artist draws. Stop recording keeps all captured frames and cels. Selecting another frame or pausing playback also ends the session.
 - Canvas navigation supports up to 256× view scale so 16 px pixel-art canvases can fit the screen and still zoom further without a jump when pinching or using a wheel.
@@ -99,7 +99,7 @@ changes nothing.
 
 Drawing-progress recording stores an image transform only when the last finger releases it (or a cancelled gesture retains its final position). Drag/pinch/twist intermediate positions remain visible live but do not create replay steps.
 
-Layer dragging uses pointer positions in the stationary list container and a separate floating row. Rows slide aside to preview the insertion slot before release, including group boundaries. Auto-scroll does not change the pointer grab offset; cancelling a drag leaves the order unchanged.
+Layer dragging uses pointer positions in the stationary list container and a small floating name label. Rows and thumbnails stay fixed while targeting (except during edge scrolling), so a target cannot slide away beneath the pointer. The insertion guide follows the pointer rather than the grabbed row edge. Cancelling a drag leaves the order unchanged.
 
 Tap a group heading to select every member; swipe individual rows right to add or remove layers from the selection. Erasing applies each native segment to all selected paint layers and selected image masks, respecting the marquee in each target’s coordinates. Cancelling restores every target. A completed multi-layer erase is one bounded undo operation on the primary layer.
 
@@ -107,9 +107,11 @@ Tap a group heading to select every member; swipe individual rows right to add o
 
 After a long press, the stationary layer-list container consumes movement in the
 initial pointer pass, before the scrolling list can steal the gesture. Ordinary
-swipes still scroll/select. Release and cancellation remove the floating row;
+swipes still scroll/select. Release and cancellation remove the floating label;
 its placement uses a captured finite offset so cleared coordinates cannot reach
-pixel rounding. Detached layout coordinates are ignored.
+pixel rounding. Detached layout coordinates are ignored. The release handler is
+refreshed with a lambda as the layer list changes, so adding/loading layers or a
+previous reorder cannot leave release using an older captured drop resolver.
 
 The layer overlay uses available safe height (up to 420 dp wide), with an explicit
 Done action. Background color and opacity open from a scrolling list item. Layer
@@ -133,9 +135,11 @@ color and layer panels use available space without reserving a permanent side ra
 ### Layer drag cues and canvas background color
 
 The orange row outline follows the actual primary layer selection during a drag.
-A dragged copy keeps its real selection styling, and the hovered row gets a thin
-blue insertion guide instead of another orange outline. Grouping remains indicated
-on the target preview only.
+The source row stays visible but dimmed. A blue insertion guide with a dot appears
+only on the name/control side; grouping highlights only the target preview.
+The header announces the pending action, and a compact floating name label leaves
+the thumbnail targets visible. Crossing gaps in the thumbnail column never
+creates an insertion guide or reorders on release.
 
 Canvas background color opens the same Wheel, Sliders, and Values editor as brush
 color. Changes appear live; Values includes hex, RGB, and HSV fields. Background
@@ -234,7 +238,7 @@ Optional **Snap** aligns image bounds to canvas/visible photo edges and centers 
 
 For composites, import the source photos as separate layers, lower opacity to align landmarks, reshape with Push/Bulge/Pinch, finish editing, and erase unwanted image regions. Draw the reference on a paint layer above. This is manual compositing; it does not generate missing anatomy or blend two subjects automatically.
 
-Layer reorder previews move the intervening rows into their final positions while the dragged layer floats. The preserved finger grab offset determines the floating item's top edge; that edge snaps to the nearest measured final slot, so releasing at a row's center lands in that row's slot. Release uses the same destination as the preview and removes the preview translation immediately as the list adopts the new order. Canceled drags can animate back to their original positions.
+Layer reorder hit testing chooses the nearest measured boundary in the stationary list. The blue line and release callback share the same anchor layer and above/below direction; removing the source adjusts the destination index exactly once. Outside layers can only reorder before or after a whole group, while members can reorder inside their own group. The guide includes group-heading heights. Moving horizontally into the thumbnail column selects grouping, with no insertion fallback for the source preview, same-group previews, or gaps. Releasing outside the list or cancelling commits nothing.
 The blue line is drawn at that destination slot using measured item positions and heights. Releasing commits the placement shown by the preview.
 
 ## iPhone and iPad input

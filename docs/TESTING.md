@@ -181,15 +181,21 @@ Export regressions: `AnimationExporterTest` decodes all GIF pixels with the host
 ## Layer interaction regression checks
 
 - Select a layer: its settings stay closed. Open ⋮, close with Done or outside dismissal, and confirm the same layer remains selected.
-- Long-press a row and move in both axes, including edge scrolling. The floating row must retain the original finger grab point and rows must reveal the pending insertion slot. Release over a name to reorder, over a preview to group, or cancel to keep the original order.
+- Long-press a row and move in both axes, including edge scrolling. Rows must stay still while a compact label follows the pointer. On the name side, verify the blue line and above/below label; on the preview side, verify a thumbnail highlight and grouping label. Passing through gaps between thumbnails must never show an insertion line. Release to commit the indicated action, or cancel to keep the original order.
 - Select a group by its heading; add/remove individual layers with right swipes. Erase across selected paint and image layers, then cancel or undo/redo. Unselected layers and original image assets must remain unchanged.
 - Move a marquee across several selected layers. Artwork must follow before release. Cancel must leave pixels untouched; release and undo/redo must affect all targets together. Move with no marquee selects the full canvas.
 
 `LayerDropTargetTest` covers insertion/group boundaries. `DrawingSurfaceMultiLayerTest` covers live native move rendering, cancellation, mixed paint/image erasing, unselected-layer isolation, and compound undo/redo.
 
 `LayerDragLifecycleTest` drives a real Compose long press, movement, release and
-cancellation with a composed floating row. It verifies reorder happens only on
-release and covers invalid drag-coordinate rounding. This runs under Robolectric;
+cancellation with a composed floating label. It verifies reorder happens only on
+release and covers invalid drag-coordinate rounding. Release callbacks use the
+real `DrawingSurface`/native layer stack with the same painter-order direction
+as `CanvasScreen`. A five-layer matrix checks all 30 source/boundary combinations;
+gesture tests check stationary targets, both directions, group boundaries, grouping,
+switching modes, edge scrolling, cancellation, and outside release. A full
+`CanvasScreen` gesture test verifies the production callback wiring in both directions. Hover screenshots are written
+to `app/build/screenshots/layer-*-hover.png`. This runs under Robolectric;
 confirm physical tablet behavior separately, using Troubleshooting crash logs if
 any device-specific failure remains.
 
@@ -204,14 +210,16 @@ portrait/landscape and resized-window screenshots alongside these cases.
 its three color modes, and verifies a hex value updates the background. Inspect
 the layer drag outline on a device for visual confirmation: the selected layer
 should retain orange, while a potential insertion uses a blue line.
-Drag a layer across at least two rows in both directions and release it. The rows
-that opened the gap should stay in place on release while the dragged layer lands
-in that gap. Repeat before and after a grouped layer, and cancel one drag; the
-cancel should leave the order unchanged.
-Drag an item upward until its top reaches another row's original slot. Releasing
-at that row's center should put the item in that slot, rather than below it.
-Repeat while holding the dragged row near its top and bottom: the gap and blue
-line should follow the floating row, and release should match the preview.
+Drag a layer across at least two rows in both directions and release it. Confirm
+its final neighbors exactly match the blue line, including adjacent moves and
+the first and last positions. Repeat around group headers and within a group.
+Try grabbing near the top and bottom of the source: the pointer must select the
+same boundary regardless of grab offset. Hover a preview, move through the gaps
+in its column, and switch sideways to the name side; verify the label and guide
+always agree with the action on release. Cancel and release outside the panel;
+neither should change order or membership. Hold at each edge to auto-scroll and
+repeat reorder/group drops after scrolling. Physical finger and stylus feel still
+requires a device check.
 
 Selection regression coverage: `SelectionRegionTest` checks boolean containment,
 translation and reverse-drag ellipses. Native-graphics `ReferenceStrokesTest` checks

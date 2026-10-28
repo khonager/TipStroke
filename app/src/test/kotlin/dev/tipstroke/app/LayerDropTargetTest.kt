@@ -13,67 +13,87 @@ class LayerDropTargetTest {
     private val previews = rows.mapValues { (_, rect) -> Rect(8f, rect.top + 8f, 56f, rect.top + 56f) }
     private val viewport = Rect(0f, 0f, 296f, 284f)
 
-    @Test fun nameDropPreviewsInsertionButOnlyThumbnailDropGroups() {
-        val name = resolveLayerDrop(layers, ids[0], Offset(140f, 195f), viewport, rows, previews)!!
-        assertFalse(name.group)
-        assertEquals(2, name.destinationIndex)
-        assertFalse(name.towardFront)
-        val preview = resolveLayerDrop(layers, ids[0], Offset(30f, 175f), viewport, rows, previews)!!
-        assertTrue(preview.group)
-        assertEquals(ids[2], preview.targetId)
-        assertNull(resolveLayerDrop(layers, ids[0], Offset(140f, 300f), viewport, rows, previews))
-    }
-
-    @Test fun groupingUsesTheVisiblePreviewAfterRowsSlideAside() {
-        val shifted = previews.mapValues { (id, rect) ->
-            if (id != ids[0]) rect.translate(Offset(0f, -71f)) else rect
+    @Test fun everyGapInBothDirectionsResolvesToExactlyTheIndicatedPosition() {
+        val boundaries = listOf(0f, 67.5f, 138.5f, 209.5f, 277f)
+        for (source in layers.indices) for ((boundary, y) in boundaries.withIndex()) {
+            val drop = resolveLayerDrop(layers, ids[source], Offset(140f, y), viewport, rows, previews)
+            if (boundary == source || boundary == source + 1) {
+                assertNull("Dropping beside itself must not move a layer", drop)
+                continue
+            }
+            requireNotNull(drop)
+            assertFalse(drop.group)
+            assertEquals(boundary - if (source < boundary) 1 else 0, drop.destinationIndex)
+            assertEquals(y, insertionLineY(layers, drop, rows)!!, .01f)
+            // Apply the public callback contract, independently of destinationIndex.
+            val result = ids.toMutableList().apply { remove(ids[source]) }
+            result.add(result.indexOf(drop.targetId) + if (drop.towardFront) 0 else 1, ids[source])
+            val expected = ids.toMutableList().apply { add(boundary, ids[source]); removeAt(if (source < boundary) source else source + 1) }
+            assertEquals("source=$source, boundary=$boundary", expected, result)
         }
-        val gap = resolveLayerDrop(layers, ids[0], Offset(30f, 245f), viewport, rows, shifted)!!
-        assertFalse(gap.group)
-        val actualPreview = resolveLayerDrop(layers, ids[0], Offset(30f, 100f), viewport, rows, shifted)!!
-        assertTrue(actualPreview.group)
-        assertEquals(ids[2], actualPreview.targetId)
     }
 
-    @Test fun insertionLineTracksDraggedRowAcrossSlotBoundary() {
-        val belowFirst = resolveLayerDrop(layers, ids[0], Offset(140f, 125f), viewport, rows, previews)!!
-        val aboveSecond = resolveLayerDrop(layers, ids[0], Offset(140f, 150f), viewport, rows, previews)!!
-        assertEquals(1, belowFirst.destinationIndex)
-        assertEquals(2, aboveSecond.destinationIndex)
-        val itemBounds = rows + (ids[1] to Rect(0f, 64f, 296f, 135f))
-        assertEquals(71f, insertionLineY(layers, 0, belowFirst.destinationIndex, itemBounds))
-        assertEquals(142f, insertionLineY(layers, 0, aboveSecond.destinationIndex, itemBounds))
-
-        val upwardFromFirst = resolveLayerDrop(layers, ids[3], Offset(140f, 60f), viewport, rows, previews)!!
-        val upwardFromSecond = resolveLayerDrop(layers, ids[3], Offset(140f, 80f), viewport, rows, previews)!!
-        assertEquals(0, upwardFromFirst.destinationIndex)
-        assertEquals(1, upwardFromSecond.destinationIndex)
-        assertEquals(0f, insertionLineY(layers, 3, upwardFromFirst.destinationIndex, itemBounds))
-        assertEquals(64f, insertionLineY(layers, 3, upwardFromSecond.destinationIndex, itemBounds))
+    @Test fun thumbnailLaneNeverFallsThroughToReordering() {
+        for (y in 0..277) {
+            val point = Offset(30f, y.toFloat())
+            val drop = resolveLayerDrop(layers, ids[0], point, viewport, rows, previews)
+            val target = ids.drop(1).firstOrNull { previews.getValue(it).contains(point) }
+            if (target == null) assertNull("No reorder between thumbnails at y=$y", drop)
+            else {
+                assertTrue(drop!!.group)
+                assertEquals(target, drop.targetId)
+                assertNull(insertionLineY(layers, drop, rows))
+            }
+        }
     }
 
-    @Test fun outsideLayerSnapsBeyondWholeGroup() {
+    @Test fun movingSidewaysSwitchesActionsWithoutMovingTargets() {
+        val group = resolveLayerDrop(layers, ids[0], Offset(30f, 190f), viewport, rows, previews)!!
+        val reorder = resolveLayerDrop(layers, ids[0], Offset(140f, 190f), viewport, rows, previews)!!
+        assertTrue(group.group)
+        assertEquals(ids[2], group.targetId)
+        assertFalse(reorder.group)
+        assertEquals(ids[2], reorder.targetId)
+        assertFalse(reorder.towardFront)
+        assertEquals(209.5f, insertionLineY(layers, reorder, rows)!!, .01f)
+    }
+
+    @Test fun outsideLayerCanOnlyLandBeforeOrAfterWholeGroup() {
         val grouped = layers.mapIndexed { i, layer -> layer.copy(groupId = if (i in 1..2) "group" else null) }
-        val drop = resolveLayerDrop(grouped, ids[3], Offset(140f, 80f), viewport, rows, previews)!!
-        assertEquals(1, drop.destinationIndex)
-        assertTrue(drop.towardFront)
+        val above = resolveLayerDrop(grouped, ids[3], Offset(140f, 90f), viewport, rows, previews)!!
+        assertEquals(ids[1], above.targetId)
+        assertEquals(1, above.destinationIndex)
+        assertEquals(67.5f, insertionLineY(grouped, above, rows)!!, .01f)
+        val below = resolveLayerDrop(grouped, ids[0], Offset(140f, 180f), viewport, rows, previews)!!
+        assertEquals(ids[2], below.targetId)
+        assertEquals(2, below.destinationIndex)
+        assertEquals(209.5f, insertionLineY(grouped, below, rows)!!, .01f)
     }
 
-    @Test fun draggingUpToAnotherRowsCenterLandsInThatRowsSlot() {
-        // The dragged row is grabbed at its center, so its top reaches row 2's
-        // original top when the finger reaches row 2's center.
-        val drop = resolveLayerDrop(layers, ids[3], rows.getValue(ids[2]).center, viewport, rows, previews)!!
+    @Test fun groupMembersCanReorderButCannotAccidentallyRegroup() {
+        val grouped = layers.map { it.copy(groupId = "group") }
+        assertNull(resolveLayerDrop(grouped, ids[0], Offset(30f, 190f), viewport, rows, previews))
+        val drop = resolveLayerDrop(grouped, ids[0], Offset(140f, 190f), viewport, rows, previews)!!
         assertFalse(drop.group)
         assertEquals(2, drop.destinationIndex)
-        assertEquals(ids[2], drop.targetId)
-        assertTrue(drop.towardFront)
     }
 
-    @Test fun landingSlotFollowsTheGrabbedPartOfTheFloatingRow() {
-        val finger = Offset(140f, 130f)
-        val nearBottom = resolveLayerDrop(layers, ids[3], finger, viewport, rows, previews, grabY = 48f)!!
-        val nearTop = resolveLayerDrop(layers, ids[3], finger, viewport, rows, previews, grabY = 8f)!!
-        assertEquals(1, nearBottom.destinationIndex)
-        assertEquals(2, nearTop.destinationIndex)
+    @Test fun groupHeadingHeightIsIncludedInInsertionGuide() {
+        val items = rows + (ids[1] to Rect(0f, 71f, 296f, 165f)) +
+            (ids[2] to Rect(0f, 172f, 296f, 236f)) + (ids[3] to Rect(0f, 243f, 296f, 307f))
+        val drop = resolveLayerDrop(layers, ids[0], Offset(140f, 168f), viewport, rows, previews, items)!!
+        assertEquals(1, drop.destinationIndex)
+        assertEquals(168.5f, insertionLineY(layers, drop, items)!!, .01f)
+    }
+
+    @Test fun scrolledViewportUsesVisibleBoundariesAndRejectsOutsideRelease() {
+        val scrolled = rows.mapValues { (_, rect) -> rect.translate(Offset(0f, -71f)) }
+        val scrolledPreviews = previews.mapValues { (_, rect) -> rect.translate(Offset(0f, -71f)) }
+        val drop = resolveLayerDrop(layers, ids[0], Offset(140f, 138.5f), viewport, scrolled, scrolledPreviews)!!
+        assertEquals(2, drop.destinationIndex)
+        assertEquals(138.5f, insertionLineY(layers, drop, scrolled)!!, .01f)
+        for (point in listOf(Offset(-1f, 100f), Offset(300f, 100f), Offset(140f, -1f), Offset(140f, 300f), Offset.Unspecified)) {
+            assertNull(resolveLayerDrop(layers, ids[0], point, viewport, rows, previews))
+        }
     }
 }
