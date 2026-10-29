@@ -780,6 +780,8 @@ fun CanvasScreen(
                 onDuplicateFrame = { surface?.duplicateAnimationFrame() },
                 onDeleteFrame = { surface?.deleteAnimationFrame() },
                 onMoveFrame = { surface?.moveAnimationFrame(it) },
+                onReorderFrame = { source, target -> surface?.reorderAnimationFrame(source, target) },
+                thumbnailForFrame = { surface?.animationFrameThumbnail(it) },
                 onExposure = { surface?.setAnimationExposure(it) },
                 onFps = { surface?.setAnimationFps(it) },
                 onPlaybackMode = { surface?.setAnimationPlaybackMode(it) },

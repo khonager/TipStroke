@@ -23,6 +23,35 @@ import java.util.concurrent.TimeUnit
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AnimationInteractionTest {
+    @Test fun thumbnailsShowEachFrameAndReorderingKeepsFrameArtwork() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication())
+        surface.layout(0, 0, 600, 600)
+        surface.configureBlank(256, 256)
+        val stack = (surface.getChildAt(0) as RasterCanvasView).layerStack
+        stack.selectedRaster()!!.tiles.replaceTiles(mapOf(TileCoordinate(0, 0) to
+            Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }))
+        var latest: AnimationUiState? = null
+        surface.animationListener = { latest = it }
+        surface.enableAnimation(existingAsBackground = false)
+        val firstId = latest!!.frames.single().id
+        surface.duplicateAnimationFrame()
+        val secondId = latest!!.frames.last().id
+        stack.selectedRaster()!!.tiles.replaceTiles(mapOf(TileCoordinate(0, 0) to
+            Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }))
+
+        val firstPreview = surface.animationFrameThumbnail(firstId, 48)!!
+        val secondPreview = surface.animationFrameThumbnail(secondId, 48)!!
+        assertEquals(Color.RED, firstPreview.getPixel(24, 24))
+        assertEquals(Color.BLUE, secondPreview.getPixel(24, 24))
+        assertEquals(1, latest!!.selectedIndex)
+        firstPreview.recycle(); secondPreview.recycle()
+
+        surface.reorderAnimationFrame(0, 1)
+        assertEquals(listOf(secondId, firstId), latest!!.frames.map { it.id })
+        assertEquals(firstId, latest!!.frames[latest!!.selectedIndex].id)
+        assertEquals(Color.RED, stack.selectedRaster()!!.tiles.colorAt(128, 128))
+    }
+
     @Test fun liveRecordingPlaysAndAddsFramesUntilStopped() {
         val surface = DrawingSurface(RuntimeEnvironment.getApplication())
         surface.layout(0, 0, 600, 600)

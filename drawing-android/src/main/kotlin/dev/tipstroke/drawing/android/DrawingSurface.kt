@@ -76,6 +76,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var layerStack: LayerStack = createLayerStack(2048, 2048)
     private var animation: AnimationRuntime? = null
     private var animationPlaying = false
+    private var thumbnailRevision = 0
+    private var switchingAnimationFrame = false
     private data class MotionRecording(
         val layerId: LayerId, val start: Int, val end: Int, val timing: RecordingTiming,
         val samples: MutableList<Pair<Long, ImageTransform>> = mutableListOf(),
@@ -185,7 +187,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>, Int, Float) -> Unit)? = null
     var animationListener: ((AnimationUiState?) -> Unit)? = null
-        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind())) }
+        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)) }
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
@@ -866,7 +868,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         active.select(index)
         clearSelection()
         rasterView.invalidate()
-        notifyLayers(); notifyHistory(); notifyVisiblePalette(); publishAnimation()
+        switchingAnimationFrame = true
+        try { notifyLayers() } finally { switchingAnimationFrame = false }
+        notifyHistory(); notifyVisiblePalette(); publishAnimation()
     }
     fun addAnimationFrame() {
         val active = animation ?: return
@@ -892,10 +896,26 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         active.moveFrame(active.selectedIndex, active.selectedIndex + delta)
         rasterView.invalidate(); publishAnimation()
     }
+    fun reorderAnimationFrame(source: Int, target: Int) {
+        val active = animation ?: return
+        if (source !in active.frames.indices || target !in active.frames.indices || source == target) return
+        selectAnimationFrame(source)
+        active.moveFrame(source, target)
+        rasterView.invalidate(); publishAnimation()
+    }
+    fun animationFrameThumbnail(frameId: FrameId, sizePx: Int = 96): android.graphics.Bitmap? =
+        animation?.thumbnail(frameId, sizePx)
     fun setAnimationExposure(value: Int) { animation?.setExposure(value); publishAnimation() }
     fun setAnimationFps(value: Int) {
+        val active = animation ?: return
+        val nextFps = value.coerceIn(1, 60)
         if (strokeRecording != null) stopAnimationPlayback()
-        animation?.fps = value.coerceIn(1, 60)
+        else if (animationPlaying) {
+            val now = SystemClock.uptimeMillis()
+            val tick = (now - playbackStartedAt) * active.fps / 1000L
+            playbackStartedAt = now - tick * 1000L / nextFps
+        }
+        active.fps = nextFps
         publishAnimation()
     }
     fun setAnimationPlaybackMode(mode: PlaybackMode) { animation?.playbackMode = mode; publishAnimation() }
@@ -1004,7 +1024,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         gestureHandler.removeCallbacks(playbackStep)
         publishAnimation()
     }
-    private fun publishAnimation() { animationListener?.invoke(animation?.state(animationPlaying, recordingKind())) }
+    private fun publishAnimation() {
+        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision))
+    }
     fun publishDiagnostics() {
         if (!settings.debug) return
         val memory = memoryBudgetAdvisor.snapshot(
@@ -2169,6 +2191,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
     private fun notifyLayers() {
+        if (animation != null && !switchingAnimationFrame && !imageGestureInProgress) {
+            thumbnailRevision++
+            publishAnimation()
+        }
         if (referenceLayerId != null && layerStack.layers.none { it.id == referenceLayerId }) {
             referenceLayerId = null
             referenceStrokesListener?.invoke(null)

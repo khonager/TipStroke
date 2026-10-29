@@ -10,6 +10,7 @@ import dev.tipstroke.core.model.ImageTransform
 import dev.tipstroke.core.model.LayerId
 import dev.tipstroke.core.model.PlaybackMode
 import dev.tipstroke.core.model.RecordingTiming
+import android.graphics.Bitmap
 import java.util.LinkedHashMap
 
 data class AnimationUiState(
@@ -23,6 +24,7 @@ data class AnimationUiState(
     val onionOpacity: Float,
     val backgroundLayerIds: Set<LayerId>,
     val recording: AnimationRecordingKind? = null,
+    val thumbnailRevision: Int = 0,
 )
 
 enum class AnimationRecordingKind { IMAGE_MOTION, LIVE_DRAWING }
@@ -163,6 +165,12 @@ internal class AnimationRuntime(
     fun celRaster(layerId: LayerId, frameId: FrameId): TileStore? = rasterCels[layerId]?.get(frameId)
     fun celImageTransform(layerId: LayerId, frameId: FrameId): ImageTransform? = imageCels[layerId]?.get(frameId)
 
+    fun thumbnail(frameId: FrameId, sizePx: Int): Bitmap? {
+        if (frames.none { it.id == frameId }) return null
+        saveActiveImageTransforms()
+        return stack.renderAnimationFrameThumbnail(this, frameId, sizePx)
+    }
+
     fun carryRecordedDrawing(layerId: LayerId, from: Int, to: Int) {
         if (from !in frames.indices || to !in frames.indices) return
         val cels = rasterCels[layerId] ?: return
@@ -301,9 +309,9 @@ internal class AnimationRuntime(
         return prefix
     }
 
-    fun state(playing: Boolean, recording: AnimationRecordingKind? = null) = AnimationUiState(
+    fun state(playing: Boolean, recording: AnimationRecordingKind? = null, thumbnailRevision: Int = 0) = AnimationUiState(
         frames.toList(), selectedIndex, fps, playbackMode, playing,
-        onionBefore, onionAfter, onionOpacity, backgroundLayerIds.toSet(), recording,
+        onionBefore, onionAfter, onionOpacity, backgroundLayerIds.toSet(), recording, thumbnailRevision,
     )
 
     fun snapshot(): SavedAnimationSnapshot {

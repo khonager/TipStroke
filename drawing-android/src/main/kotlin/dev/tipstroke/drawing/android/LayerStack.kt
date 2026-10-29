@@ -97,6 +97,39 @@ internal class LayerStack(
     fun previewsFrontToBack(sizePx: Int): Map<LayerId, Bitmap> = layers.asReversed().associate { layer ->
         layer.id to renderPreview(layer, sizePx.coerceAtLeast(1))
     }
+
+    /** Small composite preview for a timeline frame, without installing its cels. */
+    fun renderAnimationFrameThumbnail(animation: AnimationRuntime, frameId: FrameId, sizePx: Int): Bitmap {
+        val size = sizePx.coerceAtLeast(1)
+        val preview = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(preview)
+        val scale = minOf(size.toFloat() / canvasWidth, size.toFloat() / canvasHeight)
+        canvas.drawColor((backgroundColor and 0x00ffffff) or
+            ((backgroundOpacity * 255).roundToInt().coerceIn(0, 255) shl 24))
+        canvas.translate((size - canvasWidth * scale) / 2f, (size - canvasHeight * scale) / 2f)
+        canvas.scale(scale, scale)
+        canvas.clipRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat())
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        fun drawFrameLayer(layer: CanvasLayerRuntime, coverage: Boolean = false, ancestors: Set<LayerId> = emptySet()) {
+            if (layer.id in ancestors || (!coverage && (!layer.visible || layer.opacity <= 0f))) return
+            val clipSource = layer.clipSourceId?.let { id -> layers.firstOrNull { it.id == id } }
+            drawWithLayerClip(canvas, clipSource?.let { { drawFrameLayer(it, true, ancestors + layer.id) } }) {
+                val shared = animation.isBackground(layer.id)
+                paint.alpha = (if (coverage) 255f else layer.opacity * 255).roundToInt().coerceIn(0, 255)
+                when (layer) {
+                    is RasterLayerRuntime -> (if (shared) layer.tiles else animation.celRaster(layer.id, frameId))?.draw(canvas, paint)
+                    is ImageLayerRuntime -> {
+                        val transform = if (shared) layer.transform else animation.celImageTransform(layer.id, frameId)
+                        if (transform != null) layer.source.bitmapOrRequest()?.let { source ->
+                            canvas.drawPhoto(source, layer.source.width, layer.source.height, transform, paint, layer.mask.photoMaskTiles())
+                        }
+                    }
+                }
+            }
+        }
+        layers.forEach { drawFrameLayer(it) }
+        return preview
+    }
     fun allocatedTiles(): Int = layers.sumOf { layer ->
         when (layer) {
             is RasterLayerRuntime -> layer.tiles.allocatedTileCount

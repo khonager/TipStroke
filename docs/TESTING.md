@@ -83,7 +83,7 @@ Before subjective pen testing, run `./tipstroke brushes` with a device attached.
 
 ## Animation and selection checks
 
-1. Enable animation on an existing drawing, choosing both **background** and **first frame** in separate runs. Add, duplicate, reorder, and delete frames. Set a hold, then verify playback keeps that frame visible for the requested number of ticks.
+1. Enable animation on an existing drawing, choosing both **background** and **first frame** in separate runs. Add frames, duplicate with the strip button, long-press drag a frame to reorder, and delete frames. Confirm each thumbnail shows that frame's artwork, remains attached to its frame after reordering, and updates after painting. Set a hold, drag the scrubber across it, then verify playback keeps that frame visible for the requested number of ticks. Type FPS values including 1 and 60 in Playback options and verify playback/export timing.
 2. Put a layer in the shared background, switch frames, and confirm its content stays visible. Return it to animated content and confirm it can vary by frame without copying the other layers.
 3. Enable onion skins, draw on neighboring frames, and confirm their ghosts follow the current frame. Start playback and confirm ghosts disappear during playback.
 4. Draw a lasso around sparse pixels, choose **Move**, and drag them. Repeat with **Move selection to new layer**; verify source pixels are removed, the new layer contains only selected pixels, and the app does not crash.
