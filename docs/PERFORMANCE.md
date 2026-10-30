@@ -93,3 +93,28 @@ Animation decoding never installs an incomplete frame as the editable target. Th
 Selected-pixel rotate/resize/flip previews change only a native drawing matrix. Apply snapshots only occupied selected source tiles and intersecting destination tiles, resamples once, removes empty output tiles, and retains the operation in the existing bounded undo history. Unselected pixels and shared tiles in other frames are preserved. Nearest-neighbor sampling is available for pixel art.
 
 Playback allows only one outstanding frame selection while decoding is slow; later timer ticks do not enqueue more frame selections. Pausing cancels the pending selection so a completed decode cannot advance the visible frame afterward. Concurrent thumbnail, onion-skin, and resize requests pin their required clean frames until their completion callbacks finish.
+
+### Live eraser updates
+
+Normal raster erasing uses analytic segment coverage in only the newly reached pixel
+rectangles. One reusable integer pixel buffer serves the gesture; sparse byte coverage
+arrays are allocated only on first tile contact. There are no per-update blur bitmap
+allocations, alpha extraction, or whole-tile pixel scans on this path. Coverage is
+applied to the existing touch-down snapshots and released on finish/cancel. Pressure
+interpolates along segments; event batching does not change the result. Constrained
+selection/reference erasing and pixel tools retain the clipped mask renderer.
+
+Native pixel tests cover long fast segments, changing pressure, sample density, event
+batching, tile boundaries, cancellation, undo/redo, and replay. Device profiling is
+still required to measure end-to-end stylus latency; host test timings are not a
+substitute for input-to-display measurements.
+
+On the connected Xiaomi 23043RP34G (Android 14), a warmed horizontal sweep
+measured median live-update times of 1.47/8.21/29.44 ms at 48/128/256 px. The
+retained mask path with a full-canvas selection measured 10.97/22.58/89.18 ms.
+This comparison includes the selection clip in the baseline; it is a rendering
+microbenchmark, not an input-to-display latency measurement. The largest brush
+still exceeds a 60 Hz frame budget. Reproduce with
+`./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.LiveEraserInstrumentedTest`.
+The test writes per-device timings to `eraser-qa/update-times.txt` in connected
+test additional output and verifies sample-join continuity on real Android.

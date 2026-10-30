@@ -98,6 +98,7 @@ class TileStore(
     private val smudgeTouched = mutableSetOf<TileCoordinate>()
     private var liveStrokeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
     private val liveStrokeTouched = mutableSetOf<TileCoordinate>()
+    private var liveEraser: LiveEraserCoverage? = null
     private val liveEraseCoverage = mutableMapOf<TileCoordinate, ByteArray>()
     private val colorUsage = mutableMapOf<Int, Long>()
 
@@ -190,10 +191,17 @@ class TileStore(
             candidates.filterTo(mutableSetOf()) { it in tiles }
         } else candidates
         if (dirty.isEmpty()) return emptySet()
-        val preparedPaint = StrokeCanvasPainter.preparePaint(stroke)
+        val directEraser = stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE &&
+            stroke.style.selection == null && stroke.style.referenceStrokes == null && stroke.style.pixelTool == null
+        val preparedPaint = if (directEraser) null else StrokeCanvasPainter.preparePaint(stroke)
         dirty.forEach { coordinate ->
             if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
             val bitmap = writableTile(coordinate)
+            if (directEraser) {
+                val eraser = liveEraser ?: LiveEraserCoverage(tileSize).also { liveEraser = it }
+                eraser.apply(bitmap, requireNotNull(before[coordinate]), coordinate, stroke)
+                return@forEach
+            }
             val canvas = Canvas(bitmap)
             canvas.save()
             canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
@@ -226,7 +234,7 @@ class TileStore(
                     destination.drawBitmap(mask, 0f, 0f,
                         Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
                 } finally { mask.recycle() }
-            } else StrokeCanvasPainter.draw(canvas, stroke, preparedPaint)
+            } else StrokeCanvasPainter.draw(canvas, stroke, requireNotNull(preparedPaint))
             canvas.restore()
         }
         liveStrokeTouched += dirty
@@ -301,6 +309,7 @@ class TileStore(
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null
         liveEraseCoverage.clear()
+        liveEraser = null
         if (liveStrokeTouched.isEmpty()) return emptySet()
         liveStrokeTouched.forEach { coordinate ->
             tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { removeTile(coordinate) } }
@@ -315,6 +324,7 @@ class TileStore(
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null
         liveEraseCoverage.clear()
+        liveEraser = null
         replayLive.clear()
         val dirty = liveStrokeTouched.toSet()
         restore(before)

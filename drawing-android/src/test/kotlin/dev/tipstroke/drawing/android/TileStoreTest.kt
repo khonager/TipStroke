@@ -211,6 +211,65 @@ class TileStoreTest {
         assertEquals(once, (0 until 512).map { store.colorAt(it, 128) })
     }
 
+    @Test fun fastEraserHasNoSegmentSeamsAcrossEventBatchesAndTileEdges() {
+        for (hardness in listOf(0f, .5f, 1f)) {
+            val style = ink.copy(brush = BrushPreset.Ink.copy(hardness = hardness, speedTaper = 1f),
+                sizePx = 48f, opacity = .7f, blend = BlendBehavior.ERASE)
+            fun render(points: List<StrokeSample>, batchSize: Int): IntArray {
+                val store = TileStore(768, 256)
+                store.replaceTiles((0..2).associate { x -> TileCoordinate(x, 0) to
+                    Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) } })
+                store.beginLiveStroke()
+                store.appendLiveStroke(CompletedStroke(points.take(1), style))
+                var previous = points.first()
+                for (batch in points.drop(1).chunked(batchSize)) {
+                    store.appendLiveStroke(CompletedStroke(listOf(previous) + batch, style))
+                    previous = batch.last()
+                }
+                store.finishLiveStroke()
+                return IntArray(768 * 128) { i -> store.colorAt(i % 768, 64 + i / 768) }
+            }
+            val points = (64..704 step 32).map { sample(Point(it.toFloat(), 128f), it * 10_000L) }
+            val individual = render(points, 1)
+            assertArrayEquals("Event batching changed coverage at hardness=$hardness", individual, render(points, 7))
+            assertArrayEquals("Segment ends left seams at hardness=$hardness", individual,
+                render(listOf(points.first(), points.last()), 1))
+        }
+    }
+
+    @Test fun stationaryEraserRespondsToIncreasingPressure() {
+        val store = TileStore(256, 256)
+        store.replaceTiles(mapOf(TileCoordinate(0, 0) to
+            Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }))
+        val style = ink.copy(blend = BlendBehavior.ERASE)
+        val light = sample(Point(128f, 128f), 0).copy(pressure = .1f, opacityPressure = .1f)
+        val firm = sample(Point(128f, 128f), 1_000_000)
+        store.beginLiveStroke()
+        store.appendLiveStroke(CompletedStroke(listOf(light), style))
+        assertTrue(Color.alpha(store.colorAt(128, 128)) > 100)
+        store.appendLiveStroke(CompletedStroke(listOf(light, firm), style))
+        assertEquals(0, Color.alpha(store.colorAt(128, 128)))
+        store.cancelLiveStroke()
+    }
+
+    @Test fun fastEraserInterpolatesPressureAndRetainsItsWidthAtSampleJoins() {
+        val store = TileStore(512, 256)
+        store.replaceTiles((0..1).associate { x -> TileCoordinate(x, 0) to
+            Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) } })
+        val style = ink.copy(brush = BrushPreset.Ink.copy(speedTaper = 1f,
+            pressureToSize = PressureCurve(.2f, 1f, 1f), pressureToOpacity = PressureCurve(1f, 1f)),
+            sizePx = 64f, blend = BlendBehavior.ERASE)
+        val points = listOf(sample(Point(64f, 128f), 0).copy(pressure = .2f),
+            sample(Point(256f, 128f), 1_000_000), sample(Point(448f, 128f), 2_000_000).copy(pressure = .2f))
+        store.beginLiveStroke()
+        store.appendLiveStroke(CompletedStroke(points.take(2), style))
+        store.appendLiveStroke(CompletedStroke(points.takeLast(2), style))
+        for (x in 64..448) assertEquals("Gap at $x", 0, Color.alpha(store.colorAt(x, 128)))
+        for (x in 252..260) assertEquals("Pressure join narrowed at $x", 0, Color.alpha(store.colorAt(x, 153)))
+        store.cancelLiveStroke()
+        assertEquals(Color.BLUE, store.colorAt(256, 153))
+    }
+
     @Test fun softInkEraserReachesTheNextTileWithItsBlurHalo() {
         val erase = stroke(Point(220f, 100f), Point(220f, 160f), ink.copy(
             brush = BrushPreset.Ink.copy(hardness = 0f, speedTaper = 0f),
