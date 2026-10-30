@@ -21,6 +21,26 @@ import org.robolectric.annotation.GraphicsMode
 class TileStoreTest {
     private val ink = StrokeStyle(BrushPreset.Ink, 24f, 1f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT)
 
+    @Test fun frameDuplicatesShareOnlyUnchangedTilesAndSurviveDiscardAndUndo() {
+        val original = TileStore(512, 512)
+        original.commit(stroke(Point(40f, 40f), Point(80f, 40f), ink))
+        original.commit(stroke(Point(300f, 40f), Point(340f, 40f), ink))
+        val duplicate = original.duplicate()
+        assertSame(original.residentBitmaps().first(), duplicate.residentBitmaps().first())
+        assertSame(original.residentBitmaps().last(), duplicate.residentBitmaps().last())
+        val before = original.colorAt(60, 40)
+        duplicate.commit(stroke(Point(40f, 40f), Point(80f, 40f), ink.copy(blend = BlendBehavior.ERASE)))
+        assertEquals(before, original.colorAt(60, 40))
+        assertEquals(Color.TRANSPARENT, duplicate.colorAt(60, 40))
+        assertNotSame(original.residentBitmaps().firstOrNull(), duplicate.residentBitmaps().firstOrNull())
+        assertTrue(duplicate.history.undo())
+        assertEquals(before, duplicate.colorAt(60, 40))
+        original.discard()
+        assertEquals(before, duplicate.colorAt(60, 40))
+        assertEquals(Color.BLACK, duplicate.colorAt(320, 40))
+        duplicate.discard()
+    }
+
     @Test fun canvasResizeMovesPixelsWithoutResamplingAndCropsOutside() {
         val source = TileStore(300, 300)
         val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)

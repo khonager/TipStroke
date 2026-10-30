@@ -182,7 +182,15 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
         val existed = !initializedStores.add(id)
         if (!restoring) {
             if (existed || rebaseline) enqueue(64) { it.writeByte(5); it.writeUTF(id) }
-            if (store.allocatedTileBytes > QUEUE_LIMIT) stop("Recording stopped: initial artwork is too large.")
+            val encoded = store.encodedBacking
+            if (encoded != null && encoded.isNotEmpty()) {
+                enqueue(encoded.values.sumOf { it.size.toLong() }) { out ->
+                    out.writeByte(2); out.writeUTF(id); out.writeInt(encoded.size)
+                    encoded.forEach { (coordinate, bytes) ->
+                        out.writeInt(coordinate.x); out.writeInt(coordinate.y); out.writeInt(bytes.size); out.write(bytes)
+                    }
+                }
+            } else if (store.allocatedTileBytes > QUEUE_LIMIT) stop("Recording stopped: initial artwork is too large.")
             else if (store.allocatedTileCount > 0) capture(id, null, store.snapshotTiles(), recycle = true)
         }
         stores += store

@@ -446,6 +446,7 @@ fun CanvasScreen(
                     backgroundOpacity = paperOpacity
                 }
                 view.animationListener = { animationState = it }
+                view.animationErrorListener = { message = it }
                 view.colorPickedListener = { picked -> color = picked }
                 view.visiblePaletteListener = { drawingPalette = it }
                 view.drawnColorListener = { drawn -> colorHistory = colorHistoryPreferences.record(drawn) }
@@ -493,11 +494,13 @@ fun CanvasScreen(
                         TextButton(onClick = { surface?.cancelCanvasResize(); resizeOpen = false }) { Text("Cancel") }
                         TextButton(onClick = { surface?.resetCanvasResizePreview() }) { Text("Reset") }
                         Button(onClick = {
-                            if (surface?.applyCanvasResize() == true) {
+                            surface?.applyCanvasResize { applied ->
+                            if (applied) {
                                 editorWidthPx = surface!!.canvasWidthPx
                                 editorHeightPx = surface!!.canvasHeightPx
                                 resizeOpen = false
                             } else message = "Canvas could not be resized while drawing."
+                            }
                         }, enabled = resizeChanged) { Text("Apply") }
                     }
                 }

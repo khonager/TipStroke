@@ -82,3 +82,5 @@ can still lose edits whose save has not completed. iOS project transfer is not
 implemented; PNG sharing exports a flattened image only.
 
 Process version 2 adds action 5 to clear an individual raster store before a replacement baseline. Layer metadata may name a separate raster `store`, and `stores` retains inactive animation drawings in the bounded replay cache. Layer IDs and clipping relationships remain unchanged. Animated projects establish a fresh exact baseline when reopened so runtime store aliases need not be persisted.
+
+Animation lazy loading is a runtime optimization: the on-disk PNG tile layout and schema do not change. Unloaded cel PNG bytes are retained independently of the project directory so atomic autosave cannot invalidate their backing. Save copies those bytes without decoding; frame export decodes transient tiles on the export worker.

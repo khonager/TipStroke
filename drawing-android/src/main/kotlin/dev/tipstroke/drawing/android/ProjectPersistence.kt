@@ -378,6 +378,7 @@ internal data class SavedAnimationSnapshot(
     val backgroundLayerIds: Set<LayerId>,
     val rasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, Bitmap>>>,
     val imageCels: Map<LayerId, Map<FrameId, ImageTransform>>,
+    val encodedRasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, ByteArray>>> = emptyMap(),
 )
 
 internal data class LoadedProject(
@@ -477,6 +478,14 @@ internal object ProjectPersistence {
                 layersJson.put(json)
             }
             val animationJson = snapshot.animation?.let { animation ->
+                animation.encodedRasterCels.forEach { (layerId, cels) ->
+                    cels.forEach { (frameId, tiles) ->
+                        if (tiles.isNotEmpty()) {
+                            val directory = File(temporary, "animation/cels/${layerId.value}/${frameId.value}").apply { mkdirs() }
+                            tiles.forEach { (coordinate, bytes) -> File(directory, "${coordinate.x}_${coordinate.y}.png").writeBytes(bytes) }
+                        }
+                    }
+                }
                 animation.rasterCels.forEach { (layerId, cels) ->
                     cels.forEach { (frameId, tiles) ->
                         if (tiles.isNotEmpty()) {
@@ -542,7 +551,7 @@ internal object ProjectPersistence {
         }
     }
 
-    fun load(directory: File): Result<LoadedProject> = runCatching {
+    fun load(directory: File, lazyAnimation: Boolean = false): Result<LoadedProject> = runCatching {
         recoverInterruptedSave(directory)
         val json = JSONObject(File(directory, DrawingLibrary.MANIFEST).readText())
         val schemaVersion = json.getInt("schemaVersion")
@@ -633,8 +642,18 @@ internal object ProjectPersistence {
                     })
                 }
             }
+            val selectedIndex = saved.optInt("selectedIndex", 0).coerceIn(frames.indices)
+            val encodedCels = if (lazyAnimation) layers.filterIsInstance<LoadedRaster>().associate { layer ->
+                layer.id to frames.filter { it.id != frames[selectedIndex].id }.associate { frame ->
+                    val celDirectory = File(directory, "animation/cels/${layer.id.value}/${frame.id.value}")
+                    frame.id to celDirectory.listFiles().orEmpty().mapNotNull { file ->
+                        val match = Regex("(-?\\d+)_(-?\\d+)\\.png").matchEntire(file.name) ?: return@mapNotNull null
+                        TileCoordinate(match.groupValues[1].toInt(), match.groupValues[2].toInt()) to file.readBytes()
+                    }.toMap()
+                }
+            } else emptyMap()
             val rasterCels = layers.filterIsInstance<LoadedRaster>().associate { layer ->
-                layer.id to frames.associate { frame ->
+                layer.id to frames.filter { !lazyAnimation || it.id == frames[selectedIndex].id }.associate { frame ->
                     frame.id to loadTiles(File(directory, "animation/cels/${layer.id.value}/${frame.id.value}"))
                 }
             }
@@ -643,7 +662,7 @@ internal object ProjectPersistence {
                 timeline.fps, timeline.playbackMode,
                 saved.optInt("onionBefore", 1), saved.optInt("onionAfter", 1),
                 saved.optDouble("onionOpacity", .3).toFloat(),
-                backgrounds, rasterCels, imageCels,
+                backgrounds, rasterCels, imageCels, encodedCels,
             )
         }
         val process = runCatching { ProcessRecording.read(File(directory, "process.tsr")) }
@@ -712,9 +731,16 @@ internal object ProjectPersistence {
                 val shared = animation == null || layer.id in animation.backgroundLayerIds
                 paint.alpha = (if (coverage) 255f else layer.opacity * 255).roundToInt().coerceIn(0, 255)
                 when (layer) {
-                    is SavedRasterSnapshot -> (if (shared) layer.tiles else animation?.rasterCels?.get(layer.id)?.get(frameId).orEmpty())
-                        .forEach { (coordinate, bitmap) ->
-                        canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
+                    is SavedRasterSnapshot -> {
+                        (if (shared) layer.tiles else animation?.rasterCels?.get(layer.id)?.get(frameId).orEmpty())
+                            .forEach { (coordinate, bitmap) ->
+                                canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
+                            }
+                        if (!shared) animation?.encodedRasterCels?.get(layer.id)?.get(frameId)?.forEach { (coordinate, bytes) ->
+                            val bitmap = requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) { "Cannot decode animation tile" }
+                            try { canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint) }
+                            finally { bitmap.recycle() }
+                        }
                     }
                     is SavedImageSnapshot -> {
                         val imageTransform = if (shared) layer.transform else animation?.imageCels?.get(layer.id)?.get(frameId)

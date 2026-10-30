@@ -21,6 +21,60 @@ class TileStore(
     private var pencilPreviewDot = false
     private val replayLive = ReplayCapture()
     private val tiles = mutableMapOf<TileCoordinate, Bitmap>()
+    internal var encodedBacking: Map<TileCoordinate, ByteArray>? = null
+        private set
+    internal var isResident = true
+        private set
+    internal fun deferTiles(encoded: Map<TileCoordinate, ByteArray>) {
+        discard()
+        encodedBacking = encoded
+        isResident = encoded.isEmpty()
+    }
+    internal fun installDecoded(encoded: Map<TileCoordinate, ByteArray>, decoded: Map<TileCoordinate, Bitmap>) {
+        if (encodedBacking !== encoded || isResident) { decoded.values.forEach(Bitmap::recycle); return }
+        replaceTiles(decoded)
+        encodedBacking = encoded
+        isResident = true
+    }
+    internal fun unloadIfClean() {
+        if (encodedBacking == null || !isResident) return
+        tiles.keys.toList().forEach(::removeTile)
+        isResident = false
+        tileContentBounds.clear(); dirtyContentBoundsTiles.clear(); contentBoundsInitialized = false
+    }
+    internal fun residentBitmaps(): Collection<Bitmap> = tiles.values
+    private fun writableTile(coordinate: TileCoordinate): Bitmap {
+        check(isResident) { "Frame must finish loading before editing" }
+        val old = tiles[coordinate]
+        if (old == null) return Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888).also { tiles[coordinate] = it }
+        if ((sharedReferences[old] ?: 1) <= 1) return old
+        val copy = old.copy(Bitmap.Config.ARGB_8888, true)
+        releaseTile(old)
+        tiles[coordinate] = copy
+        return copy
+    }
+    private fun removeTile(coordinate: TileCoordinate) { tiles.remove(coordinate)?.let(::releaseTile) }
+    private fun releaseTile(bitmap: Bitmap) {
+        val owners = sharedReferences[bitmap] ?: 1
+        if (owners > 1) sharedReferences[bitmap] = owners - 1
+        else { sharedReferences.remove(bitmap); bitmap.recycle() }
+    }
+    companion object {
+        // Ownership changes happen on the surface thread, never on decoding workers.
+        private val sharedReferences = java.util.WeakHashMap<Bitmap, Int>()
+        internal fun decodeTiles(encoded: Map<TileCoordinate, ByteArray>): Map<TileCoordinate, Bitmap> {
+            val decoded = linkedMapOf<TileCoordinate, Bitmap>()
+            try {
+                encoded.forEach { (coordinate, bytes) ->
+                    val bitmap = requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) { "Cannot decode animation tile" }
+                    require(bitmap.width == 256 && bitmap.height == 256) { "Invalid animation tile size" }
+                    decoded[coordinate] = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+                    bitmap.recycle()
+                }
+                return decoded
+            } catch (error: Throwable) { decoded.values.forEach(Bitmap::recycle); throw error }
+        }
+    }
     private var fillTileReader: ((TileCoordinate) -> Bitmap?)? = null
     private val sampledFillTiles = mutableSetOf<TileCoordinate>()
     val history = UndoHistory(historyBudgetBytes)
@@ -33,6 +87,7 @@ class TileStore(
     var lastDirtyTiles: Set<TileCoordinate> = emptySet()
         private set(value) {
             field = value
+            encodedBacking = null
             revision++
             fillReveal?.editedTiles?.addAll(value)
             dirtyContentBoundsTiles += value
@@ -47,9 +102,10 @@ class TileStore(
 
     internal fun putFillPixel(x: Int, y: Int, color: Int): TileCoordinate {
         val coordinate = TileCoordinate(x / tileSize, y / tileSize)
+        encodedBacking = null
         revision++
         fillReveal?.editedTiles?.add(coordinate)
-        tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+        writableTile(coordinate)
             .setPixel(x % tileSize, y % tileSize, color)
         return coordinate
     }
@@ -68,7 +124,7 @@ class TileStore(
             ))
         }
         dirty.forEach { coordinate ->
-            val destination = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val destination = writableTile(coordinate)
             val replacement = overlay.tiles.getValue(coordinate)
             Canvas(destination).apply {
                 drawBitmap(replacement, 0f, 0f, clearFilled)
@@ -102,13 +158,13 @@ class TileStore(
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         val preparedPaint = StrokeCanvasPainter.preparePaint(stroke)
         dirty.forEach { coordinate ->
-            val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val bitmap = writableTile(coordinate)
             val canvas = Canvas(bitmap)
             canvas.save()
             canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
             StrokeCanvasPainter.draw(canvas, stroke, preparedPaint)
             canvas.restore()
-            if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
+            if (bitmap.isFullyTransparent()) { removeTile(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke))))
@@ -136,7 +192,7 @@ class TileStore(
         val preparedPaint = StrokeCanvasPainter.preparePaint(stroke)
         dirty.forEach { coordinate ->
             if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
-            val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val bitmap = writableTile(coordinate)
             val canvas = Canvas(bitmap)
             canvas.save()
             canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
@@ -165,7 +221,7 @@ class TileStore(
         if (captureReplayPreview) replayPreview.add(ReplayPaint(stroke, true, capStart, capEnd, skipFirstSegment))
         val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
         dirty.forEach { coordinate ->
-            val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val bitmap = writableTile(coordinate)
             Canvas(bitmap).apply {
                 save()
                 translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
@@ -184,13 +240,10 @@ class TileStore(
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         dirty.forEach { coordinate ->
             val source = overlay.tiles[coordinate] ?: return@forEach
-            val destination = tiles.getOrPut(coordinate) {
-                Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888)
-            }
+            val destination = writableTile(coordinate)
             Canvas(destination).drawBitmap(source, 0f, 0f, null)
             if (destination.isFullyTransparent()) {
-                destination.recycle()
-                tiles.remove(coordinate)
+                removeTile(coordinate)
             }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
@@ -202,8 +255,9 @@ class TileStore(
     /** Releases all pixels owned by a transient preview store. */
     internal fun discard() {
         pencilPreviewDot = false
-        tiles.values.forEach(Bitmap::recycle)
-        tiles.clear()
+        tiles.keys.toList().forEach(::removeTile)
+        encodedBacking = null
+        isResident = true
         tileContentBounds.clear()
         dirtyContentBoundsTiles.clear()
         contentBoundsInitialized = false
@@ -218,7 +272,7 @@ class TileStore(
         liveStrokeBefore = null
         if (liveStrokeTouched.isEmpty()) return emptySet()
         liveStrokeTouched.forEach { coordinate ->
-            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) } }
+            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { removeTile(coordinate) } }
         }
         val after = liveStrokeTouched.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, stroke?.let(::usageFor), replayLive.commands()))
@@ -242,7 +296,7 @@ class TileStore(
         if (dirty.isEmpty()) return emptySet()
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         dirty.forEach { coordinate ->
-            val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val bitmap = writableTile(coordinate)
             val pressureOpacity = pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)
             val rendered = if (pressureOpacity) Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) else bitmap
             val canvas = Canvas(rendered)
@@ -261,7 +315,7 @@ class TileStore(
                 Canvas(bitmap).drawBitmap(rendered, 0f, 0f, null)
                 rendered.recycle()
             }
-            if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
+            if (bitmap.isFullyTransparent()) { removeTile(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke, ink = inkStroke))))
@@ -285,8 +339,10 @@ class TileStore(
         }
     }
 
-    internal fun snapshotTiles(): Map<TileCoordinate, Bitmap> =
-        tiles.mapValues { (_, bitmap) -> bitmap.copy(Bitmap.Config.ARGB_8888, false) }
+    internal fun snapshotTiles(): Map<TileCoordinate, Bitmap> {
+        check(isResident) { "Use encoded backing for an unloaded frame" }
+        return tiles.mapValues { (_, bitmap) -> bitmap.copy(Bitmap.Config.ARGB_8888, false) }
+    }
 
     internal fun snapshotColorUsage(): Map<Int, Long> = colorUsage.toMap()
 
@@ -397,8 +453,9 @@ class TileStore(
     }
 
     internal fun replaceTiles(replacement: Map<TileCoordinate, Bitmap>) {
-        tiles.values.forEach(Bitmap::recycle)
-        tiles.clear()
+        tiles.keys.toList().forEach(::removeTile)
+        encodedBacking = null
+        isResident = true
         tiles.putAll(replacement)
         tileContentBounds.clear()
         dirtyContentBoundsTiles.clear()
@@ -409,9 +466,17 @@ class TileStore(
 
     internal fun duplicate(selection: SelectionRegion? = null): TileStore {
         val duplicate = TileStore(canvasWidth, canvasHeight, tileSize)
-        val copiedTiles = if (selection == null) {
-            tiles.mapValues { (_, bitmap) -> bitmap.copy(Bitmap.Config.ARGB_8888, true) }
-        } else {
+        if (selection == null) {
+            if (!isResident) { duplicate.deferTiles(requireNotNull(encodedBacking)); return duplicate }
+            tiles.forEach { (coordinate, bitmap) ->
+                sharedReferences[bitmap] = (sharedReferences[bitmap] ?: 1) + 1
+                duplicate.tiles[coordinate] = bitmap
+            }
+            duplicate.encodedBacking = encodedBacking
+            duplicate.replaceColorUsage(colorUsage)
+            return duplicate
+        }
+        val copiedTiles = run {
             val path = selection.toAndroidPath()
             TileGrid.intersecting(selection.bounds, canvasWidth, canvasHeight, tileSize).mapNotNull { coordinate ->
                 val source = tiles[coordinate] ?: return@mapNotNull null
@@ -443,14 +508,15 @@ class TileStore(
         val clear = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
         val path = selection.toAndroidPath()
         dirty.forEach { coordinate ->
-            val bitmap = tiles[coordinate] ?: return@forEach
+            if (coordinate !in tiles) return@forEach
+            val bitmap = writableTile(coordinate)
             Canvas(bitmap).apply {
                 save()
                 translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
                 drawPath(path, clear)
                 restore()
             }
-            if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) }
+            if (bitmap.isFullyTransparent()) { removeTile(coordinate) }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after))
@@ -584,7 +650,7 @@ class TileStore(
         val replacePaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
         fun writePatch(patch: Bitmap, left: Int, top: Int, bounds: dev.tipstroke.core.geometry.Rect) {
             TileGrid.intersecting(bounds, canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
-                val bitmap = tiles.getOrPut(coordinate) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+                val bitmap = writableTile(coordinate)
                 Canvas(bitmap).apply {
                     save()
                     clipPath(Path().apply {
@@ -618,7 +684,7 @@ class TileStore(
         smudgeBefore = null
         if (smudgeTouched.isEmpty()) return
         smudgeTouched.forEach { coordinate ->
-            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) } }
+            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { removeTile(coordinate) } }
         }
         val after = smudgeTouched.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after))
@@ -662,7 +728,8 @@ class TileStore(
             xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
         }
         sourceTiles.forEach { coordinate ->
-            tiles[coordinate]?.let { bitmap ->
+            tiles[coordinate]?.let {
+                val bitmap = writableTile(coordinate)
                 Canvas(bitmap).apply {
                     save()
                     translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
@@ -676,7 +743,7 @@ class TileStore(
         val copyPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val destinationPath = destinationRegion.toAndroidPath()
         destinationTiles.forEach { destination ->
-            val bitmap = tiles.getOrPut(destination) { Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) }
+            val bitmap = writableTile(destination)
             val canvas = Canvas(bitmap)
             canvas.save()
             canvas.translate((-destination.x * tileSize).toFloat(), (-destination.y * tileSize).toFloat())
@@ -694,7 +761,7 @@ class TileStore(
         selectedPixels.values.forEach(Bitmap::recycle)
 
         dirty.forEach { coordinate ->
-            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { bitmap.recycle(); tiles.remove(coordinate) } }
+            tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { removeTile(coordinate) } }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after))
@@ -723,7 +790,7 @@ class TileStore(
 
     private fun restore(snapshot: Map<TileCoordinate, Bitmap?>) {
         snapshot.forEach { (coordinate, saved) ->
-            tiles.remove(coordinate)?.recycle()
+            removeTile(coordinate)
             saved?.let { tiles[coordinate] = it.copy(Bitmap.Config.ARGB_8888, true) }
         }
         lastDirtyTiles = snapshot.keys

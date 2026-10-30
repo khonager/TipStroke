@@ -25,6 +25,7 @@ data class AnimationUiState(
     val backgroundLayerIds: Set<LayerId>,
     val recording: AnimationRecordingKind? = null,
     val thumbnailRevision: Int = 0,
+    val loading: Boolean = false,
 )
 
 enum class AnimationRecordingKind { IMAGE_MOTION, LIVE_DRAWING }
@@ -184,9 +185,14 @@ internal class AnimationRuntime(
 
     fun inactiveTileBytes(): Long {
         val active = stack.layers.filterIsInstance<RasterLayerRuntime>().mapTo(mutableSetOf()) { it.tiles }
-        val counted = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<TileStore, Boolean>())
-        return rasterCels.values.flatMap { it.values }.filter { it !in active && counted.add(it) }
-            .sumOf { it.allocatedTileBytes + it.history.estimatedBytes }
+        val bitmaps = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Bitmap, Boolean>())
+        active.forEach { bitmaps.addAll(it.residentBitmaps()) }
+        val encoded = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<ByteArray, Boolean>())
+        return rasterCels.values.flatMap { it.values }.distinct().sumOf { store ->
+            val pixels = store.residentBitmaps().filter { bitmaps.add(it) }.sumOf { it.allocationByteCount.toLong() }
+            val compressed = store.encodedBacking?.values.orEmpty().filter { encoded.add(it) }.sumOf { it.size.toLong() }
+            pixels + compressed + if (store in active) 0L else store.history.estimatedBytes
+        }
     }
 
     fun copySelectedRasterCelToNewLayer(move: Boolean): LayerId? {
@@ -314,13 +320,54 @@ internal class AnimationRuntime(
         onionBefore, onionAfter, onionOpacity, backgroundLayerIds.toSet(), recording, thumbnailRevision,
     )
 
+    private val loading = java.util.IdentityHashMap<TileStore, MutableList<(Result<Unit>) -> Unit>>()
+    fun framesResident(indices: Collection<Int>): Boolean = indices.all { index ->
+        val id = frames.getOrNull(index)?.id
+        rasterCels.values.all { it[id]?.isResident != false }
+    }
+    fun prepareFrames(indices: Collection<Int>, complete: (Result<Unit>) -> Unit) {
+        val ids = indices.mapNotNull { frames.getOrNull(it)?.id }.toSet()
+        val stores = rasterCels.values.flatMap { cels -> cels.filterKeys { it in ids }.values }.filter { !it.isResident }.distinct()
+        if (stores.isEmpty()) { complete(Result.success(Unit)); return }
+        var remaining = stores.size
+        var failure: Throwable? = null
+        stores.forEach { store ->
+            val callback: (Result<Unit>) -> Unit = { result ->
+                result.exceptionOrNull()?.let { failure = it }
+                remaining--
+                if (remaining == 0) complete(failure?.let { Result.failure(it) } ?: Result.success(Unit))
+            }
+            val existing = loading[store]
+            if (existing != null) existing += callback
+            else {
+                loading[store] = mutableListOf(callback)
+                val encoded = requireNotNull(store.encodedBacking)
+                AnimationDecoding.executor.execute {
+                    val decoded = runCatching { TileStore.decodeTiles(encoded) }
+                    ProjectPersistence.mainHandler.post {
+                        val result = decoded.map { store.installDecoded(encoded, it) }
+                        loading.remove(store)?.forEach { it(result) }
+                    }
+                }
+            }
+        }
+    }
+    fun trimCleanFrames(keep: Set<Int>) {
+        val ids = keep.mapNotNull { frames.getOrNull(it)?.id }.toSet()
+        val active = stack.layers.filterIsInstance<RasterLayerRuntime>().map { it.tiles }.toSet()
+        rasterCels.values.forEach { cels -> cels.forEach { (id, store) ->
+            if (id !in ids && store !in active && store !in loading) store.unloadIfClean()
+        } }
+    }
+
     fun snapshot(): SavedAnimationSnapshot {
         saveActiveImageTransforms()
         return SavedAnimationSnapshot(
             frames.toList(), selectedIndex, fps, playbackMode,
             onionBefore, onionAfter, onionOpacity, backgroundLayerIds.toSet(),
-            rasterCels.mapValues { (_, cels) -> cels.mapValues { (_, store) -> store.snapshotTiles() } },
+            rasterCels.mapValues { (_, cels) -> cels.mapValues { (_, store) -> if (store.encodedBacking == null) store.snapshotTiles() else emptyMap() } },
             imageCels.mapValues { (_, cels) -> cels.toMap() },
+            rasterCels.mapValues { (_, cels) -> cels.mapNotNull { (id, store) -> store.encodedBacking?.let { id to it } }.toMap() },
         )
     }
 
@@ -331,6 +378,13 @@ internal class AnimationRuntime(
         saved.rasterCels.forEach { (layerId, cels) ->
             rasterCels[layerId] = cels.mapValuesTo(linkedMapOf()) { (_, tiles) ->
                 TileStore(stack.canvasWidth, stack.canvasHeight).apply { replaceTiles(tiles) }
+            }
+        }
+        saved.encodedRasterCels.forEach { (layerId, cels) ->
+            val stores = rasterCels.getOrPut(layerId) { linkedMapOf() }
+            cels.forEach { (frameId, encoded) ->
+                stores[frameId]?.discard()
+                stores[frameId] = TileStore(stack.canvasWidth, stack.canvasHeight).apply { deferTiles(encoded) }
             }
         }
         imageCels.clear()
@@ -366,5 +420,11 @@ internal class AnimationRuntime(
         val referenced = stack.layers.filterIsInstance<RasterLayerRuntime>().mapTo(mutableSetOf()) { it.tiles }
         rasterCels.values.forEach { referenced += it.values }
         candidates.distinct().filter { it !in referenced }.forEach(TileStore::discard)
+    }
+}
+
+internal object AnimationDecoding {
+    val executor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "TipStroke-animation-decode").apply { isDaemon = true }
     }
 }

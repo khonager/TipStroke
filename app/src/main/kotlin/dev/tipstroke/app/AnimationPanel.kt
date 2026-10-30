@@ -91,6 +91,7 @@ internal fun AnimationPanel(
         shape = RoundedCornerShape(15.dp), border = BorderStroke(1.dp, Color(0x885D626B)), shadowElevation = 8.dp,
     ) {
         Column {
+        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Row(Modifier.height(58.dp).padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onPlayPause, modifier = Modifier.width(48.dp).semantics {
                 contentDescription = if (state.playing) "Pause animation" else "Play animation"
