@@ -19,6 +19,43 @@ import java.util.concurrent.TimeUnit
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LazyAnimationTest {
+    @Test fun slowPlaybackLoadsOneFrameAtATimeAndPauseCancelsPendingSelection() {
+        val context = RuntimeEnvironment.getApplication()
+        val surface = DrawingSurface(context)
+        surface.layout(0, 0, 512, 512); surface.configureBlank(256, 256)
+        surface.enableAnimation(false)
+        surface.addAnimationFrame(); surface.addAnimationFrame()
+        surface.setOnionSkin(0, 0, .3f)
+        surface.selectAnimationFrame(0)
+        surface.setAnimationFps(10)
+        val field = DrawingSurface::class.java.getDeclaredField("animation").apply { isAccessible = true }
+        val animation = field.get(surface) as AnimationRuntime
+        val store = (surface.getChildAt(0) as RasterCanvasView).layerStack
+        val bytes = java.io.ByteArrayOutputStream()
+        Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).also {
+            it.eraseColor(Color.BLUE); it.compress(Bitmap.CompressFormat.PNG, 100, bytes); it.recycle()
+        }
+        for (index in 1..2) animation.celRaster(store.selectedId, animation.frames[index].id)!!.deferTiles(
+            mapOf(TileCoordinate(0, 0) to bytes.toByteArray()))
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        AnimationDecoding.executor.execute { entered.countDown(); release.await(10, TimeUnit.SECONDS) }
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        try {
+            surface.toggleAnimationPlayback()
+            shadowOf(Looper.getMainLooper()).idleFor(250, TimeUnit.MILLISECONDS)
+            val pending = DrawingSurface::class.java.getDeclaredField("pendingAnimationFrame").apply { isAccessible = true }
+            assertEquals(animation.frames[1].id.value, pending.get(surface))
+            assertEquals(0, animation.selectedIndex)
+            surface.toggleAnimationPlayback()
+            assertNull(pending.get(surface))
+        } finally { release.countDown() }
+        AnimationDecoding.executor.submit {}.get(10, TimeUnit.SECONDS)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, animation.selectedIndex)
+        assertFalse(animation.celRaster(store.selectedId, animation.frames[2].id)!!.isResident)
+    }
+
     @Test fun unloadedFramesSurviveSaveExportLoadingAndEviction() {
         val context = RuntimeEnvironment.getApplication()
         val library = DrawingLibrary(context)

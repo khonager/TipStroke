@@ -964,6 +964,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun selectAnimationFrame(index: Int) = selectAnimationFrame(index, fromPlayback = false)
     private fun selectAnimationFrame(index: Int, fromPlayback: Boolean) {
+        if (fromPlayback && pendingAnimationFrame != null) return
         cancelFill()
         val active = animation ?: return
         if (activeDrawingPointerId != null) return
@@ -1174,6 +1175,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun stopAnimationPlayback() {
         if (!animationPlaying) return
         animationPlaying = false
+        pendingAnimationFrame = null
         strokeRecording = null
         rasterView.animationPlaying = false
         gestureHandler.removeCallbacks(playbackStep)
