@@ -403,7 +403,7 @@ fun CanvasScreen(
             (WindowInsets.safeDrawing.getLeft(this, androidx.compose.ui.unit.LayoutDirection.Ltr) +
                 WindowInsets.safeDrawing.getRight(this, androidx.compose.ui.unit.LayoutDirection.Ltr)).toDp()
         }
-        val landscapeDock = compactPhone && !portrait && safeWidth >= 640.dp
+        val landscapeDock = compactPhone && !portrait && safeWidth >= 560.dp
         fun manuallyHidePhoneChrome() {
             if (!compactPhone) return
             phoneChromeManuallyHidden = true
@@ -537,7 +537,7 @@ fun CanvasScreen(
                 onDebug = { debug = !debug },
                 onHide = ::manuallyHidePhoneChrome,
                 modifier = Modifier.align(if (landscapeDock) Alignment.TopStart else Alignment.TopCenter)
-                    .safeDrawingPadding().padding(8.dp).then(if (landscapeDock) Modifier.width(308.dp) else Modifier),
+                    .safeDrawingPadding().padding(4.dp).then(if (landscapeDock) Modifier.width(308.dp) else Modifier),
             )
         } else if (!resizeOpen && phoneChromeManuallyHidden) {
             PhoneChromeHandle(
@@ -602,8 +602,9 @@ fun CanvasScreen(
             )
         } else if (!resizeOpen && phoneChromeVisible) {
             Column(
-                Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
-                    .safeDrawingPadding().padding(8.dp)
+                Modifier.align(if (!portrait) Alignment.TopEnd else Alignment.BottomCenter)
+                    .safeDrawingPadding().padding(start = 4.dp, end = 4.dp, bottom = 4.dp,
+                        top = if (!portrait && !landscapeDock) 64.dp else 4.dp)
                     .then(if (landscapeDock) Modifier.width(safeWidth - 340.dp) else Modifier.widthIn(max = 520.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -683,7 +684,7 @@ fun CanvasScreen(
 
         if (imageTransforming && !layersOpen && !resizeOpen) Surface(
             modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding()
-                .padding(start=12.dp,end=12.dp,bottom=88.dp).widthIn(max=520.dp),
+                .padding(start=8.dp,end=8.dp,bottom=if (compactPhone && !portrait) 4.dp else 88.dp).widthIn(max=520.dp),
             color = Color(0xEE202125), shape = RoundedCornerShape(18.dp),
         ) {
             Column(Modifier.padding(12.dp)) {
@@ -804,7 +805,7 @@ fun CanvasScreen(
                 onCancelRecording = { surface?.cancelAnimationRecording() },
                 onClose = { animationOpen = false },
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(bottom = if (compactPhone) 75.dp else if (portrait) 95.dp else 12.dp),
+                    .padding(bottom = if (compactPhone && !portrait) 4.dp else if (compactPhone) 75.dp else if (portrait) 95.dp else 12.dp),
             )
         }
 

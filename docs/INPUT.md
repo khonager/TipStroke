@@ -256,3 +256,5 @@ It does not yet implement tilt, hover, predicted touches, late force correction,
 Pencil Pro squeeze/roll, rotation gestures or Android gesture preferences. Resizing
 or rotating the window refits the document without altering its pixels. All tools
 stay within the safe area; layer and brush controls open as system sheets.
+
+While drawing, the status bar is hidden; swiping from the edge reveals system bars temporarily. The navigation-bar preference remains independent. Leaving the editor restores system bars. Phone landscape places the timeline at the bottom edge and the main controls close to the top, retaining cutout insets.
