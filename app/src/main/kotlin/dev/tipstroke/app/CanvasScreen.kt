@@ -116,7 +116,8 @@ fun CanvasScreen(
     var pendingAnimationExport by remember { mutableStateOf<AnimationExportRequest?>(null) }
     var imageTransforming by remember { mutableStateOf(false) }
     var photoTool by remember { mutableStateOf(PhotoEditTool.MOVE) }
-    var photoSnapping by remember { mutableStateOf(false) }
+    var photoSnapping by remember(gestureSettings.imageSnapping) { mutableStateOf(gestureSettings.imageSnapping) }
+    var snapOptionsOpen by remember { mutableStateOf(false) }
     var photoRadius by remember { mutableFloatStateOf(.25f) }
 
     var selectToolActive by remember { mutableStateOf(initialSelectionOpen) }
@@ -705,8 +706,12 @@ fun CanvasScreen(
                     Slider(photoRadius,{ photoRadius=it },valueRange=.08f..1f)
                 }
                 Row(verticalAlignment=Alignment.CenterVertically) {
-                    Checkbox(photoSnapping,{ photoSnapping=it },Modifier.semantics { contentDescription = "Snap photo edges and angles" })
+                    Checkbox(photoSnapping,{
+                        photoSnapping=it
+                        onGestureSettingsChange?.invoke(gestureSettings.copy(imageSnapping = it))
+                    },Modifier.semantics { contentDescription = "Snap photo edges and angles" })
                     Text("Snap",color=Color.White)
+                    TextButton(onClick = { snapOptionsOpen = true }) { Text("Options") }
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick={ surface?.resetPhotoShape() }) { Text("Reset shape") }
                     TextButton(onClick={ imageTransforming=false }) { Text("Done") }
@@ -1005,6 +1010,31 @@ fun CanvasScreen(
             putExtra(Intent.EXTRA_TITLE, request.fileName)
         })
     }
+
+    if (snapOptionsOpen) AlertDialog(
+        onDismissRequest = { snapOptionsOpen = false },
+        title = { Text("Image snapping") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Align edges, corners and centers with the canvas or other images. Drag away to release.")
+                Spacer(Modifier.height(12.dp))
+                Text("Angle spacing")
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(5, 15, 30, 45, 90).forEach { angle ->
+                        FilterChip(selected = gestureSettings.imageSnapAngle == angle,
+                            onClick = { onGestureSettingsChange?.invoke(gestureSettings.copy(imageSnapAngle = angle)) },
+                            label = { Text("$angle°") })
+                    }
+                }
+                Text("Snap strength: ${(gestureSettings.imageSnapStrength * 100).roundToInt()}%")
+                Slider(gestureSettings.imageSnapStrength,
+                    { onGestureSettingsChange?.invoke(gestureSettings.copy(imageSnapStrength = it)) },
+                    modifier = Modifier.semantics { contentDescription = "Image snap strength" })
+                Text("Light catches only very close alignments. Strong catches from farther away.")
+            }
+        },
+        confirmButton = { TextButton(onClick = { snapOptionsOpen = false }) { Text("Done") } },
+    )
 
     if (animationActivationOpen) AlertDialog(
         onDismissRequest = { animationActivationOpen = false },

@@ -269,18 +269,20 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun snapPhoto(image: ImageLayerRuntime, proposed: ImageTransform): ImageTransform {
-        val candidates = listOf((proposed.rotationDegrees/15f).roundToInt()*15f) +
+        val step = settings.gestures.imageSnapAngle.toFloat()
+        val strength = settings.gestures.imageSnapStrength
+        val candidates = listOf((proposed.rotationDegrees/step).roundToInt()*step) +
             layerStack.layers.filterIsInstance<ImageLayerRuntime>().filter { it.id != image.id && it.visible }.map {
                 it.transform.rotationDegrees + ((proposed.rotationDegrees-it.transform.rotationDegrees)/360f).roundToInt()*360f
             }
         val angle=candidates.minBy { abs(it-proposed.rotationDegrees) }
-        val rotated=if(abs(angle-proposed.rotationDegrees)<3f) proposed.copy(rotationDegrees=angle) else proposed
+        val rotated=if(abs(angle-proposed.rotationDegrees)<minOf(step * .3f, .5f + 5f * strength)) proposed.copy(rotationDegrees=angle) else proposed
         val bounds=rotated.photoBounds(image.source.width,image.source.height)
         val targets=mutableListOf(android.graphics.RectF(0f,0f,layerStack.canvasWidth.toFloat(),layerStack.canvasHeight.toFloat()))
         layerStack.layers.filterIsInstance<ImageLayerRuntime>().filter { it.id != image.id && it.visible }.forEach {
             targets += it.transform.photoBounds(it.source.width,it.source.height)
         }
-        val tolerance=10f*resources.displayMetrics.density/rasterView.transform.scale
+        val tolerance=(2f + 16f * strength)*resources.displayMetrics.density/rasterView.transform.scale
         fun closest(values: List<Float>, anchors: List<Float>): Float = values.flatMap { v -> anchors.map { it-v } }
             .filter { abs(it)<tolerance }.minByOrNull { abs(it) } ?: 0f
         val x=closest(listOf(bounds.left,bounds.centerX(),bounds.right),targets.flatMap { listOf(it.left,it.centerX(),it.right) })

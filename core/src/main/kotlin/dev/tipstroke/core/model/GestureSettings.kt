@@ -30,10 +30,15 @@ data class GestureSettings(
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.TOGGLE_ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.UNDO,
     val fillAnimationMillis: Long = 2500L,
+    val imageSnapping: Boolean = false,
+    val imageSnapAngle: Int = 15,
+    val imageSnapStrength: Float = .5f,
 ) {
     init {
         require(holdDelayMillis in 150L..1500L)
         require(fillAnimationMillis in 250L..5000L)
         require(smudgeStrength in 0f..1f)
+        require(imageSnapAngle in listOf(5, 15, 30, 45, 90))
+        require(imageSnapStrength in 0f..1f)
     }
 }

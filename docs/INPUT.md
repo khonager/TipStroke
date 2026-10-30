@@ -258,3 +258,5 @@ or rotating the window refits the document without altering its pixels. All tool
 stay within the safe area; layer and brush controls open as system sheets.
 
 While drawing, the status bar is hidden; swiping from the edge reveals system bars temporarily. The navigation-bar preference remains independent. Leaving the editor restores system bars. Phone landscape places the timeline at the bottom edge and the main controls close to the top, retaining cutout insets.
+
+Image Move → Snap → Options saves angle spacing (5°, 15°, 30°, 45°, or 90°) and snap strength. Edges, centers, and corners align with the canvas and visible images. Strength controls the capture distance in screen space and the angular tolerance; movement accumulates against the unsnapped transform so dragging away releases the snap without a sticky offset. Snapping remains optional.

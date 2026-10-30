@@ -97,6 +97,14 @@ class PhotoEditingTest {
             assertEquals(0f,snapped.rotationDegrees,.001f)
             val free=snap.invoke(surface,image,ImageTransform(44f,44f,1f,7f)) as ImageTransform
             assertEquals(7f,free.rotationDegrees,.001f)
+            surface.settings.gestures = surface.settings.gestures.copy(imageSnapAngle = 90, imageSnapStrength = 0f)
+            val light = snap.invoke(surface,image,ImageTransform(44f,44f,1f,88f)) as ImageTransform
+            assertEquals(88f,light.rotationDegrees,.001f)
+            surface.settings.gestures = surface.settings.gestures.copy(imageSnapStrength = 1f)
+            val strong = snap.invoke(surface,image,ImageTransform(44f,44f,1f,88f)) as ImageTransform
+            assertEquals(90f,strong.rotationDegrees,.001f)
+            val away = snap.invoke(surface,image,ImageTransform(44f,44f,1f,80f)) as ImageTransform
+            assertEquals(80f,away.rotationDegrees,.001f)
         } finally { file.delete() }
     }
 }
