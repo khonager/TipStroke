@@ -122,7 +122,7 @@ Preparation also records each pixel's connectivity-aware arrival radius. These
 are stored as sparse unsigned 16-bit values, then normalized into sparse ALPHA_8
 masks. The finite document bounds result allocation; there is no 128-tile fill cutoff. `FillReveal` thresholds those masks
 against an elapsed-time clock using `GestureSettings.fillAnimationMillis`
-(250–5,000 ms, default 2,500), compositing immutable
+(250–5,000 ms, default 500), compositing immutable
 before-history tiles with current raster tiles at the original layer opacity.
 The mask and original pixels are independent of Pencil's preview. A tile modified
 after fill commit reveals immediately; later strokes and erasures remain real

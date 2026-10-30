@@ -12,7 +12,7 @@ class GesturePreferences(context: Context) {
         twoFingerTap = action("two_tap", FingerAction.UNDO),
         threeFingerTap = action("three_tap", FingerAction.REDO),
         holdDelayMillis = preferences.getLong("hold_delay", 420L).coerceIn(150L, 1500L),
-        fillAnimationMillis = preferences.getLong("fill_animation_ms", 2500L).coerceIn(250L, 5000L),
+        fillAnimationMillis = preferences.getLong("fill_animation_ms", GestureSettings().fillAnimationMillis).coerceIn(250L, 5000L),
         smudgeStrength = preferences.getFloat("smudge_strength", .45f).coerceIn(0f, 1f),
         imageSnapping = preferences.getBoolean("image_snapping", false),
         imageSnapAngle = preferences.getInt("image_snap_angle", 15).takeIf { it in listOf(5, 15, 30, 45, 90) } ?: 15,

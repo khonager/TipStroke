@@ -29,7 +29,7 @@ data class GestureSettings(
     val showStylusHoverPreview: Boolean = true,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.TOGGLE_ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.UNDO,
-    val fillAnimationMillis: Long = 2500L,
+    val fillAnimationMillis: Long = 500L,
     val imageSnapping: Boolean = false,
     val imageSnapAngle: Int = 15,
     val imageSnapStrength: Float = .5f,

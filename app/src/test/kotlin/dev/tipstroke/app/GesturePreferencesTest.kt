@@ -16,7 +16,7 @@ class GesturePreferencesTest {
         val storage = context.getSharedPreferences("gesture-settings", android.content.Context.MODE_PRIVATE)
         storage.edit().clear().commit()
         val preferences = GesturePreferences(context)
-        assertEquals(2500L, preferences.load().fillAnimationMillis)
+        assertEquals(500L, preferences.load().fillAnimationMillis)
         storage.edit().putLong("fill_animation_ms", -100L).commit()
         assertEquals(250L, preferences.load().fillAnimationMillis)
         storage.edit().putLong("fill_animation_ms", 99999L).commit()

@@ -67,7 +67,7 @@ Other layers are not boundary references. Image layers must be painted on a rast
 layer instead. Color alpha is respected; brush size and brush opacity do not apply.
 
 A circular wave reveals the prepared fill over the duration chosen in Settings →
-Fill animation → Duration (0.25–5 seconds, default 2.5 seconds). Shorter is faster;
+Fill animation → Duration (0.25–5 seconds, default 0.5 seconds). Shorter is faster;
 the duration stays independent of region size, canvas resolution, or zoom. Preparation happens on a worker. Pausing the dragged color over the canvas for
 125 ms starts one bounded preparation attempt; it pauses after approximately
 150 ms of work until release. Movement away or cancellation discards speculative
