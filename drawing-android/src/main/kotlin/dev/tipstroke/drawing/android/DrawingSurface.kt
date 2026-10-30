@@ -21,6 +21,8 @@ import dev.tipstroke.core.geometry.QuickShape
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.Rect
 import dev.tipstroke.core.geometry.SelectionRegion
+import dev.tipstroke.core.geometry.SelectionTransform
+import dev.tipstroke.core.geometry.transformed
 import dev.tipstroke.core.model.*
 import kotlin.math.*
 
@@ -345,6 +347,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private val selectionPoints = mutableListOf<Point>()
     private var selectionRegion: SelectionRegion? = null
     private var selectionMoveMode = false
+    private var transformSelectionOriginal: SelectionRegion? = null
+    private var pendingSelectionTransform: SelectionTransform? = null
+    private var selectionTransformFiltered = true
     private var selectionMoveStart: android.graphics.PointF? = null
     var selectionListener: ((Boolean, Boolean) -> Unit)? = null
 
@@ -834,7 +839,72 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (selectionMoveMode) selectionMode = false
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
+    fun beginSelectionTransform(): Boolean {
+        val selection = selectionRegion ?: return false
+        if (activeDrawingPointerId != null || pendingAnimationFrame != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return false
+        val ids = layerStack.selectedLayerIds()
+        val targets = layerStack.layers.filter { it.id in ids && it.activeAtFrame }
+        if (targets.isEmpty() || targets.any { it !is RasterLayerRuntime }) return false
+        cancelFill(); clearMovePreview()
+        selectionMoveMode = false
+        selectionMode = false
+        transformSelectionOriginal = selection
+        rasterView.movingLayerIds = ids
+        rasterView.movingSelectionPath = selection.toAndroidPath()
+        previewSelectionTransform(1f, 1f, 0f, true)
+        return true
+    }
+    fun previewSelectionTransform(scaleX: Float, scaleY: Float, rotation: Float, filtered: Boolean) {
+        val selection = transformSelectionOriginal ?: return
+        val bounds = selection.bounds
+        val transform = SelectionTransform(Point((bounds.left + bounds.right) / 2f, (bounds.top + bounds.bottom) / 2f),
+            scaleX, scaleY, rotation)
+        pendingSelectionTransform = transform
+        selectionTransformFiltered = filtered
+        rasterView.selectionPreviewFiltered = filtered
+        rasterView.selectionPreviewMatrix = transform.toAndroidMatrix()
+    }
+    fun cancelSelectionTransform() {
+        transformSelectionOriginal = null
+        pendingSelectionTransform = null
+        clearMovePreview()
+        selectionMode = true
+        selectionListener?.invoke(selectionMode, selectionRegion != null)
+    }
+    fun applySelectionTransform(): Boolean {
+        val selection = transformSelectionOriginal ?: return false
+        val transform = pendingSelectionTransform ?: return false
+        val ids = rasterView.movingLayerIds
+        val edits = mutableListOf<UndoTransaction>()
+        layerStack.layers.filterIsInstance<RasterLayerRuntime>().filter { it.id in ids && it.activeAtFrame }.forEach { layer ->
+            if (layer.tiles.transformSelection(selection, transform, selectionTransformFiltered).isNotEmpty()) {
+                layer.tiles.history.takeLatestUndoTransaction()?.let(edits::add)
+            }
+        }
+        val transformed = selection.transformed(transform)
+        if (edits.isNotEmpty()) {
+            edits += object : UndoTransaction {
+                private fun regionBytes(region: SelectionRegion?): Long = if (region == null) 0L else
+                    64L + region.points.size * 8L + regionBytes(region.left) + regionBytes(region.right)
+                override val estimatedBytes = regionBytes(selection) + regionBytes(transformed)
+                private fun show(region: SelectionRegion) {
+                    selectionRegion = region; rasterView.selectionRegion = region
+                    selectionListener?.invoke(selectionMode, true)
+                }
+                override fun undo() = show(selection)
+                override fun redo() = show(transformed)
+            }
+            commitCompoundEdit(edits)
+            selectionRegion = transformed
+            rasterView.selectionRegion = transformed
+        }
+        cancelSelectionTransform()
+        rasterView.invalidate(); notifyHistory(); notifyLayers(); notifyVisiblePalette()
+        return true
+    }
+
     fun clearSelection() {
+        transformSelectionOriginal = null; pendingSelectionTransform = null
         selectionPointerId = null
         previousSelection = null
         clearMovePreview()
@@ -1253,7 +1323,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!isEnabled || pendingAnimationFrame != null) return true
+        if (!isEnabled || pendingAnimationFrame != null || transformSelectionOriginal != null) return true
         resizeOverlay?.let { return it.dispatchTouchEvent(event) }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             stopAnimationPlayback()
@@ -1805,6 +1875,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.movingLayerIds = emptySet()
         rasterView.movingSelectionPath = null
         rasterView.selectionPreviewOffset = Point(0f, 0f)
+        rasterView.selectionPreviewMatrix = null
     }
 
     private fun handleSelectionMove(event: MotionEvent): Boolean {

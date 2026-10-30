@@ -769,6 +769,62 @@ class TileStore(
         return dirty
     }
 
+    /** One sparse edit; preview uses a matrix and never resamples the source tiles. */
+    internal fun transformSelection(
+        selection: SelectionRegion,
+        transform: dev.tipstroke.core.geometry.SelectionTransform,
+        filtered: Boolean = true,
+    ): Set<TileCoordinate> {
+        if (transform.isIdentity) return emptySet()
+        check(isResident)
+        val matrix = transform.toAndroidMatrix()
+        val inverse = Matrix().also { check(matrix.invert(it)) }
+        val path = selection.toAndroidPath()
+        val selected = duplicate(selection)
+        if (selected.tiles.isEmpty()) { selected.discard(); return emptySet() }
+        try {
+            val sourceTiles = selected.tiles.keys.toSet()
+            val destinationTiles = sourceTiles.flatMapTo(mutableSetOf()) { coordinate ->
+                val bounds = RectF(coordinate.x * tileSize.toFloat(), coordinate.y * tileSize.toFloat(),
+                    (coordinate.x + 1) * tileSize.toFloat(), (coordinate.y + 1) * tileSize.toFloat())
+                matrix.mapRect(bounds)
+                TileGrid.intersecting(dev.tipstroke.core.geometry.Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                    canvasWidth, canvasHeight, tileSize)
+            }
+            val dirty = sourceTiles + destinationTiles
+            val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+            val clear = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
+            sourceTiles.forEach { coordinate ->
+                Canvas(writableTile(coordinate)).apply {
+                    translate(-coordinate.x * tileSize.toFloat(), -coordinate.y * tileSize.toFloat())
+                    drawPath(path, clear)
+                }
+            }
+            val paint = Paint().apply { isFilterBitmap = filtered; isAntiAlias = false }
+            destinationTiles.forEach { coordinate ->
+                val bounds = RectF(coordinate.x * tileSize.toFloat(), coordinate.y * tileSize.toFloat(),
+                    (coordinate.x + 1) * tileSize.toFloat(), (coordinate.y + 1) * tileSize.toFloat())
+                inverse.mapRect(bounds)
+                bounds.inset(-1f, -1f)
+                val sources = TileGrid.intersecting(dev.tipstroke.core.geometry.Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                    canvasWidth, canvasHeight, tileSize)
+                Canvas(writableTile(coordinate)).apply {
+                    translate(-coordinate.x * tileSize.toFloat(), -coordinate.y * tileSize.toFloat())
+                    concat(matrix)
+                    clipPath(path)
+                    sources.forEach { source -> selected.tiles[source]?.let { bitmap ->
+                        drawBitmap(bitmap, source.x * tileSize.toFloat(), source.y * tileSize.toFloat(), paint)
+                    } }
+                }
+            }
+            dirty.forEach { coordinate -> if (tiles[coordinate]?.isFullyTransparent() == true) removeTile(coordinate) }
+            val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+            history.push(TileSnapshotTransaction(this, before, after))
+            lastDirtyTiles = dirty
+            return dirty
+        } finally { selected.discard() }
+    }
+
     private fun Bitmap.isFullyTransparent(): Boolean {
         val row = IntArray(width)
         for (y in 0 until height) { getPixels(row, 0, width, 0, y, width, 1); if (row.any { Color.alpha(it) != 0 }) return false }

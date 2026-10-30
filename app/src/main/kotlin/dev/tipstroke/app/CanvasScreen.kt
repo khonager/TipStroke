@@ -127,6 +127,7 @@ fun CanvasScreen(
     var selectionOperation by remember { mutableStateOf(dev.tipstroke.core.geometry.SelectionOperation.REPLACE) }
     var selectionTool by remember { mutableStateOf(SelectionTool.LASSO) }
     var movingSelection by remember { mutableStateOf(false) }
+    var selectionTransformOpen by remember { mutableStateOf(false) }
     var hasSelection by remember { mutableStateOf(false) }
     var brushStudioOpen by remember { mutableStateOf(false) }
     var brushHardness by remember { mutableFloatStateOf(initialBrushTuning.hardness) }
@@ -692,6 +693,12 @@ fun CanvasScreen(
             onMove = { movingSelection = !movingSelection; selectionMode = false },
             onSelectAll = { surface?.selectAll() },
             onDuplicate = { surface?.duplicateSelection() },
+            canTransform = selectedLayerIds.isNotEmpty() && selectedLayerIds.all { id -> layers.any { it.id == id && it.kind == LayerKind.RASTER } },
+            onTransform = {
+                if (surface?.beginSelectionTransform() == true) {
+                    movingSelection = false; selectionMode = false; selectionTransformOpen = true
+                }
+            },
             onClear = { movingSelection = false; surface?.clearSelection() },
             modifier = if (compactPhone) Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
                 .safeDrawingPadding().padding(start = 8.dp, end = 8.dp, top = if (landscapeDock) 80.dp else 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
@@ -828,6 +835,30 @@ fun CanvasScreen(
                 onClose = { animationOpen = false },
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                     .padding(bottom = if (compactPhone && !portrait) 4.dp else if (compactPhone) 75.dp else if (portrait) 95.dp else 12.dp),
+            )
+        }
+
+        if (selectionTransformOpen) {
+            fun cancelTransform() {
+                surface?.cancelSelectionTransform()
+                selectionTransformOpen = false; selectionMode = true
+            }
+            BackHandler { cancelTransform() }
+            DisposableEffect(surface) { onDispose { surface?.cancelSelectionTransform() } }
+            Box(Modifier.fillMaxSize().clickable(
+                interactionSource = remember { MutableInteractionSource() }, indication = null,
+            ) {})
+            SelectionTransformPanel(
+                initialFiltered = pixelTool == null && !smallCanvas,
+                onPreview = { x, y, angle, filtered -> surface?.previewSelectionTransform(x, y, angle, filtered) },
+                onApply = {
+                    if (surface?.applySelectionTransform() == true) {
+                        selectionTransformOpen = false; selectionMode = true
+                    }
+                },
+                onCancel = ::cancelTransform,
+                modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(8.dp)
+                    .widthIn(max = 500.dp).fillMaxWidth().heightIn(max = (viewportHeight * .55f).coerceAtMost(360.dp)),
             )
         }
 
@@ -1394,7 +1425,8 @@ private fun PhoneBrushDock(
     onInvert: () -> Unit, onCut: () -> Unit, onDelete: () -> Unit,
     hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, canDuplicate: Boolean,
     onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit,
-    onDuplicate: () -> Unit, onClear: () -> Unit, modifier: Modifier = Modifier,
+    onDuplicate: () -> Unit, onClear: () -> Unit, canTransform: Boolean, onTransform: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var menu by remember { mutableStateOf<String?>(null) }
     Surface(modifier, color = Color(0xED202125), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
@@ -1405,6 +1437,8 @@ private fun PhoneBrushDock(
                     DropdownMenu(menu == "shape", { menu = null }) {
                         SelectionTool.entries.forEach { shape -> DropdownMenuItem(text = { Text(shape.name.lowercase().replaceFirstChar { it.uppercase() }) }, onClick = { onTool(shape); menu = null }) }
                         DropdownMenuItem(text = { Text("Move pixels") }, enabled = hasSelection && canMove, onClick = { onMove(); menu = null })
+                        DropdownMenuItem(text = { Text("Rotate, resize or flip") }, enabled = hasSelection && canTransform,
+                            onClick = { onTransform(); menu = null })
                     }
                 }
                 Box(Modifier.weight(1f)) {

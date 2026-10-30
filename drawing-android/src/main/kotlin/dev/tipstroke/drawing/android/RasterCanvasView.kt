@@ -43,6 +43,9 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         set(value) { field = value; invalidate() }
     var movingLayerIds: Set<LayerId> = emptySet()
     var movingSelectionPath: Path? = null
+    var selectionPreviewMatrix: Matrix? = null
+        set(value) { field = value; invalidate() }
+    var selectionPreviewFiltered = true
     var selectionPreviewOffset = Point(0f, 0f)
         set(value) { field = value; invalidate() }
     var photoBrushArea: Pair<dev.tipstroke.core.geometry.Point, Float>? = null
@@ -295,9 +298,12 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         layer.tiles.draw(canvas, bitmapPaint)
         canvas.restoreToCount(stationary)
         val moving = canvas.save()
-        canvas.translate(selectionPreviewOffset.x, selectionPreviewOffset.y)
+        selectionPreviewMatrix?.let(canvas::concat) ?: canvas.translate(selectionPreviewOffset.x, selectionPreviewOffset.y)
         canvas.clipPath(path)
+        val previousFilter = bitmapPaint.isFilterBitmap
+        bitmapPaint.isFilterBitmap = selectionPreviewFiltered
         layer.tiles.draw(canvas, bitmapPaint)
+        bitmapPaint.isFilterBitmap = previousFilter
         canvas.restoreToCount(moving)
         canvas.restoreToCount(group)
     }
@@ -363,7 +369,11 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         selectionPaint.pathEffect = DashPathEffect(
             floatArrayOf(10f / transform.scale.coerceAtLeast(.08f), 7f / transform.scale.coerceAtLeast(.08f)), 0f,
         )
-        selectionRegion?.let { canvas.drawPath(it.toAndroidPath(selectionPreviewOffset.x, selectionPreviewOffset.y), selectionPaint) }
+        selectionRegion?.let {
+            val path = it.toAndroidPath(selectionPreviewOffset.x, selectionPreviewOffset.y)
+            selectionPreviewMatrix?.let(path::transform)
+            canvas.drawPath(path, selectionPaint)
+        }
         if (selectionDraftPoints.size >= 2) {
             val draft = Path().apply {
                 moveTo(selectionDraftPoints.first().x, selectionDraftPoints.first().y)
