@@ -2,6 +2,9 @@ package dev.tipstroke.drawing.android
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import kotlin.math.roundToInt
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.services.storage.TestStorage
@@ -12,6 +15,7 @@ import dev.tipstroke.core.geometry.SelectionRegion
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.model.*
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -42,6 +46,33 @@ class LiveEraserInstrumentedTest {
             return pixels
         }
         assertArrayEquals(render(768), render(32))
+    }
+
+    @Test fun fallingPressureProducesASmoothLineWithoutCircularBands() {
+        val store = store()
+        val style = style(90f).copy(opacity = 1f, brush = BrushPreset.Ink.copy(hardness = 1f,
+            pressureToSize = PressureCurve(1f, 1f), pressureToOpacity = PressureCurve(0f, 1f, 1f)))
+        val points = (128..896 step 128).map { x ->
+            val pressure = 1f - (x - 128) / 1024f
+            sample(x).copy(pressure = pressure, opacityPressure = pressure)
+        }
+        store.beginLiveStroke()
+        store.appendLiveStroke(CompletedStroke(points.take(1), style))
+        points.zipWithNext().forEach { (a, b) -> store.appendLiveStroke(CompletedStroke(listOf(a, b), style)) }
+        for (x in 140..880) for (y in 230..282) {
+            val expected = ((x + .5f - 128f) / 1024f * 255f).roundToInt()
+            assertTrue("Pressure band at $x,$y", kotlin.math.abs(expected - Color.alpha(store.colorAt(x, y))) <= 1)
+        }
+        store.finishLiveStroke()
+        val image = Bitmap.createBitmap(1024, 512, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(image)
+        canvas.drawColor(Color.WHITE)
+        store.draw(canvas, Paint())
+        TestStorage().openOutputFile("eraser-qa/pressure-gradient.png").use {
+            check(image.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        image.recycle()
+        store.discard()
     }
 
     @Test fun reportLiveUpdateCostOnTheDevice() {

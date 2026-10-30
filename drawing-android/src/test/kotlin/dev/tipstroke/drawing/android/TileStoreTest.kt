@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import kotlin.math.roundToInt
 import dev.tipstroke.core.drawing.*
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.TileCoordinate
@@ -234,6 +235,59 @@ class TileStoreTest {
             assertArrayEquals("Event batching changed coverage at hardness=$hardness", individual, render(points, 7))
             assertArrayEquals("Segment ends left seams at hardness=$hardness", individual,
                 render(listOf(points.first(), points.last()), 1))
+        }
+    }
+
+    @Test fun fallingEraserPressureDoesNotLeaveCircularOpacityBands() {
+        val store = TileStore(512, 256)
+        store.replaceTiles((0..1).associate { x -> TileCoordinate(x, 0) to
+            Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) } })
+        val style = ink.copy(brush = BrushPreset.Ink.copy(hardness = 1f,
+            pressureToSize = PressureCurve(1f, 1f), pressureToOpacity = PressureCurve(0f, 1f, 1f)),
+            sizePx = 90f, blend = BlendBehavior.ERASE)
+        val points = (64..448 step 64).map { x ->
+            val pressure = 1f - (x - 64) / 512f
+            sample(Point(x.toFloat(), 128f), x.toLong()).copy(pressure = pressure, opacityPressure = pressure)
+        }
+        store.beginLiveStroke()
+        store.appendLiveStroke(CompletedStroke(points.take(1), style))
+        points.zipWithNext().forEach { (a, b) -> store.appendLiveStroke(CompletedStroke(listOf(a, b), style)) }
+        for (x in 80..430) {
+            val expected = ((x + .5f - 64f) / 512f * 255f).roundToInt()
+            for (y in 100..156) assertTrue("Circular pressure band at $x,$y: expected $expected, got ${Color.alpha(store.colorAt(x, y))}",
+                kotlin.math.abs(expected - Color.alpha(store.colorAt(x, y))) <= 1)
+        }
+        store.finishLiveStroke()
+        val wet = store.colorAt(200, 128)
+        assertTrue(store.history.undo())
+        assertEquals(Color.BLUE, store.colorAt(200, 128))
+        assertTrue(store.history.redo())
+        assertEquals(wet, store.colorAt(200, 128))
+    }
+
+    @Test fun changingEraserWidthAndOpacityAreIndependentOfSampleDensity() {
+        for (hardness in listOf(0f, .5f, 1f)) {
+            fun render(step: Int): IntArray {
+                val store = TileStore(512, 256)
+                store.replaceTiles((0..1).associate { x -> TileCoordinate(x, 0) to
+                    Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) } })
+                val style = ink.copy(brush = BrushPreset.Ink.copy(hardness = hardness,
+                    pressureToSize = PressureCurve(.2f, 1f, 1f), pressureToOpacity = PressureCurve(0f, 1f, 1f)),
+                    sizePx = 90f, blend = BlendBehavior.ERASE)
+                val points = (64..448 step step).map { x ->
+                    val pressure = 1f - (x - 64) / 512f
+                    sample(Point(x.toFloat(), 128f), x.toLong()).copy(pressure = pressure, opacityPressure = pressure)
+                }
+                store.beginLiveStroke()
+                store.appendLiveStroke(CompletedStroke(points.take(1), style))
+                points.zipWithNext().forEach { (a, b) -> store.appendLiveStroke(CompletedStroke(listOf(a, b), style)) }
+                store.finishLiveStroke()
+                return IntArray(512 * 256) { i -> Color.alpha(store.colorAt(i % 512, i / 512)) }
+            }
+            val sparse = render(128)
+            val dense = render(16)
+            for (i in sparse.indices) assertTrue("Sample density changed pixel $i at hardness $hardness",
+                kotlin.math.abs(sparse[i] - dense[i]) <= 1)
         }
     }
 

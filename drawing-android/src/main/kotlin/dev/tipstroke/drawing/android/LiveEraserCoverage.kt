@@ -7,11 +7,16 @@ import kotlin.math.*
 
 /** Reusable buffers for one live gesture; no blur bitmaps or full-tile pixel scans per sample. */
 internal class LiveEraserCoverage(private val tileSize: Int) {
-    private val coverage = mutableMapOf<TileCoordinate, ByteArray>()
+    private class TileCoverage(size: Int) {
+        val alpha = ByteArray(size)
+        val distanceSquared = FloatArray(size) { Float.POSITIVE_INFINITY }
+    }
+    private val coverage = mutableMapOf<TileCoordinate, TileCoverage>()
     private val pixels = IntArray(tileSize * tileSize)
 
     fun apply(destination: Bitmap, before: Bitmap, coordinate: TileCoordinate, stroke: CompletedStroke) {
-        val mask = coverage.getOrPut(coordinate) { ByteArray(tileSize * tileSize) }
+        val tile = coverage.getOrPut(coordinate) { TileCoverage(tileSize * tileSize) }
+        val mask = tile.alpha
         val style = stroke.style
         val brush = style.brush
         val left = coordinate.x * tileSize
@@ -62,8 +67,19 @@ internal class LiveEraserCoverage(private val tileSize: Int) {
                         }
                         ((alphaA + (alphaB - alphaA) * t) * falloff).roundToInt().coerceIn(0, 255)
                     }
-                    val combined = maxOf(old, alpha)
-                    if (combined > old) { mask[maskIndex] = combined.toByte(); changed = true }
+                    // Pressure belongs to the nearest part of the continuous centerline.
+                    // A previous endpoint's round cap is provisional: keeping its maximum
+                    // alpha forever leaves circular bands when the next sample is lighter.
+                    val previousDistance = tile.distanceSquared[maskIndex]
+                    val nearer = distanceSquared < previousDistance - .0001f
+                    val tied = abs(distanceSquared - previousDistance) <= .0001f
+                    val combined = when {
+                        nearer -> alpha
+                        tied -> maxOf(old, alpha)
+                        else -> old
+                    }
+                    if (nearer) tile.distanceSquared[maskIndex] = distanceSquared
+                    if (combined != old) { mask[maskIndex] = combined.toByte(); changed = true }
                     val pixelIndex = (y - y0) * width + x - x0
                     val original = pixels[pixelIndex]
                     val remainingAlpha = ((original ushr 24) * (255 - combined) + 127) / 255
