@@ -71,12 +71,10 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
                 { onChange(settings.copy(holdDelayMillis = it.roundToInt().toLong())) },
             )
         }
-        if (listOf(settings.oneFingerDrag, settings.oneFingerHold).contains(FingerAction.SMUDGE)) {
-            SettingSlider(
-                "Smudge strength", "${(settings.smudgeStrength * 100).roundToInt()}%", settings.smudgeStrength, .05f..1f,
-                { onChange(settings.copy(smudgeStrength = it)) },
-            )
-        }
+        SettingSlider(
+            "Smudge strength", "${(settings.smudgeStrength * 100).roundToInt()}%", settings.smudgeStrength, .05f..1f,
+            { onChange(settings.copy(smudgeStrength = it)) },
+        )
         Text("Pen buttons", color = Color(0xFFF5F5F2), fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp))
         Text("Primary is normally nearest the tip. Xiaomi Pad 6 button key events are also supported.", color = Color(0xFFA9ABB1), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
         StylusButtonRow("Primary pen button", "Usually the lower button", settings.stylusPrimaryButton) { onSelect(SettingsSlot.Stylus(true)) }

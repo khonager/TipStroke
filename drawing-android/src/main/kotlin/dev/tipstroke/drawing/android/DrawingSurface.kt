@@ -172,6 +172,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var singleLast = android.graphics.PointF()
     private var singleLastDocument = android.graphics.PointF()
     private var smudgeTarget: RasterLayerRuntime? = null
+    private var toolSmudgePointer: Int? = null
+    private var toolSmudgeLast = android.graphics.PointF()
     private var lastSampleAt = 0L
     private var frameCount = 0
     private var fpsWindowAt = SystemClock.elapsedRealtimeNanos()
@@ -389,6 +391,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun onDetachedFromWindow() {
+        if (toolSmudgePointer != null) finishSmudgeTool()
         clearShapeHold()
         cancelFill()
         cancelMultiErase()
@@ -1179,10 +1182,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         predictor?.record(event)
         if (eventHasStylus(event)) updateStylusButtons(event.buttonState)
         val actionIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        if (toolSmudgePointer != null) return handleSmudgeTool(event)
         if (handleMousePan(event, actionIndex)) return true
         if (selectionMoveMode) return handleSelectionMove(event)
         if (selectionMode) return handleSelection(event)
         if (isTransformingImage()) return handleTouchGesture(event)
+        if (settings.smudging && !settings.erasing && event.actionMasked == MotionEvent.ACTION_DOWN &&
+            event.getToolType(actionIndex) != MotionEvent.TOOL_TYPE_ERASER && isDrawingPointer(event, actionIndex)) {
+            return handleSmudgeTool(event)
+        }
 
         // The emulator maps a host click to a finger. If a simulated second finger is
         // added for pinch, cancel the provisional mark and hand the full event to the
@@ -1490,6 +1498,58 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             )
         }
         return true
+    }
+
+    /** Selected Smudge uses native pointer samples; finger gesture bindings remain independent. */
+    private fun handleSmudgeTool(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (referenceLayerId != null) return true
+            val target = layerStack.selectedRaster() ?: return true
+            cancelHold(); cancelColorPick()
+            requestUnbufferedDispatch(event)
+            toolSmudgePointer = event.getPointerId(event.actionIndex)
+            activeDrawingPointerId = toolSmudgePointer
+            toolSmudgeLast = rasterView.screenToDocument(event.getX(event.actionIndex), event.getY(event.actionIndex))
+            smudgeTarget = target.also { it.tiles.beginSmudge() }
+            gestureDownAt = SystemClock.uptimeMillis()
+            gestureMoved = false
+            updateChromeOcclusion(event, event.actionIndex)
+            return true
+        }
+        val pointer = toolSmudgePointer ?: return true
+        val index = event.findPointerIndex(pointer)
+        // An additional finger navigates; a palm alongside a pen cannot take over its stroke.
+        if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && index >= 0 && !isStylus(event, index)) {
+            finishSmudgeTool()
+            return handleTouchGesture(event)
+        }
+        val ending = event.actionMasked in intArrayOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP) &&
+            event.getPointerId(event.actionIndex) == pointer
+        if (index >= 0 && (event.actionMasked == MotionEvent.ACTION_MOVE || ending)) {
+            fun applyPoint(x: Float, y: Float) {
+                val point = rasterView.screenToDocument(x, y)
+                if (point != toolSmudgeLast && settings.opacity > 0f) {
+                    smudgeTarget?.tiles?.smudge(toolSmudgeLast.x, toolSmudgeLast.y, point.x, point.y,
+                        settings.sizePx * .7f, settings.gestures.smudgeStrength * settings.opacity)
+                }
+                toolSmudgeLast = point
+            }
+            repeat(event.historySize) { applyPoint(event.getHistoricalX(index, it), event.getHistoricalY(index, it)) }
+            applyPoint(event.getX(index), event.getY(index))
+            updateChromeOcclusion(event, index)
+            rasterView.invalidate()
+        }
+        if (ending || event.actionMasked == MotionEvent.ACTION_CANCEL || index < 0) finishSmudgeTool()
+        return true
+    }
+
+    private fun finishSmudgeTool() {
+        smudgeTarget?.tiles?.finishSmudge()
+        smudgeTarget = null
+        toolSmudgePointer = null
+        activeDrawingPointerId = null
+        setChromeOccludedByStroke(false)
+        notifyHistory(); notifyLayers(); notifyVisiblePalette()
     }
 
     private fun handleTouchGesture(event: MotionEvent): Boolean {

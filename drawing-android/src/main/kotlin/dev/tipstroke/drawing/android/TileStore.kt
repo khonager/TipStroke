@@ -493,7 +493,8 @@ class TileStore(
     internal fun smudge(fromX: Float, fromY: Float, toX: Float, toY: Float, radius: Float, strength: Float) {
         val before = smudgeBefore ?: return
         val safeRadius = radius.roundToInt().coerceIn(4, 96)
-        val safeStrength = strength.coerceIn(.05f, 1f)
+        if (strength <= 0f) return
+        val safeStrength = strength.coerceIn(0f, 1f)
         val diameter = safeRadius * 2 + 1
         val sourceLeft = fromX.roundToInt() - safeRadius
         val sourceTop = fromY.roundToInt() - safeRadius

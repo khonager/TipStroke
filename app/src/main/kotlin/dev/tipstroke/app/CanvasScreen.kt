@@ -72,6 +72,7 @@ fun CanvasScreen(
     var resizeChanged by remember { mutableStateOf(false) }
     var brush by remember { mutableStateOf(BrushPreset.Ink) }
     var erasing by remember { mutableStateOf(false) }
+    var smudging by remember { mutableStateOf(false) }
     val smallCanvas = editorWidthPx <= 128 && editorHeightPx <= 128
     var pixelTool by remember { mutableStateOf<PixelTool?>(if (smallCanvas) PixelTool.PENCIL else null) }
     var pixelSize by remember { mutableFloatStateOf(1f) }
@@ -221,7 +222,7 @@ fun CanvasScreen(
                 pencilShadeStartRadians = pencilShadeStartRadians,
                 pencilShadeTransitionRadians = pencilShadeTransitionRadians,
             )
-            sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing
+            sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.smudging = smudging
             this.eraserHardness = eraserHardness; this.debug = debug; gestures = effectiveGestureSettings
         }
         surface?.setPixelTool(pixelTool)
@@ -240,12 +241,14 @@ fun CanvasScreen(
         pencilShadeTransitionRadians = tuning.pencilShadeTransitionRadians
     }
     fun toggleEraser() {
+        smudging = false
         selectToolActive = false; selectionMode = false; movingSelection = false
         erasing = !erasing
         if (pixelTool == null) applyTuning(if (erasing) brushPreferences.loadEraser() else brushPreferences.load(brush))
         sync()
     }
     fun selectPixelTool(tool: PixelTool) {
+        smudging = false
         selectToolActive = false; selectionMode = false; movingSelection = false
         if (pixelTool == null) opacity = 1f
         pixelTool = tool
@@ -253,6 +256,7 @@ fun CanvasScreen(
         size = pixelSize
     }
     fun selectRegularBrush(preset: BrushPreset = brush) {
+        smudging = false
         selectToolActive = false; selectionMode = false; movingSelection = false
         pixelTool = null
         brush = preset
@@ -260,10 +264,18 @@ fun CanvasScreen(
         applyTuning(brushPreferences.load(preset))
     }
     fun selectSelectionTool() {
+        smudging = false
         selectToolActive = true; selectionMode = true; movingSelection = false
         imageTransforming = false; layersOpen = false; colorPickerOpen = false
         phoneAdjustmentsOpen = true
         surface?.setSelectionTool(selectionTool)
+    }
+    fun selectSmudge() {
+        selectToolActive = false; selectionMode = false; movingSelection = false
+        imageTransforming = false
+        erasing = false; smudging = true; pixelTool = null
+        surface?.setReferenceStrokes(null)
+        sync()
     }
     val pixelToolsAvailable = smallCanvas || diagnostics.zoom >= 8f || pixelTool != null
     fun performStylusButton(button: StylusButton) {
@@ -282,7 +294,7 @@ fun CanvasScreen(
             StylusButtonAction.DISABLED -> Unit
         }
     }
-    LaunchedEffect(brush, erasing, pixelTool, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
+    LaunchedEffect(brush, erasing, smudging, pixelTool, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(surface, originalImageColors) { surface?.setOriginalImageColors(originalImageColors) }
     LaunchedEffect(surface, debug) {
@@ -297,7 +309,7 @@ fun CanvasScreen(
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
     LaunchedEffect(movingSelection, surface) { surface?.setSelectionMoveMode(movingSelection) }
-    LaunchedEffect(brush.id, erasing, pixelTool, size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians) {
+    LaunchedEffect(brush.id, erasing, smudging, pixelTool, size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians) {
         val tuning = BrushTuning(
             size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper,
             pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain,
@@ -305,7 +317,7 @@ fun CanvasScreen(
             pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent,
             speedTaperAmount,
         )
-        if (pixelTool == null) {
+        if (pixelTool == null && !smudging) {
             if (erasing) brushPreferences.saveEraser(tuning) else brushPreferences.save(brush, tuning)
         }
     }
@@ -552,6 +564,7 @@ fun CanvasScreen(
         ) {
             BrushRail(
                 selected = brush, erasing = erasing,
+                smudging = smudging, onSmudge = ::selectSmudge,
                 selecting = selectToolActive, onSelect = ::selectSelectionTool,
                 pixelTool = pixelTool, pixelToolsAvailable = pixelToolsAvailable,
                 pixelToolsFirst = smallCanvas,
@@ -613,6 +626,7 @@ fun CanvasScreen(
                     selected = brush,
                     selecting = selectToolActive, onSelect = ::selectSelectionTool,
                     erasing = erasing,
+                    smudging = smudging, onSmudge = ::selectSmudge,
                     pixelTool = pixelTool,
                     pixelToolsAvailable = pixelToolsAvailable,
                     pixelToolsFirst = smallCanvas,
@@ -1203,6 +1217,8 @@ private fun PhoneBrushDock(
     onSelect: () -> Unit,
     selected: BrushPreset,
     erasing: Boolean,
+    smudging: Boolean,
+    onSmudge: () -> Unit,
     pixelTool: PixelTool?,
     pixelToolsAvailable: Boolean,
     pixelToolsFirst: Boolean,
@@ -1214,7 +1230,7 @@ private fun PhoneBrushDock(
     onBrushStudio: () -> Unit,
 ) {
     val listState = rememberLazyListState()
-    val activeIndex = if (selecting) BrushPreset.builtIns.size + (if (pixelToolsAvailable) PixelTool.entries.size + 1 else 0) else toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
+    val activeIndex = if (smudging) BrushPreset.builtIns.size + (if (pixelToolsAvailable) PixelTool.entries.size + 1 else 0) + 2 else if (selecting) BrushPreset.builtIns.size + (if (pixelToolsAvailable) PixelTool.entries.size + 1 else 0) else toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
     LaunchedEffect(activeIndex, pixelToolsAvailable, pixelToolsFirst) {
         listState.scrollToItem(toolScrollStart(activeIndex))
     }
@@ -1225,7 +1241,7 @@ private fun PhoneBrushDock(
         border = BorderStroke(1.dp, Color(0xB345474D)),
     ) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val toolWidth = (maxWidth - (if (selecting) 8.dp else if (pixelTool == null) 96.dp else 54.dp)).coerceAtLeast(88.dp)
+            val toolWidth = (maxWidth - (if (selecting) 8.dp else if (pixelTool == null && !smudging) 96.dp else 54.dp)).coerceAtLeast(88.dp)
             Row(
                 Modifier.fillMaxWidth().padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1239,14 +1255,14 @@ private fun PhoneBrushDock(
                 ) {
                     if (pixelToolsAvailable && pixelToolsFirst) {
                         items(PixelTool.entries, key = { it.name }) { tool ->
-                            ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
+                            ToolButton(tool.displayName, pixelTool == tool && !erasing && !smudging && !selecting, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
                         }
                         item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
                     }
                     items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
                         ToolButton(
                             preset.displayName,
-                            pixelTool == null && selected.id == preset.id && !erasing && !selecting,
+                            pixelTool == null && selected.id == preset.id && !erasing && !smudging && !selecting,
                             { onBrush(preset) },
                             preset.glyph,
                             compact = true,
@@ -1256,19 +1272,20 @@ private fun PhoneBrushDock(
                     if (pixelToolsAvailable && !pixelToolsFirst) {
                         item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
                         items(PixelTool.entries, key = { it.name }) { tool ->
-                            ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
+                            ToolButton(tool.displayName, pixelTool == tool && !erasing && !smudging && !selecting, { onPixelTool(tool) }, tool.glyph, compact = true, phone = true)
                         }
                     }
                     item(key = "select") { ToolButton("Select", selecting, onSelect, ToolGlyph.SELECT, compact = true, phone = true) }
                     item(key = "eraser") {
                         ToolButton("Eraser", erasing && !selecting, onEraser, ToolGlyph.ERASER, compact = true, phone = true)
                     }
+                    item(key = "smudge") { ToolButton("Smudge", smudging, onSmudge, ToolGlyph.SMUDGE, compact = true, phone = true) }
                 }
                 if (!selecting) IconButton(
                     onClick = onAdjustments,
                     modifier = Modifier.size(42.dp).semantics { contentDescription = if (selecting) "Selection options" else if (adjustmentsOpen) "Hide size and opacity" else "Show size and opacity" },
                 ) { TuneIcon(if (adjustmentsOpen) Color(0xFFED6A5A) else Color.White) }
-                if (pixelTool == null && !selecting) TextButton(onClick = onBrushStudio, modifier = Modifier.size(width = 42.dp, height = 50.dp), contentPadding = PaddingValues(0.dp)) {
+                if (pixelTool == null && !selecting && !smudging) TextButton(onClick = onBrushStudio, modifier = Modifier.size(width = 42.dp, height = 50.dp), contentPadding = PaddingValues(0.dp)) {
                     Text("Studio", fontSize = 8.sp)
                 }
             }
@@ -1290,6 +1307,8 @@ private fun PhoneBrushDock(
     onSelect: () -> Unit,
     selected: BrushPreset,
     erasing: Boolean,
+    smudging: Boolean,
+    onSmudge: () -> Unit,
     pixelTool: PixelTool?,
     pixelToolsAvailable: Boolean,
     pixelToolsFirst: Boolean,
@@ -1303,7 +1322,7 @@ private fun PhoneBrushDock(
 ) {
     val shape = RoundedCornerShape(22.dp)
     val listState = rememberLazyListState()
-    val activeIndex = if (selecting) BrushPreset.builtIns.size + (if (pixelToolsAvailable) PixelTool.entries.size + 1 else 0) else toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
+    val activeIndex = if (smudging) BrushPreset.builtIns.size + (if (pixelToolsAvailable) PixelTool.entries.size + 1 else 0) + 2 else if (selecting) BrushPreset.builtIns.size + (if (pixelToolsAvailable) PixelTool.entries.size + 1 else 0) else toolIndex(selected, erasing, pixelTool, pixelToolsAvailable, pixelToolsFirst)
     LaunchedEffect(activeIndex, pixelToolsAvailable, pixelToolsFirst) {
         listState.scrollToItem(toolScrollStart(activeIndex))
     }
@@ -1317,22 +1336,23 @@ private fun PhoneBrushDock(
     ) {
         if (pixelToolsAvailable && pixelToolsFirst) {
             items(PixelTool.entries, key = { it.name }) { tool ->
-                ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
+                ToolButton(tool.displayName, pixelTool == tool && !erasing && !smudging && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
             }
             item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
         }
         items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
-            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing && !selecting, { onBrush(preset) }, preset.glyph, compact)
+            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing && !smudging && !selecting, { onBrush(preset) }, preset.glyph, compact)
         }
         if (pixelToolsAvailable && !pixelToolsFirst) {
             item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
             items(PixelTool.entries, key = { it.name }) { tool ->
-                ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
+                ToolButton(tool.displayName, pixelTool == tool && !erasing && !smudging && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
             }
         }
         item(key = "select") { ToolButton("Select", selecting, onSelect, ToolGlyph.SELECT, compact) }
         item(key = "eraser") { ToolButton("Eraser", erasing && !selecting, onEraser, ToolGlyph.ERASER, compact) }
-        if (pixelTool == null && !selecting) item(key = "adjust") {
+        item(key = "smudge") { ToolButton("Smudge", smudging, onSmudge, ToolGlyph.SMUDGE, compact) }
+        if (pixelTool == null && !selecting && !smudging) item(key = "adjust") {
             TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
         }
     } else LazyColumn(
@@ -1343,22 +1363,23 @@ private fun PhoneBrushDock(
     ) {
         if (pixelToolsAvailable && pixelToolsFirst) {
             items(PixelTool.entries, key = { it.name }) { tool ->
-                ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
+                ToolButton(tool.displayName, pixelTool == tool && !erasing && !smudging && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
             }
             item(key = "pixel-divider") { Box(Modifier.width(36.dp).height(1.dp).background(Color(0xFF55575D))) }
         }
         items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
-            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing && !selecting, { onBrush(preset) }, preset.glyph, compact)
+            ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing && !smudging && !selecting, { onBrush(preset) }, preset.glyph, compact)
         }
         if (pixelToolsAvailable && !pixelToolsFirst) {
             item(key = "pixel-divider") { Box(Modifier.width(36.dp).height(1.dp).background(Color(0xFF55575D))) }
             items(PixelTool.entries, key = { it.name }) { tool ->
-                ToolButton(tool.displayName, pixelTool == tool && !erasing && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
+                ToolButton(tool.displayName, pixelTool == tool && !erasing && !smudging && !selecting, { onPixelTool(tool) }, tool.glyph, compact)
             }
         }
         item(key = "select") { ToolButton("Select", selecting, onSelect, ToolGlyph.SELECT, compact) }
         item(key = "eraser") { ToolButton("Eraser", erasing && !selecting, onEraser, ToolGlyph.ERASER, compact) }
-        if (pixelTool == null && !selecting) item(key = "adjust") {
+        item(key = "smudge") { ToolButton("Smudge", smudging, onSmudge, ToolGlyph.SMUDGE, compact) }
+        if (pixelTool == null && !selecting && !smudging) item(key = "adjust") {
             TextButton(onClick = onAdjust, modifier = Modifier.semantics { contentDescription = "Adjust brush" }) { Text("Adjust", fontSize = if (compact) 9.sp else 11.sp) }
         }
     }
@@ -1449,7 +1470,7 @@ private fun toolIndex(
 private fun toolScrollStart(activeIndex: Int): Int =
     if (activeIndex == 4) 2 else (activeIndex - 1).coerceAtLeast(0)
 
-private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER, PIXEL, LINE, DITHER, SELECT }
+private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER, SMUDGE, PIXEL, LINE, DITHER, SELECT }
 
 @Composable private fun ToolButton(label: String, selected: Boolean, onClick: () -> Unit, icon: ToolGlyph, compact: Boolean = false, phone: Boolean = false) {
     val bg by animateColorAsState(if (selected) Color(0xFFF4F4F2) else Color.Transparent, label = "tool")
@@ -1464,6 +1485,11 @@ private enum class ToolGlyph { PENCIL, INK, AIRBRUSH, ERASER, PIXEL, LINE, DITHE
                 ToolGlyph.PENCIL -> { rotate(-40f) { drawRoundRect(fg, Offset(size.width*.42f, 1f), androidx.compose.ui.geometry.Size(size.width*.2f, size.height*.82f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f)); drawPath(Path().apply { moveTo(size.width*.42f, size.height*.82f); lineTo(size.width*.62f, size.height*.82f); lineTo(size.width*.52f, size.height); close() }, fg) } }
                 ToolGlyph.INK -> { drawPath(Path().apply { moveTo(size.width*.18f,size.height*.82f); cubicTo(size.width*.25f,size.height*.35f,size.width*.7f,size.height*.2f,size.width*.82f,size.height*.08f); cubicTo(size.width*.74f,size.height*.5f,size.width*.55f,size.height*.9f,size.width*.18f,size.height*.82f); close() }, fg) }
                 ToolGlyph.AIRBRUSH -> { for (i in 0..4) for (j in 0..4) drawCircle(fg.copy(alpha = .25f + .1f*j), 1.4.dp.toPx(), Offset(5.dp.toPx()+i*4.dp.toPx(), 5.dp.toPx()+j*4.dp.toPx())) }
+                ToolGlyph.SMUDGE -> {
+                    for (i in 0..2) drawLine(fg.copy(alpha = 1f - i * .25f),
+                        Offset(size.width * (.15f + i * .1f), size.height * (.3f + i * .22f)),
+                        Offset(size.width * .85f, size.height * (.2f + i * .22f)), 4.dp.toPx(), StrokeCap.Round)
+                }
                 ToolGlyph.ERASER -> { rotate(-40f) { drawRoundRect(fg, Offset(size.width*.25f,size.height*.18f), androidx.compose.ui.geometry.Size(size.width*.5f,size.height*.65f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()), style = Stroke(2.dp.toPx())) } }
                 ToolGlyph.PIXEL -> { drawRect(fg, Offset(size.width*.18f, size.height*.58f), androidx.compose.ui.geometry.Size(size.width*.24f, size.height*.24f)); drawRect(fg, Offset(size.width*.42f, size.height*.34f), androidx.compose.ui.geometry.Size(size.width*.24f, size.height*.24f)); drawRect(fg, Offset(size.width*.66f, size.height*.1f), androidx.compose.ui.geometry.Size(size.width*.24f, size.height*.24f)) }
                 ToolGlyph.LINE -> drawLine(fg, Offset(size.width*.16f, size.height*.82f), Offset(size.width*.84f, size.height*.16f), 3.dp.toPx())
