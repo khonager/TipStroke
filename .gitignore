@@ -16,3 +16,7 @@ xcuserdata/
 *.xcarchive/
 *.xcresult/
 ios/TipStroke/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+
+# IDE-generated Kotlin source/output copies
+/core/bin/
+/desktop/bin/

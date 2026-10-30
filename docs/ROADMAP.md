@@ -19,7 +19,7 @@ Additional brush families/effects, masks and blend modes, richer vector editing,
 
 ## Drawing-process replay preview
 
-Implemented: automatic bounded command recording for raster drawing, versioned/frozen brush replay, exact tile fallbacks for destructive edits, atomic sidecar persistence, native preview/scrubbing, GIF/MP4 export, and compatibility fixtures. Imported images, transforms, source-mask edits, and recovery from legacy image cutoffs are supported. First-version exclusions: animated documents, resize continuation, retrospective filtering, per-sample playback, recording reset/pause controls, and accelerated backward seeking. Before expanding support, measure real Pencil/Ink/Airbrush sessions on the tablet and verify native rendering/export after dependency updates.
+Implemented: automatic bounded command recording for raster drawing, versioned/frozen brush replay, exact tile fallbacks for destructive edits, atomic sidecar persistence, native preview/scrubbing, GIF/MP4 export, and compatibility fixtures. Imported images, transforms, source-mask edits, and recovery from legacy image cutoffs are supported. Animation-frame editing and recovery from legacy animation cutoffs are supported. Remaining exclusions: resize continuation, retrospective filtering, per-sample playback, recording reset/pause controls, and accelerated backward seeking. Before expanding support, measure real Pencil/Ink/Airbrush sessions on the tablet and verify native rendering/export after dependency updates.
 
 ## iPhone and iPad port
 

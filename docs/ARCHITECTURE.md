@@ -231,3 +231,7 @@ never open or save a replacement blank document.
 The first iOS port has a separate format namespace and deliberately rejects other
 formats. See `IOS.md` for implemented features and limitations; Android package
 compatibility needs a lossless migration/import design before it can be enabled.
+
+## Source directories
+
+Edit Kotlin code under each module’s `src/main/kotlin` and tests under `src/test/kotlin`. The `core/bin/` and `desktop/bin/` directories are IDE-generated copies, ignored by Git and not Gradle source roots.
