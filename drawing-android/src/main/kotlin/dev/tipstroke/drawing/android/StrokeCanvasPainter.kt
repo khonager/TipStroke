@@ -119,7 +119,7 @@ internal object StrokeCanvasPainter {
             style = Paint.Style.STROKE
             color = stroke.style.color.toArgb()
             alpha = (stroke.style.opacity.coerceIn(0f, 1f) * stroke.style.color.alpha * 255).roundToInt()
-            xfermode = if (stroke.style.blend == BlendBehavior.ERASE) PorterDuffXfermode(PorterDuff.Mode.CLEAR) else null
+            xfermode = if (stroke.style.blend == BlendBehavior.ERASE) PorterDuffXfermode(PorterDuff.Mode.DST_OUT) else null
             val soften = when {
                 stroke.style.blend == BlendBehavior.ERASE -> 1f - stroke.style.brush.hardness
                 stroke.style.brush.engine == BrushEngine.AIRBRUSH -> 1f - stroke.style.brush.hardness
@@ -159,7 +159,7 @@ internal object StrokeCanvasPainter {
             canvas.restoreToCount(saveCount)
             return
         }
-        if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine == BrushEngine.AIRBRUSH) {
+        if (stroke.style.blend == BlendBehavior.ERASE || stroke.style.brush.engine == BrushEngine.AIRBRUSH) {
             if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
                 drawPressureResponsiveAirbrush(canvas, stroke, paint)
             } else {
@@ -530,24 +530,48 @@ internal object StrokeCanvasPainter {
         )
     }
 
-    /**
-     * Draws variable-opacity airbrush segments into an isolated layer. SRC replacement inside
-     * that layer prevents overlapping samples from becoming darker while pressure still varies
-     * along the stroke; restoring the layer composites the result over existing paint once.
+    /** Assemble coverage first, then blur once. Blurring SRC segments separately leaves
+     * the preceding segment showing through each new blurred cap, creating colored ridges.
+     * Work in document-aligned tiles with a blur halo, including for the wet preview.
      */
     private fun drawPressureResponsiveAirbrush(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
-        val samples = stroke.samples
-        val padding = stroke.style.sizePx
+        val clip = canvas.clipBounds
         val bounds = stroke.bounds
-        val layer = canvas.saveLayer(
-            bounds.left - padding,
-            bounds.top - padding,
-            bounds.right + padding,
-            bounds.bottom + padding,
-            null,
-        )
-        val originalMode = paint.xfermode
-        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+        if (!clip.intersect(floor(bounds.left).toInt(), floor(bounds.top).toInt(),
+                ceil(bounds.right).toInt(), ceil(bounds.bottom).toInt())) return
+        val tileSize = 256
+        val halo = ceil(stroke.style.sizePx * 1.5f).toInt() + 2
+        val source = Bitmap.createBitmap(tileSize + 2 * halo, tileSize + 2 * halo, Bitmap.Config.ARGB_8888)
+        val sharpPaint = Paint(paint).apply {
+            maskFilter = null
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+        }
+        val outputPaint = Paint(paint).apply { maskFilter = null; alpha = 255 }
+        val offset = IntArray(2)
+        try {
+            for (ty in Math.floorDiv(clip.top, tileSize)..Math.floorDiv(clip.bottom - 1, tileSize)) {
+                for (tx in Math.floorDiv(clip.left, tileSize)..Math.floorDiv(clip.right - 1, tileSize)) {
+                    val left = tx * tileSize
+                    val top = ty * tileSize
+                    source.eraseColor(Color.TRANSPARENT)
+                    val scratch = Canvas(source)
+                    scratch.translate((halo - left).toFloat(), (halo - top).toFloat())
+                    drawSharpPressureMask(scratch, stroke, sharpPaint)
+                    val mask = source.extractAlpha(Paint().apply { maskFilter = paint.maskFilter }, offset)
+                    try {
+                        val save = canvas.save()
+                        canvas.clipRect(left, top, left + tileSize, top + tileSize)
+                        canvas.drawBitmap(mask, (left - halo + offset[0]).toFloat(),
+                            (top - halo + offset[1]).toFloat(), outputPaint)
+                        canvas.restoreToCount(save)
+                    } finally { mask.recycle() }
+                }
+            }
+        } finally { source.recycle() }
+    }
+
+    private fun drawSharpPressureMask(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
+        val samples = stroke.samples
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
         val baseAlpha = stroke.style.opacity * stroke.style.color.alpha * 255f
@@ -572,8 +596,6 @@ internal object StrokeCanvasPainter {
                 canvas.drawLine(previous.position.x, previous.position.y, current.position.x, current.position.y, paint)
             }
         }
-        paint.xfermode = originalMode
-        canvas.restoreToCount(layer)
     }
 
     /** Builds one filled variable-width silhouette, then applies the blur to that union once. */

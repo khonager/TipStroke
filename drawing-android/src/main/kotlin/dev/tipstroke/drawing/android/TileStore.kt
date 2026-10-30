@@ -98,6 +98,7 @@ class TileStore(
     private val smudgeTouched = mutableSetOf<TileCoordinate>()
     private var liveStrokeBefore: MutableMap<TileCoordinate, Bitmap?>? = null
     private val liveStrokeTouched = mutableSetOf<TileCoordinate>()
+    private val liveEraseCoverage = mutableMapOf<TileCoordinate, ByteArray>()
     private val colorUsage = mutableMapOf<Int, Long>()
 
     internal fun putFillPixel(x: Int, y: Int, color: Int): TileCoordinate {
@@ -196,7 +197,36 @@ class TileStore(
             val canvas = Canvas(bitmap)
             canvas.save()
             canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
-            StrokeCanvasPainter.draw(canvas, stroke, preparedPaint)
+            if (stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE) {
+                // Apply the strongest coverage once against the touch-down snapshot. Repeated
+                // segment caps must not erase more simply because input samples are denser.
+                val mask = Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888)
+                try {
+                    val maskCanvas = Canvas(mask)
+                    maskCanvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+                    val maskStroke = stroke.copy(style = stroke.style.copy(
+                        blend = dev.tipstroke.core.model.BlendBehavior.PAINT,
+                        referenceStrokes = null,
+                        brush = stroke.style.brush.copy(engine = dev.tipstroke.core.model.BrushEngine.AIRBRUSH),
+                    ))
+                    StrokeCanvasPainter.draw(maskCanvas, maskStroke)
+                    (stroke.style.referenceStrokes as? ReferenceStrokes)?.drawCoverage(maskCanvas, maskCanvas.clipBounds)
+                    val coverage = liveEraseCoverage.getOrPut(coordinate) { ByteArray(tileSize * tileSize) }
+                    val pixels = IntArray(coverage.size)
+                    mask.getPixels(pixels, 0, tileSize, 0, 0, tileSize, tileSize)
+                    for (index in pixels.indices) {
+                        val alpha = maxOf(coverage[index].toInt() and 255, Color.alpha(pixels[index]))
+                        coverage[index] = alpha.toByte()
+                        pixels[index] = Color.argb(alpha, 255, 255, 255)
+                    }
+                    mask.setPixels(pixels, 0, tileSize, 0, 0, tileSize, tileSize)
+                    val destination = Canvas(bitmap)
+                    destination.drawBitmap(before.getValue(coordinate)!!, 0f, 0f,
+                        Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) })
+                    destination.drawBitmap(mask, 0f, 0f,
+                        Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
+                } finally { mask.recycle() }
+            } else StrokeCanvasPainter.draw(canvas, stroke, preparedPaint)
             canvas.restore()
         }
         liveStrokeTouched += dirty
@@ -270,6 +300,7 @@ class TileStore(
     internal fun finishLiveStroke(stroke: CompletedStroke? = null): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null
+        liveEraseCoverage.clear()
         if (liveStrokeTouched.isEmpty()) return emptySet()
         liveStrokeTouched.forEach { coordinate ->
             tiles[coordinate]?.let { bitmap -> if (bitmap.isFullyTransparent()) { removeTile(coordinate) } }
@@ -283,6 +314,7 @@ class TileStore(
     internal fun cancelLiveStroke(): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null
+        liveEraseCoverage.clear()
         replayLive.clear()
         val dirty = liveStrokeTouched.toSet()
         restore(before)

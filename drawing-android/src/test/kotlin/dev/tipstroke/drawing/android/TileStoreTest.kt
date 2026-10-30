@@ -168,6 +168,64 @@ class TileStoreTest {
         committed.recycle()
     }
 
+    @Test fun pressureAirbrushHasNoSampleRidgesAndFadesMonotonically() {
+        val style = ink.copy(brush = BrushPreset.Airbrush.copy(hardness = 0f),
+            sizePx = 64f, opacity = .6f, color = RgbaColor(1f, 0f, 0f))
+        val sparse = TileStore(512, 256)
+        val dense = TileStore(512, 256)
+        sparse.commit(stroke(Point(60f, 128f), Point(450f, 128f), style))
+        dense.commit(CompletedStroke((60..450 step 10).map { sample(Point(it.toFloat(), 128f), it.toLong()) }, style))
+        for (x in 110..400) {
+            for (y in 128..210) {
+                val a = Color.alpha(sparse.colorAt(x, y))
+                val b = Color.alpha(dense.colorAt(x, y))
+                assertTrue("Sample ridge at $x,$y: $a vs $b", kotlin.math.abs(a - b) <= 2)
+                assertTrue("Nonmonotonic edge at $x,$y", b >= Color.alpha(dense.colorAt(x, y + 1)))
+                if (b > 0) assertEquals("Edge tint", Color.RED and 0x00ffffff, dense.colorAt(x, y) and 0x00ffffff)
+            }
+        }
+    }
+
+    @Test fun translucentSoftEraserPreservesHueAndDoesNotAccumulateDuplicateSamples() {
+        val store = TileStore(512, 256)
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+        store.replaceTiles(mapOf(TileCoordinate(0, 0) to tile, TileCoordinate(1, 0) to tile.copy(Bitmap.Config.ARGB_8888, true)))
+        val erase = stroke(Point(220f, 128f), Point(300f, 128f), ink.copy(
+            brush = BrushPreset.Ink.copy(hardness = 0f, speedTaper = 0f),
+            sizePx = 64f, opacity = .5f, blend = BlendBehavior.ERASE, color = RgbaColor(1f, 0f, 0f)))
+        store.beginLiveStroke()
+        store.appendLiveStroke(erase)
+        val once = (0 until 512).map { store.colorAt(it, 128) }
+        store.appendLiveStroke(erase)
+        assertEquals(once, (0 until 512).map { store.colorAt(it, 128) })
+        assertTrue(Color.alpha(store.colorAt(256, 128)) in 127..200)
+        for (y in 128..215) {
+            val pixel = store.colorAt(256, y)
+            assertEquals(Color.BLUE and 0x00ffffff, pixel and 0x00ffffff)
+            assertTrue(Color.alpha(pixel) <= Color.alpha(store.colorAt(256, y + 1)))
+        }
+        store.finishLiveStroke(erase)
+        assertTrue(store.history.undo())
+        assertEquals(Color.BLUE, store.colorAt(256, 128))
+        assertTrue(store.history.redo())
+        assertEquals(once, (0 until 512).map { store.colorAt(it, 128) })
+    }
+
+    @Test fun softInkEraserReachesTheNextTileWithItsBlurHalo() {
+        val erase = stroke(Point(220f, 100f), Point(220f, 160f), ink.copy(
+            brush = BrushPreset.Ink.copy(hardness = 0f, speedTaper = 0f),
+            sizePx = 64f, blend = BlendBehavior.ERASE))
+        val full = Bitmap.createBitmap(512, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+        StrokeCanvasPainter.draw(Canvas(full), erase)
+        val store = TileStore(512, 256)
+        store.replaceTiles((0..1).associate { x -> TileCoordinate(x, 0) to
+            Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) } })
+        store.commit(erase)
+        assertTrue(Color.alpha(store.colorAt(256, 128)) < 255)
+        for (x in 200..300) assertEquals("Tile seam at $x", full.getPixel(x, 128), store.colorAt(x, 128))
+        full.recycle()
+    }
+
     @Test fun finishingLivePencilKeepsTheExactWetPixels() {
         val pencil = StrokeStyle(
             BrushPreset.Pencil,

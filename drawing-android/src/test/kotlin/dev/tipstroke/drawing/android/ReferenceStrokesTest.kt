@@ -57,6 +57,22 @@ class ReferenceStrokesTest {
         assertEquals(127, Color.alpha(destination.colorAt(250, 30)))
         assertEquals(255, Color.alpha(destination.colorAt(260, 30)))
     }
+    @Test fun liveReferenceErasingSupportsSameLayerAndCancellation() {
+        for (sameLayer in listOf(false, true)) {
+            val store = source()
+            val reference = if (sameLayer) store else source()
+            val erase = stroke(ReferenceStrokes(reference, sameLayer), BlendBehavior.ERASE)
+            store.beginLiveStroke()
+            store.appendLiveStroke(erase)
+            val once = store.colorAt(250, 30)
+            assertEquals(if (sameLayer) 0 else 64, Color.alpha(once))
+            store.appendLiveStroke(erase)
+            assertEquals(once, store.colorAt(250, 30))
+            store.cancelLiveStroke()
+            assertEquals(Color.argb(128, 0, 0, 255), store.colorAt(250, 30))
+        }
+    }
+
     @Test fun emptyReferenceDoesNotCreatePaint() {
         val destination = TileStore(512, 256)
         destination.commit(stroke(ReferenceStrokes(TileStore(512, 256), false)))

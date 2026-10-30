@@ -46,7 +46,7 @@ data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeSty
         // Custom tips can extend beyond half of the nominal brush size. Keep bounds
         // conservative so a rotated, tilted pencil or scattered airbrush particle
         // can never be clipped at a sparse-tile boundary.
-        val radius = style.sizePx * when (style.brush.engine) {
+        val radius = style.sizePx * if (style.blend == BlendBehavior.ERASE) 1.35f else when (style.brush.engine) {
             BrushEngine.PENCIL -> maxOf(
                 1.75f,
                 // Pencil's base contact is 18% of nominal size. Half of that is .09;

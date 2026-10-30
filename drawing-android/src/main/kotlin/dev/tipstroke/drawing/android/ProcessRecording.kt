@@ -200,6 +200,8 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
     private fun capture(id: String, capturedCommands: List<ReplayPaint>?, patches: Map<TileCoordinate, Bitmap?>, recycle: Boolean = false) {
         val commands = capturedCommands?.takeIf { ops -> ops.none {
             it.stroke.style.referenceStrokes != null || it.stroke.style.selection?.left != null ||
+                it.stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE ||
+                it.stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH ||
                 it.stroke.isClosed || (it.stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.PENCIL && it.ink == null)
         } }?.takeIf { ops -> ops.sumOf { it.stroke.samples.size.toLong() + (it.ink?.inputs?.size ?: 0) } <= 100_000 }
         val cost = commands?.sumOf { it.stroke.samples.size.toLong() * 64 + (it.ink?.inputs?.size ?: 0) * 48L + 512 }
