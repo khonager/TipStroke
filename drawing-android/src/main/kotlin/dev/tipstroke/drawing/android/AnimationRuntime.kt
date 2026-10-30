@@ -321,21 +321,30 @@ internal class AnimationRuntime(
     )
 
     private val loading = java.util.IdentityHashMap<TileStore, MutableList<(Result<Unit>) -> Unit>>()
+    private val loadingPins = java.util.IdentityHashMap<TileStore, Int>()
     fun framesResident(indices: Collection<Int>): Boolean = indices.all { index ->
         val id = frames.getOrNull(index)?.id
         rasterCels.values.all { it[id]?.isResident != false }
     }
     fun prepareFrames(indices: Collection<Int>, complete: (Result<Unit>) -> Unit) {
         val ids = indices.mapNotNull { frames.getOrNull(it)?.id }.toSet()
-        val stores = rasterCels.values.flatMap { cels -> cels.filterKeys { it in ids }.values }.filter { !it.isResident }.distinct()
+        val targets = rasterCels.values.flatMap { cels -> cels.filterKeys { it in ids }.values }.distinct()
+        val stores = targets.filter { !it.isResident }
         if (stores.isEmpty()) { complete(Result.success(Unit)); return }
+        targets.forEach { loadingPins[it] = (loadingPins[it] ?: 0) + 1 }
         var remaining = stores.size
         var failure: Throwable? = null
         stores.forEach { store ->
             val callback: (Result<Unit>) -> Unit = { result ->
                 result.exceptionOrNull()?.let { failure = it }
                 remaining--
-                if (remaining == 0) complete(failure?.let { Result.failure(it) } ?: Result.success(Unit))
+                if (remaining == 0) {
+                    try { complete(failure?.let { Result.failure(it) } ?: Result.success(Unit)) }
+                    finally { targets.forEach { target ->
+                        val count = requireNotNull(loadingPins[target]) - 1
+                        if (count == 0) loadingPins.remove(target) else loadingPins[target] = count
+                    } }
+                }
             }
             val existing = loading[store]
             if (existing != null) existing += callback
@@ -356,7 +365,7 @@ internal class AnimationRuntime(
         val ids = keep.mapNotNull { frames.getOrNull(it)?.id }.toSet()
         val active = stack.layers.filterIsInstance<RasterLayerRuntime>().map { it.tiles }.toSet()
         rasterCels.values.forEach { cels -> cels.forEach { (id, store) ->
-            if (id !in ids && store !in active && store !in loading) store.unloadIfClean()
+            if (id !in ids && store !in active && store !in loading && store !in loadingPins) store.unloadIfClean()
         } }
     }
 

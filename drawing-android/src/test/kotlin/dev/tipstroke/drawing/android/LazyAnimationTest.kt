@@ -61,7 +61,12 @@ class LazyAnimationTest {
             val eager = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
             assertEquals(Color.BLUE, eager.animation!!.rasterCels.getValue(layerId).getValue(frames[1].id).values.first().getPixel(10, 10))
             var ready = false
-            animation.prepareFrames(listOf(1)) { it.getOrThrow(); ready = true }
+            animation.prepareFrames(listOf(1)) {
+                it.getOrThrow()
+                animation.trimCleanFrames(setOf(0))
+                assertTrue("A ready callback must be able to consume its frame before eviction", second.isResident)
+                ready = true
+            }
             AnimationDecoding.executor.submit {}.get(10, TimeUnit.SECONDS)
             shadowOf(Looper.getMainLooper()).idle()
             assertTrue(ready)
