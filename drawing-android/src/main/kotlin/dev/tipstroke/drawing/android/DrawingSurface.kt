@@ -753,7 +753,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun finishOpacityAdjustment() {
         if (!opacityAdjustmentInProgress) return
         opacityAdjustmentInProgress = false
-        if (!imageGestureInProgress) processRecorder?.sync(layerStack, animation != null)
+        if (!imageGestureInProgress) processRecorder?.sync(layerStack, animation != null, animation = animation)
     }
     fun setSelectedLayerClip(sourceId: LayerId?) {
         if (layerStack.setClipSource(sourceId)) { notifyLayers(); notifyVisiblePalette(); notifyHistory() }
@@ -1025,6 +1025,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         publishAnimation()
     }
     private fun publishAnimation() {
+        if (!animationPlaying || strokeRecording != null) {
+            processRecorder?.sync(layerStack, animation != null, animation = animation)
+        }
         animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision))
     }
     fun publishDiagnostics() {
@@ -1102,7 +1105,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     processReadError = project.recordingError
                     project.recordingError?.let { LocalDiagnostics.record("project recording unreadable id=$id: $it") }
                     processRecorder = if (project.recordingError == null) ProcessRecorder(project.widthPx, project.heightPx, project.processRecording) else null
-                    processRecorder?.sync(replacement, animation != null, restoring = project.processRecording != null)
+                    processRecorder?.sync(replacement, animation != null, restoring = project.processRecording != null, animation = animation)
                     rasterView.animation = animation
                     rasterView.fitCanvas(project.galleryRotationQuarterTurns * 90f)
                     publishLayers()
@@ -2199,7 +2202,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             referenceLayerId = null
             referenceStrokesListener?.invoke(null)
         }
-        if (!imageGestureInProgress && !opacityAdjustmentInProgress) processRecorder?.sync(layerStack, animation != null)
+        if (!imageGestureInProgress && !opacityAdjustmentInProgress && (!animationPlaying || strokeRecording != null)) processRecorder?.sync(layerStack, animation != null, animation = animation)
         layersListener?.invoke(
             layerStack.summariesFrontToBack(),
             layerStack.selectedId,

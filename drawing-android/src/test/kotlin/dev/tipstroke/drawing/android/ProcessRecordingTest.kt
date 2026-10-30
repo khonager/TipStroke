@@ -129,6 +129,62 @@ class ProcessRecordingTest {
         stack.selectedRaster()!!.tiles.commit(stroke()); flush()
         assertNotNull(recorder.stoppedReason); assertEquals(count,recorder.snapshot().actionCount)
     }
+    @Test fun animationSwitchesAndDuplicatesKeepRecordingAndReplayExactPixels() {
+        val stack = stack()
+        val recorder = ProcessRecorder(512, 512)
+        recorder.sync(stack, false)
+        stack.selectedRaster()!!.tiles.commit(stroke(pixelBrush()))
+        val animation = AnimationRuntime(stack, false)
+        fun sync() = recorder.sync(stack, true, animation = animation)
+        fun checkFrame() {
+            sync()
+            val recording = recorder.snapshot()
+            assertNull(recording.stoppedReason)
+            ProcessReplay(recording).use { replay ->
+                val actual = replay.frame(recording.actionCount - 1)
+                val expected = expected(stack)
+                try { assertPixels(expected, actual) } finally { actual.recycle(); expected.recycle() }
+            }
+        }
+        checkFrame()
+        animation.addBlankFrame(); sync()
+        stack.selectedRaster()!!.tiles.commit(stroke(pixelBrush()).let {
+            it.copy(samples = it.samples.map { sample -> sample.copy(position = Point(sample.position.x - 100, sample.position.y)) })
+        })
+        checkFrame()
+        animation.select(0); checkFrame()
+        animation.duplicateFrame(); checkFrame()
+        animation.setBackground(stack.selectedId, true); sync()
+        stack.selectedRaster()!!.tiles.commit(stroke(pixelBrush()))
+        checkFrame()
+        animation.setBackground(stack.selectedId, false); checkFrame()
+        animation.select(0); checkFrame()
+        val saved = recorder.snapshot()
+        recorder.detach()
+        val stopped = ProcessRecording(512, 512, saved.actions,
+            "Recording stopped: animation and canvas resizing are not supported yet.")
+        val resumed = ProcessRecorder(512, 512, stopped)
+        resumed.sync(stack, true, restoring = true, animation = animation)
+        stack.selectedRaster()!!.tiles.commit(stroke(pixelBrush()))
+        val recovered = resumed.snapshot()
+        assertNull(recovered.stoppedReason)
+        assertTrue(recovered.hasRecoveryGap)
+        resumed.detach()
+        val reopened = ProcessRecorder(512, 512, recovered)
+        reopened.sync(stack, true, restoring = true, animation = animation)
+        animation.select(animation.frames.lastIndex)
+        reopened.sync(stack, true, animation = animation)
+        stack.selectedRaster()!!.tiles.commit(stroke(pixelBrush()))
+        val continued = reopened.snapshot()
+        ProcessReplay(continued).use { replay ->
+            val actual = replay.frame(continued.actionCount - 1)
+            val expected = expected(stack)
+            try { assertPixels(expected, actual) } finally { actual.recycle(); expected.recycle() }
+        }
+        reopened.detach()
+    }
+    private fun pixelBrush() = BrushPreset.Airbrush
+
     @Test fun corruptRecordingDoesNotPreventOpeningOrSavingArtwork() {
         val stack=stack(); val library=DrawingLibrary(context); val id=library.newId(); val snapshot=stack.snapshot()
         try {

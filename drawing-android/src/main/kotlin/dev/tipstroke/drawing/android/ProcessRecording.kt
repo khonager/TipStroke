@@ -41,7 +41,7 @@ class ProcessRecording internal constructor(
             if (!file.exists()) return null
             require(file.length() <= MAX_BYTES + 200_000) { "Recording exceeds storage limit" }
             return DataInputStream(file.inputStream().buffered()).use { input ->
-                require(input.readUTF() == "TipStroke-process-1") { "Unsupported process recording version" }
+                require(input.readUTF() in setOf("TipStroke-process-1", "TipStroke-process-2")) { "Unsupported process recording version" }
                 val width = input.readInt(); val height = input.readInt()
                 require(width in 16..8192 && height in 16..8192)
                 val reason = input.readUTF().ifEmpty { null }
@@ -58,7 +58,7 @@ class ProcessRecording internal constructor(
         }
     }
     internal fun write(file: File) = DataOutputStream(file.outputStream().buffered()).use { out ->
-        out.writeUTF("TipStroke-process-1"); out.writeInt(width); out.writeInt(height)
+        out.writeUTF("TipStroke-process-2"); out.writeInt(width); out.writeInt(height)
         out.writeUTF(stoppedReason.orEmpty()); out.writeInt(actions.size)
         actions.forEach { out.writeInt(it.size); out.write(it) }
     }
@@ -78,8 +78,12 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
         private set
     private val queued = AtomicLong()
     private var metadata: String? = null
-    private var legacyImageStop = saved?.stoppedReason == "Recording stopped: image layers, animation and canvas resizing are not supported yet."
+    private var legacyImageStop = saved?.stoppedReason in setOf("Recording stopped: image layers, animation and canvas resizing are not supported yet.",
+        "Recording stopped: animation and canvas resizing are not supported yet.") && saved?.width == width && saved.height == height
     private val known = mutableSetOf<String>()
+    private val initializedStores = mutableSetOf<String>()
+    private val boundStores = mutableMapOf<String, TileStore>()
+    private val storeIds = java.util.IdentityHashMap<TileStore, String>()
     private val stores = mutableSetOf<TileStore>()
     fun stop(reason: String) {
         if (stoppedReason == null) {
@@ -94,8 +98,8 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
     }
     fun snapshot(): ProcessRecording = captureSnapshot().get()
 
-    fun sync(stack: LayerStack, animated: Boolean, restoring: Boolean = false) {
-        val recovering = legacyImageStop && !animated && stack.canvasWidth == width && stack.canvasHeight == height
+    fun sync(stack: LayerStack, animated: Boolean, restoring: Boolean = false, animation: AnimationRuntime? = null) {
+        val recovering = legacyImageStop && stack.canvasWidth == width && stack.canvasHeight == height
         if (recovering) {
             legacyImageStop = false
             stoppedReason = null
@@ -103,15 +107,30 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
             // Explicit discontinuity: old unrecorded edits cannot be reconstructed.
             enqueue(32) { it.writeByte(4) }
         }
-        val restore = restoring && !recovering
-        if (animated || stack.canvasWidth != width || stack.canvasHeight != height) {
+        val restore = restoring && !recovering && animation == null
+        if ((animated && animation == null) || stack.canvasWidth != width || stack.canvasHeight != height) {
             stop("Recording stopped: animation and canvas resizing are not supported yet.")
         }
         if (stoppedReason != null) { detach(); return }
+        val liveStores = stack.layers.mapTo(mutableSetOf()) {
+            when (it) { is RasterLayerRuntime -> it.tiles; is ImageLayerRuntime -> it.mask }
+        }
+        animation?.rasterCels?.values?.forEach { liveStores.addAll(it.values) }
+        boundStores.entries.removeAll { (_, store) ->
+            if (store in liveStores) false else {
+                store.recordingListener = null; stores.remove(store); storeIds.remove(store); true
+            }
+        }
+        fun rasterId(layerId: LayerId, frameId: FrameId? = null, store: TileStore): String =
+            storeIds[store] ?: if (frameId != null) "${layerId.value}:frame:${frameId.value}" else layerId.value
+        val currentStores = stack.layers.filterIsInstance<RasterLayerRuntime>().associate { layer ->
+            layer.id to rasterId(layer.id, animation?.takeUnless { it.isBackground(layer.id) }?.currentFrame?.id, layer.tiles)
+        }
         val json = JSONObject().put("background", stack.backgroundColor).put("opacity", stack.backgroundOpacity)
         val layers = org.json.JSONArray()
         stack.layers.forEach { layer ->
-            val item = JSONObject().put("id", layer.id.value).put("visible", layer.visible).put("opacity", layer.opacity)
+            val item = JSONObject().put("id", layer.id.value).put("visible", layer.visible && layer.activeAtFrame).put("opacity", layer.opacity)
+            currentStores[layer.id]?.let { item.put("store", it) }
             layer.clipSourceId?.let { item.put("clipSourceId", it.value) }
             if (layer is ImageLayerRuntime) {
                 item.put("image", true).put("x", layer.transform.centerX).put("y", layer.transform.centerY)
@@ -120,7 +139,12 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
             }
             layers.put(item)
         }
-        val state = json.put("layers", layers).toString()
+        // Retain inactive cels in the bounded replay tile cache when presentation changes.
+        val retained = boundStores.keys.toMutableSet().apply {
+            addAll(currentStores.values)
+            animation?.rasterCels?.forEach { (id, cels) -> cels.forEach { (frame, store) -> add(rasterId(id, frame, store)) } }
+        }
+        val state = json.put("layers", layers).put("stores", org.json.JSONArray(retained.toList())).toString()
         if (state.toByteArray(Charsets.UTF_8).size > 60_000) { stop("Recording stopped: photo edit metadata exceeds the recording limit."); detach(); return }
         if (!restore && (metadata != state || recovering)) enqueue(2048) { out -> out.writeByte(0); out.writeUTF(state) }
         metadata = state
@@ -131,7 +155,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
                 is RasterLayerRuntime -> layer.tiles
                 is ImageLayerRuntime -> layer.mask
             }
-            val storeId = if (layer is ImageLayerRuntime) "$id:mask" else id
+            val storeId = if (layer is ImageLayerRuntime) "$id:mask" else currentStores.getValue(layer.id)
             if (first && !restore) {
                 if (layer is ImageLayerRuntime) {
                     enqueue(layer.source.width.toLong() * layer.source.height * 4) { out ->
@@ -139,17 +163,30 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
                         out.writeByte(3); out.writeUTF(id); out.writeInt(png.size); out.write(png)
                     }
                 }
-                if (store.allocatedTileCount > 0) {
-                    if (store.allocatedTileBytes > QUEUE_LIMIT) stop("Recording stopped: initial artwork is too large.")
-                    else capture(storeId, null, store.snapshotTiles(), recycle = true)
-                }
             }
-            stores += store
-            store.recordingListener = { commands, patches ->
-                // Image erasing paints a mask in source coordinates; preserve its exact tiles.
-                capture(storeId, if (layer is ImageLayerRuntime) null else commands, patches)
-            }
+            bindStore(storeId, store, restore, layer is ImageLayerRuntime, restoring && !restore)
         }
+        animation?.rasterCels?.forEach { (id, cels) ->
+            cels.forEach { (frame, store) -> bindStore(rasterId(id, frame, store), store, restore, false, restoring && !restore) }
+        }
+    }
+
+    private fun bindStore(id: String, store: TileStore, restoring: Boolean, mask: Boolean, rebaseline: Boolean = false) {
+        if (boundStores[id] === store) return
+        boundStores.put(id, store)?.let { previous ->
+            previous.recordingListener = null
+            stores.remove(previous)
+            storeIds.remove(previous)
+        }
+        storeIds[store] = id
+        val existed = !initializedStores.add(id)
+        if (!restoring) {
+            if (existed || rebaseline) enqueue(64) { it.writeByte(5); it.writeUTF(id) }
+            if (store.allocatedTileBytes > QUEUE_LIMIT) stop("Recording stopped: initial artwork is too large.")
+            else if (store.allocatedTileCount > 0) capture(id, null, store.snapshotTiles(), recycle = true)
+        }
+        stores += store
+        store.recordingListener = { commands, patches -> capture(id, if (mask) null else commands, patches) }
     }
 
     private fun capture(id: String, capturedCommands: List<ReplayPaint>?, patches: Map<TileCoordinate, Bitmap?>, recycle: Boolean = false) {
@@ -319,7 +356,7 @@ class ProcessReplay internal constructor(
                             layer.getDouble("scale").toFloat(), layer.getDouble("rotation").toFloat()))
                         canvas.drawPhoto(bitmap, layer.getInt("width"), layer.getInt("height"), transform, paint, visitMasks = layers["$id:mask"]?.let { mask -> { draw -> mask.forEach(draw) } })
                     } finally { bitmap.recycle() }
-                } else layers[id]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
+                } else layers[layer.optString("store", id)]?.forEach { xy,b -> canvas.drawBitmap(b,xy.x*256f,xy.y*256f,paint) }
             }
         }
         ordered.forEach { drawLayer(it) }
@@ -330,7 +367,8 @@ class ProcessReplay internal constructor(
             0 -> {
                 metadata=JSONObject(input.readUTF())
                 val order=metadata.getJSONArray("layers")
-                val retained=(0 until order.length()).map { order.getJSONObject(it).getString("id") }.toSet()
+                val retained=(0 until order.length()).map { order.getJSONObject(it).getString("id") }.toMutableSet()
+                metadata.optJSONArray("stores")?.let { ids -> repeat(ids.length()) { retained += ids.getString(it) } }
                 images.keys.retainAll(retained)
                 layers.keys.toList().filter { it !in retained && !(it.endsWith(":mask") && it.removeSuffix(":mask") in retained) }.forEach { layers.remove(it)?.clear() }
             }
@@ -390,6 +428,7 @@ class ProcessReplay internal constructor(
                 images[id] = ByteArray(size).also(input::readFully)
             }
             4 -> { cache.close(); layers.clear(); images.clear() }
+            5 -> { layers.remove(input.readUTF())?.clear() }
             else -> error("Unsupported process action")
         }
     }

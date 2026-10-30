@@ -81,10 +81,6 @@ internal fun ProcessRecordingPlayer(
                     if (rendering && !playing) LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                stoppedReason?.let {
-                    Text("This recording is incomplete. Later edits were not recorded; seeking cannot recover those missing steps.",
-                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
                 if (actionCount > 0) {
                     val size = if (bytes < 1024 * 1024) "${"%.1f".format(bytes / 1024.0)} KiB"
                         else "${"%.2f".format(bytes / 1048576.0)} MiB"

@@ -85,3 +85,5 @@ and writes revision files. The editor coalesces pending saves to one latest snap
 A full bitmap is allocated only for explicit flattened export, capped by the
 4096 px canvas limit. No full canvas/layer copy occurs per stroke. The first port
 still needs device profiling for latency, memory pressure and long-session behavior.
+
+Animation progress recording attaches to distinct sparse cel stores and captures edits on the encoding worker. Switching to an already recorded cel changes metadata rather than copying its pixels. New/replaced cels and reopening animated projects capture allocated tiles as baselines; these obey the existing queue/archive budgets. Deleted stores release recorder references. Playback-only frame changes are omitted.
