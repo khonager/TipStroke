@@ -30,6 +30,7 @@ android {
         targetSdk = 36
         versionCode = ciVersionCode ?: 1
         versionName = ciVersionName ?: "0.1.0"
+        manifestPlaceholders["appLabel"] = "TipStroke"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -37,6 +38,12 @@ android {
     kotlinOptions { jvmTarget = "17" }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     testOptions { unitTests.isIncludeAndroidResources = true }
+    buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+            manifestPlaceholders["appLabel"] = "TipStroke Debug"
+        }
+    }
 
     if (releaseSigningValues.all { it != null }) {
         signingConfigs {

@@ -43,6 +43,8 @@ The short commands are intentionally similar to Flutter/npm workflows:
 
 Android Studio is optional. To install manually, enable USB debugging on your phone, connect it, confirm it appears in `adb devices`, then run `./tipstroke install`.
 
+Debug builds install as **TipStroke Debug** (`dev.tipstroke.app.debug`) alongside the signed release app. This avoids version-code and signing-key conflicts with releases and preserves their drawings. Each app has its own local library; export/import projects to transfer drawings between them.
+
 `./tipstroke laptop` starts a normal JVM desktop process in its own Linux window using Compose Multiplatform. Its canvas is a direct AWT drawing component backed by sparse 256 px raster tiles, so samples do not flow through Compose state and a stroke does not copy the whole canvas. It supports Pencil, Ink, Airbrush, Eraser, bounded undo/redo, PNG open/export, mouse drawing, tablet-pointer drawing, middle/right/Space drag panning, trackpad or wheel panning, and Ctrl/Meta+scroll zooming. The desktop defaults come from the same `:core` brush models as Android.
 
 This is intentionally a useful compatibility renderer rather than a claim that Java2D reproduces Jetpack Ink. Standard JVM pointer events do not expose Linux tablet pressure, tilt, eraser ends, or pad buttons consistently, so tablets currently draw at constant pressure on desktop. Use the desktop target for quick tool/UI/workflow checks and a physical Android tablet for final brush shape, pressure/tilt, palm rejection, and input-to-photon checks. The optional `./tipstroke emulator` path remains available when a test specifically needs the complete Android UI or project format.

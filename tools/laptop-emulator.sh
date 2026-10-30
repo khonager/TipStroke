@@ -128,7 +128,7 @@ run_app() {
 
   ./gradlew :app:assembleDebug
   "$ADB" -s "$SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
-  "$ADB" -s "$SERIAL" shell am start -n dev.tipstroke.app/.MainActivity >/dev/null
+  "$ADB" -s "$SERIAL" shell am start -n dev.tipstroke.app.debug/dev.tipstroke.app.MainActivity >/dev/null
   printf 'TipStroke is running on %s.\n' "$SERIAL"
 }
 

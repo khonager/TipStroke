@@ -266,3 +266,12 @@ Its final replay frame must match every pixel of the canvas.
 6. Save/reopen, duplicate the photo, export PNG, inspect the gallery preview and process playback. Repeat with animated image cels. Check positions, stretch, warp and masks agree in each output.
 
 Automated coverage: `PhotoWarpTest` checks local deformation/inversion/foldover rejection; `PhotoEditingTest` checks transform metadata compatibility, rendered mask alignment, gesture undo and cancellation. Physical-device latency and visual review remain required; the Linux desktop renderer does not expose Android photo tools.
+
+## Android debug installation
+
+Run `./tipstroke install` with a connected device. Debug builds use
+`dev.tipstroke.app.debug` and the launcher name **TipStroke Debug**, so they can
+coexist with signed releases without downgrade or signature conflicts. Confirm
+both apps remain installed and the release library is intact; the debug app has
+its own library. To launch debug from adb, use
+`adb shell am start -n dev.tipstroke.app.debug/dev.tipstroke.app.MainActivity`.
