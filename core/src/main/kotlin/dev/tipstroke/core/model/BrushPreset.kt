@@ -39,6 +39,7 @@ data class BrushPreset(
     val pencilTiltMode: PencilTiltMode = PencilTiltMode.SHADING_SWITCH,
     val pencilShadeStartRadians: Float = DEFAULT_PENCIL_SHADE_START_RADIANS,
     val pencilShadeTransitionRadians: Float = DEFAULT_PENCIL_SHADE_TRANSITION_RADIANS,
+    val stamp: StampBrush? = null,
 ) {
     init {
         require(speedTaper in 0f..1f)
@@ -52,7 +53,7 @@ data class BrushPreset(
     }
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 2
+        const val CURRENT_SCHEMA_VERSION = 3
         const val MIN_PENCIL_FULL_TILT_RADIANS = .08f
         const val MAX_PENCIL_FULL_TILT_RADIANS = 1.2f
         const val DEFAULT_PENCIL_FULL_TILT_RADIANS = .55f
@@ -78,6 +79,10 @@ data class BrushPreset(
         val Airbrush = BrushPreset(id = BrushId("airbrush-v1"), displayName = "Airbrush", engine = BrushEngine.AIRBRUSH,
             baseSizePx = 96f, opacity = .28f, hardness = .06f, spacing = .08f, stabilization = .1f,
             pressureToSize = PressureCurve(.48f, 1f, .9f), pressureToOpacity = PressureCurve(.26f, 1f, .78f))
+        val Blank = Ink.copy(id = BrushId("blank-stamp"), displayName = "New brush",
+            baseSizePx = 32f, spacing = .15f, stabilization = 0f, speedTaper = 0f,
+            pressureToSize = PressureCurve(.2f, 1f, 1f), pressureToOpacity = PressureCurve(1f, 1f, 1f),
+            stamp = StampBrush())
         val builtIns = listOf(Pencil, Ink, Airbrush)
     }
 }

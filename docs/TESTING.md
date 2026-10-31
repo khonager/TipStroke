@@ -278,15 +278,23 @@ its own library. To launch debug from adb, use
 
 ## Android brush creator
 
-`BrushLibraryTest` covers all-engine package round trips, unsupported/malformed and
-oversized files, import ID isolation, atomic library edit/delete/overflow behavior,
-and exact custom pressure/taper selection on API 29. `BrushCreatorFlowTest` exercises
-create → save/use → edit → cancel and deletion cancellation with Compose/Robolectric.
-`BrushStrokePreviewViewTest` verifies that creator sample coverage changes with size.
+`StampPathTest` checks batch-independent spacing/randomness, stamp count, and source
+immutability. `StampBrushRenderingTest` exercises arbitrary masks/grain, live versus
+committed tiles, cancellation, one-step undo/redo, and real DrawingSurface input.
+`ProcessRecordingTest` checks custom stamp replay through exact patches.
 
-On a device, open Adjust → Brush library, create a Pencil with distinct tilt and
-pressure settings, draw, reopen the app, and select the saved preset. Check portrait
-and landscape scrolling, import/export cancellation, and share a `.tipbrush` file
-to another device. Confirm importing twice makes two independent presets, malformed
-files leave the library unchanged, and deleting a brush leaves artwork unchanged.
-Share-sheet recipient behavior and stylus feel still need physical-device validation.
+`BrushLibraryTest` checks legacy/new package round trips including source bytes,
+malformed/oversized files, import ID isolation, atomic library mutation, and exact
+selected dynamics. `BrushCreatorFlowTest` creates a fresh brush, changes grain,
+saves it, and cancels an edit; it emits a native screenshot for review.
+`BrushFavoritesDockTest` checks measured capacity, shrinking without scroll actions,
+ordered pin persistence, and access to tools. Existing canvas screenshots cover
+phone/tablet portrait and landscape layouts.
+
+On a device, import a transparent shape and an opaque grain image, paint/erase the
+source, rotate/invert it, and test with finger and stylus. Check responsiveness with
+large tips, scatter/count, and rapid pressure/tilt changes. Draw across tile boundaries,
+undo, save/reopen, and replay. Share a `.tipbrush` attachment to another device and
+verify both sources survive. Rotate and resize the window with a full favorites
+bar: it must never scroll or overflow, and the full library remains reachable.
+Share-sheet recipients and real stylus latency still need physical-device validation.

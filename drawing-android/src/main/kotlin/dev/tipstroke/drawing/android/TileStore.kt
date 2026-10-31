@@ -174,6 +174,30 @@ class TileStore(
         return dirty
     }
 
+    private var liveStampRenderer: StampBrushRenderer? = null
+
+    private fun appendStampStroke(stroke: CompletedStroke): Set<TileCoordinate> {
+        val before = liveStrokeBefore ?: return emptySet()
+        val renderer = liveStampRenderer ?: StampBrushRenderer(stroke.style).also { liveStampRenderer = it }
+        val stamps = renderer.path.append(stroke.samples)
+        val perTile = mutableMapOf<TileCoordinate, MutableList<dev.tipstroke.core.drawing.BrushStamp>>()
+        stamps.forEach { stamp ->
+            if (stamp.alpha < .5f / 255f) return@forEach
+            TileGrid.intersecting(StampBrushRenderer.bounds(stamp), canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
+                perTile.getOrPut(coordinate) { mutableListOf() }.add(stamp)
+            }
+        }
+        perTile.forEach { (coordinate, batch) ->
+            if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
+            val canvas = Canvas(writableTile(coordinate))
+            canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+            renderer.drawClipped(canvas, batch)
+        }
+        liveStrokeTouched += perTile.keys
+        lastDirtyTiles = perTile.keys.toSet()
+        return lastDirtyTiles
+    }
+
     /** Starts a cancellable stroke that mutates only newly touched sparse tiles as samples arrive. */
     internal fun beginLiveStroke() {
         check(liveStrokeBefore == null) { "A live stroke is already active" }
@@ -185,6 +209,9 @@ class TileStore(
     /** Applies one new point or segment and returns only the tiles that need screen invalidation. */
     internal fun appendLiveStroke(stroke: CompletedStroke): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
+        if (stroke.style.brush.stamp != null && stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.PAINT && stroke.style.pixelTool == null) {
+            return appendStampStroke(stroke)
+        }
         if (recordingListener != null) replayLive.add(ReplayPaint(stroke))
         val candidates = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
         val dirty = if (stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE) {
@@ -215,7 +242,7 @@ class TileStore(
                     val maskStroke = stroke.copy(style = stroke.style.copy(
                         blend = dev.tipstroke.core.model.BlendBehavior.PAINT,
                         referenceStrokes = null,
-                        brush = stroke.style.brush.copy(engine = dev.tipstroke.core.model.BrushEngine.AIRBRUSH),
+                        brush = stroke.style.brush.copy(engine = dev.tipstroke.core.model.BrushEngine.AIRBRUSH, stamp = null),
                     ))
                     StrokeCanvasPainter.draw(maskCanvas, maskStroke)
                     (stroke.style.referenceStrokes as? ReferenceStrokes)?.drawCoverage(maskCanvas, maskCanvas.clipBounds)
@@ -292,6 +319,7 @@ class TileStore(
 
     /** Releases all pixels owned by a transient preview store. */
     internal fun discard() {
+        liveStampRenderer?.close(); liveStampRenderer = null
         pencilPreviewDot = false
         tiles.keys.toList().forEach(::removeTile)
         encodedBacking = null
@@ -308,6 +336,7 @@ class TileStore(
     internal fun finishLiveStroke(stroke: CompletedStroke? = null): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null
+        liveStampRenderer?.close(); liveStampRenderer = null
         liveEraseCoverage.clear()
         liveEraser = null
         if (liveStrokeTouched.isEmpty()) return emptySet()
@@ -323,6 +352,7 @@ class TileStore(
     internal fun cancelLiveStroke(): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
         liveStrokeBefore = null
+        liveStampRenderer?.close(); liveStampRenderer = null
         liveEraseCoverage.clear()
         liveEraser = null
         replayLive.clear()

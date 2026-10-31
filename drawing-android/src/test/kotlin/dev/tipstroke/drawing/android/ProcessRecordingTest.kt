@@ -65,6 +65,22 @@ class ProcessRecordingTest {
             recorder.detach()
         }
     }
+    @Test fun customShapeGrainAndColorStampsReplayFromExactPatches() {
+        val stack = stack(); val recorder = ProcessRecorder(512, 512); recorder.sync(stack, false)
+        val store = stack.selectedRaster()!!.tiles
+        val custom = stroke(BrushPreset.Blank.copy(stamp = StampBrush(shape = StampShape.BRISTLES,
+            grain = StampGrain.LINES, scatter = .3f, hueJitter = .5f, count = 3)))
+        store.beginLiveStroke()
+        store.appendLiveStroke(custom.copy(samples = custom.samples.take(1)))
+        custom.samples.zipWithNext().forEach { (a, b) -> store.appendLiveStroke(custom.copy(samples = listOf(a, b))) }
+        store.finishLiveStroke(custom); flush()
+        ProcessReplay(recorder.snapshot(), residentTileLimit = 2).use { replay ->
+            val actual = replay.frame(recorder.snapshot().actionCount - 1)
+            assertPixels(expected(stack), actual)
+        }
+        recorder.detach()
+    }
+
     @Test fun incrementalPencilAndEraserReplayExactly() {
         val stack=stack(); val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)
         val store=stack.selectedRaster()!!.tiles

@@ -131,6 +131,10 @@ internal object StrokeCanvasPainter {
     }
 
     fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke)) {
+        if (stroke.style.brush.stamp != null && stroke.style.blend == BlendBehavior.PAINT && stroke.style.pixelTool == null) {
+            StampBrushRenderer(stroke.style).use { it.drawClipped(canvas, it.path.append(stroke.samples)) }
+            return
+        }
         val reference = stroke.style.referenceStrokes as? ReferenceStrokes
         if (reference != null) {
             val bounds = stroke.bounds

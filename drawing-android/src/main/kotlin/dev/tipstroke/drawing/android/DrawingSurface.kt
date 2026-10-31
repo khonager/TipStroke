@@ -1459,10 +1459,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val style = styleForTarget(baseStyle, target)
                 shapeStyle = style
                 shapeSnapped = false
-                if (target.image != null || style.blend == BlendBehavior.ERASE ||
+                if ((style.brush.stamp != null && style.pixelTool == null) || target.image != null || style.blend == BlendBehavior.ERASE ||
                     ((style.referenceStrokes != null || layerStack.selected().clipSourceId != null) && style.pixelTool != PixelTool.LINE)) {
                     customPreviewStyle = style
                     target.store.beginLiveStroke()
+                    if (style.brush.stamp != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null) {
+                        invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(pendingSamples.getValue(pointerId), style)))
+                    }
                 } else if (style.pixelTool != null || style.brush.engine == BrushEngine.AIRBRUSH) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId).toList(), style)
@@ -2151,7 +2154,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun updateShapeHold(event: MotionEvent, pointerId: Int) {
         val index = event.findPointerIndex(pointerId)
-        if (index < 0 || shapeStyle?.pixelTool == PixelTool.LINE) return
+        if (index < 0 || shapeStyle?.pixelTool == PixelTool.LINE || shapeStyle?.brush?.stamp != null) return
         val point = Point(event.getX(index), event.getY(index))
         val anchor = shapeAnchor
         val moved = anchor == null || hypot(point.x - anchor.x, point.y - anchor.y) > 8f * resources.displayMetrics.density
@@ -2308,7 +2311,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val image = target.image ?: return style.copy(referenceStrokes = (style.referenceStrokes as? ReferenceStrokes)?.forTarget(target.store))
         val localSelection = style.selection?.let { selection -> imageLocalSelection(image, selection) }
         return style.copy(
-            brush = style.brush.copy(engine = BrushEngine.AIRBRUSH),
+            brush = style.brush.copy(engine = BrushEngine.AIRBRUSH, stamp = null),
             sizePx = style.sizePx / image.transform.scale.coerceAtLeast(.02f),
             opacity = 1f,
             color = RgbaColor(1f, 1f, 1f),

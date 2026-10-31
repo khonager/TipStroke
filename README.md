@@ -89,9 +89,13 @@ See [architecture](docs/ARCHITECTURE.md), [input behavior](docs/INPUT.md), and t
 
 ### Create and share brushes (Android)
 
-From the canvas, open **Adjust → Brush library · Create and share** to create,
-edit, duplicate, and select custom brushes. Tune pressure curves, size, opacity,
-taper, and pencil tilt/texture with a native stroke preview. Use **Share** for an
-Android attachment, **Export** for a `.tipbrush` file, and **Import** to add someone
-else's brush. **Featured** contains bundled starting points; public publishing and
-community popularity rankings are not connected. See [Brush library](docs/BRUSH_LIBRARY.md).
+Open **Brushes** on the canvas to select brushes, manage favorites, or create a
+new brush from shape and grain sources. Import images or draw your own sources,
+then tune spacing, scatter, rotation, flow, pressure, tilt, taper, and color dynamics
+in Brush Studio's native drawing pad. Save, duplicate, export, and share `.tipbrush`
+files with their textures included.
+
+The favorites bar never scrolls: its capacity follows the available screen space.
+The full library stays one tap away. Public publishing and community rankings are
+not connected. See [Brush library](docs/BRUSH_LIBRARY.md) for supported controls and
+format details.

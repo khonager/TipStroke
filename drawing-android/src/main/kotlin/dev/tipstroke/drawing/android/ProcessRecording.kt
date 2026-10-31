@@ -201,6 +201,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
         val commands = capturedCommands?.takeIf { ops -> ops.none {
             it.stroke.style.referenceStrokes != null || it.stroke.style.selection?.left != null ||
                 it.stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE ||
+                it.stroke.style.brush.stamp != null ||
                 it.stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH ||
                 it.stroke.isClosed || (it.stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.PENCIL && it.ink == null)
         } }?.takeIf { ops -> ops.sumOf { it.stroke.samples.size.toLong() + (it.ink?.inputs?.size ?: 0) } <= 100_000 }
@@ -253,6 +254,7 @@ internal object ReplayCodec {
     private val inkBrushes by lazy { ReplayInkBrushesV1() }
     fun writePaint(out: DataOutputStream, paint: ReplayPaint) {
         val s = paint.stroke.style; val b = s.brush
+        require(b.stamp == null) { "Custom brushes must be recorded as raster patches." }
         out.writeInt(1) // renderer version; unsupported versions fail rather than substitute a new brush
         out.writeBoolean(paint.overlay); out.writeBoolean(paint.capStart); out.writeBoolean(paint.capEnd); out.writeBoolean(paint.skipFirst)
         out.writeInt(b.schemaVersion); out.writeUTF(b.id.value); out.writeUTF(b.displayName); out.writeUTF(b.engine.name)

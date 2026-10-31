@@ -38,7 +38,7 @@ class BrushLibraryTest {
 
     @Test fun invalidAndFuturePackagesAreRejected() {
         val source = BrushPackage.encode(LibraryBrush(BrushPreset.Ink))
-        listOf("version" to 2, "schemaVersion" to 99, "size" to -1,
+        listOf("version" to 99, "schemaVersion" to 99, "size" to -1,
             "opacity" to 5, "pressureSizeExponent" to 0, "pressureOpacityEnd" to .5,
             "engine" to "UNKNOWN", "name" to " ", "author" to "a".repeat(81)).forEach { (key, value) ->
             assertTrue("Accepted invalid $key", runCatching {
@@ -72,6 +72,19 @@ class BrushLibraryTest {
         assertEquals(listOf(edited, second), library.load())
         library.save(listOf(second))
         assertEquals(listOf(second), library.load())
+    }
+
+    @Test fun customSourcesAndDynamicsTravelTogetherAndLegacyPackagesStillImport() {
+        val texture = BrushTexture(3, 3, byteArrayOf(0, 32, 64, 96, 127, -96, -64, -32, -1))
+        val brush = LibraryBrush(BrushPreset.Blank.copy(stamp = StampBrush(shape = StampShape.IMAGE,
+            shapeTexture = texture, grain = StampGrain.IMAGE, grainTexture = texture.inverted(),
+            grainPlacement = GrainPlacement.STAMP, scatter = 1.2f, count = 5, hueJitter = .3f)))
+        assertEquals(brush, BrushPackage.decode(BrushPackage.encode(brush)))
+        val legacy = JSONObject(BrushPackage.encode(LibraryBrush(BrushPreset.Ink))).put("version", 1).put("schemaVersion", 2)
+        assertNull(BrushPackage.decode(legacy.toString()).preset.stamp)
+        val broken = JSONObject(BrushPackage.encode(brush))
+        broken.getJSONObject("stamp").getJSONObject("shapeTexture").put("width", 257)
+        assertTrue(runCatching { BrushPackage.decode(broken.toString()) }.isFailure)
     }
 
     @Test fun selectingCreatedBrushRetainsExactDynamics() {

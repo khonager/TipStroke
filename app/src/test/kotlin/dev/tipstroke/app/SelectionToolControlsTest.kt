@@ -26,11 +26,12 @@ class SelectionToolControlsTest {
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme { CanvasScreen(initialSelectionOpen = true) }
         }
-        compose.onNodeWithText("Select").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Drawing tools").assertIsDisplayed()
         compose.onNodeWithText("Actions ▾").assertIsDisplayed().performClick()
         compose.onNodeWithText("Select all").performClick()
         compose.onNodeWithText("Pencil").performClick()
         compose.onNodeWithText("Actions ▾").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Drawing tools").performClick()
         compose.onNodeWithText("Select").performClick()
         compose.onNodeWithText("Actions ▾").assertIsDisplayed()
         compose.onNodeWithText("Selection active").assertDoesNotExist()

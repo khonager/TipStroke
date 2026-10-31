@@ -36,12 +36,24 @@ class BrushCreatorFlowTest {
         compose.onNodeWithText("Create brush").performClick()
         compose.onNodeWithText("Brush name").performTextReplacement("Soft graphite")
         compose.onNodeWithText("Creator name (optional)").performTextReplacement("Artist")
+        compose.onNodeWithText("Grain").performClick()
+        compose.onNodeWithText("Lines").performClick()
+        compose.runOnIdle {
+            val root = requireNotNull(org.robolectric.shadows.ShadowDialog.getLatestDialog().window).decorView
+            val image = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+            root.draw(android.graphics.Canvas(image))
+            val output = java.io.File("build/qa/brush-studio-grain.png").also { it.parentFile.mkdirs() }
+            output.outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            image.recycle()
+        }
         compose.onNodeWithText("Save and use").performClick()
         compose.waitUntil(10_000) { selected != null }
         compose.onNodeWithText("Soft graphite").assertIsDisplayed()
         assertEquals("Soft graphite", selected!!.displayName)
         assertEquals("Artist", library.load().single().author)
-        assertEquals(BrushPreset.Pencil.speedTaper, selected!!.speedTaper)
+        assertEquals(BrushPreset.Blank.speedTaper, selected!!.speedTaper)
+        assertNotNull(selected!!.stamp)
+        assertEquals(dev.tipstroke.core.model.StampGrain.LINES, selected!!.stamp!!.grain)
         compose.onNodeWithText("Edit").performClick()
         compose.onNodeWithText("Brush name").performTextReplacement("Unsaved name")
         compose.onNodeWithText("Cancel").performClick()

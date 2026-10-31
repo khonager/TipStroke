@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -30,8 +32,14 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 @Composable
-internal fun BrushLibraryDialog(current: BrushPreset, onUse: (BrushPreset) -> Unit, onDismiss: () -> Unit) {
+internal fun BrushLibraryDialog(
+    current: BrushPreset, onUse: (BrushPreset) -> Unit, onDismiss: () -> Unit,
+    favoriteIds: List<String> = emptyList(), favoriteCapacity: Int = 3, editBrushId: BrushId? = null,
+    onFavorites: (List<String>) -> Unit = {}, onLibraryChanged: (List<LibraryBrush>) -> Unit = {},
+) {
     val context = LocalContext.current
+    val compact = LocalConfiguration.current.screenHeightDp < 500
+    var searchOpen by remember { mutableStateOf(false) }
     val library = remember { BrushLibrary(context) }
     val scope = rememberCoroutineScope()
     var brushes by remember { mutableStateOf<List<LibraryBrush>>(emptyList()) }
@@ -42,10 +50,13 @@ internal fun BrushLibraryDialog(current: BrushPreset, onUse: (BrushPreset) -> Un
     var deleting by remember { mutableStateOf<LibraryBrush?>(null) }
     var pendingExport by remember { mutableStateOf<LibraryBrush?>(null) }
     var query by remember { mutableStateOf("") }
-    var featured by remember { mutableStateOf(false) }
+    var section by remember { mutableStateOf("All brushes") }
     LaunchedEffect(library) {
         val result = withContext(Dispatchers.IO) { runCatching { library.load() } }
-        result.onSuccess { brushes = it; ready = true }
+        result.onSuccess {
+            brushes = it; ready = true; onLibraryChanged(it)
+            if (editBrushId != null) editing = it.firstOrNull { entry -> entry.preset.id == editBrushId } ?: LibraryBrush(current)
+        }
             .onFailure { message = "Could not load brushes. Your saved library has been preserved." }
     }
     fun save(next: List<LibraryBrush>, after: () -> Unit = {}) {
@@ -53,7 +64,7 @@ internal fun BrushLibraryDialog(current: BrushPreset, onUse: (BrushPreset) -> Un
         scope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { library.save(next) } }
             busy = false
-            result.onSuccess { brushes = next; after() }
+            result.onSuccess { brushes = next; onLibraryChanged(next); after() }
                 .onFailure { message = it.message ?: "Could not save brushes." }
         }
     }
@@ -68,7 +79,7 @@ internal fun BrushLibraryDialog(current: BrushPreset, onUse: (BrushPreset) -> Un
                     next
                 } }
                 busy = false
-                result.onSuccess { brushes = it; message = "Brush imported as a new copy." }
+                result.onSuccess { brushes = it; onLibraryChanged(it); message = "Brush imported as a new copy." }
                     .onFailure { message = "Import failed: ${it.message ?: "Invalid brush file."}" }
             }
         }
@@ -93,31 +104,50 @@ internal fun BrushLibraryDialog(current: BrushPreset, onUse: (BrushPreset) -> Un
     Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight(.94f), shape = MaterialTheme.shapes.large) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Brush library", style = MaterialTheme.typography.headlineSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(!featured, { featured = false }, label = { Text("My brushes") })
-                    FilterChip(featured, { featured = true }, label = { Text("Featured") })
+                if (!compact) Text("Brush library", style = MaterialTheme.typography.headlineSmall)
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("All brushes", "My brushes", "Favorites").forEach { name ->
+                        FilterChip(section == name, { section = name }, label = { Text(name) })
+                    }
                 }
-                Text(if (featured) "Built-in brushes to make your own. Community publishing and popularity rankings are not connected."
-                    else "Create a brush, tune its stroke, and export a file to share.", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(query, { query = it }, label = { Text("Search brushes") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (!compact) Text("${favoriteIds.size.coerceAtMost(favoriteCapacity)} / $favoriteCapacity favorite slots in this layout. " +
+                    if (favoriteIds.size > favoriteCapacity) "Extra pins return when there is more room." else "Pin brushes for quick access on the canvas.",
+                    style = MaterialTheme.typography.bodySmall)
+                if (!compact || searchOpen) OutlinedTextField(query, { query = it }, label = { Text("Search brushes") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row {
                     TextButton(enabled = ready && !busy, onClick = {
-                        editing = BrushLibrary.copyOf(LibraryBrush(current.copy(displayName = "My ${current.displayName}".take(60))))
+                        editing = BrushLibrary.copyOf(LibraryBrush(BrushPreset.Blank))
                     }) { Text("Create brush") }
                     TextButton(enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) }) { Text("Import") }
+                    if (compact) TextButton(onClick = { searchOpen = !searchOpen }) { Text("Search") }
                 }
                 if (busy || !ready && message == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                val shown = (if (featured) BrushPreset.builtIns.map { LibraryBrush(it, "TipStroke") } else brushes)
-                    .filter { it.preset.displayName.contains(query, true) || it.author.contains(query, true) }
+                val all = BrushPreset.builtIns.map { LibraryBrush(it, "TipStroke") } + brushes
+                val shown = (when (section) {
+                    "My brushes" -> brushes
+                    "Favorites" -> favoriteIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } }
+                    else -> all
+                }).filter { it.preset.displayName.contains(query, true) || it.author.contains(query, true) }
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (shown.isEmpty()) item { Text(if (query.isBlank()) "Your brushes will appear here. Create one from the current brush or import a shared file." else "No matching brushes.") }
+                    if (shown.isEmpty()) item { Text(if (query.isBlank()) "Your brushes will appear here. Create a new shape-and-grain brush or import a shared file." else "No matching brushes.") }
                     items(shown, key = { it.preset.id.value }) { item ->
+                        val featured = item.preset.id in BrushPreset.builtIns.map { it.id }
+                        val favorite = item.preset.id.value in favoriteIds
                         OutlinedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp)) {
                                 Text(item.preset.displayName, style = MaterialTheme.typography.titleMedium)
-                                Text("${item.preset.engine.name.lowercase()}${if (item.author.isNotBlank()) " · ${item.author}" else ""}")
+                                if (item.preset.id == current.id) Text("Selected", style = MaterialTheme.typography.labelSmall)
+                                Text("${if (item.preset.stamp != null) "Shape & grain" else item.preset.engine.name.lowercase()}${if (item.author.isNotBlank()) " · ${item.author}" else ""}")
+                                AndroidView(factory = { BrushStrokePreviewView(it) }, update = {
+                                    it.setPreview(item.preset, false, item.preset.opacity, RgbaColor(.25f, .25f, .28f))
+                                }, modifier = Modifier.fillMaxWidth().height(56.dp).background(Color(0xFFFAFAFA)))
+                                TextButton(enabled = !busy && (favorite || favoriteIds.size < favoriteCapacity), onClick = {
+                                    onFavorites(if (favorite) favoriteIds - item.preset.id.value else favoriteIds + item.preset.id.value)
+                                }) { Text(if (favorite) "★ Unpin favorite" else if (favoriteIds.size >= favoriteCapacity) "Favorite bar is full" else "☆ Pin favorite") }
+                                if (favorite && section == "Favorites") TextButton(onClick = {
+                                    onFavorites(listOf(item.preset.id.value) + favoriteIds.filterNot { it == item.preset.id.value })
+                                }) { Text("Move to front") }
                                 if (item.description.isNotBlank()) Text(item.description, style = MaterialTheme.typography.bodySmall)
                                 Row {
                                     TextButton(enabled = !busy, onClick = { onUse(item.preset); onDismiss() }) { Text("Use") }
@@ -169,19 +199,19 @@ internal fun BrushLibraryDialog(current: BrushPreset, onUse: (BrushPreset) -> Un
     editing?.let { initial ->
         BrushCreatorDialog(initial, busy, message, onSave = { item ->
             val next = if (brushes.any { it.preset.id == item.preset.id }) brushes.map { if (it.preset.id == item.preset.id) item else it } else brushes + item
-            save(next) { editing = null; onUse(item.preset); message = "Brush saved and selected." }
+            save(next) { editing = null; section = "My brushes"; onUse(item.preset); message = "Brush saved and selected." }
         }, onDismiss = { editing = null })
     }
     deleting?.let { item ->
         AlertDialog(onDismissRequest = { if (!busy) deleting = null }, title = { Text("Delete ${item.preset.displayName}?") },
             text = { Text("This removes the brush from your library. Existing drawings keep their painted strokes.") },
-            confirmButton = { TextButton(enabled = !busy, onClick = { save(brushes.filterNot { it.preset.id == item.preset.id }) { deleting = null } }) { Text("Delete") } },
+            confirmButton = { TextButton(enabled = !busy, onClick = { save(brushes.filterNot { it.preset.id == item.preset.id }) { deleting = null; onFavorites(favoriteIds - item.preset.id.value) } }) { Text("Delete") } },
             dismissButton = { TextButton(enabled = !busy, onClick = { deleting = null }) { Text("Cancel") } })
     }
 }
 
 @Composable
-private fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: String?, onSave: (LibraryBrush) -> Unit, onDismiss: () -> Unit) {
+internal fun LegacyBrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: String?, onSave: (LibraryBrush) -> Unit, onDismiss: () -> Unit, onConvert: () -> Unit) {
     var draft by remember(initial) { mutableStateOf(initial) }
     val p = draft.preset
     fun update(preset: BrushPreset) { draft = draft.copy(preset = preset) }
@@ -198,6 +228,7 @@ private fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: St
                     OutlinedTextField(p.displayName, { update(p.copy(displayName = it.take(60))) }, label = { Text("Brush name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(draft.author, { draft = draft.copy(author = it.take(80)) }, label = { Text("Creator name (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(draft.description, { draft = draft.copy(description = it.take(1000)) }, label = { Text("Description / sharing terms") }, modifier = Modifier.fillMaxWidth())
+                    TextButton(onClick = onConvert) { Text("Design with shape & grain") }
                     Text("Brush engine", style = MaterialTheme.typography.titleSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         BrushEngine.entries.forEach { engine ->

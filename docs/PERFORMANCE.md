@@ -126,3 +126,15 @@ The pressure-band correction has host native-graphics regression coverage for
 falling opacity, simultaneous width/opacity changes, and sparse versus dense
 samples. Its new device pressure-gradient test also writes a review PNG; rerun
 the device benchmark before treating the earlier timings as current.
+
+## Custom shape-and-grain brushes
+
+Custom brush sources are bounded immutable 256 × 256 coverage maps. Image import
+checks encoded size/dimensions and downsamples off the input thread. A live stroke
+prepares its two source shaders once, retains arc-length sampling state, and draws
+only newly emitted stamps into intersecting sparse tiles. Transparent faded stamps
+allocate no tiles. Stamp count, scatter, size, source dimensions, and path-step
+limits bound work; no full-canvas copies or sample-time file access are added.
+The studio test pad is native and separately bounded to 16 × 2,048 samples and a
+1,600 × 600 preview bitmap. Real-device profiling is still required for worst-case
+large-tip, dense multi-stamp brushes.

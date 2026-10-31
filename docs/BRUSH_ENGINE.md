@@ -70,3 +70,22 @@ Size is in document pixels; brush settings are frozen at touch-down. Segment
 overlap can accumulate opacity, so translucent marks differ from Android brush
 semantics. Airbrush, tilt shading, custom assets and Brush Studio are not ported.
 Only reached 256 px tiles are changed, with a cancellable before-image transaction.
+
+## Shape-and-grain custom brushes
+
+Schema 3 adds the optional `BrushPreset.stamp` definition. New brushes start with
+this renderer independently of the legacy Pencil/Ink/Airbrush algorithms. Sources
+are immutable grayscale coverage maps in `:core`; Android prepares a shape mask and
+a repeating grain shader once per live stroke. `StampPath` carries spacing,
+arc-length taper/fade, and deterministic per-stamp jitter across MotionEvent
+batches. Pressure, speed, tilt, color dynamics, scatter, count, and source placement
+are real rendering inputs. Custom strokes paint only new marks into reached sparse
+tiles; pen-up commits one undo transaction without rerendering the stroke. Sources
+are decoded before selection, with no pointer-time file IO. Stroke bounds cover
+maximum size/tilt/scatter. Reference and selection clipping retain their native paths.
+
+Custom rendering dispatch precedes the legacy engine selection. Process recording
+captures exact sparse patches for these strokes, and the frozen v1 command codec
+rejects a stamp definition rather than dropping it. Existing recorded v1 brush
+algorithms and project raster pixels are unaffected. See [Brush library](BRUSH_LIBRARY.md)
+for source limits, authoring controls, and package compatibility.

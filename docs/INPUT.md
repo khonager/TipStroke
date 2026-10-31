@@ -266,3 +266,20 @@ Smudge is selectable alongside brushes and the eraser. It works with a stylus, p
 ## Selected-pixel transforms
 
 Select pixels with Lasso, Rectangle, or Ellipse, then open the selection tool menu → **Rotate, resize or flip**. The panel offers width/height percentages (1–800%), linked proportions, rotation, horizontal/vertical flips, and optional smoothing. The transform pivots around the selection bounds. The native canvas previews the matrix against the original pixels; **Apply** resamples once, while **Cancel**, Back, or closing the panel leaves artwork unchanged. Pixels outside the canvas are cropped on Apply and restored by undo. Selected raster layers transform together as one undo step; image layers continue to use their own non-destructive photo controls. Boolean selection holes remain excluded.
+
+## Brush selection and favorites
+
+Brushes is a dedicated canvas-dock action, separate from Adjust. Its library lists
+all brushes with previews, creation/import, and pinning. The dock uses fixed cells
+and never scrolls; the measured available axis determines how many favorites fit
+after reserving Brushes, Tools, and Adjust. Saved pin order persists across layout
+changes; extra pins are hidden until space returns, and additional pinning is
+disabled at the current capacity. Tools contains selection, erasing, smudging,
+eligible pixel tools, and Brush Studio. Adjust retains the compact phone's
+size/opacity toggle; custom-brush studio adjustment opens its saved definition.
+
+Custom brush input and the studio's drawing/source pads use native MotionEvents.
+The new renderer bypasses Jetpack Ink and incrementally stamps shape/grain masks
+into sparse tiles. Shape-hold snapping is disabled for custom stamp strokes so it
+does not replace scattered or textured marks with fitted geometry. The native
+studio pad supports stylus pressure/tilt and full-pressure finger drawing.
