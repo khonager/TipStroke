@@ -3,6 +3,9 @@
     <uses-feature android:name="android.hardware.type.pc" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen.multitouch.distinct" android:required="false" />
     <application android:name=".TipStrokeApplication" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@drawable/tipstroke_launcher" android:roundIcon="@drawable/tipstroke_launcher" android:label="${appLabel}" android:theme="@style/Theme.TipStroke" android:supportsRtl="true">
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.brush-files" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/brush_share_paths" />
+        </provider>
         <activity android:name=".MainActivity" android:screenOrientation="fullSensor" android:resizeableActivity="true" android:configChanges="orientation|screenLayout|screenSize|smallestScreenSize|keyboardHidden" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

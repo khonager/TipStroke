@@ -124,3 +124,16 @@ internal class BrushPreferences(context: Context) {
         ).coerceIn(0f, 1f),
     )
 }
+
+/** Preserve all creator dynamics when selecting a saved or imported brush. */
+internal fun BrushPreset.creatorTuning() = BrushTuning(
+    sizePx = baseSizePx, opacity = opacity, hardness = hardness,
+    pressureSize = pressureToSize.start != 1f, pressureOpacity = pressureToOpacity.start != 1f,
+    speedTaper = speedTaper > 0f, speedTaperAmount = speedTaper,
+    pressureSizeStart = pressureToSize.start, pressureSizeExponent = pressureToSize.exponent,
+    pressureOpacityStart = pressureToOpacity.start, pressureOpacityExponent = pressureToOpacity.exponent,
+    pencilPointSize = pencilPointSize, pencilTiltSensitivity = pencilTiltSensitivity,
+    pencilShadeSize = pencilShadeSize, pencilShadeOpacity = pencilShadeOpacity,
+    pencilGrain = pencilGrain, pencilTiltMode = pencilTiltMode,
+    pencilShadeStartRadians = pencilShadeStartRadians, pencilShadeTransitionRadians = pencilShadeTransitionRadians,
+)

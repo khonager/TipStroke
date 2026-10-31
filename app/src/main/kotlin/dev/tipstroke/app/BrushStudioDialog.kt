@@ -78,6 +78,7 @@ internal fun BrushStudioDialog(
     onPencilShadeTransitionRadians: (Float) -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit,
+    onLibrary: (() -> Unit)? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -110,6 +111,9 @@ internal fun BrushStudioDialog(
                     pencilShadeStartRadians = pencilShadeStartRadians,
                     pencilShadeTransitionRadians = pencilShadeTransitionRadians,
                 )
+                onLibrary?.let { open ->
+                    TextButton(onClick = open, modifier = Modifier.fillMaxWidth()) { Text("Brush library · Create and share") }
+                }
                 HorizontalDivider()
                 Column(
                     Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),

@@ -130,6 +130,7 @@ fun CanvasScreen(
     var selectionTransformOpen by remember { mutableStateOf(false) }
     var hasSelection by remember { mutableStateOf(false) }
     var brushStudioOpen by remember { mutableStateOf(false) }
+    var brushLibraryOpen by remember { mutableStateOf(false) }
     var brushHardness by remember { mutableFloatStateOf(initialBrushTuning.hardness) }
     var eraserHardness by remember { mutableFloatStateOf(initialEraserTuning.hardness) }
     var pressureSize by remember { mutableStateOf(initialBrushTuning.pressureSize) }
@@ -930,6 +931,24 @@ fun CanvasScreen(
 
     } // Color-drop callbacks shared by portrait and landscape color circles.
 
+    if (brushLibraryOpen) BrushLibraryDialog(
+        current = brush.copy(
+            baseSizePx = size.coerceIn(2f, 180f), opacity = opacity.coerceIn(.05f, 1f), hardness = brushHardness,
+            pressureToSize = if (pressureSize) PressureCurve(pressureSizeStart, 1f, pressureSizeExponent) else PressureCurve(1f, 1f, 1f),
+            pressureToOpacity = if (pressureOpacity) PressureCurve(pressureOpacityStart, 1f, pressureOpacityExponent) else PressureCurve(1f, 1f, 1f),
+            speedTaper = if (speedTaper) speedTaperAmount else 0f,
+            pencilPointSize = pencilPointSize, pencilTiltSensitivity = pencilTiltSensitivity,
+            pencilShadeSize = pencilShadeSize, pencilShadeOpacity = pencilShadeOpacity, pencilGrain = pencilGrain,
+            pencilTiltMode = pencilTiltMode, pencilShadeStartRadians = pencilShadeStartRadians,
+            pencilShadeTransitionRadians = pencilShadeTransitionRadians,
+        ),
+        onUse = { preset ->
+            brushPreferences.save(preset, preset.creatorTuning())
+            selectRegularBrush(preset)
+        },
+        onDismiss = { brushLibraryOpen = false },
+    )
+
     if (brushStudioOpen) BrushStudioDialog(
         toolName = if (erasing) "Eraser" else brush.displayName,
         brush = brush,
@@ -973,6 +992,7 @@ fun CanvasScreen(
         onPencilShadeTransitionRadians = { pencilShadeTransitionRadians = it },
         onReset = {
             applyTuning(if (erasing) BrushTuning(32f, 1f, .35f, true, true, false)
+                else if (brush.id.value.startsWith("custom-")) brush.creatorTuning()
                 else BrushTuning(
                     brush.baseSizePx,
                     brush.opacity,
@@ -996,6 +1016,7 @@ fun CanvasScreen(
                 ))
         },
         onDismiss = { brushStudioOpen = false },
+        onLibrary = { brushStudioOpen = false; brushLibraryOpen = true },
     )
 
     if (exportChoiceOpen) AlertDialog(
@@ -1293,7 +1314,7 @@ private fun PhoneBrushDock(
                         }
                         item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
                     }
-                    items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
+                    items(brushDockPresets(selected), key = { it.id.value }) { preset ->
                         ToolButton(
                             preset.displayName,
                             pixelTool == null && selected.id == preset.id && !erasing && !smudging && !selecting,
@@ -1374,7 +1395,7 @@ private fun PhoneBrushDock(
             }
             item(key = "pixel-divider") { Box(Modifier.width(1.dp).height(36.dp).background(Color(0xFF55575D))) }
         }
-        items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
+        items(brushDockPresets(selected), key = { it.id.value }) { preset ->
             ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing && !smudging && !selecting, { onBrush(preset) }, preset.glyph, compact)
         }
         if (pixelToolsAvailable && !pixelToolsFirst) {
@@ -1401,7 +1422,7 @@ private fun PhoneBrushDock(
             }
             item(key = "pixel-divider") { Box(Modifier.width(36.dp).height(1.dp).background(Color(0xFF55575D))) }
         }
-        items(BrushPreset.builtIns, key = { it.id.value }) { preset ->
+        items(brushDockPresets(selected), key = { it.id.value }) { preset ->
             ToolButton(preset.displayName, pixelTool == null && selected.id == preset.id && !erasing && !smudging && !selecting, { onBrush(preset) }, preset.glyph, compact)
         }
         if (pixelToolsAvailable && !pixelToolsFirst) {
@@ -1495,7 +1516,7 @@ private fun toolIndex(
     pixelToolsAvailable: Boolean,
     pixelToolsFirst: Boolean,
 ): Int {
-    val regularIndex = BrushPreset.builtIns.indexOfFirst { it.id == brush.id }.coerceAtLeast(0)
+    val regularIndex = brushDockPresets(brush).indexOfFirst { it.id == brush.id }.coerceAtLeast(0)
     if (!pixelToolsAvailable) return if (erasing) 4 else regularIndex
     return when {
         erasing -> 8
@@ -1569,4 +1590,9 @@ private fun formatBytes(bytes: Long): String = when {
     bytes >= 1024L * 1024 * 1024 -> "%.1f GiB".format(bytes / (1024.0 * 1024 * 1024))
     bytes >= 1024L * 1024 -> "%.0f MiB".format(bytes / (1024.0 * 1024))
     else -> "${bytes / 1024} KiB"
+}
+
+// A selected custom brush occupies its engine's existing dock slot.
+private fun brushDockPresets(selected: BrushPreset): List<BrushPreset> = BrushPreset.builtIns.map {
+    if (it.engine == selected.engine) selected else it
 }

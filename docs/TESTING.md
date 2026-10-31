@@ -275,3 +275,18 @@ coexist with signed releases without downgrade or signature conflicts. Confirm
 both apps remain installed and the release library is intact; the debug app has
 its own library. To launch debug from adb, use
 `adb shell am start -n dev.tipstroke.app.debug/dev.tipstroke.app.MainActivity`.
+
+## Android brush creator
+
+`BrushLibraryTest` covers all-engine package round trips, unsupported/malformed and
+oversized files, import ID isolation, atomic library edit/delete/overflow behavior,
+and exact custom pressure/taper selection on API 29. `BrushCreatorFlowTest` exercises
+create → save/use → edit → cancel and deletion cancellation with Compose/Robolectric.
+`BrushStrokePreviewViewTest` verifies that creator sample coverage changes with size.
+
+On a device, open Adjust → Brush library, create a Pencil with distinct tilt and
+pressure settings, draw, reopen the app, and select the saved preset. Check portrait
+and landscape scrolling, import/export cancellation, and share a `.tipbrush` file
+to another device. Confirm importing twice makes two independent presets, malformed
+files leave the library unchanged, and deleting a brush leaves artwork unchanged.
+Share-sheet recipient behavior and stylus feel still need physical-device validation.

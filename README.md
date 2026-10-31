@@ -86,3 +86,12 @@ Use **Export** in the editor to save PNG, JPEG, or WebP at canvas size, 50%, or 
 Open **Settings** from the gallery to assign one-finger drag/hold and two-/three-finger taps. One-finger actions include canvas navigation, tile-local smudging, and color picking; tap actions include undo, redo, or disabled. Hold delay, smudge strength, and canvas rotation lock are configurable and stored locally.
 
 See [architecture](docs/ARCHITECTURE.md), [input behavior](docs/INPUT.md), and the [reference-device checklist](docs/TESTING.md).
+
+### Create and share brushes (Android)
+
+From the canvas, open **Adjust → Brush library · Create and share** to create,
+edit, duplicate, and select custom brushes. Tune pressure curves, size, opacity,
+taper, and pencil tilt/texture with a native stroke preview. Use **Share** for an
+Android attachment, **Export** for a `.tipbrush` file, and **Import** to add someone
+else's brush. **Featured** contains bundled starting points; public publishing and
+community popularity rankings are not connected. See [Brush library](docs/BRUSH_LIBRARY.md).

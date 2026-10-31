@@ -39,11 +39,21 @@ class BrushStrokePreviewViewTest {
         assertTrue(alphaValues.any { it in 1..64 })
     }
 
-    private fun render(brush: BrushPreset, opacity: Float = 1f): Bitmap {
+    @Test fun creatorPreviewUsesActualPresetSize() {
+        val brush = BrushPreset.Pencil.copy(pencilShadeSize = 0f, pencilGrain = 0f)
+        val small = render(brush.copy(baseSizePx = 4f), usePresetSize = true)
+        val large = render(brush.copy(baseSizePx = 24f), usePresetSize = true)
+        fun paintedPixels(bitmap: Bitmap): Int = (0 until bitmap.width).sumOf { x ->
+            (0 until bitmap.height).count { y -> Color.alpha(bitmap.getPixel(x, y)) > 0 }
+        }
+        assertTrue(paintedPixels(large) > paintedPixels(small) * 2)
+    }
+
+    private fun render(brush: BrushPreset, opacity: Float = 1f, usePresetSize: Boolean = false): Bitmap {
         val width = 600
         val height = 160
         val view = BrushStrokePreviewView(RuntimeEnvironment.getApplication()).apply {
-            setPreview(brush, erasing = false, opacity, RgbaColor(.25f, .25f, .28f))
+            setPreview(brush, erasing = false, opacity, RgbaColor(.25f, .25f, .28f), usePresetSize)
             measure(
                 View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY),

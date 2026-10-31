@@ -35,6 +35,7 @@ class BrushStrokePreviewView @JvmOverloads constructor(
     private var opacity = 1f
     private var color = RgbaColor(.25f, .25f, .28f)
     private var rendered: Bitmap? = null
+    private var usePresetSize = false
 
     init {
         setWillNotDraw(false)
@@ -45,13 +46,15 @@ class BrushStrokePreviewView @JvmOverloads constructor(
         erasing: Boolean,
         opacity: Float,
         color: RgbaColor,
+        usePresetSize: Boolean = false,
     ) {
         val safeOpacity = opacity.coerceIn(0f, 1f)
-        if (this.brush == brush && this.erasing == erasing && this.opacity == safeOpacity && this.color == color) return
+        if (this.brush == brush && this.erasing == erasing && this.opacity == safeOpacity && this.color == color && this.usePresetSize == usePresetSize) return
         this.brush = brush
         this.erasing = erasing
         this.opacity = safeOpacity
         this.color = color
+        this.usePresetSize = usePresetSize
         clearRenderedPreview()
         invalidate()
     }
@@ -120,7 +123,7 @@ class BrushStrokePreviewView @JvmOverloads constructor(
             samples,
             StrokeStyle(
                 brush = brush,
-                sizePx = nominalSize,
+                sizePx = if (usePresetSize) brush.baseSizePx else nominalSize,
                 opacity = opacity,
                 color = color,
                 blend = if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT,
