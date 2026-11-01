@@ -26,6 +26,7 @@ data class AnimationUiState(
     val recording: AnimationRecordingKind? = null,
     val thumbnailRevision: Int = 0,
     val loading: Boolean = false,
+    val hasMedia: Boolean = false,
 )
 
 enum class AnimationRecordingKind { IMAGE_MOTION, LIVE_DRAWING }
@@ -38,6 +39,10 @@ internal class AnimationRuntime(
     initialFps: Int = 12,
     initialPlayback: PlaybackMode = PlaybackMode.LOOP,
 ) {
+    var media: MediaSource? = null
+        private set
+    var mediaPreview: MediaPreview? = null
+        private set
     val frames = initialFrames.toMutableList()
     var selectedIndex = 0
         private set
@@ -51,6 +56,12 @@ internal class AnimationRuntime(
     val imageCels = LinkedHashMap<LayerId, MutableMap<FrameId, ImageTransform>>()
 
     init {
+        stack.mediaColorAt = { x, y ->
+            val source = media
+            val bitmap = mediaPreview?.takeIf { it.timeUs == (currentFrame.sourceTimeUs ?: 0L) }?.bitmap
+            if (source == null || bitmap == null || x < 0 || y < 0 || x >= source.width || y >= source.height) 0
+            else bitmap.getPixel((x * bitmap.width / source.width).toInt(), (y * bitmap.height / source.height).toInt())
+        }
         stack.layers.forEach { layer ->
             if (existingAsBackground) backgroundLayerIds += layer.id
             else register(layer)
@@ -120,14 +131,14 @@ internal class AnimationRuntime(
     }
 
     fun addBlankFrame(): Int {
-        frames.add(selectedIndex + 1, AnimationFrame(FrameId.new()))
+        frames.add(selectedIndex + 1, AnimationFrame(FrameId.new(), sourceTimeUs = currentFrame.sourceTimeUs))
         select(selectedIndex + 1)
         return selectedIndex
     }
 
     fun duplicateFrame(): Int {
         saveActiveImageTransforms()
-        val duplicate = AnimationFrame(FrameId.new(), currentFrame.exposure)
+        val duplicate = AnimationFrame(FrameId.new(), currentFrame.exposure, currentFrame.sourceTimeUs)
         stack.layers.forEach { layer ->
             if (isBackground(layer.id)) return@forEach
             when (layer) {
@@ -166,10 +177,10 @@ internal class AnimationRuntime(
     fun celRaster(layerId: LayerId, frameId: FrameId): TileStore? = rasterCels[layerId]?.get(frameId)
     fun celImageTransform(layerId: LayerId, frameId: FrameId): ImageTransform? = imageCels[layerId]?.get(frameId)
 
-    fun thumbnail(frameId: FrameId, sizePx: Int): Bitmap? {
+    fun thumbnail(frameId: FrameId, sizePx: Int, mediaBitmap: Bitmap? = null): Bitmap? {
         if (frames.none { it.id == frameId }) return null
         saveActiveImageTransforms()
-        return stack.renderAnimationFrameThumbnail(this, frameId, sizePx)
+        return stack.renderAnimationFrameThumbnail(this, frameId, sizePx, mediaBitmap)
     }
 
     fun carryRecordedDrawing(layerId: LayerId, from: Int, to: Int) {
@@ -377,10 +388,14 @@ internal class AnimationRuntime(
             rasterCels.mapValues { (_, cels) -> cels.mapValues { (_, store) -> if (store.encodedBacking == null) store.snapshotTiles() else emptyMap() } },
             imageCels.mapValues { (_, cels) -> cels.toMap() },
             rasterCels.mapValues { (_, cels) -> cels.mapNotNull { (id, store) -> store.encodedBacking?.let { id to it } }.toMap() },
+            media,
         )
     }
 
     fun restore(saved: SavedAnimationSnapshot) {
+        mediaPreview?.clear()
+        media = saved.media
+        mediaPreview = media?.let(::MediaPreview)
         backgroundLayerIds.clear()
         backgroundLayerIds += saved.backgroundLayerIds
         rasterCels.clear()
@@ -405,6 +420,9 @@ internal class AnimationRuntime(
     }
 
     private fun install(index: Int) {
+        if (media != null) rasterCels.values.forEach { cels ->
+            cels.entries.removeAll { (_, store) -> store.allocatedTileCount == 0 && store.encodedBacking == null && store.history.estimatedBytes == 0L }
+        }
         selectedIndex = index
         val id = currentFrame.id
         stack.layers.forEach { layer ->

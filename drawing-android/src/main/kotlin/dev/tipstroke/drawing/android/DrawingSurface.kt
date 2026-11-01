@@ -209,7 +209,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>, Int, Float) -> Unit)? = null
     var animationListener: ((AnimationUiState?) -> Unit)? = null
-        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null)) }
+        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null, hasMedia = animation?.media != null)) }
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
@@ -411,6 +411,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
+        animation?.takeIf { it.media != null }?.let { selectAnimationFrame(it.selectedIndex) }
     }
 
     override fun onDetachedFromWindow() {
@@ -420,6 +421,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         cancelMultiErase()
         clearMovePreview()
         stopAnimationPlayback()
+        animation?.mediaPreview?.clear()
+        pendingAnimationFrame = null
         gestureHandler.removeCallbacks(hideBrushPreview)
         rasterView.stylusHoverPreview = null
         super.onDetachedFromWindow()
@@ -476,7 +479,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     /** One attempt per drag, after 125 ms within a 12-screen-pixel neighborhood. */
     fun hoverFillColor(windowX: Float, windowY: Float, color: RgbaColor) {
-        if (!isEnabled || fillRequest?.released == true || revealingStore != null || activeDrawingPointerId != null) return
+        if (!isEnabled || pendingAnimationFrame != null || !mediaFrameReady() || fillRequest?.released == true || revealingStore != null || activeDrawingPointerId != null) return
         val point = fillPoint(windowX, windowY)
         val target = layerStack.selectedRaster()?.takeIf { it.visible && it.opacity > 0f }
         if (target == null || point.x < 0 || point.y < 0 || point.x >= canvasWidthPx || point.y >= canvasHeightPx) {
@@ -524,7 +527,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         hoverJob?.let(gestureHandler::removeCallbacks)
         hoverJob = null
         hoverAttempted = false
-        if (!isEnabled || activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) {
+        if (!isEnabled || pendingAnimationFrame != null || !mediaFrameReady() || activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) {
             cancelFillHover(); return
         }
         val target = layerStack.selectedRaster()?.takeIf { it.visible && it.opacity > 0f }
@@ -971,6 +974,27 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (!fromPlayback) stopAnimationPlayback()
         if (index !in active.frames.indices) return
         val frameId = active.frames[index].id
+        val mediaTime = active.frames[index].sourceTimeUs ?: 0L
+        val preview = active.mediaPreview
+        if (preview != null && preview.timeUs != mediaTime) {
+            pendingAnimationFrame = frameId
+            publishAnimation()
+            preview.prepare(mediaTime) { result ->
+                if (animation === active && pendingAnimationFrame == frameId) {
+                    pendingAnimationFrame = null
+                    result.fold(onSuccess = {
+                        val target = active.frames.indexOfFirst { it.id == frameId }
+                        if (target >= 0) selectAnimationFrame(target, fromPlayback)
+                    }, onFailure = {
+                        stopAnimationPlayback()
+                        animationErrorListener?.invoke(it.message ?: "Could not decode media frame")
+                    })
+                    publishAnimation()
+                }
+            }
+            return
+        }
+        preview?.cancelPending()
         if (!active.framesResident(listOf(index))) {
             if (pendingAnimationFrame == frameId) return
             pendingAnimationFrame = frameId
@@ -1016,6 +1040,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         active.prepareFrames(listOf(target)) { result ->
             if (animation === active && result.isSuccess && activeDrawingPointerId == null && active.currentFrame.id == deleting) {
                 active.deleteFrame()
+                selectAnimationFrame(active.selectedIndex)
                 warmAnimationNeighbours()
                 rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
             }
@@ -1032,8 +1057,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (source !in active.frames.indices || target !in active.frames.indices || source == target) return
         active.prepareFrames(listOf(source)) { result ->
             if (animation === active && result.isSuccess && activeDrawingPointerId == null) {
-                selectAnimationFrame(source)
                 active.moveFrame(source, target)
+                selectAnimationFrame(target)
                 rasterView.invalidate(); publishAnimation()
             }
         }
@@ -1043,6 +1068,30 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val active = animation ?: return null
         val index = active.frames.indexOfFirst { it.id == frameId }
         if (index < 0) return null
+        val media = active.media
+        if (media != null) {
+            if (pendingThumbnails.size < 16 && pendingThumbnails.add(frameId)) {
+                val time = active.frames[index].sourceTimeUs ?: 0L
+                MediaThumbnailDecoding.executor.execute {
+                    val result = runCatching { MediaFrameDecoder(media).use { it.frame(time, sizePx) } }
+                    ProjectPersistence.mainHandler.post {
+                        if (animation !== active) { result.getOrNull()?.recycle(); return@post }
+                        active.prepareFrames(listOf(active.frames.indexOfFirst { it.id == frameId })) { prepared ->
+                            pendingThumbnails.remove(frameId)
+                            val bitmap = result.getOrNull()
+                            if (animation === active && prepared.isSuccess && bitmap != null) {
+                                active.thumbnail(frameId, sizePx, bitmap)?.let { animationThumbnails[frameId] = it }
+                                while (animationThumbnails.size > 64) animationThumbnails.remove(animationThumbnails.keys.first())
+                                active.trimCleanFrames(animationNeighbourIndices(active))
+                                thumbnailRevision++; publishAnimation()
+                            }
+                            bitmap?.recycle()
+                        }
+                    }
+                }
+            }
+            return null
+        }
         if (!active.framesResident(listOf(index))) {
             if (pendingThumbnails.add(frameId)) active.prepareFrames(listOf(index)) { result ->
                 pendingThumbnails.remove(frameId)
@@ -1116,6 +1165,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun armImageMotionRecording(endIndex: Int, timing: RecordingTiming): Boolean {
         val active = animation ?: return false
+        if (active.media != null) return false
         val image = layerStack.selectedImage() ?: return false
         if (endIndex !in (active.selectedIndex + 1)..active.frames.lastIndex || activeDrawingPointerId != null) return false
         stopAnimationPlayback()
@@ -1128,6 +1178,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun startLiveDrawingRecording(): Boolean {
         val active = animation ?: return false
+        if (active.media != null) return false
         if (layerStack.selectedRaster() == null || settings.erasing || activeDrawingPointerId != null) return false
         stopAnimationPlayback()
         val start = active.selectedIndex
@@ -1175,6 +1226,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun stopAnimationPlayback() {
         if (!animationPlaying) return
         animationPlaying = false
+        animation?.mediaPreview?.cancelPending()
         pendingAnimationFrame = null
         strokeRecording = null
         rasterView.animationPlaying = false
@@ -1185,7 +1237,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (!animationPlaying || strokeRecording != null) {
             processRecorder?.sync(layerStack, animation != null, animation = animation)
         }
-        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null))
+        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null, hasMedia = animation?.media != null))
     }
     fun publishDiagnostics() {
         if (!settings.debug) return
@@ -1256,6 +1308,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     clearSelection()
                     rasterView.layerStack = replacement
                     replacement.replaceWith(project)
+                    animation?.mediaPreview?.clear()
                     animation = project.animation?.let { saved ->
                         AnimationRuntime(replacement, true, saved.frames, saved.fps, saved.playbackMode).apply { restore(saved) }
                     }
@@ -1266,6 +1319,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     processRecorder = if (project.recordingError == null) ProcessRecorder(project.widthPx, project.heightPx, project.processRecording) else null
                     processRecorder?.sync(replacement, animation != null, restoring = project.processRecording != null, animation = animation)
                     rasterView.animation = animation
+                    animation?.takeIf { it.media != null }?.let { selectAnimationFrame(it.selectedIndex) }
                     rasterView.fitCanvas(project.galleryRotationQuarterTurns * 90f)
                     publishLayers()
                     publishAnimation()
@@ -1324,8 +1378,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
     }
 
+    private fun mediaFrameReady(): Boolean {
+        val active = animation ?: return true
+        val preview = active.mediaPreview ?: return true
+        return preview.timeUs == (active.currentFrame.sourceTimeUs ?: 0L)
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!isEnabled || pendingAnimationFrame != null || transformSelectionOriginal != null) return true
+        if (!isEnabled || pendingAnimationFrame != null || !mediaFrameReady() || transformSelectionOriginal != null) return true
         resizeOverlay?.let { return it.dispatchTouchEvent(event) }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             stopAnimationPlayback()

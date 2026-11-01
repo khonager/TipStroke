@@ -1,6 +1,9 @@
 package dev.tipstroke.app
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import dev.tipstroke.drawing.android.MediaImporter
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
@@ -58,6 +61,24 @@ fun GalleryScreen(
     onNew: (NewDrawingRequest) -> Unit,
     onSettings: () -> Unit,
 ) {
+    val context = LocalContext.current
+    var importingMedia by remember { mutableStateOf(false) }
+    var mediaImportError by remember { mutableStateOf<String?>(null) }
+    val latestOnOpen by rememberUpdatedState(onOpen)
+    val mediaPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            importingMedia = true
+            MediaImporter.import(context.applicationContext, library, uri) { result ->
+                importingMedia = false
+                result.fold(onSuccess = { latestOnOpen(it) }, onFailure = { mediaImportError = it.message ?: "Could not import media" })
+            }
+        }
+    }
+    if (importingMedia) AlertDialog(onDismissRequest = {}, title = { Text("Importing media") },
+        text = { Column { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Preparing your local canvas…") } }, confirmButton = {})
+    mediaImportError?.let { error -> AlertDialog(onDismissRequest = { mediaImportError = null },
+        title = { Text("Import failed") }, text = { Text(error) },
+        confirmButton = { TextButton(onClick = { mediaImportError = null }) { Text("OK") } }) }
     var items by remember(library) { mutableStateOf(library.galleryItems()) }
     var openStackId by remember { mutableStateOf<String?>(null) }
     var transferOpen by remember { mutableStateOf(false) }
@@ -213,7 +234,8 @@ fun GalleryScreen(
                                 }
                             }
                             Row(Modifier.horizontalScroll(rememberScrollState())) {
-                                TextButton(onClick = { transferIds = null; transferOpen = true }) { Text("Import") }
+                                TextButton(onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) }, enabled = !importingMedia) { Text("Image / GIF / video") }
+                                TextButton(onClick = { transferIds = null; transferOpen = true }) { Text("Import project") }
                                 TextButton(onClick = {
                                     transferIds = items.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }
                                     transferOpen = true

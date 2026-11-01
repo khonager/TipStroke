@@ -94,3 +94,16 @@ readable. Imports allocate new local IDs. Library storage and package bounds are
 documented in [Brush library](BRUSH_LIBRARY.md). Raster documents do not store live
 brush objects; completed custom marks are permanent raster tiles, and process
 recording uses existing exact tile-patch actions for them.
+
+## Android version 6: source-backed media timelines
+
+Readers accept versions 1–6. `animation.media` optionally contains `kind` (`gif`
+or `video`), oriented `width`/`height`, and `durationUs`. Its immutable encoded asset
+always lives at `assets/media/timeline.source`; no URI grant is needed after import.
+Animation frame records optionally contain a nonnegative `sourceTimeUs` below the
+source duration. IDs, source timestamps, and exposure move together during frame
+editing. Older projects omit both fields and retain ordinary cel semantics.
+Blank cel directories are absent; only painted tiles are saved. The media asset
+is copied into portable packages and survives duplication and atomic saves.
+Older apps reject version 6 rather than silently dropping the media background.
+Source timestamps are independent of output FPS, and exported media is silent.

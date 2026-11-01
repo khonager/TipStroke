@@ -144,12 +144,14 @@ object ProjectTransfer {
             bitmap.recycle()
         }
         json.optJSONObject("animation")?.let { animation ->
+            val media = animation.optJSONObject("media")?.let { MediaSource.read(directory, it) }
             val frames = animation.getJSONArray("frames")
             val frameIds = hashSetOf<String>()
             require(frames.length() in 1..10_000) { "Invalid frame count" }
             for (i in 0 until frames.length()) {
                 val frame = frames.getJSONObject(i)
                 require(safeId.matches(frame.getString("id")) && frameIds.add(frame.getString("id"))) { "Invalid frame ID" }
+                if (frame.has("sourceTimeUs")) require(media != null && frame.getLong("sourceTimeUs") in 0 until media.durationUs) { "Invalid source timestamp" }
                 require(frame.optInt("exposure", 1) in 1..600) { "Invalid frame exposure" }
             }
             require(animation.optInt("fps", 12) in 1..60) { "Invalid animation FPS" }

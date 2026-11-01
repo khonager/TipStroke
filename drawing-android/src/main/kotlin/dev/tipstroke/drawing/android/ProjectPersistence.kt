@@ -379,6 +379,7 @@ internal data class SavedAnimationSnapshot(
     val rasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, Bitmap>>>,
     val imageCels: Map<LayerId, Map<FrameId, ImageTransform>>,
     val encodedRasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, ByteArray>>> = emptyMap(),
+    val media: MediaSource? = null,
 )
 
 internal data class LoadedProject(
@@ -419,7 +420,7 @@ internal data class LoadedImage(
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    internal const val SCHEMA_VERSION = 5
+    internal const val SCHEMA_VERSION = 6
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -478,6 +479,13 @@ internal object ProjectPersistence {
                 layersJson.put(json)
             }
             val animationJson = snapshot.animation?.let { animation ->
+                animation.media?.let { media ->
+                    val asset = File(temporary, MediaSource.ASSET_PATH)
+                    asset.parentFile?.mkdirs()
+                    // Immutable source: link through atomic revisions without copying a video each autosave.
+                    try { Files.createLink(asset.toPath(), media.file.toPath()) }
+                    catch (_: java.io.IOException) { media.file.copyTo(asset) }
+                }
                 animation.encodedRasterCels.forEach { (layerId, cels) ->
                     cels.forEach { (frameId, tiles) ->
                         if (tiles.isNotEmpty()) {
@@ -499,6 +507,7 @@ internal object ProjectPersistence {
                     }
                 }
                 JSONObject()
+                    .put("media", animation.media?.json())
                     .put("fps", animation.fps)
                     .put("playbackMode", animation.playbackMode.name)
                     .put("selectedIndex", animation.selectedIndex)
@@ -506,7 +515,7 @@ internal object ProjectPersistence {
                     .put("onionAfter", animation.onionAfter)
                     .put("onionOpacity", animation.onionOpacity)
                     .put("frames", JSONArray().apply { animation.frames.forEach { frame ->
-                        put(JSONObject().put("id", frame.id.value).put("exposure", frame.exposure))
+                        put(JSONObject().put("id", frame.id.value).put("exposure", frame.exposure).put("sourceTimeUs", frame.sourceTimeUs))
                     } })
                     .put("backgroundLayerIds", JSONArray().apply { animation.backgroundLayerIds.forEach { put(it.value) } })
                     .put("imageCels", JSONArray().apply { animation.imageCels.forEach { (layerId, cels) ->
@@ -615,7 +624,7 @@ internal object ProjectPersistence {
                 val frame = framesJson.getJSONObject(index)
                 val id = frame.getString("id")
                 require(id.matches(Regex("[A-Za-z0-9_-]+"))) { "Invalid frame ID" }
-                AnimationFrame(FrameId(id), frame.optInt("exposure", 1))
+                AnimationFrame(FrameId(id), frame.optInt("exposure", 1), if (frame.has("sourceTimeUs")) frame.getLong("sourceTimeUs") else null)
             }
             val timeline = AnimationTimeline(
                 frames,
@@ -650,12 +659,12 @@ internal object ProjectPersistence {
                         val match = Regex("(-?\\d+)_(-?\\d+)\\.png").matchEntire(file.name) ?: return@mapNotNull null
                         TileCoordinate(match.groupValues[1].toInt(), match.groupValues[2].toInt()) to file.readBytes()
                     }.toMap()
-                }
+                }.filterValues { it.isNotEmpty() }
             } else emptyMap()
             val rasterCels = layers.filterIsInstance<LoadedRaster>().associate { layer ->
                 layer.id to frames.filter { !lazyAnimation || it.id == frames[selectedIndex].id }.associate { frame ->
                     frame.id to loadTiles(File(directory, "animation/cels/${layer.id.value}/${frame.id.value}"))
-                }
+                }.filterValues { it.isNotEmpty() }
             }
             SavedAnimationSnapshot(
                 frames, saved.optInt("selectedIndex", 0).coerceIn(frames.indices),
@@ -663,7 +672,12 @@ internal object ProjectPersistence {
                 saved.optInt("onionBefore", 1), saved.optInt("onionAfter", 1),
                 saved.optDouble("onionOpacity", .3).toFloat(),
                 backgrounds, rasterCels, imageCels, encodedCels,
-            )
+                saved.optJSONObject("media")?.let { MediaSource.read(directory, it) },
+            ).also { restored ->
+                restored.frames.forEach { frame -> frame.sourceTimeUs?.let { time ->
+                    require(restored.media != null && time < restored.media.durationUs) { "Invalid media timestamp" }
+                } }
+            }
         }
         val process = runCatching { ProcessRecording.read(File(directory, "process.tsr")) }
         LoadedProject(width, height, selected, layers, json.optInt("galleryRotationQuarterTurns", 0).mod(4), animation,
@@ -699,11 +713,12 @@ internal object ProjectPersistence {
         val pixels = snapshot.widthPx.toLong() * snapshot.heightPx.toLong() * scale * scale
         require(pixels <= 16_777_216L) { "Animation export is too large for this device" }
         val cache = mutableMapOf<Uri, Bitmap>()
+        val mediaDecoder = animation.media?.let(::MediaFrameDecoder)
         try {
             AnimationExporter.export(resolver, uri, animation, format) { frameIndex ->
-                render(snapshot, resolver, scale, transparent = false, frameIndex = frameIndex, imageCache = cache)
+                render(snapshot, resolver, scale, transparent = false, frameIndex = frameIndex, imageCache = cache, mediaDecoder = mediaDecoder)
             }
-        } finally { cache.values.forEach(Bitmap::recycle) }
+        } finally { cache.values.forEach(Bitmap::recycle); mediaDecoder?.close() }
     }
 
     private fun render(
@@ -711,6 +726,7 @@ internal object ProjectPersistence {
         frameIndex: Int = snapshot.animation?.selectedIndex ?: 0,
         imageCache: MutableMap<Uri, Bitmap>? = null,
         opaqueBase: Boolean = false,
+        mediaDecoder: MediaFrameDecoder? = null,
     ): Bitmap {
         val outputWidth = (snapshot.widthPx * scale).roundToInt().coerceAtLeast(1)
         val outputHeight = (snapshot.heightPx * scale).roundToInt().coerceAtLeast(1)
@@ -723,6 +739,15 @@ internal object ProjectPersistence {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val animation = snapshot.animation
         val frameId = animation?.frames?.getOrNull(frameIndex)?.id
+        animation?.media?.let { source ->
+            val decoder = mediaDecoder ?: MediaFrameDecoder(source)
+            try {
+                val frame = decoder.frame(animation.frames[frameIndex].sourceTimeUs ?: 0L, maxOf(outputWidth, outputHeight))
+                try { canvas.drawBitmap(frame, null, RectF(0f, 0f, source.width.toFloat(), source.height.toFloat()), paint) }
+                finally { frame.recycle() }
+            } catch (failure: Throwable) { output.recycle(); throw failure }
+            finally { if (mediaDecoder == null) decoder.close() }
+        }
         fun drawLayer(layer: SavedLayerSnapshot, coverage: Boolean = false, ancestors: Set<LayerId> = emptySet()) {
             if (layer.id in ancestors) return
             if (!coverage && (!layer.visible || layer.opacity <= 0f)) return

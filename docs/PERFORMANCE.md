@@ -138,3 +138,18 @@ limits bound work; no full-canvas copies or sample-time file access are added.
 The studio test pad is native and separately bounded to 16 × 2,048 samples and a
 1,600 × 600 preview bitmap. Real-device profiling is still required for worst-case
 large-tip, dense multi-stamp brushes.
+
+## Imported media
+
+Media canvases retain one encoded source asset. Untouched timeline positions have
+no raster tiles; scrubbing drops empty cel stores. The active media preview is
+limited to a 1280 px edge, with one in-flight seek and one replaceable pending seek.
+Timeline composites cache up to 64 small previews and queue at most 16 thumbnail
+requests per surface. Source decoder allocations are separate from these bitmap
+bounds. Native pointer input never decodes media or writes source files.
+
+60 FPS source import does not promise 60 FPS preview decoding: slow seeks can skip
+preview positions during playback. Scrubbing waits for a matching source frame
+before painting is enabled; export renders every output position on its worker.
+Measure seek latency, decoder memory, thermal behavior, and export throughput on
+physical devices with representative long-GOP, rotated, and variable-rate clips.

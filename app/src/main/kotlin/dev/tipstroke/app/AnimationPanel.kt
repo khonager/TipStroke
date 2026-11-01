@@ -148,7 +148,7 @@ internal fun AnimationPanel(
             TextButton(onClick = onDuplicateFrame, modifier = Modifier.width(36.dp).semantics {
                 contentDescription = "Duplicate selected animation frame"
             }, contentPadding = PaddingValues(0.dp)) { Text("⧉", fontSize = 20.sp) }
-            Box {
+            if (!state.hasMedia) Box {
                 TextButton(onClick = {
                     when {
                         state.recording != null -> onCancelRecording()
@@ -193,6 +193,7 @@ internal fun AnimationPanel(
                 DropdownMenu(expanded = menu != null, onDismissRequest = { menu = null }) {
                     when (menu) {
                         "main" -> {
+                            if (state.hasMedia) DropdownMenuItem(text = { Text("Media canvas · silent export") }, onClick = {}, enabled = false)
                             DropdownMenuItem(text = { Text("Frame actions") }, onClick = { menu = "frame" })
                             DropdownMenuItem(text = { Text("Selected layer") }, onClick = { menu = "layer" }, enabled = selectedLayer != null)
                             DropdownMenuItem(text = { Text("Playback") }, onClick = {

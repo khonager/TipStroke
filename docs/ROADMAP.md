@@ -33,3 +33,12 @@ Jetpack-Ink-like brush quality and advanced Pencil input; gallery thumbnails and
 organization; image import/editing, selections/fill/smudge; animation and process
 recording. Do not silently flatten or discard unsupported Android document data.
 The existing Android production surface remains native and independent.
+
+### Source-backed media canvases (Android)
+
+Implemented gallery image/GIF/video canvas creation, local encoded source assets,
+on-demand scrubbing, sparse paint cels, stable source timestamps through frame
+editing, project transfer, and merged silent GIF/MP4/PNG-sequence export. Follow-up
+work: audio, clip trimming and arbitrary source retiming, movable media layers,
+frame-accurate variable-rate timelines, and native iOS parity. These are not part
+of the current import format's UI.

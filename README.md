@@ -99,3 +99,10 @@ The favorites bar never scrolls: its capacity follows the available screen space
 The full library stays one tap away. Public publishing and community rankings are
 not connected. See [Brush library](docs/BRUSH_LIBRARY.md) for supported controls and
 format details.
+
+On Android, choose **Image / GIF / video** in the gallery to make a canvas from
+media. Images use their oriented pixel dimensions. GIFs and videos stay as one
+local source file: scrub the timeline and draw on sparse paint cels, then export
+the source and drawings together as GIF, MP4, or a PNG sequence. Video exports are
+silent. Import supports up to 10,000 timeline positions, 16 megapixels, and 512 MiB
+per source (32 MiB for GIF); oversized clips need trimming before import.

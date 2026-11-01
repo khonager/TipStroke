@@ -454,7 +454,10 @@ fun CanvasScreen(
                     backgroundColor = paperColor
                     backgroundOpacity = paperOpacity
                 }
-                view.animationListener = { animationState = it }
+                view.animationListener = { updated ->
+                    if (animationState == null && updated?.hasMedia == true) animationOpen = true
+                    animationState = updated
+                }
                 view.animationErrorListener = { message = it }
                 view.colorPickedListener = { picked -> color = picked }
                 view.visiblePaletteListener = { drawingPalette = it }

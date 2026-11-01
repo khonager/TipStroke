@@ -235,3 +235,48 @@ compatibility needs a lossless migration/import design before it can be enabled.
 ## Source directories
 
 Edit Kotlin code under each module’s `src/main/kotlin` and tests under `src/test/kotlin`. The `core/bin/` and `desktop/bin/` directories are IDE-generated copies, ignored by Git and not Gradle source roots.
+
+## Media canvases (Android)
+
+Gallery **Image / GIF / video** creates a document at the imported asset's oriented
+pixel dimensions, with an empty paint layer selected and the timeline opened for
+moving media. The eyedropper samples media beneath the paint layers. Still photos are normalized
+once for EXIF orientation and retained as an image layer below that paint layer.
+The existing editor image import continues to place images in an existing canvas.
+
+A GIF or video becomes one immutable local `assets/media/timeline.source` beneath the
+layer stack, plus timeline frame IDs with source timestamps. Source frames are
+never expanded into raster layers or PNG files. Blank timeline positions allocate
+no paint tiles; unedited cel stores are discarded as the user scrubs. A drawn cel
+uses the existing sparse 256 px tiles, undo, layers, onion skins, and persistence.
+Duplicate copies its cel and source timestamp; Hold freezes both; reorder moves
+both together. Adding a blank frame retains the selected source timestamp.
+Changing FPS changes playback speed without retiming the stored source timestamps.
+
+Video frames use Android [MediaMetadataRetriever.OPTION_CLOSEST](https://developer.android.com/reference/android/media/MediaMetadataRetriever), so variable-rate
+footage is sampled at the nearest available source frame. Video import uses its
+average frame rate, rounded to 1–60 FPS (30 when unavailable); GIFs use a 50 FPS
+sampling grid. Source time is independent of paint data. Native GIF timestamp
+seeking applies disposal/transparency through `Movie`; `AnimatedImageDrawable`
+does not expose deterministic arbitrary-time seeking.
+
+Preview decoding runs on a worker with one in-flight request and one replaceable
+pending request. Only a completed matching source frame enables drawing at the
+new time. The preview is bounded to a 1280 px edge; thumbnails decode separately,
+with at most 16 pending requests and 64 cached composites (enough for a wide tablet
+strip without repeatedly evicting its visible thumbnails). Export retains one
+source decoder and composites one full-size source frame with its paint cels at a
+time through the existing GIF, MP4, and PNG-sequence exporters. Video audio is not
+imported or exported. Media timelines support frame editing, not live drawing or
+image-motion recording. The media base stays at its original size and canvas origin
+if the canvas is resized; it is not a movable layer.
+
+Import is transactional on the project worker. Limits are 8192 px per side and
+16 megapixels, 512 MiB per asset (32 MiB for GIF), and 10,000 sampled timeline
+positions. Oversized inputs fail with an explanation rather than being silently
+trimmed or resized. The copied source survives removal of the picked file or URI
+grant. Atomic saves hard-link immutable source bytes into the new revision where
+supported, falling back to copying. Portable projects include the source file.
+Decoder support depends on the device's installed codecs. There is no network
+service or runtime dependency. This feature does not change the independent iOS
+or desktop import paths.

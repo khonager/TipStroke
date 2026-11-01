@@ -298,3 +298,23 @@ undo, save/reopen, and replay. Share a `.tipbrush` attachment to another device 
 verify both sources survive. Rotate and resize the window with a full favorites
 bar: it must never scroll or overflow, and the full library remains reachable.
 Share-sheet recipients and real stylus latency still need physical-device validation.
+
+## Android media canvas import
+
+`MediaTimelineTest` checks sparse cel retention while scrubbing 10,000 positions,
+source timestamp identity through duplicate/hold/reorder, and invalid timestamps.
+`MediaImportInstrumentedTest` uses real Android codecs to check EXIF-oriented photo
+canvas sizing, GIF seeking, 60 FPS MP4 import, local-source independence, repeated
+save and portable transfer, and source/paint compositing in PNG sequence and MP4
+exports. Run it with:
+
+```sh
+./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.MediaImportInstrumentedTest
+```
+
+On physical hardware, import portrait and landscape videos, variable-frame-rate
+clips, and transparent GIFs with disposal changes. Scrub rapidly in both directions,
+paint, undo, duplicate, hold, reorder, save, reopen, and compare exported frames.
+Verify seek failures remain visible, previews do not overwrite newer seeks, drawing
+waits for matching media/cel timestamps, and memory stays bounded. Preview is
+limited to a 1280 px edge; export samples at the selected output resolution.

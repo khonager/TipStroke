@@ -65,6 +65,8 @@ internal class LayerStack(
     var canvasHeight: Int,
     private val invalidate: () -> Unit,
 ) {
+    var mediaColorAt: ((Float, Float) -> Int)? = null
+
     /** Back-to-front painter's order. */
     val layers = mutableListOf<CanvasLayerRuntime>()
     var backgroundColor: Int = android.graphics.Color.WHITE
@@ -99,7 +101,7 @@ internal class LayerStack(
     }
 
     /** Small composite preview for a timeline frame, without installing its cels. */
-    fun renderAnimationFrameThumbnail(animation: AnimationRuntime, frameId: FrameId, sizePx: Int): Bitmap {
+    fun renderAnimationFrameThumbnail(animation: AnimationRuntime, frameId: FrameId, sizePx: Int, mediaBitmap: Bitmap? = null): Bitmap {
         val size = sizePx.coerceAtLeast(1)
         val preview = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(preview)
@@ -110,6 +112,9 @@ internal class LayerStack(
         canvas.scale(scale, scale)
         canvas.clipRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat())
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        animation.media?.let { media -> mediaBitmap?.let {
+            canvas.drawBitmap(it, null, RectF(0f, 0f, media.width.toFloat(), media.height.toFloat()), paint)
+        } }
         fun drawFrameLayer(layer: CanvasLayerRuntime, coverage: Boolean = false, ancestors: Set<LayerId> = emptySet()) {
             if (layer.id in ancestors || (!coverage && (!layer.visible || layer.opacity <= 0f))) return
             val clipSource = layer.clipSourceId?.let { id -> layers.firstOrNull { it.id == id } }
@@ -503,6 +508,7 @@ internal class LayerStack(
     private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean, originalImageColors: Boolean = false): Int {
         var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else
             (backgroundColor and 0x00ffffff) or ((backgroundOpacity * 255).roundToInt() shl 24)
+        mediaColorAt?.invoke(x, y)?.let { result = sourceOver(it, result, 1f) }
         layers.forEach { layer ->
             if (!layer.visible || !layer.activeAtFrame ||
                 (layer.opacity <= 0f && !(originalImageColors && layer is ImageLayerRuntime))) return@forEach

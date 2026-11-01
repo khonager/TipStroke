@@ -214,6 +214,10 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         canvasPaint.alpha = (layerStack.backgroundOpacity * 255).toInt()
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), canvasPaint)
         canvas.clipRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
+        animation?.let { active -> active.media?.let { media -> active.mediaPreview?.takeIf { it.timeUs == (active.currentFrame.sourceTimeUs ?: 0L) }?.bitmap?.let { frame ->
+            bitmapPaint.alpha = 255
+            canvas.drawBitmap(frame, null, RectF(0f, 0f, media.width.toFloat(), media.height.toFloat()), bitmapPaint)
+        } } }
         layerStack.layers.forEach { layer ->
             drawOnionForLayer(canvas, layer)
             if (!layer.visible || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
