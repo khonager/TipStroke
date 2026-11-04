@@ -64,7 +64,14 @@ internal fun AnimationPanel(
     onCancelRecording: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    onSeekMedia: (Long) -> Unit = {},
 ) {
+    if (state.hasMedia) {
+        MediaTimelinePanel(state, onSeekMedia, onSelectFrame, onAddFrame, onDeleteFrame,
+            onExposure, onFps, onPlayPause, onClose, modifier,
+            onOnion = { enabled -> onOnion(if (enabled) 1 else 0, if (enabled) 1 else 0, state.onionOpacity) })
+        return
+    }
     val selectedLayer = layers.firstOrNull { it.id == selectedLayerId }
     var menu by remember { mutableStateOf<String?>(null) }
     var recordingMenu by remember { mutableStateOf(false) }
@@ -193,7 +200,6 @@ internal fun AnimationPanel(
                 DropdownMenu(expanded = menu != null, onDismissRequest = { menu = null }) {
                     when (menu) {
                         "main" -> {
-                            if (state.hasMedia) DropdownMenuItem(text = { Text("Media canvas · silent export") }, onClick = {}, enabled = false)
                             DropdownMenuItem(text = { Text("Frame actions") }, onClick = { menu = "frame" })
                             DropdownMenuItem(text = { Text("Selected layer") }, onClick = { menu = "layer" }, enabled = selectedLayer != null)
                             DropdownMenuItem(text = { Text("Playback") }, onClick = {

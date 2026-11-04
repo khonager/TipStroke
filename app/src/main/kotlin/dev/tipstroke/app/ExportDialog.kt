@@ -11,6 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import dev.tipstroke.core.model.MediaExportTiming
 import dev.tipstroke.drawing.android.ExportFormat
 import dev.tipstroke.drawing.android.AnimationExportFormat
 import kotlin.math.roundToInt
@@ -27,6 +28,7 @@ data class AnimationExportRequest(
     val format: AnimationExportFormat,
     val scale: Float,
     val fileName: String,
+    val timing: MediaExportTiming = MediaExportTiming.SMOOTH_VIDEO,
 )
 
 @Composable
@@ -36,9 +38,11 @@ fun AnimationExportDialog(
     canvasHeight: Int,
     onDismiss: () -> Unit,
     onStillImage: () -> Unit,
+    hasMedia: Boolean = false,
     onExport: (AnimationExportRequest) -> Unit,
 ) {
     var format by remember { mutableStateOf(AnimationExportFormat.MP4) }
+    var timing by remember { mutableStateOf(MediaExportTiming.SMOOTH_VIDEO) }
     var scale by remember { mutableFloatStateOf(.5f) }
     var fileName by remember(drawingName, format) {
         mutableStateOf("${drawingName.safeFileName()}.${format.extension}")
@@ -68,6 +72,17 @@ fun AnimationExportDialog(
                         )
                     }
                 }
+                if (hasMedia) {
+                    ExportLabel("Video timing")
+                    MediaExportTiming.entries.forEach { option ->
+                        Row(Modifier.fillMaxWidth().clickable { timing = option }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = timing == option, onClick = { timing = option })
+                            Text(if (option == MediaExportTiming.SMOOTH_VIDEO) "Smooth video + held drawings" else "Video at drawing FPS", color = Color.White)
+                        }
+                    }
+                    Text("Both keep the original speed and duration. MP4 is silent; GIF is limited to 50 FPS.",
+                        color = Color(0xFF9EA0A6), fontSize = 12.sp)
+                }
                 ExportLabel("Size")
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     ChoiceButton("Canvas", scale == 1f, { scale = 1f }, Modifier.weight(1f))
@@ -82,7 +97,7 @@ fun AnimationExportDialog(
                 Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onDismiss, Modifier.weight(1f)) { Text("Cancel") }
                     Button(onClick = {
-                        onExport(AnimationExportRequest(format, scale, fileName.ifBlank { "TipStroke.${format.extension}" }))
+                        onExport(AnimationExportRequest(format, scale, fileName.ifBlank { "TipStroke.${format.extension}" }, timing))
                     }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A))) {
                         Text("Export")
                     }

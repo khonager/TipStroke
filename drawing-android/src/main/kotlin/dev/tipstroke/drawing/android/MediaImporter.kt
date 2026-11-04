@@ -9,8 +9,6 @@ import android.provider.OpenableColumns
 import dev.tipstroke.core.model.*
 import java.io.File
 import java.util.UUID
-import kotlin.math.ceil
-import kotlin.math.roundToInt
 
 /** Import is transactional and runs on the same serial worker as saves and project transfer. */
 object MediaImporter {
@@ -71,15 +69,15 @@ object MediaImporter {
                     SavedImageSnapshot(imageId, name, true, 1f, Uri.fromFile(normalized), width, height, ImageTransform(width / 2f, height / 2f)), paint,
                 ))
             } else {
-                val source: MediaSource
-                val fps: Int
+                var source: MediaSource
+                var frameRate: Double
                 if (isGif) {
                     require(file.length() <= 32L * 1024 * 1024) { "GIF exceeds the 32 MiB import limit" }
                     requireNotNull(imageInfo) { "Cannot read GIF dimensions" }
                     require(imageInfo.first.toLong() * imageInfo.second <= 16_777_216) { "GIF exceeds 16 megapixels" }
                     val movie = requireNotNull(Movie.decodeFile(file.path)) { "Cannot decode GIF" }
                     source = MediaSource(file, "gif", movie.width(), movie.height(), movie.duration().coerceAtLeast(20) * 1000L)
-                    fps = 50
+                    frameRate = 50.0
                 } else {
                     val retriever = MediaMetadataRetriever()
                     try {
@@ -91,16 +89,20 @@ object MediaImporter {
                         val rotated = rotation.mod(180) == 90
                         source = MediaSource(file, "video", if (rotated) height else width, if (rotated) width else height,
                             requireNotNull(metadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()) { "Video has no duration" } * 1000L)
-                        fps = (metadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toLongOrNull()
+                        frameRate = (metadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toLongOrNull()
                             ?.takeIf { it > 0 }?.let { it * 1_000_000.0 / source.durationUs })
-                            ?.roundToInt()?.coerceIn(1, 60) ?: 30
+                            ?.coerceIn(1.0, 120.0) ?: 30.0
                     } finally { retriever.release() }
                 }
-                val count = ceil(source.durationUs * fps / 1_000_000.0).toInt()
-                require(count in 1..10_000) { "Clip exceeds 10,000 timeline frames; trim it before importing" }
+                if (source.kind == "video") {
+                    val timing = MediaSource.videoTiming(file, source.durationUs, frameRate)
+                    source = source.copy(durationUs = timing.first)
+                    frameRate = timing.second
+                }
+                source = source.copy(frameRate = frameRate)
                 MediaFrameDecoder(source).use { it.frame(0, 1280).recycle() }
-                val frames = List(count) { AnimationFrame(FrameId.new(), sourceTimeUs = it * 1_000_000L / fps) }
-                val animation = SavedAnimationSnapshot(frames, 0, fps, PlaybackMode.LOOP, 1, 1, .3f, emptySet(), emptyMap(), emptyMap(), media = source)
+                val frames = listOf(AnimationFrame(FrameId.new(), sourceTimeUs = 0, durationUs = 1_000_000L / 12))
+                val animation = SavedAnimationSnapshot(frames, 0, 12, PlaybackMode.LOOP, 1, 1, .3f, emptySet(), emptyMap(), emptyMap(), media = source)
                 snapshot = DrawingSnapshot(source.width, source.height, paintId, listOf(paint), animation = animation)
             }
             try { return ProjectPersistence.save(resolver, library, library.newId(), name, snapshot).getOrThrow() }

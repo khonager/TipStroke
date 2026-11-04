@@ -95,15 +95,31 @@ documented in [Brush library](BRUSH_LIBRARY.md). Raster documents do not store l
 brush objects; completed custom marks are permanent raster tiles, and process
 recording uses existing exact tile-patch actions for them.
 
-## Android version 6: source-backed media timelines
+## Android version 7: independent media and drawing clocks
 
-Readers accept versions 1–6. `animation.media` optionally contains `kind` (`gif`
-or `video`), oriented `width`/`height`, and `durationUs`. Its immutable encoded asset
-always lives at `assets/media/timeline.source`; no URI grant is needed after import.
-Animation frame records optionally contain a nonnegative `sourceTimeUs` below the
-source duration. IDs, source timestamps, and exposure move together during frame
-editing. Older projects omit both fields and retain ordinary cel semantics.
-Blank cel directories are absent; only painted tiles are saved. The media asset
-is copied into portable packages and survives duplication and atomic saves.
-Older apps reject version 6 rather than silently dropping the media background.
-Source timestamps are independent of output FPS, and exported media is silent.
+Readers accept versions 1–7. Optional `animation.media` contains `kind` (`gif` or
+`video`), oriented `width`/`height`, `durationUs`, and source `frameRate` (a double).
+Its encoded asset is `assets/media/timeline.source`; no URI grant is needed after
+import. Optional `animation.mediaPositionUs` retains the scrub cursor, including
+gaps with no drawing. `selectedIndex` retains an authored drawing selection.
+
+Media drawing records contain stable `id`, `sourceTimeUs`, and positive `durationUs`.
+Duration is absolute source time, independent of animation.fps; FPS is the drawing
+grid. Intervals are start-inclusive/end-exclusive. Later starts replace earlier
+ones, including overlap; an expired later drawing never reveals older paint.
+Ordinary cel projects keep exposure-based timing and omit these fields.
+
+Version 6 media projects migrate by retaining painted/image cels and their stable
+IDs/timestamps, removing empty source slots, and converting exposure/FPS to explicit
+durations. A completely blank project retains one initial drawing. Source cadence
+is read from the file when older manifests omit it. Early builds using
+`assets/timeline.source` are normalized to the canonical path on the project worker
+without deleting the original before a successful save. Earlier rearranged/held source
+slots now follow original video time; media speed is always 1×. Migration happens
+in memory and is written by the next normal atomic save. Older apps reject version
+7 rather than dropping timing information. Blank cel directories stay absent.
+Portable packages preserve the source and timing fields.
+
+Export timing is a per-export choice and does not modify the project. MP4 remains
+silent; PNG timing.json includes output FPS and source duration. Still exports and
+gallery thumbnails composite the saved scrub position, including empty gaps.

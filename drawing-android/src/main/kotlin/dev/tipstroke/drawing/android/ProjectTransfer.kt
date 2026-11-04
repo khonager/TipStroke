@@ -145,6 +145,7 @@ object ProjectTransfer {
         }
         json.optJSONObject("animation")?.let { animation ->
             val media = animation.optJSONObject("media")?.let { MediaSource.read(directory, it) }
+            if (media != null) require(animation.optLong("mediaPositionUs", 0) in 0 until media.durationUs) { "Invalid media cursor" }
             val frames = animation.getJSONArray("frames")
             val frameIds = hashSetOf<String>()
             require(frames.length() in 1..10_000) { "Invalid frame count" }
@@ -152,6 +153,7 @@ object ProjectTransfer {
                 val frame = frames.getJSONObject(i)
                 require(safeId.matches(frame.getString("id")) && frameIds.add(frame.getString("id"))) { "Invalid frame ID" }
                 if (frame.has("sourceTimeUs")) require(media != null && frame.getLong("sourceTimeUs") in 0 until media.durationUs) { "Invalid source timestamp" }
+                if (frame.has("durationUs")) require(frame.getLong("durationUs") > 0) { "Invalid drawing duration" }
                 require(frame.optInt("exposure", 1) in 1..600) { "Invalid frame exposure" }
             }
             require(animation.optInt("fps", 12) in 1..60) { "Invalid animation FPS" }

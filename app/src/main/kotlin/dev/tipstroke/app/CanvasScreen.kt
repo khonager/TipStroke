@@ -199,7 +199,7 @@ fun CanvasScreen(
             }
         } else if (result.resultCode == Activity.RESULT_OK && animationRequest != null && uri != null) {
             exporting = true
-            surface?.exportAnimation(uri, animationRequest.format, animationRequest.scale) { outcome ->
+            surface?.exportAnimation(uri, animationRequest.format, animationRequest.scale, animationRequest.timing) { outcome ->
                 exporting = false
                 message = outcome.fold({ "Animation saved." }, { it.message ?: "Animation export failed." })
             }
@@ -818,6 +818,7 @@ fun CanvasScreen(
                 onReorderFrame = { source, target -> surface?.reorderAnimationFrame(source, target) },
                 thumbnailForFrame = { surface?.animationFrameThumbnail(it) },
                 onExposure = { surface?.setAnimationExposure(it) },
+                onSeekMedia = { surface?.seekMedia(it) },
                 onFps = { surface?.setAnimationFps(it) },
                 onPlaybackMode = { surface?.setAnimationPlaybackMode(it) },
                 onPlayPause = { surface?.toggleAnimationPlayback() },
@@ -1069,6 +1070,7 @@ fun CanvasScreen(
         documentName, editorWidthPx, editorHeightPx,
         onDismiss = { exportOpen = false },
         onStillImage = { exportOpen = false; stillExportOpen = true },
+        hasMedia = animationState?.hasMedia == true,
     ) { request ->
         exportOpen = false
         pendingAnimationExport = request

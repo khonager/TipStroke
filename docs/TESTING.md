@@ -299,22 +299,34 @@ verify both sources survive. Rotate and resize the window with a full favorites
 bar: it must never scroll or overflow, and the full library remains reachable.
 Share-sheet recipients and real stylus latency still need physical-device validation.
 
-## Android media canvas import
+## Android media canvas import and playback
 
-`MediaTimelineTest` checks sparse cel retention while scrubbing 10,000 positions,
-source timestamp identity through duplicate/hold/reorder, and invalid timestamps.
-`MediaImportInstrumentedTest` uses real Android codecs to check EXIF-oriented photo
-canvas sizing, GIF seeking, 60 FPS MP4 import, local-source independence, repeated
-save and portable transfer, and source/paint compositing in PNG sequence and MP4
-exports. Run it with:
+Core MediaTimelineTest covers gaps, overlap replacement, unchanged holds after FPS
+changes, grid snapping, fractional export cadence, and equal source duration across
+export modes. Runtime tests cover free scrubbing without new cels, authored drawing
+creation, active layers in gaps, and sparse cel retention across 10,000 positions.
+
+MediaImportInstrumentedTest uses Android codecs for EXIF sizing, GIF seeking,
+60 FPS MP4 import without source slots, local asset independence, repeated saves,
+portable transfer, latest-only previews, and correct paint/source export samples.
+MediaPlaybackInstrumentedTest exercises the real native player and DrawingSurface:
+source-speed playback at low drawing FPS, rapid seeks, hardware-video/raster pixel
+alignment in a screenshot, adding a drawing in a gap, background/resume behavior,
+one-tap restart at the end, and both MP4 export cadences with original duration
+and timestamps. Migration coverage includes the early source asset location.
+
+Validated on the API 35 tablet emulator: all seven media instrumentation tests
+passed. The complete Gradle build, unit suites (313 distinct tests), and lint also
+passed. Manual UI checks covered reopening an older media project and the export
+timing choices.
 
 ```sh
-./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.MediaImportInstrumentedTest
+./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.MediaImportInstrumentedTest,dev.tipstroke.drawing.android.MediaPlaybackInstrumentedTest
 ```
 
-On physical hardware, import portrait and landscape videos, variable-frame-rate
-clips, and transparent GIFs with disposal changes. Scrub rapidly in both directions,
-paint, undo, duplicate, hold, reorder, save, reopen, and compare exported frames.
-Verify seek failures remain visible, previews do not overwrite newer seeks, drawing
-waits for matching media/cel timestamps, and memory stays bounded. Preview is
-limited to a 1280 px edge; export samples at the selected output resolution.
+On physical devices, import portrait, rotated, long-GOP, and variable-rate videos,
+and transparent GIFs with disposal changes. Scrub both directions, add drawings,
+change holds/FPS, paint/undo, save/reopen, background/resume, and compare exports.
+Verify zoom/pan alignment, no thumbnail refresh churn, drawing only after matching
+seeks, and stable memory. Emulator checks do not establish physical-device frame
+pacing, battery/thermal cost, or stylus latency. MP4 output codec limits vary by device.

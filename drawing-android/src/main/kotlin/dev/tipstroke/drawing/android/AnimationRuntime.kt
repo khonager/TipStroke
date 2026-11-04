@@ -10,6 +10,7 @@ import dev.tipstroke.core.model.ImageTransform
 import dev.tipstroke.core.model.LayerId
 import dev.tipstroke.core.model.PlaybackMode
 import dev.tipstroke.core.model.RecordingTiming
+import dev.tipstroke.core.model.MediaTimeline
 import android.graphics.Bitmap
 import java.util.LinkedHashMap
 
@@ -27,6 +28,9 @@ data class AnimationUiState(
     val thumbnailRevision: Int = 0,
     val loading: Boolean = false,
     val hasMedia: Boolean = false,
+    val mediaPositionUs: Long = 0,
+    val mediaDurationUs: Long = 0,
+    val mediaDrawingActive: Boolean = true,
 )
 
 enum class AnimationRecordingKind { IMAGE_MOTION, LIVE_DRAWING }
@@ -43,6 +47,11 @@ internal class AnimationRuntime(
         private set
     var mediaPreview: MediaPreview? = null
         private set
+    var videoColorPreview: Bitmap? = null
+    var mediaPositionUs = 0L
+        private set
+    var mediaDrawingActive = true
+        private set
     val frames = initialFrames.toMutableList()
     var selectedIndex = 0
         private set
@@ -58,7 +67,7 @@ internal class AnimationRuntime(
     init {
         stack.mediaColorAt = { x, y ->
             val source = media
-            val bitmap = mediaPreview?.takeIf { it.timeUs == (currentFrame.sourceTimeUs ?: 0L) }?.bitmap
+            val bitmap = videoColorPreview ?: mediaPreview?.takeIf { it.timeUs == mediaPositionUs }?.bitmap
             if (source == null || bitmap == null || x < 0 || y < 0 || x >= source.width || y >= source.height) 0
             else bitmap.getPixel((x * bitmap.width / source.width).toInt(), (y * bitmap.height / source.height).toInt())
         }
@@ -121,6 +130,49 @@ internal class AnimationRuntime(
                 is ImageLayerRuntime -> imageCels.getOrPut(id) { linkedMapOf() }[currentFrame.id] = layer.transform
             }
         }
+    }
+
+    fun mediaIndexAt(timeUs: Long) = MediaTimeline.frameAt(frames, timeUs, fps)
+
+    /** Installs cels only at drawing boundaries, never for each decoded video frame. */
+    fun showMediaTime(timeUs: Long): Boolean {
+        val source = media ?: return false
+        mediaPositionUs = timeUs.coerceIn(0, source.durationUs - 1)
+        val index = mediaIndexAt(mediaPositionUs)
+        val changed = index != (if (mediaDrawingActive) selectedIndex else -1)
+        if (index >= 0) {
+            if (changed) { saveActiveImageTransforms(); install(index) }
+            mediaDrawingActive = true
+        } else {
+            if (mediaDrawingActive) saveActiveImageTransforms()
+            mediaDrawingActive = false
+            stack.layers.forEach { it.activeAtFrame = isBackground(it.id) }
+        }
+        return changed
+    }
+
+    fun addMediaDrawing(duplicate: Boolean = false) {
+        val source = media ?: return
+        val start = MediaTimeline.snap(mediaPositionUs, fps, source.durationUs)
+        val existing = frames.indexOfFirst { it.sourceTimeUs == start }
+        if (existing >= 0) { showMediaTime(start); return }
+        require(frames.size < 10_000) { "This project already has 10,000 drawings" }
+        val frame = AnimationFrame(FrameId.new(), sourceTimeUs = start, durationUs = 1_000_000L / fps)
+        if (duplicate && mediaDrawingActive) stack.layers.forEach { layer ->
+            if (!isBackground(layer.id)) when (layer) {
+                is RasterLayerRuntime -> rasterCels.getOrPut(layer.id) { linkedMapOf() }[frame.id] = layer.tiles.duplicate()
+                is ImageLayerRuntime -> imageCels.getOrPut(layer.id) { linkedMapOf() }[frame.id] = layer.transform
+            }
+        }
+        val selected = currentFrame.id
+        frames.add(frame); frames.sortBy { it.sourceTimeUs ?: 0L }
+        selectedIndex = frames.indexOfFirst { it.id == selected }
+        showMediaTime(start)
+    }
+
+    fun setMediaDurationTicks(ticks: Int) {
+        if (media == null || !mediaDrawingActive) return
+        frames[selectedIndex] = currentFrame.copy(durationUs = ticks.coerceIn(1, 600) * 1_000_000L / fps)
     }
 
     fun select(index: Int) {
@@ -223,6 +275,7 @@ internal class AnimationRuntime(
     }
 
     fun saveActiveImageTransforms() {
+        if (media != null && !mediaDrawingActive) return
         val frameId = currentFrame.id
         stack.layers.filterIsInstance<ImageLayerRuntime>().forEach { layer ->
             if (!isBackground(layer.id) && layer.activeAtFrame) {
@@ -329,6 +382,7 @@ internal class AnimationRuntime(
     fun state(playing: Boolean, recording: AnimationRecordingKind? = null, thumbnailRevision: Int = 0) = AnimationUiState(
         frames.toList(), selectedIndex, fps, playbackMode, playing,
         onionBefore, onionAfter, onionOpacity, backgroundLayerIds.toSet(), recording, thumbnailRevision,
+        hasMedia = media != null, mediaPositionUs = mediaPositionUs, mediaDurationUs = media?.durationUs ?: 0, mediaDrawingActive = mediaDrawingActive,
     )
 
     private val loading = java.util.IdentityHashMap<TileStore, MutableList<(Result<Unit>) -> Unit>>()
@@ -388,14 +442,14 @@ internal class AnimationRuntime(
             rasterCels.mapValues { (_, cels) -> cels.mapValues { (_, store) -> if (store.encodedBacking == null) store.snapshotTiles() else emptyMap() } },
             imageCels.mapValues { (_, cels) -> cels.toMap() },
             rasterCels.mapValues { (_, cels) -> cels.mapNotNull { (id, store) -> store.encodedBacking?.let { id to it } }.toMap() },
-            media,
+            media, mediaPositionUs,
         )
     }
 
     fun restore(saved: SavedAnimationSnapshot) {
         mediaPreview?.clear()
         media = saved.media
-        mediaPreview = media?.let(::MediaPreview)
+        mediaPreview = media?.takeIf { it.kind == "gif" }?.let(::MediaPreview)
         backgroundLayerIds.clear()
         backgroundLayerIds += saved.backgroundLayerIds
         rasterCels.clear()
@@ -417,6 +471,7 @@ internal class AnimationRuntime(
         onionAfter = saved.onionAfter.coerceIn(0, 6)
         onionOpacity = saved.onionOpacity.coerceIn(0f, 1f)
         install(saved.selectedIndex.coerceIn(frames.indices))
+        if (media != null) showMediaTime(saved.mediaPositionUs)
     }
 
     private fun install(index: Int) {

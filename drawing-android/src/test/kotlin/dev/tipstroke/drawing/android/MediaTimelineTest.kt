@@ -62,6 +62,30 @@ class MediaTimelineTest {
         assertEquals(RgbaColor(1f, 0f, 0f), stack.colorAt(10f, 10f))
     }
 
+    @Test fun freeScrubbingCreatesNoCelsAndDrawingFpsDoesNotRetimePaint() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 64, 48) {}
+        val first = AnimationFrame(FrameId("first"), sourceTimeUs = 0, durationUs = 83_333)
+        val runtime = AnimationRuntime(stack, false, listOf(first), 12)
+        runtime.restore(SavedAnimationSnapshot(listOf(first), 0, 12, PlaybackMode.LOOP, 0, 0, 0f,
+            emptySet(), emptyMap(), emptyMap(), media = MediaSource(File("test.mp4"), "video", 64, 48, 2_000_000, 60.0)))
+        repeat(120) { runtime.showMediaTime(it * 16_666L) }
+        assertEquals(1, runtime.frames.size)
+        assertFalse(runtime.mediaDrawingActive)
+        assertTrue(stack.layers.none { it.activeAtFrame })
+        runtime.showMediaTime(510_000)
+        runtime.addMediaDrawing()
+        assertEquals(2, runtime.frames.size)
+        assertEquals(500_000L, runtime.mediaPositionUs)
+        runtime.setMediaDurationTicks(6)
+        runtime.fps = 24
+        assertEquals(500_000L, runtime.currentFrame.durationUs)
+        runtime.showMediaTime(999_999)
+        assertTrue(runtime.mediaDrawingActive)
+        runtime.showMediaTime(1_000_000)
+        assertFalse(runtime.mediaDrawingActive)
+        assertEquals(1_000_000L, runtime.snapshot().mediaPositionUs)
+    }
+
     @Test fun negativeSourceTimestampIsRejected() {
         assertThrows(IllegalArgumentException::class.java) { AnimationFrame(FrameId("bad"), sourceTimeUs = -1) }
     }

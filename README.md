@@ -102,7 +102,10 @@ format details.
 
 On Android, choose **Image / GIF / video** in the gallery to make a canvas from
 media. Images use their oriented pixel dimensions. GIFs and videos stay as one
-local source file: scrub the timeline and draw on sparse paint cels, then export
-the source and drawings together as GIF, MP4, or a PNG sequence. Video exports are
-silent. Import supports up to 10,000 timeline positions, 16 megapixels, and 512 MiB
-per source (32 MiB for GIF); oversized clips need trimming before import.
+local source file. Video plays through Android's native player at its original
+speed. Scrub, choose **Add drawing here**, and set how long each drawing holds.
+Drawing FPS sets the drawing grid without changing video speed or existing timings.
+Export smooth video with held drawings, or sample the video at drawing FPS; both
+keep the source duration. MP4 is silent. GIF and PNG-sequence export are also available.
+Import supports 16 megapixels and 512 MiB per source (32 MiB for GIF). Projects
+support 10,000 authored drawings; export supports 36,000 output frames.

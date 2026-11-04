@@ -77,6 +77,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private lateinit var colorLoupe: ColorPickerLoupeView
     private var layerStack: LayerStack = createLayerStack(2048, 2048)
     private var animation: AnimationRuntime? = null
+    private var videoView: MediaVideoView? = null
+    private var resumeAfterMediaSeek = false
+    private var mediaSeeking = false
+    private var mediaCelLoading: FrameId? = null
+    private var lastMediaUiAt = 0L
+    private var mediaPlaybackOffsetUs = 0L
     private var animationPlaying = false
     private var pendingAnimationFrame: FrameId? = null
     private val animationThumbnails = linkedMapOf<FrameId, android.graphics.Bitmap>()
@@ -114,6 +120,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         override fun run() {
             val active = animation ?: return
             if (!animationPlaying) return
+            if (active.media != null) {
+                // GIFs use their persistent decoder. Videos run on MediaPlayer's own clock.
+                if (videoView == null) {
+                    val time = mediaPlaybackOffsetUs + (SystemClock.uptimeMillis() - playbackStartedAt) * 1000L
+                    if (time >= active.media!!.durationUs) { stopAnimationPlayback(); seekMedia(active.media!!.durationUs - 1); return }
+                    presentMediaTime(time, true)
+                    active.mediaPreview?.prepare(time) { result ->
+                        if (animation === active && result.isSuccess) rasterView.invalidate()
+                    }
+                    gestureHandler.postDelayed(this, 33L)
+                }
+                return
+            }
             val tick = ((SystemClock.uptimeMillis() - playbackStartedAt) * active.fps / 1000L)
             strokeRecording?.let { recording ->
                 advanceLiveRecording(recording, recording.start + tick.toInt())
@@ -209,7 +228,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>, Int, Float) -> Unit)? = null
     var animationListener: ((AnimationUiState?) -> Unit)? = null
-        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null, hasMedia = animation?.media != null)) }
+        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null)) }
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
@@ -357,6 +376,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         setWillNotDraw(false); setBackgroundColor(Color.rgb(23, 24, 27)); isMotionEventSplittingEnabled = false
         rasterView = RasterCanvasView(context, layerStack)
         rasterView.transformChangedListener = { transform ->
+            videoView?.updateTransform(rasterView.transformMatrix, canvasWidthPx, canvasHeightPx)
             val percent = (transform.scale * 100f).roundToInt()
             lastDiagnostics = lastDiagnostics.copy(zoom = transform.scale)
             if (percent != publishedZoomPercent) {
@@ -411,7 +431,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
-        animation?.takeIf { it.media != null }?.let { selectAnimationFrame(it.selectedIndex) }
+        animation?.takeIf { it.media != null }?.let { configureMediaPlayback() }
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility != VISIBLE) { resumeAfterMediaSeek = false; stopAnimationPlayback() }
     }
 
     override fun onDetachedFromWindow() {
@@ -422,6 +447,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         clearMovePreview()
         stopAnimationPlayback()
         animation?.mediaPreview?.clear()
+        videoView?.let { it.release(); removeView(it) }; videoView = null
+        rasterView.hardwareVideo = false
         pendingAnimationFrame = null
         gestureHandler.removeCallbacks(hideBrushPreview)
         rasterView.stylusHoverPreview = null
@@ -958,6 +985,98 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { animation?.unregisterMissingLayers(); notifyLayers(); notifyHistory(); publishAnimation() } }
     fun publishLayers() { notifyLayers(); notifyHistory(); notifyVisiblePalette() }
+    private fun configureMediaPlayback() {
+        videoView?.let { it.release(); removeView(it) }; videoView = null
+        rasterView.hardwareVideo = false
+        mediaSeeking = false; mediaCelLoading = null; resumeAfterMediaSeek = false
+        val active = animation ?: return
+        val source = active.media ?: return
+        if (source.kind == "video" && isAttachedToWindow) {
+            videoView = MediaVideoView(context, source, { time, playing, seeking ->
+                if (animation === active) {
+                    mediaSeeking = seeking
+                    if (!seeking) { presentMediaTime(time, playing); resumeMediaIfRequested() }
+                    else publishAnimation()
+                }
+            }, { error ->
+                mediaSeeking = false; stopAnimationPlayback(); animationErrorListener?.invoke(error); publishAnimation()
+            }).also {
+                addView(it, 0, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+                it.updateTransform(rasterView.transformMatrix, canvasWidthPx, canvasHeightPx)
+                rasterView.hardwareVideo = true
+            }
+        }
+        seekMedia(active.mediaPositionUs)
+    }
+
+    /** Free scrubbing changes only the source clock. No new drawing cels are created here. */
+    fun seekMedia(timeUs: Long) {
+        val active = animation ?: return
+        val source = active.media ?: return
+        if (activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+        resumeAfterMediaSeek = false
+        stopAnimationPlayback(); cancelFill(); clearSelection()
+        val time = timeUs.coerceIn(0, source.durationUs - 1)
+        mediaSeeking = true
+        presentMediaTime(time, false)
+        val video = videoView
+        if (video != null) video.seek(time)
+        else active.mediaPreview?.prepare(time) { result ->
+            if (animation === active && active.mediaPositionUs == time) {
+                mediaSeeking = false
+                result.onFailure { animationErrorListener?.invoke(it.message ?: "Cannot seek media") }
+                rasterView.invalidate(); publishAnimation(); resumeMediaIfRequested()
+            }
+        } ?: run { mediaSeeking = false; publishAnimation() }
+    }
+
+    private fun resumeMediaIfRequested() {
+        if (resumeAfterMediaSeek && !mediaSeeking) {
+            resumeAfterMediaSeek = false
+            toggleAnimationPlayback()
+        }
+    }
+
+    private fun presentMediaTime(timeUs: Long, playing: Boolean) {
+        val active = animation ?: return
+        animationPlaying = playing
+        rasterView.animationPlaying = playing
+        val changed = active.showMediaTime(timeUs)
+        val index = active.mediaIndexAt(active.mediaPositionUs)
+        if (index >= 0 && !active.framesResident(listOf(index))) {
+            val id = active.frames[index].id
+            if (mediaCelLoading != id) {
+                mediaCelLoading = id
+                active.prepareFrames(listOf(index)) { result ->
+                    if (animation === active && mediaCelLoading == id) {
+                        mediaCelLoading = null
+                        result.onFailure { animationErrorListener?.invoke(it.message ?: "Cannot load drawing") }
+                        rasterView.invalidate(); publishAnimation()
+                    }
+                }
+            }
+        } else mediaCelLoading = null
+        if (changed) {
+            rasterView.invalidate()
+            if (!playing) {
+                switchingAnimationFrame = true
+                try { notifyLayers(); notifyHistory() } finally { switchingAnimationFrame = false }
+            }
+            // Only authored drawing cels are decoded, independent of the video frame rate.
+            val next = active.frames.indexOfFirst { (it.sourceTimeUs ?: 0) > active.mediaPositionUs }
+            val keep = animationNeighbourIndices(active) + listOfNotNull(next.takeIf { it >= 0 })
+            active.prepareFrames(keep) {
+                if (animation === active) {
+                    active.trimCleanFrames(animationNeighbourIndices(active) +
+                        listOfNotNull(active.frames.indexOfFirst { (it.sourceTimeUs ?: 0) > active.mediaPositionUs }.takeIf { it >= 0 }))
+                    if (!animationPlaying) rasterView.invalidate()
+                }
+            }
+        }
+        val now = SystemClock.uptimeMillis()
+        if (!playing || now - lastMediaUiAt >= 100L) { lastMediaUiAt = now; publishAnimation() }
+    }
+
     fun enableAnimation(existingAsBackground: Boolean) {
         if (animation != null || activeDrawingPointerId != null) return
         animation = AnimationRuntime(layerStack, existingAsBackground)
@@ -973,28 +1092,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (activeDrawingPointerId != null) return
         if (!fromPlayback) stopAnimationPlayback()
         if (index !in active.frames.indices) return
+        if (active.media != null) { seekMedia(active.frames[index].sourceTimeUs ?: 0L); return }
         val frameId = active.frames[index].id
-        val mediaTime = active.frames[index].sourceTimeUs ?: 0L
-        val preview = active.mediaPreview
-        if (preview != null && preview.timeUs != mediaTime) {
-            pendingAnimationFrame = frameId
-            publishAnimation()
-            preview.prepare(mediaTime) { result ->
-                if (animation === active && pendingAnimationFrame == frameId) {
-                    pendingAnimationFrame = null
-                    result.fold(onSuccess = {
-                        val target = active.frames.indexOfFirst { it.id == frameId }
-                        if (target >= 0) selectAnimationFrame(target, fromPlayback)
-                    }, onFailure = {
-                        stopAnimationPlayback()
-                        animationErrorListener?.invoke(it.message ?: "Could not decode media frame")
-                    })
-                    publishAnimation()
-                }
-            }
-            return
-        }
-        preview?.cancelPending()
         if (!active.framesResident(listOf(index))) {
             if (pendingAnimationFrame == frameId) return
             pendingAnimationFrame = frameId
@@ -1022,18 +1121,34 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun addAnimationFrame() {
         val active = animation ?: return
+        if (active.media != null) {
+            stopAnimationPlayback()
+            if (mediaSeeking || activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+            runCatching { active.addMediaDrawing() }.onFailure { animationErrorListener?.invoke(it.message ?: "Cannot add drawing") }
+            seekMedia(active.mediaPositionUs)
+            notifyLayers(); notifyHistory(); publishAnimation()
+            return
+        }
         stopAnimationPlayback()
         active.addBlankFrame()
         rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
     }
     fun duplicateAnimationFrame() {
         val active = animation ?: return
+        if (active.media != null) return
         stopAnimationPlayback()
         active.duplicateFrame()
         rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
     }
     fun deleteAnimationFrame() {
         val active = animation ?: return
+        if (active.media != null) {
+            if (mediaSeeking || !active.mediaDrawingActive || activeDrawingPointerId != null) return
+            stopAnimationPlayback()
+            val time = active.mediaPositionUs
+            if (active.frames.size == 1) { animationErrorListener?.invoke("Erase this drawing, or add another drawing before deleting it."); return }
+            active.deleteFrame(); seekMedia(time); notifyLayers(); notifyHistory(); publishAnimation(); return
+        }
         stopAnimationPlayback()
         val deleting = active.currentFrame.id
         val target = if (active.selectedIndex < active.frames.lastIndex) active.selectedIndex + 1 else active.selectedIndex - 1
@@ -1048,12 +1163,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun moveAnimationFrame(delta: Int) {
         val active = animation ?: return
+        if (active.media != null) return
         stopAnimationPlayback()
         active.moveFrame(active.selectedIndex, active.selectedIndex + delta)
         rasterView.invalidate(); publishAnimation()
     }
     fun reorderAnimationFrame(source: Int, target: Int) {
         val active = animation ?: return
+        if (active.media != null) return
         if (source !in active.frames.indices || target !in active.frames.indices || source == target) return
         active.prepareFrames(listOf(source)) { result ->
             if (animation === active && result.isSuccess && activeDrawingPointerId == null) {
@@ -1068,30 +1185,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val active = animation ?: return null
         val index = active.frames.indexOfFirst { it.id == frameId }
         if (index < 0) return null
-        val media = active.media
-        if (media != null) {
-            if (pendingThumbnails.size < 16 && pendingThumbnails.add(frameId)) {
-                val time = active.frames[index].sourceTimeUs ?: 0L
-                MediaThumbnailDecoding.executor.execute {
-                    val result = runCatching { MediaFrameDecoder(media).use { it.frame(time, sizePx) } }
-                    ProjectPersistence.mainHandler.post {
-                        if (animation !== active) { result.getOrNull()?.recycle(); return@post }
-                        active.prepareFrames(listOf(active.frames.indexOfFirst { it.id == frameId })) { prepared ->
-                            pendingThumbnails.remove(frameId)
-                            val bitmap = result.getOrNull()
-                            if (animation === active && prepared.isSuccess && bitmap != null) {
-                                active.thumbnail(frameId, sizePx, bitmap)?.let { animationThumbnails[frameId] = it }
-                                while (animationThumbnails.size > 64) animationThumbnails.remove(animationThumbnails.keys.first())
-                                active.trimCleanFrames(animationNeighbourIndices(active))
-                                thumbnailRevision++; publishAnimation()
-                            }
-                            bitmap?.recycle()
-                        }
-                    }
-                }
-            }
-            return null
-        }
+        if (active.media != null) return null
         if (!active.framesResident(listOf(index))) {
             if (pendingThumbnails.add(frameId)) active.prepareFrames(listOf(index)) { result ->
                 pendingThumbnails.remove(frameId)
@@ -1109,10 +1203,17 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             while (animationThumbnails.size > 16) animationThumbnails.remove(animationThumbnails.keys.first())
         }
     }
-    fun setAnimationExposure(value: Int) { animation?.setExposure(value); publishAnimation() }
+    fun setAnimationExposure(value: Int) {
+        animation?.let {
+            if (it.media != null) { it.setMediaDurationTicks(value); presentMediaTime(it.mediaPositionUs, animationPlaying) }
+            else it.setExposure(value)
+        }
+        rasterView.invalidate(); publishAnimation()
+    }
     fun setAnimationFps(value: Int) {
         val active = animation ?: return
         val nextFps = value.coerceIn(1, 60)
+        if (active.media != null) { active.fps = nextFps; publishAnimation(); return }
         if (strokeRecording != null) stopAnimationPlayback()
         else if (animationPlaying) {
             val now = SystemClock.uptimeMillis()
@@ -1143,6 +1244,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun toggleAnimationPlayback() {
         val active = animation ?: return
         if (animationPlaying) { stopAnimationPlayback(); return }
+        if (active.media != null) {
+            if (mediaSeeking || activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+            if (active.mediaPositionUs >= active.media!!.durationUs - 2_000) {
+                seekMedia(0); resumeAfterMediaSeek = true; resumeMediaIfRequested(); return
+            }
+            animationPlaying = true; rasterView.animationPlaying = true
+            videoView?.play() ?: run {
+                mediaPlaybackOffsetUs = active.mediaPositionUs
+                playbackStartedAt = SystemClock.uptimeMillis(); gestureHandler.post(playbackStep)
+            }
+            publishAnimation(); return
+        }
         if (activeDrawingPointerId != null) return
         animationPlaying = true
         rasterView.animationPlaying = true
@@ -1226,6 +1339,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun stopAnimationPlayback() {
         if (!animationPlaying) return
         animationPlaying = false
+        videoView?.pause()
         animation?.mediaPreview?.cancelPending()
         pendingAnimationFrame = null
         strokeRecording = null
@@ -1237,7 +1351,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (!animationPlaying || strokeRecording != null) {
             processRecorder?.sync(layerStack, animation != null, animation = animation)
         }
-        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null, hasMedia = animation?.media != null))
+        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null))
     }
     fun publishDiagnostics() {
         if (!settings.debug) return
@@ -1249,6 +1363,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         publishDiagnostics(lastDiagnostics.withMemory(memory))
     }
     fun configureBlank(widthPx: Int, heightPx: Int) {
+        stopAnimationPlayback(); animation?.mediaPreview?.clear(); cancelColorPick()
+        videoView?.let { it.release(); removeView(it) }; videoView = null
+        rasterView.hardwareVideo = false; mediaSeeking = false; mediaCelLoading = null
         cancelFill()
         require(widthPx in 16..8192 && heightPx in 16..8192)
         opacityAdjustmentInProgress = false
@@ -1319,7 +1436,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     processRecorder = if (project.recordingError == null) ProcessRecorder(project.widthPx, project.heightPx, project.processRecording) else null
                     processRecorder?.sync(replacement, animation != null, restoring = project.processRecording != null, animation = animation)
                     rasterView.animation = animation
-                    animation?.takeIf { it.media != null }?.let { selectAnimationFrame(it.selectedIndex) }
+                    configureMediaPlayback()
                     rasterView.fitCanvas(project.galleryRotationQuarterTurns * 90f)
                     publishLayers()
                     publishAnimation()
@@ -1369,10 +1486,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
     }
 
-    fun exportAnimation(uri: android.net.Uri, format: AnimationExportFormat, scale: Float, onComplete: (Result<Unit>) -> Unit) {
+    fun exportAnimation(uri: android.net.Uri, format: AnimationExportFormat, scale: Float, timing: dev.tipstroke.core.model.MediaExportTiming = dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO, onComplete: (Result<Unit>) -> Unit) {
         val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation)
         ProjectPersistence.executor.execute {
-            val result = try { ProjectPersistence.exportAnimation(context.contentResolver, uri, snapshot, format, scale) }
+            val result = try { ProjectPersistence.exportAnimation(context.contentResolver, uri, snapshot, format, scale, timing) }
             finally { snapshot.recycle() }
             ProjectPersistence.mainHandler.post { onComplete(result) }
         }
@@ -1380,12 +1497,21 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun mediaFrameReady(): Boolean {
         val active = animation ?: return true
-        val preview = active.mediaPreview ?: return true
-        return preview.timeUs == (active.currentFrame.sourceTimeUs ?: 0L)
+        if (active.media == null) return true
+        return !mediaSeeking && mediaCelLoading == null && active.mediaDrawingActive
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!isEnabled || pendingAnimationFrame != null || !mediaFrameReady() || transformSelectionOriginal != null) return true
+        if (!isEnabled || pendingAnimationFrame != null || transformSelectionOriginal != null) return true
+        if (!mediaFrameReady()) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) stopAnimationPlayback()
+            val index = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+            if (handleMousePan(event, index)) return true
+            if (event.pointerCount > 1 || !isDrawingPointer(event, index)) return handleTouchGesture(event)
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && !mediaSeeking && animation?.mediaDrawingActive == false)
+                animationErrorListener?.invoke("Tap Add drawing here to draw at this time.")
+            return true
+        }
         resizeOverlay?.let { return it.dispatchTouchEvent(event) }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             stopAnimationPlayback()
@@ -2101,6 +2227,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun beginOrUpdateColorPick(screenX: Float, screenY: Float, document: android.graphics.PointF) {
+        if (!colorPicking) {
+            animation?.videoColorPreview?.recycle()
+            animation?.videoColorPreview = videoView?.colorSnapshot()
+        }
         colorPicking = true
         updateColorPick(screenX, screenY, document)
     }
@@ -2120,6 +2250,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun cancelColorPick() {
+        animation?.videoColorPreview?.recycle(); animation?.videoColorPreview = null
         colorPicking = false
         pendingPickedColor = null
         colorLoupe.dismiss()

@@ -244,39 +244,51 @@ moving media. The eyedropper samples media beneath the paint layers. Still photo
 once for EXIF orientation and retained as an image layer below that paint layer.
 The existing editor image import continues to place images in an existing canvas.
 
-A GIF or video becomes one immutable local `assets/media/timeline.source` beneath the
-layer stack, plus timeline frame IDs with source timestamps. Source frames are
-never expanded into raster layers or PNG files. Blank timeline positions allocate
-no paint tiles; unedited cel stores are discarded as the user scrubs. A drawn cel
-uses the existing sparse 256 px tiles, undo, layers, onion skins, and persistence.
-Duplicate copies its cel and source timestamp; Hold freezes both; reorder moves
-both together. Adding a blank frame retains the selected source timestamp.
-Changing FPS changes playback speed without retiming the stored source timestamps.
+A GIF or video becomes one immutable local `assets/media/timeline.source` beneath
+native painting views. Import creates one empty drawing interval, not a frame slot
+for every video sample. Each authored drawing has a stable ID, source start time,
+and explicit duration in microseconds. Free scrubbing creates no cels. **Add drawing
+here** snaps to the current drawing FPS grid. Holds apply only to paint; changing
+FPS affects new drawings and subsequent hold adjustments, preserving existing
+intervals and source speed. Later starts replace earlier drawings; expired drawings
+leave gaps rather than revealing a superseded drawing. Painting requires an active,
+loaded drawing and a completed seek. Navigation remains available in gaps.
 
-Video frames use Android [MediaMetadataRetriever.OPTION_CLOSEST](https://developer.android.com/reference/android/media/MediaMetadataRetriever), so variable-rate
-footage is sampled at the nearest available source frame. Video import uses its
-average frame rate, rounded to 1–60 FPS (30 when unavailable); GIFs use a 50 FPS
-sampling grid. Source time is independent of paint data. Native GIF timestamp
-seeking applies disposal/transparency through `Movie`; `AnimatedImageDrawable`
-does not expose deterministic arbitrary-time seeking.
+Video preview uses `MediaPlayer` on a dedicated HandlerThread, outputting to a
+`TextureView` beneath RasterCanvasView/Jetpack Ink. All three share the document
+transform and clipping. The player clock drives drawing boundaries; no video frames
+are read back into bitmaps for playback or timeline previews. Position UI updates
+are throttled to 10 Hz; only drawing-boundary changes invalidate raster paint. A
+session owns its player/surface/thread, and generation checks reject old callbacks
+after seeks, pause, or teardown. Seek requests coalesce to the latest pending time.
+The timeline shows authored drawing chips, with no video thumbnail decoder/cache.
+An eyedropper gesture captures one bounded video bitmap, reused until the gesture
+ends; there is no per-sample readback.
 
-Preview decoding runs on a worker with one in-flight request and one replaceable
-pending request. Only a completed matching source frame enables drawing at the
-new time. The preview is bounded to a 1280 px edge; thumbnails decode separately,
-with at most 16 pending requests and 64 cached composites (enough for a wide tablet
-strip without repeatedly evicting its visible thumbnails). Export retains one
-source decoder and composites one full-size source frame with its paint cels at a
-time through the existing GIF, MP4, and PNG-sequence exporters. Video audio is not
-imported or exported. Media timelines support frame editing, not live drawing or
-image-motion recording. The media base stays at its original size and canvas origin
-if the canvas is resized; it is not a movable layer.
+GIF preview uses one persistent `Movie` decoder on the animation worker, one
+in-flight request and one replacement request, and a 1280 px preview edge. Playback
+uses elapsed source time at 1×, skipping late previews instead of slowing the clip.
+Only active, next, and requested onion-skin cels are prefetched; clean inactive cels can unload.
+Edited cels still occupy sparse tile memory. Media playback runs once; Play at the
+end restarts it. Ordinary cel animation retains its playback modes and editing UI.
 
-Import is transactional on the project worker. Limits are 8192 px per side and
-16 megapixels, 512 MiB per asset (32 MiB for GIF), and 10,000 sampled timeline
-positions. Oversized inputs fail with an explanation rather than being silently
-trimmed or resized. The copied source survives removal of the picked file or URI
-grant. Atomic saves hard-link immutable source bytes into the new revision where
-supported, falling back to copying. Portable projects include the source file.
-Decoder support depends on the device's installed codecs. There is no network
-service or runtime dependency. This feature does not change the independent iOS
-or desktop import paths.
+Export runs on the project worker using a persistent `MediaMetadataRetriever`
+(or `Movie`) and one composed output bitmap at a time. **Smooth video + held
+drawings** uses the source cadence (container rate/average, 30 FPS fallback);
+**Video at drawing FPS** samples at drawing FPS. Both cover the original source
+duration, choosing the paint interval independently at every timestamp. Fractional
+rates retain microsecond timestamps, and MP4 has an explicit final end timestamp.
+PNG sequences include FPS and duration in timing.json. GIF is capped to 50 FPS
+with cumulative centisecond timing; its final duration can round to GIF precision.
+Video preview respects native variable-rate cadence, while export samples to a
+constant cadence, not the original variable-rate timestamp sequence.
+
+Video audio is not imported or exported. Media timelines do not support live
+stroke/image-motion recording. The source remains at its original size and canvas
+origin when the canvas resizes; it is not a movable layer. Import is transactional
+on the project worker: 8192 px/side, 16 megapixels, 512 MiB/asset (32 MiB GIF),
+24 hours maximum, and 10,000 authored drawings. Export is limited to 36,000 output
+frames and 4096 px/side for MP4, subject to device encoder support. Sources are
+never silently trimmed or resized. Atomic saves hard-link immutable source bytes
+where supported, otherwise copy them. Portable projects include the source.
+This Android feature does not change independent iOS or desktop import paths.

@@ -88,7 +88,7 @@ class MediaImportInstrumentedTest {
                 repeat(2) { ProjectPersistence.save(context.contentResolver, library, imported.id, "Painted GIF", snapshot).getOrThrow() }
                 ProjectPersistence.exportAnimation(context.contentResolver, Uri.fromFile(output), snapshot,
                     AnimationExportFormat.PNG_SEQUENCE, 1f).getOrThrow()
-                // Check every output frame; only the first cel has the green mark.
+                // Check every source sample; drawing holds are independent of source samples.
                 ZipInputStream(output.inputStream()).use { zip ->
                     var frame = 0
                     while (true) {
@@ -96,12 +96,12 @@ class MediaImportInstrumentedTest {
                         if (entry.name.endsWith(".png")) {
                             val bytes = zip.readBytes()
                             val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                            val time = animation.frames[frame].sourceTimeUs!!
-                            assertEquals(if (frame == 0) Color.GREEN else if (time < 200_000) Color.RED else Color.BLUE, bitmap.getPixel(10, 10))
+                            val time = frame * 1_000_000L / 50
+                            assertEquals(if (time < 1_000_000L / 12) Color.GREEN else if (time < 200_000) Color.RED else Color.BLUE, bitmap.getPixel(10, 10))
                             bitmap.recycle(); frame++
                         }
                     }
-                    assertEquals(animation.frames.size, frame)
+                    assertEquals(20, frame)
                 }
                 val archive = ByteArrayOutputStream()
                 ProjectTransfer.exportProjects(library, listOf(imported.id), archive)
@@ -126,8 +126,9 @@ class MediaImportInstrumentedTest {
             file.delete()
             val loaded = ProjectPersistence.load(library.projectDirectory(imported.id)).getOrThrow()
             val animation = loaded.animation!!
-            assertEquals(60, animation.fps)
-            assertTrue(animation.frames.size in 2..3) // Container duration is rounded to milliseconds.
+            assertEquals(12, animation.fps)
+            assertEquals(60.0, animation.media!!.frameRate, 0.01)
+            assertEquals(1, animation.frames.size)
             assertTrue(animation.rasterCels.values.all { it.isEmpty() })
             assertEquals(1, loaded.layers.size)
             MediaFrameDecoder(animation.media!!).use { decoder ->
@@ -137,7 +138,8 @@ class MediaImportInstrumentedTest {
             val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GREEN) }
             val snapshot = DrawingSnapshot(64, 48, loaded.selectedId,
                 listOf(SavedRasterSnapshot(loaded.selectedId, "Paint 1", true, 1f, emptyMap())),
-                animation = animation.copy(rasterCels = mapOf(loaded.selectedId to mapOf(animation.frames.first().id to mapOf(TileCoordinate(0, 0) to tile)))))
+                animation = animation.copy(frames = listOf(animation.frames.first().copy(durationUs = 16_666)),
+                    rasterCels = mapOf(loaded.selectedId to mapOf(animation.frames.first().id to mapOf(TileCoordinate(0, 0) to tile)))))
             try { ProjectPersistence.exportAnimation(context.contentResolver, Uri.fromFile(output), snapshot, AnimationExportFormat.MP4, 1f).getOrThrow() }
             finally { snapshot.recycle() }
             MediaFrameDecoder(MediaSource(output, "video", 64, 48, animation.media!!.durationUs)).use { decoder ->
@@ -145,6 +147,49 @@ class MediaImportInstrumentedTest {
                 assertColor(decoder.frame(20_000, 64), Color.BLUE, lossy = true)
             }
         } finally { file.delete(); output.delete(); id?.let(library::delete) }
+    }
+
+    @Test fun legacySourceSlotsMigrateWithoutLosingPaintAndKeepTheScrubCursor() {
+        val library = DrawingLibrary(context)
+        val file = File(context.cacheDir, "legacy.gif")
+        val output = File(context.cacheDir, "cursor.png")
+        makeClip(file, AnimationExportFormat.GIF, 5)
+        val imported = MediaImporter.importNow(context, library, Uri.fromFile(file))
+        val loaded = ProjectPersistence.load(library.projectDirectory(imported.id)).getOrThrow()
+        val paintedId = loaded.animation!!.frames.first().id
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { setPixel(10, 10, Color.GREEN) }
+        val snapshot = DrawingSnapshot(64, 48, loaded.selectedId,
+            listOf(SavedRasterSnapshot(loaded.selectedId, "Paint", true, 1f, emptyMap())),
+            animation = loaded.animation!!.copy(rasterCels = mapOf(loaded.selectedId to mapOf(paintedId to mapOf(TileCoordinate(0, 0) to tile)))))
+        try {
+            ProjectPersistence.save(context.contentResolver, library, imported.id, "Legacy", snapshot).getOrThrow()
+            val manifest = File(library.projectDirectory(imported.id), DrawingLibrary.MANIFEST)
+            val json = org.json.JSONObject(manifest.readText()).put("schemaVersion", 6)
+            val animation = json.getJSONObject("animation")
+            animation.remove("mediaPositionUs")
+            animation.getJSONObject("media").remove("frameRate")
+            animation.put("fps", 20).put("selectedIndex", 2).put("frames", org.json.JSONArray().apply {
+                put(org.json.JSONObject().put("id", "empty-before").put("sourceTimeUs", 0).put("exposure", 1))
+                put(org.json.JSONObject().put("id", paintedId.value).put("sourceTimeUs", 100_000).put("exposure", 2))
+                put(org.json.JSONObject().put("id", "empty-after").put("sourceTimeUs", 300_000).put("exposure", 1))
+            })
+            manifest.writeText(json.toString())
+            val source = File(library.projectDirectory(imported.id), MediaSource.ASSET_PATH)
+            assertTrue(source.renameTo(File(library.projectDirectory(imported.id), "assets/timeline.source")))
+            val migrated = ProjectPersistence.load(library.projectDirectory(imported.id), lazyAnimation = true).getOrThrow().animation!!
+            assertEquals(listOf(paintedId), migrated.frames.map { it.id })
+            assertEquals(100_000L, migrated.frames.single().durationUs)
+            assertEquals(300_000L, migrated.mediaPositionUs)
+            assertEquals(50.0, migrated.media!!.frameRate, 0.001)
+            assertTrue(migrated.encodedRasterCels[loaded.selectedId]!!.containsKey(paintedId))
+            val updated = snapshot.copy(animation = migrated)
+            ProjectPersistence.save(context.contentResolver, library, imported.id, "Migrated", updated).getOrThrow()
+            val reopened = ProjectPersistence.load(library.projectDirectory(imported.id), lazyAnimation = true).getOrThrow().animation!!
+            assertEquals(migrated.frames, reopened.frames)
+            assertEquals(300_000L, reopened.mediaPositionUs)
+            ProjectPersistence.export(context.contentResolver, Uri.fromFile(output), updated, ExportFormat.PNG, 100, 1f, false).getOrThrow()
+            assertColor(BitmapFactory.decodeFile(output.path), Color.BLUE) // Cursor is in a gap, not the selected paint cel.
+        } finally { snapshot.recycle(); file.delete(); output.delete(); library.delete(imported.id) }
     }
 
     @Test fun rapidSeeksKeepOnlyTheLatestPreviewAndCancellationKeepsTheDisplayedFrame() {

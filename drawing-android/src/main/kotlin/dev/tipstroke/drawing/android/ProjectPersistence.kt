@@ -380,6 +380,7 @@ internal data class SavedAnimationSnapshot(
     val imageCels: Map<LayerId, Map<FrameId, ImageTransform>>,
     val encodedRasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, ByteArray>>> = emptyMap(),
     val media: MediaSource? = null,
+    val mediaPositionUs: Long = 0,
 )
 
 internal data class LoadedProject(
@@ -420,7 +421,7 @@ internal data class LoadedImage(
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    internal const val SCHEMA_VERSION = 6
+    internal const val SCHEMA_VERSION = 7
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -508,6 +509,7 @@ internal object ProjectPersistence {
                 }
                 JSONObject()
                     .put("media", animation.media?.json())
+                    .put("mediaPositionUs", animation.mediaPositionUs)
                     .put("fps", animation.fps)
                     .put("playbackMode", animation.playbackMode.name)
                     .put("selectedIndex", animation.selectedIndex)
@@ -515,7 +517,7 @@ internal object ProjectPersistence {
                     .put("onionAfter", animation.onionAfter)
                     .put("onionOpacity", animation.onionOpacity)
                     .put("frames", JSONArray().apply { animation.frames.forEach { frame ->
-                        put(JSONObject().put("id", frame.id.value).put("exposure", frame.exposure).put("sourceTimeUs", frame.sourceTimeUs))
+                        put(JSONObject().put("id", frame.id.value).put("exposure", frame.exposure).put("sourceTimeUs", frame.sourceTimeUs).put("durationUs", frame.durationUs))
                     } })
                     .put("backgroundLayerIds", JSONArray().apply { animation.backgroundLayerIds.forEach { put(it.value) } })
                     .put("imageCels", JSONArray().apply { animation.imageCels.forEach { (layerId, cels) ->
@@ -624,7 +626,7 @@ internal object ProjectPersistence {
                 val frame = framesJson.getJSONObject(index)
                 val id = frame.getString("id")
                 require(id.matches(Regex("[A-Za-z0-9_-]+"))) { "Invalid frame ID" }
-                AnimationFrame(FrameId(id), frame.optInt("exposure", 1), if (frame.has("sourceTimeUs")) frame.getLong("sourceTimeUs") else null)
+                AnimationFrame(FrameId(id), frame.optInt("exposure", 1), if (frame.has("sourceTimeUs")) frame.getLong("sourceTimeUs") else null, if (frame.has("durationUs")) frame.getLong("durationUs") else null)
             }
             val timeline = AnimationTimeline(
                 frames,
@@ -673,7 +675,21 @@ internal object ProjectPersistence {
                 saved.optDouble("onionOpacity", .3).toFloat(),
                 backgrounds, rasterCels, imageCels, encodedCels,
                 saved.optJSONObject("media")?.let { MediaSource.read(directory, it) },
-            ).also { restored ->
+                saved.optLong("mediaPositionUs", frames[selectedIndex].sourceTimeUs ?: 0),
+            ).let { restored ->
+                if (schemaVersion >= 7 || restored.media == null) restored else {
+                    val painted = restored.rasterCels.values.flatMap { it.filterValues { tiles -> tiles.isNotEmpty() }.keys } +
+                        restored.encodedRasterCels.values.flatMap { it.keys } + restored.imageCels.values.flatMap { it.keys }
+                    val keep = restored.frames.filter { it.id in painted }.ifEmpty { listOf(restored.frames.first()) }
+                        .map { it.copy(durationUs = it.exposure * 1_000_000L / restored.fps) }
+                        .sortedBy { it.sourceTimeUs ?: 0L }
+                    restored.copy(frames = keep, selectedIndex = 0)
+                }
+            }.also { restored ->
+                restored.media?.let { source ->
+                    require(restored.mediaPositionUs in 0 until source.durationUs) { "Invalid media cursor" }
+                    require(restored.frames.zipWithNext().all { (a, b) -> (a.sourceTimeUs ?: 0) <= (b.sourceTimeUs ?: 0) }) { "Drawing times must be chronological" }
+                }
                 restored.frames.forEach { frame -> frame.sourceTimeUs?.let { time ->
                     require(restored.media != null && time < restored.media.durationUs) { "Invalid media timestamp" }
                 } }
@@ -707,6 +723,7 @@ internal object ProjectPersistence {
     fun exportAnimation(
         resolver: ContentResolver, uri: Uri, snapshot: DrawingSnapshot,
         format: AnimationExportFormat, scale: Float,
+        timing: dev.tipstroke.core.model.MediaExportTiming = dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO,
     ): Result<Unit> = runCatching {
         val animation = requireNotNull(snapshot.animation) { "This drawing has no animation" }
         require(scale > 0f && scale <= 1f)
@@ -714,9 +731,13 @@ internal object ProjectPersistence {
         require(pixels <= 16_777_216L) { "Animation export is too large for this device" }
         val cache = mutableMapOf<Uri, Bitmap>()
         val mediaDecoder = animation.media?.let(::MediaFrameDecoder)
+        val plan = animation.media?.let { source ->
+            val fps = if (timing == dev.tipstroke.core.model.MediaExportTiming.DRAWING_FPS) animation.fps.toDouble() else source.frameRate
+            dev.tipstroke.core.model.MediaExportPlan(source.durationUs, if (format == AnimationExportFormat.GIF) fps.coerceAtMost(50.0) else fps)
+        }
         try {
-            AnimationExporter.export(resolver, uri, animation, format) { frameIndex ->
-                render(snapshot, resolver, scale, transparent = false, frameIndex = frameIndex, imageCache = cache, mediaDecoder = mediaDecoder)
+            AnimationExporter.export(resolver, uri, animation, format, plan) { frameIndex ->
+                render(snapshot, resolver, scale, transparent = false, frameIndex = frameIndex, imageCache = cache, mediaDecoder = mediaDecoder, mediaTimeUs = plan?.timeUs(frameIndex))
             }
         } finally { cache.values.forEach(Bitmap::recycle); mediaDecoder?.close() }
     }
@@ -727,6 +748,7 @@ internal object ProjectPersistence {
         imageCache: MutableMap<Uri, Bitmap>? = null,
         opaqueBase: Boolean = false,
         mediaDecoder: MediaFrameDecoder? = null,
+        mediaTimeUs: Long? = null,
     ): Bitmap {
         val outputWidth = (snapshot.widthPx * scale).roundToInt().coerceAtLeast(1)
         val outputHeight = (snapshot.heightPx * scale).roundToInt().coerceAtLeast(1)
@@ -738,11 +760,13 @@ internal object ProjectPersistence {
         canvas.scale(scale, scale)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val animation = snapshot.animation
-        val frameId = animation?.frames?.getOrNull(frameIndex)?.id
+        val timeUs = mediaTimeUs ?: animation?.mediaPositionUs ?: 0L
+        val drawingIndex = if (animation?.media != null) dev.tipstroke.core.model.MediaTimeline.frameAt(animation.frames, timeUs, animation.fps) else frameIndex
+        val frameId = animation?.frames?.getOrNull(drawingIndex)?.id
         animation?.media?.let { source ->
             val decoder = mediaDecoder ?: MediaFrameDecoder(source)
             try {
-                val frame = decoder.frame(animation.frames[frameIndex].sourceTimeUs ?: 0L, maxOf(outputWidth, outputHeight))
+                val frame = decoder.frame(timeUs, maxOf(outputWidth, outputHeight))
                 try { canvas.drawBitmap(frame, null, RectF(0f, 0f, source.width.toFloat(), source.height.toFloat()), paint) }
                 finally { frame.recycle() }
             } catch (failure: Throwable) { output.recycle(); throw failure }

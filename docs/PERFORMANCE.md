@@ -141,15 +141,24 @@ large-tip, dense multi-stamp brushes.
 
 ## Imported media
 
-Media canvases retain one encoded source asset. Untouched timeline positions have
-no raster tiles; scrubbing drops empty cel stores. The active media preview is
-limited to a 1280 px edge, with one in-flight seek and one replaceable pending seek.
-Timeline composites cache up to 64 small previews and queue at most 16 thumbnail
-requests per surface. Source decoder allocations are separate from these bitmap
-bounds. Native pointer input never decodes media or writes source files.
+Video preview is hardware decoded to a native TextureView; it no longer seeks via
+MediaMetadataRetriever for each playback tick. Raster paint redraws at authored
+interval boundaries, not video FPS. Source-clock UI updates are limited to 10 Hz.
+Scrub UI requests are limited to roughly 16 Hz plus the final position, and player
+seeks retain only the latest pending target. No video thumbnails are requested.
+A video eyedropper gesture captures at most one 1280 px bitmap.
 
-60 FPS source import does not promise 60 FPS preview decoding: slow seeks can skip
-preview positions during playback. Scrubbing waits for a matching source frame
-before painting is enabled; export renders every output position on its worker.
-Measure seek latency, decoder memory, thermal behavior, and export throughput on
+GIF preview retains one worker decoder, one in-flight request, one replacement
+request, and one 1280 px bitmap. Playback can skip preview samples to preserve
+source speed. Source decoder allocations are separate from these bitmap bounds.
+Scrubbing creates no drawing slots or raster tiles. Only authored drawings have
+metadata and sparse cels. Clean saved cels outside the active/next/onion range unload;
+edited cels and compressed project data remain resident, so large paintings still
+have a memory cost. Native pointer samples never decode media or write files.
+
+Export still decodes/composites/encodes individual samples on a worker. Smooth
+60 FPS output is more expensive than 12 FPS output; both keep the same duration.
+Export holds one rendered bitmap at a time, but source codecs and the encoder have
+their own buffers. There is a 36,000-output-frame limit. Measure native playback
+frame drops, seek latency, memory, thermal behavior, and export throughput on
 physical devices with representative long-GOP, rotated, and variable-rate clips.

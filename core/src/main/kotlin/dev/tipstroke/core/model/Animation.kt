@@ -8,8 +8,8 @@ import kotlin.math.floor
 }
 
 /** A frame is a time slot. Artwork belongs to layers and is addressed by frame ID. */
-data class AnimationFrame(val id: FrameId, val exposure: Int = 1, val sourceTimeUs: Long? = null) {
-    init { require(exposure in 1..600); require(sourceTimeUs == null || sourceTimeUs >= 0) }
+data class AnimationFrame(val id: FrameId, val exposure: Int = 1, val sourceTimeUs: Long? = null, val durationUs: Long? = null) {
+    init { require(exposure in 1..600); require(sourceTimeUs == null || sourceTimeUs >= 0); require(durationUs == null || durationUs > 0) }
 }
 
 enum class PlaybackMode { LOOP, PING_PONG, ONCE }

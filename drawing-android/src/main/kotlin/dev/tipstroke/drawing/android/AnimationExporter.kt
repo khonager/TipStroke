@@ -13,6 +13,7 @@ import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.math.roundToInt
+import dev.tipstroke.core.model.MediaExportPlan
 
 /** Export runs on the project I/O executor and holds only one rendered frame at a time. */
 internal object AnimationExporter {
@@ -21,26 +22,33 @@ internal object AnimationExporter {
         uri: Uri,
         animation: SavedAnimationSnapshot,
         format: AnimationExportFormat,
+        mediaPlan: MediaExportPlan? = null,
         renderFrame: (Int) -> Bitmap,
     ) {
         val timeline = dev.tipstroke.core.model.AnimationTimeline(
             animation.frames, animation.fps, animation.playbackMode,
         )
-        require(timeline.totalTicks <= 36_000) { "Animation is too long to export" }
-        val ticks = buildList {
+        require(mediaPlan != null || timeline.totalTicks <= 36_000) { "Animation is too long to export" }
+        val ticks = if (mediaPlan != null) {
+            require(mediaPlan.frameCount <= 36_000) { "Export supports up to 36,000 output frames. Choose drawing FPS or a shorter source." }
+            (0 until mediaPlan.frameCount).toList()
+        } else buildList {
             animation.frames.forEachIndexed { index, frame -> repeat(frame.exposure) { add(index) } }
             if (animation.playbackMode == dev.tipstroke.core.model.PlaybackMode.PING_PONG) {
                 for (tick in timeline.totalTicks - 2 downTo 1) add(timeline.frameAtTick(tick))
             }
         }
         require(ticks.isNotEmpty() && ticks.size <= 36_000) { "Animation is too long to export" }
+        val fps = mediaPlan?.fps ?: animation.fps.toDouble()
+        val durationUs = mediaPlan?.durationUs ?: (ticks.size * 1_000_000.0 / fps).toLong()
         when (format) {
             AnimationExportFormat.PNG_SEQUENCE -> resolver.openOutputStream(uri, "wt").use { stream ->
                 val output = requireNotNull(stream) { "Cannot open export destination" }
                 ZipOutputStream(output).use { zip ->
                     zip.putNextEntry(ZipEntry("timing.json"))
                     zip.write(JSONObject()
-                        .put("fps", animation.fps)
+                        .put("fps", fps)
+                        .put("durationUs", durationUs)
                         .put("playbackMode", animation.playbackMode.name)
                         .put("frameCount", ticks.size).toString().toByteArray(Charsets.UTF_8))
                     zip.closeEntry()
@@ -65,7 +73,10 @@ internal object AnimationExporter {
                         var end = start + 1
                         while (end < ticks.size && ticks[end] == ticks[start] && end - start < 655) end++
                         val bitmap = if (start == 0) first else renderFrame(ticks[start])
-                        try { gif.writeFrame(bitmap, ((end - start) * 100f / animation.fps).roundToInt().coerceAtLeast(2)) }
+                        try {
+                            val endCs = if (end == ticks.size) (durationUs / 10_000.0).roundToInt() else (end * 100.0 / fps).roundToInt()
+                            gif.writeFrame(bitmap, (endCs - (start * 100.0 / fps).roundToInt()).coerceAtLeast(2))
+                        }
                         finally { if (bitmap !== first) bitmap.recycle() }
                         start = end
                     }
@@ -74,13 +85,13 @@ internal object AnimationExporter {
             }
             AnimationExportFormat.MP4 -> resolver.openFileDescriptor(uri, "rwt").use { descriptor ->
                 val file = requireNotNull(descriptor) { "Cannot open export destination" }
-                writeMp4(file.fileDescriptor, ticks, animation.fps, renderFrame)
+                writeMp4(file.fileDescriptor, ticks, fps, durationUs, renderFrame)
             }
         }
     }
 
     private fun writeMp4(
-        file: java.io.FileDescriptor, ticks: List<Int>, fps: Int, renderFrame: (Int) -> Bitmap,
+        file: java.io.FileDescriptor, ticks: List<Int>, fps: Double, durationUs: Long, renderFrame: (Int) -> Bitmap,
     ) {
         val first = renderFrame(ticks.first())
         val width = (first.width + 1) and -2
@@ -88,8 +99,8 @@ internal object AnimationExporter {
         require(width <= 4096 && height <= 4096) { "MP4 export supports up to 4096 pixels per side" }
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
-            setInteger(MediaFormat.KEY_BIT_RATE, (width.toLong() * height * fps / 7L).coerceIn(1_000_000L, 24_000_000L).toInt())
-            setInteger(MediaFormat.KEY_FRAME_RATE, fps)
+            setInteger(MediaFormat.KEY_BIT_RATE, (width.toLong() * height * fps / 7L).coerceIn(1_000_000.0, 24_000_000.0).toInt())
+            setFloat(MediaFormat.KEY_FRAME_RATE, fps.toFloat())
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
         val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
@@ -143,7 +154,7 @@ internal object AnimationExporter {
                     val image = requireNotNull(codec.getInputImage(input)) { "Video encoder has no writable image" }
                     writeYuv(bitmap, image, width, height)
                     // queueInputBuffer transfers ownership of the input Image back to the codec.
-                    codec.queueInputBuffer(input, 0, width * height * 3 / 2, tick * 1_000_000L / fps, 0)
+                    codec.queueInputBuffer(input, 0, width * height * 3 / 2, (tick * 1_000_000.0 / fps).toLong(), 0)
                     drain(false)
                 } finally { if (bitmap !== first) bitmap.recycle() }
             }
@@ -154,13 +165,13 @@ internal object AnimationExporter {
                 check(++eosAttempts < 1_000) { "Video encoder did not accept end of stream" }
                 eosInput = codec.dequeueInputBuffer(10_000L)
             }
-            codec.queueInputBuffer(eosInput, 0, 0, ticks.size * 1_000_000L / fps, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+            codec.queueInputBuffer(eosInput, 0, 0, durationUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
             drain(true)
             check(muxerStarted) { "Video encoder produced no track" }
             // Explicit end timestamp gives even a single-frame clip a nonzero duration.
             // https://developer.android.com/reference/android/media/MediaMuxer#writeSampleData(int,java.nio.ByteBuffer,android.media.MediaCodec.BufferInfo)
             val end = MediaCodec.BufferInfo().apply {
-                set(0, 0, ticks.size * 1_000_000L / fps, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                set(0, 0, durationUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
             }
             muxer.writeSampleData(track, java.nio.ByteBuffer.allocate(0), end)
             // Finalization writes the MP4 index. Never report success if it fails.

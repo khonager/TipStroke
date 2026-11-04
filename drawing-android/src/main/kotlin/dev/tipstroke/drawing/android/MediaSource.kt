@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Movie
 import android.media.MediaMetadataRetriever
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import org.json.JSONObject
 import java.io.Closeable
 import java.io.File
@@ -15,21 +17,57 @@ internal data class MediaSource(
     val width: Int,
     val height: Int,
     val durationUs: Long,
+    val frameRate: Double = 30.0,
 ) {
     init {
+        require(frameRate.isFinite() && frameRate in 1.0..120.0)
         require(kind == "video" || kind == "gif") { "Unsupported media source" }
         require(width in 1..8192 && height in 1..8192 && width.toLong() * height <= 16_777_216) { "Media dimensions are too large" }
         require(durationUs in 1..86_400_000_000L) { "Invalid media duration" }
     }
 
-    fun json() = JSONObject().put("kind", kind).put("width", width).put("height", height).put("durationUs", durationUs)
+    fun json() = JSONObject().put("kind", kind).put("width", width).put("height", height).put("durationUs", durationUs).put("frameRate", frameRate)
 
     companion object {
         const val ASSET_PATH = "assets/media/timeline.source"
-        fun read(directory: File, json: JSONObject) = MediaSource(
-            File(directory, ASSET_PATH).also { require(it.isFile) { "Missing timeline media" } },
-            json.getString("kind"), json.getInt("width"), json.getInt("height"), json.getLong("durationUs"),
-        )
+        /** Read container timing, including fractional rates and microsecond duration. Worker only. */
+        fun videoTiming(file: File, durationUs: Long, fallbackFps: Double = 30.0): Pair<Long, Double> {
+            val extractor = MediaExtractor()
+            return try {
+                extractor.setDataSource(file.path)
+                val format = (0 until extractor.trackCount).map(extractor::getTrackFormat)
+                    .first { it.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+                val duration = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else durationUs
+                val rate = if (format.containsKey(MediaFormat.KEY_FRAME_RATE))
+                    runCatching { format.getInteger(MediaFormat.KEY_FRAME_RATE).toDouble() }
+                        .getOrElse { format.getFloat(MediaFormat.KEY_FRAME_RATE).toDouble() } else fallbackFps
+                val average = if (duration > 0) fallbackFps * durationUs / duration else fallbackFps
+                val cadence = if (kotlin.math.abs(average - rate) < .1) average else rate
+                duration.coerceAtLeast(1) to cadence.takeIf { it.isFinite() && it in 1.0..120.0 }.let { it ?: fallbackFps }
+            } catch (_: Exception) { durationUs to fallbackFps }
+            finally { extractor.release() }
+        }
+        fun read(directory: File, json: JSONObject): MediaSource {
+            val file = File(directory, ASSET_PATH)
+            // Early media builds stored this one level higher. Normalize on the project worker
+            // so runtime references remain valid after the next atomic project replacement.
+            val legacy = File(directory, "assets/timeline.source")
+            if (!file.isFile && legacy.isFile) {
+                file.parentFile?.mkdirs()
+                try { java.nio.file.Files.createLink(file.toPath(), legacy.toPath()) }
+                catch (_: Exception) {
+                    val staging = File(file.parentFile, "timeline.migrating")
+                    try { legacy.copyTo(staging, overwrite = true); check(staging.renameTo(file)) { "Cannot migrate timeline media" } }
+                    finally { staging.delete() }
+                }
+            }
+            require(file.isFile) { "Missing timeline media" }
+            val kind = json.getString("kind")
+            val duration = json.getLong("durationUs")
+            val fps = if (json.has("frameRate")) json.getDouble("frameRate")
+                else if (kind == "gif") 50.0 else videoTiming(file, duration).second
+            return MediaSource(file, kind, json.getInt("width"), json.getInt("height"), duration, fps)
+        }
     }
 }
 
@@ -79,6 +117,7 @@ internal class MediaPreview(private val source: MediaSource) {
         private set
     var timeUs: Long? = null
         private set
+    private var decoder: MediaFrameDecoder? = null // Accessed only on AnimationDecoding.executor.
     private var busy = false
     private var generation = 0
     private var pending: Pair<Long, (Result<Unit>) -> Unit>? = null
@@ -95,7 +134,7 @@ internal class MediaPreview(private val source: MediaSource) {
         busy = true
         val token = generation
         AnimationDecoding.executor.execute {
-            val result = runCatching { MediaFrameDecoder(source).use { it.frame(request.first, 1280) } }
+            val result = runCatching { (decoder ?: MediaFrameDecoder(source).also { decoder = it }).frame(request.first, 1280) }
             ProjectPersistence.mainHandler.post {
                 busy = false
                 if (token != generation) { result.getOrNull()?.recycle(); decodeNext(); return@post }
@@ -111,11 +150,8 @@ internal class MediaPreview(private val source: MediaSource) {
 
     fun cancelPending() { generation++; pending = null }
 
-    fun clear() { generation++; pending = null; bitmap?.recycle(); bitmap = null; timeUs = null }
-}
-
-internal object MediaThumbnailDecoding {
-    val executor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
-        Thread(task, "TipStroke-media-thumbnails").apply { isDaemon = true }
+    fun clear() {
+        generation++; pending = null; bitmap?.recycle(); bitmap = null; timeUs = null
+        AnimationDecoding.executor.execute { decoder?.close(); decoder = null }
     }
 }

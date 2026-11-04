@@ -23,6 +23,7 @@ internal data class StylusHoverPreview(
 internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : View(context) {
     var animation: AnimationRuntime? = null
         set(value) { field = value; invalidate() }
+    var hardwareVideo = false
     var animationPlaying: Boolean = false
         set(value) { field = value; invalidate() }
     val transformMatrix = Matrix()
@@ -212,9 +213,12 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         canvas.save(); canvas.concat(transformMatrix)
         canvasPaint.color = layerStack.backgroundColor
         canvasPaint.alpha = (layerStack.backgroundOpacity * 255).toInt()
+        val backgroundSave = canvas.save()
+        if (hardwareVideo) animation?.media?.let { canvas.clipOutRect(0f, 0f, it.width.toFloat(), it.height.toFloat()) }
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), canvasPaint)
+        canvas.restoreToCount(backgroundSave)
         canvas.clipRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
-        animation?.let { active -> active.media?.let { media -> active.mediaPreview?.takeIf { it.timeUs == (active.currentFrame.sourceTimeUs ?: 0L) }?.bitmap?.let { frame ->
+        animation?.let { active -> active.media?.let { media -> active.mediaPreview?.takeIf { (animationPlaying || it.timeUs == active.mediaPositionUs) }?.bitmap?.let { frame ->
             bitmapPaint.alpha = 255
             canvas.drawBitmap(frame, null, RectF(0f, 0f, media.width.toFloat(), media.height.toFloat()), bitmapPaint)
         } } }
@@ -314,7 +318,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
 
     private fun drawOnionForLayer(canvas: Canvas, layer: CanvasLayerRuntime) {
         val active = animation ?: return
-        if (animationPlaying || active.isBackground(layer.id) || !layer.visible) return
+        if (animationPlaying || !active.mediaDrawingActive || active.isBackground(layer.id) || !layer.visible) return
         val current = active.selectedIndex
         fun drawNeighbor(index: Int, distance: Int, tint: Int) {
             if (index !in active.frames.indices) return
