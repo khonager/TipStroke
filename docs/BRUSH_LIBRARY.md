@@ -1,17 +1,17 @@
-# Android brush creation, selection, and sharing
+# Android tip creation, selection, and sharing
 
-Open **Brushes** directly from the canvas dock. The library has All brushes,
-My brushes, and Favorites sections, stroke previews, search, import, and
-**Create brush**. Brush selection is independent of the adjustment controls.
+Open **Tips** directly from the canvas dock. The library has All tips,
+My tips, and Favorites sections, stroke previews, search, import, and
+**Create tip**. Tip selection is independent of the adjustment controls.
 
-## Original brushes
+## Original tips
 
-Create brush starts a new shape-and-grain brush, not a copy of Pencil, Ink, or
+Create tip starts a new shape-and-grain tip, not a copy of Pencil, Ink, or
 Airbrush. Its native raster renderer lays down a sequence of stamps. The three
-legacy brushes remain available; Customize retains their existing editor and
+legacy tips remain available; Customize retains their existing editor and
 **Design with shape & grain** converts a copy to the new renderer.
 
-Brush Studio has six sections:
+Tip Studio has six sections:
 
 - **About:** name, creator, description/sharing terms, size, and opacity.
 - **Shape:** round, square, oval, bristles, or an imported/drawn image; edge hardness
@@ -30,7 +30,7 @@ pad can edit an existing imported or drawn source. White represents coverage and
 black represents no paint. Transparent input images use their alpha channel;
 opaque images use luminance. Import checks encoded size (16 MiB) and dimensions
 (up to 16,384 on either axis), downsamples before allocation, and letterboxes into
-a 256 × 256 source. Sources are embedded in the shared brush, with no path/URI
+a 256 × 256 source. Sources are embedded in the shared tip, with no path/URI
 references or external downloads.
 
 The native drawing pad accepts finger/stylus input and lets users clear or generate
@@ -38,10 +38,10 @@ a pressure/tilt sample. Changes redraw the existing test strokes with the curren
 settings. It retains at most 16 strokes of 2,048 samples and a 1,600 × 600 preview
 bitmap. Pointer samples remain in native views and do not become Compose state.
 Save and use atomically saves the draft and selects its dynamics; Cancel discards
-only the draft. Editing a saved brush does not change already-painted artwork.
+only the draft. Editing a saved tip does not change already-painted artwork.
 
 This is an extensible stamp renderer, not full Procreate parity. Wet pigment
-mixing, dual-brush blending, arbitrary shader/code execution, and Procreate
+mixing, dual-tip blending, arbitrary shader/code execution, and Procreate
 `.brush`/`.brushset` compatibility are not implemented. Legacy stabilization is
 still reserved; the custom editor does not expose an ineffective smoothing slider.
 
@@ -51,9 +51,9 @@ assets here are TipStroke's own.
 
 ## Favorites that fit
 
-The canvas dock contains a dedicated Brushes button, favorite brush cells, a Tools
+The canvas dock contains a dedicated Tips grid icon, favorite stroke thumbnails, a Tools
 menu, and Adjust. Tools contains Select, Eraser, Smudge, eligible pixel tools, and
-Brush Studio; the adjustment action retains the phone size/opacity toggle.
+Tip Studio; the adjustment action retains the phone size/opacity toggle.
 There is no scrolling container in the dock.
 
 Favorite capacity is computed from the dock's measured available width or height,
@@ -64,9 +64,37 @@ in order; **Move to front** in Favorites controls priority. When a window shrink
 or rotates, only the first fitting favorites appear. Extra pins remain saved and
 return with more room. Selecting a nonfavorite does not displace a favorite.
 
+## Visual controls and endpoint previews
+
+Tip actions use icons with accessible names. Hover with a supported stylus or mouse
+for 650 ms to see the name next to the vertical dock, or above horizontal controls.
+Leaving cancels the pending label; touch users can hold an icon to show it for two
+seconds. Popup labels stay within the window. Library entries retain readable tip
+names, and section tabs and setting labels remain text.
+
+Favorites, library entries, and both ends of creator/adjustment sliders render a
+representative stroke through `BrushStrokePreviewView` and the native raster
+painter. Custom image shape and grain sources use the same path as painted strokes.
+The sample varies pressure, speed, and tilt, including tilt for custom stamp tips.
+A fixed 400 × 160 document-space sample makes texture and dynamics independent of
+screen density. Each view caches only its output-sized bitmap and invalidates it
+when its preset, color, opacity, rendering mode, or dimensions change.
+
+Slider endpoints are pure copies of the current definition at that control's
+minimum/maximum. They never modify the draft. The size slider uses the actual size;
+other thumbnails use a common display size to make texture and dynamics legible.
+A shared blue sample makes hue/saturation changes visible. Equal-looking endpoints
+are possible: rotation of a round shape or grain controls with grain disabled do
+not change the result. Hover, hold, or tap an endpoint to read its value. The native
+test pad remains available for evaluating longer strokes and actual pen input.
+
+Use the image-plus icon in **Shape** or **Grain** to import a source, or the drawing
+icon to paint/edit one. Invert and rotate appear when an image source exists.
+The checkmark applies the source; the close icon cancels that source edit.
+
 ## Native rendering and replay
 
-`BrushPreset.stamp` supplies the new brush definition, with platform-independent,
+`BrushPreset.stamp` supplies the new tip definition, with platform-independent,
 immutable coverage sources in `:core`. `StampPath` samples arc length with a
 one-document-pixel minimum step, carrying spacing and deterministic randomness
 across event batches. Each update renders only new stamps into intersecting 256 px
@@ -78,14 +106,14 @@ coordinates, with bounded size, tilt, scatter, and count. Extremely large corrup
 input jumps are bounded to 8,192 path steps per segment. Blank faded stamps do not
 allocate tiles. Live pixels become the final pixels at pen-up. Custom paint is
 recorded as exact sparse patches using the existing replay format; the frozen v1
-brush renderer is not changed, and its codec refuses custom brush commands.
+tip renderer is not changed, and its codec refuses custom tip commands.
 
 ## Format and storage
 
-`.tipbrush` JSON uses `format: "tipstroke-brush"`, package `version: 2`, and brush
-`schemaVersion: 3` for custom brushes. The optional `stamp` object contains the
+`.tipbrush` JSON uses `format: "tipstroke-brush"`, package `version: 2`, and tip
+`schemaVersion: 3` for custom tips. The optional `stamp` object contains the
 parameters and source images as bounded base64 coverage bytes with dimensions.
-Existing package v1 / brush schema 2 files still import as legacy presets. Unknown
+Existing package v1 / tip schema 2 files still import as legacy presets. Unknown
 versions, invalid ranges/enums, missing image sources, and oversized/invalid source
 data fail without modifying the library. Pressure curves end at 1 to match the
 canvas controls.
@@ -101,4 +129,4 @@ The artwork document schema, sparse raster tile format, and frozen replay v1
 algorithms are unchanged. iOS and desktop do not gain this editor in this change.
 Public publishing, rankings, and a network-backed community store remain outside
 the current no-network policy. The library includes actual bundled and local
-brushes, with no fabricated popularity or publisher verification.
+tips, with no fabricated popularity or publisher verification.

@@ -3,22 +3,22 @@
 ## Routing
 
 - `TOOL_TYPE_STYLUS` draws and captures pressure, tilt, orientation, timestamps, button state, pointer ID, and cancellation.
-- `TOOL_TYPE_ERASER` uses the same brush engine with clear blending.
-- Stylus hover shows the current brush footprint in document pixels, including Pencil tilt and barrel orientation when the device reports them. **Brush preview while hovering** in Settings can disable it.
-- The primary and secondary stylus buttons are edge-triggered and configurable. Defaults are **Switch brush / eraser** for the primary button (normally nearest the tip) and **Undo** for the secondary button. Mappings are stored locally and can also be set to redo or disabled.
+- `TOOL_TYPE_ERASER` uses the same tip engine with clear blending.
+- Stylus hover shows the current tip footprint in document pixels, including Pencil tilt and barrel orientation when the device reports them. **Tip preview while hovering** in Settings can disable it.
+- The primary and secondary stylus buttons are edge-triggered and configurable. Defaults are **Switch tip / eraser** for the primary button (normally nearest the tip) and **Undo** for the secondary button. Mappings are stored locally and can also be set to redo or disabled.
 - Button input accepts Android's standard stylus `MotionEvent` bits, legacy primary/secondary/tertiary mappings from stylus-class devices, and Android 14's dedicated stylus `KeyEvent` codes. Xiaomi Pad 6 compatibility additionally recognizes the Smart Pen 2's observed `KEYCODE_PAGE_UP`/`KEYCODE_PAGE_DOWN` events while the editor is active. Duplicate motion/key delivery within one physical press is suppressed.
 - Finger behavior comes from local `GestureSettings`. Defaults are one-finger drag to navigate, one-finger hold to pick color, two-finger tap to undo, and three-finger tap to redo. One-finger drag can instead be set to **Draw**, which treats a finger or passive capacitive pen as a full-pressure drawing pointer. Android reports both as touch, so they intentionally share this mode. Adding a second finger cancels the provisional touch mark and immediately hands the gesture to two-finger navigation.
 - One-finger drag can instead smudge the selected paint layer. Smudge exchanges premultiplied color and alpha between pickup and destination: fully painted areas blend without losing coverage, while transparent edges transport existing pigment instead of creating more. It snapshots only affected tiles and groups the whole finger gesture into one undo transaction.
 - Image transform mode temporarily takes priority over configured finger actions. One-finger drag moves the selected image; two-finger translation, pinch, and twist move, resize, and rotate it. When one finger of a two-finger transform lifts, the gesture rebases to the remaining finger so continued movement is smooth and does not jump. Leaving transform mode restores the configured actions.
 - Resize canvas mode places native drag handles at all four corners and edge midpoints. Dragging a handle changes the corresponding document edges in whole pixels, with each side clamped to 16–8192 px. The preview shows added paper and shades cropped pixels; Cancel leaves the document untouched, and Apply commits the previewed bounds.
 - Two or more fingers continue to pan, zoom, and rotate the camera simultaneously; rotation can be locked. Scaling and rotation are anchored at the gesture centroid, so the document point between the fingers remains beneath that point while pinching. After a moved multi-finger gesture loses a pointer, navigation rebases to the remaining finger so a configured one-finger drag can continue without a jump.
-- Select mode temporarily routes a one-pointer finger or stylus drag to a freehand lasso, rectangle or ellipse in document space. The selection constrains subsequent paint-layer drawing and erasing. Move translates selected pixels on every selected paint layer and whole selected image layers together. Choosing Move without a marquee selects the whole canvas. Artwork follows the pointer live; releasing commits the move as one undo step on the primary layer. Cancelling discards the preview. Duplicate copies the selected pixels from each selected paint layer into a new sparse layer while preserving the originals. On an image layer the selection constrains edits to the image's original-resolution erase mask; whole-image movement remains the image transform mode. Select All and Clear live in the tool’s Actions menu; choosing a brush returns to drawing while retaining the selection.
+- Select mode temporarily routes a one-pointer finger or stylus drag to a freehand lasso, rectangle or ellipse in document space. The selection constrains subsequent paint-layer drawing and erasing. Move translates selected pixels on every selected paint layer and whole selected image layers together. Choosing Move without a marquee selects the whole canvas. Artwork follows the pointer live; releasing commits the move as one undo step on the primary layer. Cancelling discards the preview. Duplicate copies the selected pixels from each selected paint layer into a new sparse layer while preserving the originals. On an image layer the selection constrains edits to the image's original-resolution erase mask; whole-image movement remains the image transform mode. Select All and Clear live in the tool’s Actions menu; choosing a tip returns to drawing while retaining the selection.
 - Selecting a layer keeps the layer list compact. Its ⋮ button opens a scrollable settings overlay; Done or tapping outside closes the overlay while keeping that layer selected.
 - In the Layers panel, hold a layer row to drag it. Rows stay in place until release. Over the name/control side, a blue line marks the nearest legal gap and a label says which layer or group it is above/below. The thumbnail column is reserved for grouping: a preview highlights and the label says Group with/Add to group; gaps in that column do nothing. The panel scrolls when a dragged layer nears its top or bottom edge, gradually speeding up toward the edge. A right swipe still adds a layer to the multi-layer selection.
 - A completed lasso owns a copy of its sampled points, so clearing the temporary gesture buffer cannot invalidate later hit testing or movement. Moving a large selection visits only tiles that contain selected pixels and their destination tiles.
 - Animation recording starts from the compact timeline. Image motion uses the existing finger drag/pinch/twist transform route and captures transform samples through finger-up; it requires at least two frames and offers Fit Range or Real Time timing. Record drawing live starts playback at the selected frame, advances at the chosen FPS, and adds frames as needed. Recorded drawing carries forward into each new frame, and each stroke progressively appears according to its sampled time. The native pen/touch route stays active for as many strokes as the artist draws. Stop recording keeps all captured frames and cels. Selecting another frame or pausing playback also ends the session.
 - Canvas navigation supports up to 256× view scale so 16 px pixel-art canvases can fit the screen and still zoom further without a jump when pinching or using a wheel.
-- Pixel, Line, and Shade join Pencil, Ink, Airbrush, and Eraser in the tool list on canvases up to 128×128 px or at 8× zoom and above. Small canvases open with the 1 px Pixel tool. Pixel tools remain in the list while one is selected after zooming back out; selecting any regular brush switches directly back to it. Pixel tool size can be adjusted from 1 to 32 px. Line previews a straight line from the first contact to the current contact, and Shade uses an anchored checkerboard dither. Eraser uses the same integer grid when a pixel tool is active.
+- Pixel, Line, and Shade join Pencil, Ink, Airbrush, and Eraser in the tool list on canvases up to 128×128 px or at 8× zoom and above. Small canvases open with the 1 px Pixel tool. Pixel tools remain in the list while one is selected after zooming back out; selecting any regular tip switches directly back to it. Pixel tool size can be adjusted from 1 to 32 px. Line previews a straight line from the first contact to the current contact, and Shade uses an anchored checkerboard dither. Eraser uses the same integer grid when a pixel tool is active.
 - Primary mouse drag paints through the same native stroke pipeline at full pressure. Secondary or middle drag pans the canvas. Wheel or two-finger trackpad scroll pans; holding Ctrl/Meta zooms around the pointer, and Shift converts a vertical wheel to horizontal pan.
 - The Android Emulator presents an ordinary host click as a touchscreen contact. On emulator builds, a single such contact is treated as a full-pressure mouse stroke; adding a second simulated contact cancels the provisional stroke and switches to normal multi-touch navigation.
 - Pen tablets use full pressure, tilt, orientation, eraser, and side-button data whenever Android reports `TOOL_TYPE_STYLUS`/`TOOL_TYPE_ERASER`. A host or emulator that reduces the tablet to mouse events can still draw, but only at full pressure.
@@ -35,19 +35,19 @@ Stylus has priority. Once a stylus stroke is active, touch cannot navigate or co
 
 The camera matrix transforms screen events to document coordinates once at input. Navigation changes the view matrix only and never resamples document pixels.
 
-Color picking opens a native magnifying loupe after the configured hold delay. The loupe follows the finger, shows enlarged composite pixels, outlines the pending color, and suppresses navigation while active. The active brush color changes only when the finger lifts; cancellation or adding another finger dismisses the loupe without changing color. A stylus always retains priority and always draws regardless of finger mappings.
+Color picking opens a native magnifying loupe after the configured hold delay. The loupe follows the finger, shows enlarged composite pixels, outlines the pending color, and suppresses navigation while active. The active tip color changes only when the finger lifts; cancellation or adding another finger dismisses the loupe without changing color. A stylus always retains priority and always draws regardless of finger mappings.
 
-## Brush controls
+## Tip controls
 
-Brush size and opacity use drag tracks with persistent numeric readouts. While either value is adjusted, the canvas center shows a live stamp with the current brush color, edge softness, and opacity; its diameter is expressed in document pixels and passes through the active canvas transform, so zooming changes its on-screen size exactly like a drawn stroke. Eraser adjustments use a neutral light stamp so the preview remains visible without changing artwork. In landscape the controls are stacked as narrow vertical controls: plus sits at the maximum end and minus at the minimum end. Portrait keeps the wider horizontal controls. The buttons apply 1 px and 1 percentage-point adjustments for precise tuning without requiring pixel-perfect slider motion.
+Tip size and opacity use drag tracks with persistent numeric readouts. While either value is adjusted, the canvas center shows a live stamp with the current tip color, edge softness, and opacity; its diameter is expressed in document pixels and passes through the active canvas transform, so zooming changes its on-screen size exactly like a drawn stroke. Eraser adjustments use a neutral light stamp so the preview remains visible without changing artwork. In landscape the controls are stacked as narrow vertical controls: plus sits at the maximum end and minus at the minimum end. Portrait keeps the wider horizontal controls. The buttons apply 1 px and 1 percentage-point adjustments for precise tuning without requiring pixel-perfect slider motion.
 
-Brush Studio keeps a compact live tip preview pinned above its scrolling controls for Pencil, Ink, Airbrush, and Eraser. The preview uses the same native raster painter as permanent Pencil and Airbrush pixels instead of approximating either brush with Compose line segments. It updates immediately for pressure dynamics, speed taper, opacity, and edge hardness; the Eraser uses a dark sample strip so its softness stays visible. Ink has separate light-pressure size and opacity floors, soft/balanced/firm response curves, and speed-taper strength. Airbrush exposes the equivalent spray-size and flow controls alongside spray-edge hardness. These values are stored independently for each built-in brush. The Pencil preview additionally moves from 0° to the observed 69° maximum and marks its configured shading transition. Pencil tilt calibration remains hover-based on devices that report stylus hover: hold the pen above the calibration square at the intended shading angle without touching the screen. In shading-switch mode the measured angle can become the point where side shading starts; in gradual mode it can become the full-shading angle.
+Tip Studio keeps a compact live tip preview pinned above its scrolling controls for Pencil, Ink, Airbrush, and Eraser. The preview uses the same native raster painter as permanent Pencil and Airbrush pixels instead of approximating either tip with Compose line segments. It updates immediately for pressure dynamics, speed taper, opacity, and edge hardness; the Eraser uses a dark sample strip so its softness stays visible. Ink has separate light-pressure size and opacity floors, soft/balanced/firm response curves, and speed-taper strength. Airbrush exposes the equivalent spray-size and flow controls alongside spray-edge hardness. These values are stored independently for each built-in tip. The Pencil preview additionally moves from 0° to the observed 69° maximum and marks its configured shading transition. Pencil tilt calibration remains hover-based on devices that report stylus hover: hold the pen above the calibration square at the intended shading angle without touching the screen. In shading-switch mode the measured angle can become the point where side shading starts; in gradual mode it can become the full-shading angle.
 
 Drawing mode hides the Android navigation bar by default and uses transient-bar swipe behavior, preventing an ordinary canvas stroke at the bottom edge from immediately navigating away. The focused drawing mode setting can keep the navigation bar visible; gallery and settings screens always restore it.
 
 On compact phone windows, the editor uses a condensed top command strip and a one-row bottom tool dock. Regular and pixel tools share its horizontally scrollable tool strip; the selected tool scrolls into view, while the size/opacity toggle stays fixed at the edge. Size and opacity expand above the dock only when requested. Tablet portrait uses a width-limited scrolling rail so it does not collide with the adjustment controls; landscape rails scroll vertically when needed. The chrome stays visible while a stroke remains in the unobstructed canvas area, hides only as the active pointer approaches the top or bottom controls, and returns on lift, cancellation, or the transition to two-finger navigation. The explicit **Hide controls** action remains persistent until the small top-edge handle or Android Back restores it.
 
-The compact color dock always exposes the current drawing's most-used colors. In landscape it sits in the top-right toolbar immediately after Layers; in portrait it remains above the bottom adjustment controls. Tapping the large current-color circle opens the color chooser; canvas hold remains the eyedropper gesture for sampling existing artwork. The color chooser's **Original image colors** switch makes the eyedropper and visible-artwork palette sample image layers at their original opacity, even when those layers are faded on the canvas; paint layers still use their displayed opacity. Adjust opens the compact Brush Studio for edge hardness, pressure-to-size, pressure-to-opacity, and optional speed taper. Tuning, size, and opacity are stored locally for each built-in brush; the eraser has its own remembered size, opacity, hardness, and dynamics.
+The compact color dock always exposes the current drawing's most-used colors. In landscape it sits in the top-right toolbar immediately after Layers; in portrait it remains above the bottom adjustment controls. Tapping the large current-color circle opens the color chooser; canvas hold remains the eyedropper gesture for sampling existing artwork. The color chooser's **Original image colors** switch makes the eyedropper and visible-artwork palette sample image layers at their original opacity, even when those layers are faded on the canvas; paint layers still use their displayed opacity. Adjust opens the compact Tip Studio for edge hardness, pressure-to-size, pressure-to-opacity, and optional speed taper. Tuning, size, and opacity are stored locally for each built-in tip; the eraser has its own remembered size, opacity, hardness, and dynamics.
 
 ## Planned extension points
 
@@ -64,7 +64,7 @@ color picker. Both portrait and landscape circles support the gesture. The drop
 uses the native inverse canvas transform, including zoom, rotation, and pan.
 Fill targets the selected visible paint layer and respects the current selection.
 Other layers are not boundary references. Image layers must be painted on a raster
-layer instead. Color alpha is respected; brush size and brush opacity do not apply.
+layer instead. Color alpha is respected; tip size and tip opacity do not apply.
 
 A circular wave reveals the prepared fill over the duration chosen in Settings →
 Fill animation → Duration (0.25–5 seconds, default 0.5 seconds). Shorter is faster;
@@ -127,8 +127,8 @@ the heading/actions wrap with available width. Only the main gallery bar stays
 fixed, leaving the grid usable in phone landscape and resized desktop windows.
 
 Phone landscape windows with at least 640 dp of safe width place navigation and
-brush controls side by side at the top. Size/opacity open separately beneath the
-dock; portrait and narrower windows keep the bottom brush dock. Floating docks
+tip controls side by side at the top. Size/opacity open separately beneath the
+dock; portrait and narrower windows keep the bottom tip dock. Floating docks
 are capped in width. Editor controls and overlays respect safe system insets;
 color and layer panels use available space without reserving a permanent side rail.
 
@@ -141,9 +141,9 @@ The header announces the pending action, and a compact floating name label leave
 the thumbnail targets visible. Crossing gaps in the thumbnail column never
 creates an insertion guide or reorders on release.
 
-Canvas background color opens the same Wheel, Sliders, and Values editor as brush
+Canvas background color opens the same Wheel, Sliders, and Values editor as tip
 color. Changes appear live; Values includes hex, RGB, and HSV fields. Background
-opacity stays in this editor. The editor hides brush-specific image sampling,
+opacity stays in this editor. The editor hides tip-specific image sampling,
 palette, and history controls.
 
 ### Selection and Reference strokes
@@ -156,7 +156,7 @@ layers; Cut to layer moves it; Delete pixels removes it with undo support.
 Move and the existing selected-layer editing actions also respect combined shapes.
 
 Choose a paint layer under Select → Reference strokes, or choose Use as Reference
-strokes in its layer settings. Its painted coverage constrains brush and eraser
+strokes in its layer settings. Its painted coverage constrains tip and eraser
 strokes on the active paint layer. Keep that layer active to shade in place with
 its transparency preserved, or select/add another paint layer to shade separately.
 Soft source edges give proportional coverage on another layer. Geometric selections
@@ -175,7 +175,7 @@ selection rotation and scaling are not included in this selection toolset.
 
 Select lives beside Pencil, Ink and Eraser in the tool rail/dock. Selecting it
 replaces size/opacity controls with compact Shape, Mode, Actions and Reference
-menus in the same area. Choosing a drawing tool restores brush controls without
+menus in the same area. Choosing a drawing tool restores tip controls without
 clearing an existing selection or Reference strokes. There is no permanent
 selection banner over the canvas. Move is in Shape; copy/cut/delete, all, invert
 and clear are in Actions.
@@ -218,7 +218,7 @@ without a jump or cumulative drift. Lift to commit the final shape as one undo
 step. Cancellation discards the entire provisional shape. Editing is available
 before lift; committed artwork remains raster pixels.
 
-Quick shapes retain the active brush, color, selection,
+Quick shapes retain the active tip, color, selection,
 and raster history semantics. Open shapes retain sampled pressure and tilt;
 closed shapes use average contact pressure/tilt and no speed taper so a loop has
 no pen-down/lift-off seam. Pencil, Ink, Airbrush, single-layer Eraser, Pixel,
@@ -244,7 +244,7 @@ The blue line is drawn at that destination slot using measured item positions an
 ## iPhone and iPad input
 
 The native iOS port consumes coalesced UIKit touches directly. One finger draws
-by default; brush settings can disable finger drawing for Pencil use. A second
+by default; tip settings can disable finger drawing for Pencil use. A second
 finger cancels provisional finger pixels before native pan/pinch navigation.
 Pencil input takes priority over finger painting. Reported final Pencil force
 controls width; estimated/unavailable force uses a constant fallback. Pencil
@@ -255,30 +255,37 @@ color picking, undo/redo buttons, fit, and Pencil double-tap eraser switching.
 It does not yet implement tilt, hover, predicted touches, late force correction,
 Pencil Pro squeeze/roll, rotation gestures or Android gesture preferences. Resizing
 or rotating the window refits the document without altering its pixels. All tools
-stay within the safe area; layer and brush controls open as system sheets.
+stay within the safe area; layer and tip controls open as system sheets.
 
 While drawing, the status bar is hidden; swiping from the edge reveals system bars temporarily. The navigation-bar preference remains independent. Leaving the editor restores system bars. Phone landscape places the timeline at the bottom edge and the main controls close to the top, retaining cutout insets.
 
 Image Move → Snap → Options saves angle spacing (5°, 15°, 30°, 45°, or 90°) and snap strength. Edges, centers, and corners align with the canvas and visible images. Strength controls the capture distance in screen space and the angular tolerance; movement accumulates against the unsnapped transform so dragging away releases the snap without a sticky offset. Snapping remains optional.
 
-Smudge is selectable alongside brushes and the eraser. It works with a stylus, primary mouse button, or a finger when touch drawing is enabled, independently of the finger-smudge gesture setting. It edits the selected raster layer, uses tool size/opacity and Settings → Smudge strength, and creates one undo step per gesture. A second finger hands touch smudging to navigation; extra fingers do not take over a pen stroke. Interrupted gestures finalize their existing changes as one undoable action.
+Smudge is selectable alongside tips and the eraser. It works with a stylus, primary mouse button, or a finger when touch drawing is enabled, independently of the finger-smudge gesture setting. It edits the selected raster layer, uses tool size/opacity and Settings → Smudge strength, and creates one undo step per gesture. A second finger hands touch smudging to navigation; extra fingers do not take over a pen stroke. Interrupted gestures finalize their existing changes as one undoable action.
 
 ## Selected-pixel transforms
 
 Select pixels with Lasso, Rectangle, or Ellipse, then open the selection tool menu → **Rotate, resize or flip**. The panel offers width/height percentages (1–800%), linked proportions, rotation, horizontal/vertical flips, and optional smoothing. The transform pivots around the selection bounds. The native canvas previews the matrix against the original pixels; **Apply** resamples once, while **Cancel**, Back, or closing the panel leaves artwork unchanged. Pixels outside the canvas are cropped on Apply and restored by undo. Selected raster layers transform together as one undo step; image layers continue to use their own non-destructive photo controls. Boolean selection holes remain excluded.
 
-## Brush selection and favorites
+## Tip selection and favorites
 
-Brushes is a dedicated canvas-dock action, separate from Adjust. Its library lists
-all brushes with previews, creation/import, and pinning. The dock uses fixed cells
+Tips is a dedicated canvas-dock action, separate from Adjust. Its library lists
+all tips with previews, creation/import, and pinning. The dock uses fixed cells
 and never scrolls; the measured available axis determines how many favorites fit
-after reserving Brushes, Tools, and Adjust. Saved pin order persists across layout
+after reserving Tips, Tools, and Adjust. Saved pin order persists across layout
 changes; extra pins are hidden until space returns, and additional pinning is
 disabled at the current capacity. Tools contains selection, erasing, smudging,
-eligible pixel tools, and Brush Studio. Adjust retains the compact phone's
-size/opacity toggle; custom-brush studio adjustment opens its saved definition.
+eligible pixel tools, and Tip Studio. Adjust retains the compact phone's
+size/opacity toggle; custom-tip studio adjustment opens its saved definition.
 
-Custom brush input and the studio's drawing/source pads use native MotionEvents.
+Favorite cells show native stroke thumbnails; Tips, Tools, and Adjust use icons.
+Tip action names appear after 650 ms of stylus/mouse hover and cancel on exit.
+Touch users can hold an icon for its label. The label appears beside a vertical
+dock or above a horizontal control and stays inside the window. Tip Studio and
+creator sliders show minimum/maximum stroke samples at their endpoints; tapping
+or hovering an endpoint reveals its value without changing the setting.
+
+Custom tip input and the studio's drawing/source pads use native MotionEvents.
 The new renderer bypasses Jetpack Ink and incrementally stamps shape/grain masks
 into sparse tiles. Shape-hold snapping is disabled for custom stamp strokes so it
 does not replace scattered or textured marks with fitted geometry. The native

@@ -36,6 +36,7 @@ class BrushStrokePreviewView @JvmOverloads constructor(
     private var color = RgbaColor(.25f, .25f, .28f)
     private var rendered: Bitmap? = null
     private var usePresetSize = false
+    private var thumbnail = false
 
     init {
         setWillNotDraw(false)
@@ -47,14 +48,16 @@ class BrushStrokePreviewView @JvmOverloads constructor(
         opacity: Float,
         color: RgbaColor,
         usePresetSize: Boolean = false,
+        thumbnail: Boolean = false,
     ) {
         val safeOpacity = opacity.coerceIn(0f, 1f)
-        if (this.brush == brush && this.erasing == erasing && this.opacity == safeOpacity && this.color == color && this.usePresetSize == usePresetSize) return
+        if (this.brush == brush && this.erasing == erasing && this.opacity == safeOpacity && this.color == color && this.usePresetSize == usePresetSize && this.thumbnail == thumbnail) return
         this.brush = brush
         this.erasing = erasing
         this.opacity = safeOpacity
         this.color = color
         this.usePresetSize = usePresetSize
+        this.thumbnail = thumbnail
         clearRenderedPreview()
         invalidate()
     }
@@ -79,12 +82,21 @@ class BrushStrokePreviewView @JvmOverloads constructor(
     private fun renderPreview(width: Int, height: Int): Bitmap =
         Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
             val canvas = Canvas(bitmap)
-            if (erasing) drawEraserSample(canvas, width, height)
-            StrokeCanvasPainter.draw(canvas, previewStroke(width, height))
+            // A fixed document-space sample keeps grain, spacing, taper and speed independent
+            // of display density and thumbnail size. Only the cached output bitmap is allocated.
+            val sampleWidth = if (thumbnail) 400 else width
+            val sampleHeight = if (thumbnail) 160 else height
+            if (thumbnail) {
+                val scale = minOf(width / 400f, height / 160f)
+                canvas.translate((width - 400f * scale) / 2f, (height - 160f * scale) / 2f)
+                canvas.scale(scale, scale)
+            }
+            if (erasing) drawEraserSample(canvas, sampleWidth, sampleHeight)
+            StrokeCanvasPainter.draw(canvas, previewStroke(sampleWidth, sampleHeight))
         }
 
     private fun previewStroke(width: Int, height: Int): CompletedStroke {
-        val left = max(5f, width * .015f)
+        val left = if (thumbnail) 40f else max(5f, width * .015f)
         val right = width - left
         val centerY = height * .5f
         val segmentCount = max(96, width / 3)
@@ -100,14 +112,14 @@ class BrushStrokePreviewView @JvmOverloads constructor(
                     centerY + sin(progress * PI * 2).toFloat() * height * .09f,
                 ),
                 pressure = pressure,
-                tiltRadians = if (!erasing && brush.engine == BrushEngine.PENCIL) {
+                tiltRadians = if (!erasing && (brush.engine == BrushEngine.PENCIL || brush.stamp != null)) {
                     progress * BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS
                 } else {
                     0f
                 },
                 // Put the tilted Pencil's broad axis across the path so its changing contact is
                 // legible in this short horizontal sample.
-                orientationRadians = if (!erasing && brush.engine == BrushEngine.PENCIL) (PI / 2).toFloat() else 0f,
+                orientationRadians = if (!erasing && (brush.engine == BrushEngine.PENCIL || brush.stamp != null)) (PI / 2).toFloat() else 0f,
                 elapsedNanos = elapsedNanos,
                 buttonState = 0,
                 kind = PointerKind.STYLUS,
@@ -115,6 +127,7 @@ class BrushStrokePreviewView @JvmOverloads constructor(
         }
         val nominalSize = when {
             erasing -> height * .24f
+            brush.stamp != null -> height * .35f
             brush.engine == BrushEngine.PENCIL -> height * .29f
             brush.engine == BrushEngine.AIRBRUSH -> height * .28f
             else -> height * .18f

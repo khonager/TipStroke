@@ -5,8 +5,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.RotateRight
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -43,6 +47,12 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
     val p = draft.preset
     val s = requireNotNull(p.stamp)
     fun update(value: BrushPreset) { draft = draft.copy(preset = value) }
+    @Composable fun PresetSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int = 0, actualSize: Boolean = false, at: (Float) -> BrushPreset) {
+        TipPreviewSlider(label, value, range, at, steps, actualSize = actualSize) { update(at(it)) }
+    }
+    @Composable fun StampSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int = 0, at: (Float) -> StampBrush) {
+        TipPreviewSlider(label, value, range, { p.copy(stamp = at(it)) }, steps) { update(p.copy(stamp = at(it))) }
+    }
     fun stamp(value: StampBrush) { update(draft.preset.copy(stamp = value)) }
     fun source(texture: BrushTexture, target: String = sourceTarget) {
         val current = requireNotNull(draft.preset.stamp)
@@ -67,11 +77,11 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
             BoxWithConstraints(Modifier.padding(16.dp)) {
                 val compact = maxHeight < 450.dp
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Brush Studio", style = MaterialTheme.typography.titleLarge)
+                    Text("Tip Studio", style = MaterialTheme.typography.titleLarge)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Draw to test", Modifier.weight(1f), style = MaterialTheme.typography.labelMedium)
-                        TextButton(onClick = { pad?.showSample() }, contentPadding = PaddingValues(0.dp)) { Text("Sample") }
-                        TextButton(onClick = { pad?.clear() }, contentPadding = PaddingValues(0.dp)) { Text("Clear pad") }
+                        TipAction("Sample", Icons.Outlined.Gesture, onClick = { pad?.showSample() })
+                        TipAction("Clear pad", Icons.Outlined.DeleteSweep, onClick = { pad?.clear() })
                     }
                     AndroidView(factory = { BrushDrawingPad(it).also { view -> pad = view; view.setBrush(p) } },
                         update = { it.setBrush(p) }, modifier = Modifier.fillMaxWidth().height(if (compact) 72.dp else 140.dp))
@@ -86,12 +96,12 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
                         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             when (tab) {
                                 "About" -> {
-                                    OutlinedTextField(p.displayName, { update(p.copy(displayName = it.take(60))) }, label = { Text("Brush name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    OutlinedTextField(p.displayName, { update(p.copy(displayName = it.take(60))) }, label = { Text("Tip name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                                     OutlinedTextField(draft.author, { draft = draft.copy(author = it.take(80)) }, label = { Text("Creator name (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                                     OutlinedTextField(draft.description, { draft = draft.copy(description = it.take(1000)) }, label = { Text("Description / sharing terms") }, modifier = Modifier.fillMaxWidth())
-                                    Text("Start with a shape, add grain, then tune how the marks travel along your stroke. Draw your own sources or import images.", style = MaterialTheme.typography.bodyMedium)
-                                    StampSlider("Size (px)", p.baseSizePx, 2f..180f) { update(p.copy(baseSizePx = it)) }
-                                    StampSlider("Opacity", p.opacity, .05f..1f) { update(p.copy(opacity = it)) }
+                                    Text("Start with a shape, add grain, then tune how the marks travel along your stroke. Draw your own sources or import images. Hover or hold an icon for its name. Slider ends preview the minimum and maximum; all other settings stay the same.", style = MaterialTheme.typography.bodyMedium)
+                                    PresetSlider("Size (px)", p.baseSizePx, 2f..180f, actualSize = true) { p.copy(baseSizePx = it) }
+                                    PresetSlider("Opacity", p.opacity, .05f..1f) { p.copy(opacity = it) }
                                 }
                                 "Shape" -> {
                                     ChoiceRow(StampShape.entries.filter { it != StampShape.IMAGE || s.shapeTexture != null }, s.shape, { stamp(s.copy(shape = it)) })
@@ -100,12 +110,12 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
                                         { sourceTarget = "Shape"; sourceDrawing = true }, s.shapeTexture?.let { { stamp(s.copy(shapeTexture = it.inverted())) } },
                                         s.shapeTexture?.let { { stamp(s.copy(shapeTexture = it.rotated())) } })
                                     Text("White paints; black cuts out. Transparent images use their alpha channel. Invert opaque dark-on-white artwork.", style = MaterialTheme.typography.bodySmall)
-                                    if (s.shape != StampShape.IMAGE) StampSlider("Edge hardness", p.hardness, 0f..1f) { update(p.copy(hardness = it)) }
-                                    StampSlider("Width / aspect", s.aspectRatio, .1f..1f) { stamp(s.copy(aspectRatio = it)) }
-                                    StampSlider("Rotation (degrees)", s.rotationDegrees, -180f..180f) { stamp(s.copy(rotationDegrees = it)) }
+                                    if (s.shape != StampShape.IMAGE) PresetSlider("Edge hardness", p.hardness, 0f..1f) { p.copy(hardness = it) }
+                                    StampSlider("Width / aspect", s.aspectRatio, .1f..1f) { s.copy(aspectRatio = it) }
+                                    StampSlider("Rotation (degrees)", s.rotationDegrees, -180f..180f) { s.copy(rotationDegrees = it) }
                                     Row { Text("Follow stroke direction", Modifier.weight(1f)); Switch(s.followDirection, { stamp(s.copy(followDirection = it)) }) }
-                                    StampSlider("Rotation scatter (degrees)", s.rotationJitter, 0f..180f) { stamp(s.copy(rotationJitter = it)) }
-                                    StampSlider("Stamps at each step", s.count.toFloat(), 1f..8f, steps = 6) { stamp(s.copy(count = it.roundToInt())) }
+                                    StampSlider("Rotation scatter (degrees)", s.rotationJitter, 0f..180f) { s.copy(rotationJitter = it) }
+                                    StampSlider("Stamps at each step", s.count.toFloat(), 1f..8f, steps = 6) { s.copy(count = it.roundToInt()) }
                                 }
                                 "Grain" -> {
                                     ChoiceRow(StampGrain.entries.filter { it != StampGrain.IMAGE || s.grainTexture != null }, s.grain, { stamp(s.copy(grain = it)) })
@@ -115,39 +125,39 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
                                         s.grainTexture?.let { { stamp(s.copy(grainTexture = it.rotated())) } })
                                     Text("Grain repeats inside the shape. Canvas keeps it fixed like paper; Stamp moves it with each mark.", style = MaterialTheme.typography.bodySmall)
                                     ChoiceRow(GrainPlacement.entries, s.grainPlacement, { stamp(s.copy(grainPlacement = it)) })
-                                    StampSlider("Grain scale (px)", s.grainScale, 2f..512f) { stamp(s.copy(grainScale = it)) }
-                                    StampSlider("Grain depth", s.grainDepth, 0f..1f) { stamp(s.copy(grainDepth = it)) }
+                                    StampSlider("Grain scale (px)", s.grainScale, 2f..512f) { s.copy(grainScale = it) }
+                                    StampSlider("Grain depth", s.grainDepth, 0f..1f) { s.copy(grainDepth = it) }
                                 }
                                 "Stroke path" -> {
-                                    StampSlider("Spacing (tip widths)", p.spacing, .02f..2f) { update(p.copy(spacing = it)) }
-                                    StampSlider("Position scatter", s.scatter, 0f..2f) { stamp(s.copy(scatter = it)) }
-                                    StampSlider("Flow per stamp", s.flow, .01f..1f) { stamp(s.copy(flow = it)) }
-                                    StampSlider("Start taper length (px)", s.startTaperPx, 0f..500f) { stamp(s.copy(startTaperPx = it)) }
-                                    StampSlider("Fade-out distance (px)", s.fadeOutPx, 0f..2000f) { stamp(s.copy(fadeOutPx = it)) }
+                                    PresetSlider("Spacing (tip widths)", p.spacing, .02f..2f) { p.copy(spacing = it) }
+                                    StampSlider("Position scatter", s.scatter, 0f..2f) { s.copy(scatter = it) }
+                                    StampSlider("Flow per stamp", s.flow, .01f..1f) { s.copy(flow = it) }
+                                    StampSlider("Start taper length (px)", s.startTaperPx, 0f..500f) { s.copy(startTaperPx = it) }
+                                    StampSlider("Fade-out distance (px)", s.fadeOutPx, 0f..2000f) { s.copy(fadeOutPx = it) }
                                     Text("Zero taper or fade disables it. Flow builds as stamps overlap.", style = MaterialTheme.typography.bodySmall)
                                 }
                                 "Dynamics" -> {
-                                    StampSlider("Light-pressure size", p.pressureToSize.start, .01f..1f) { update(p.copy(pressureToSize = p.pressureToSize.copy(start = it))) }
-                                    StampSlider("Size response exponent", p.pressureToSize.exponent, .25f..2f) { update(p.copy(pressureToSize = p.pressureToSize.copy(exponent = it))) }
-                                    StampSlider("Light-pressure opacity", p.pressureToOpacity.start, .01f..1f) { update(p.copy(pressureToOpacity = p.pressureToOpacity.copy(start = it))) }
-                                    StampSlider("Opacity response exponent", p.pressureToOpacity.exponent, .25f..2f) { update(p.copy(pressureToOpacity = p.pressureToOpacity.copy(exponent = it))) }
-                                    StampSlider("Speed taper", p.speedTaper, 0f..1f) { update(p.copy(speedTaper = it)) }
-                                    StampSlider("Tilt size boost", s.tiltSize, 0f..3f) { stamp(s.copy(tiltSize = it)) }
-                                    StampSlider("Size randomness", s.sizeJitter, 0f..1f) { stamp(s.copy(sizeJitter = it)) }
-                                    StampSlider("Opacity randomness", s.opacityJitter, 0f..1f) { stamp(s.copy(opacityJitter = it)) }
+                                    PresetSlider("Light-pressure size", p.pressureToSize.start, .01f..1f) { p.copy(pressureToSize = p.pressureToSize.copy(start = it)) }
+                                    PresetSlider("Size response exponent", p.pressureToSize.exponent, .25f..2f) { p.copy(pressureToSize = p.pressureToSize.copy(exponent = it)) }
+                                    PresetSlider("Light-pressure opacity", p.pressureToOpacity.start, .01f..1f) { p.copy(pressureToOpacity = p.pressureToOpacity.copy(start = it)) }
+                                    PresetSlider("Opacity response exponent", p.pressureToOpacity.exponent, .25f..2f) { p.copy(pressureToOpacity = p.pressureToOpacity.copy(exponent = it)) }
+                                    PresetSlider("Speed taper", p.speedTaper, 0f..1f) { p.copy(speedTaper = it) }
+                                    StampSlider("Tilt size boost", s.tiltSize, 0f..3f) { s.copy(tiltSize = it) }
+                                    StampSlider("Size randomness", s.sizeJitter, 0f..1f) { s.copy(sizeJitter = it) }
+                                    StampSlider("Opacity randomness", s.opacityJitter, 0f..1f) { s.copy(opacityJitter = it) }
                                     Text("Set a light-pressure value to 1 to disable that response. Fingers use full pressure.", style = MaterialTheme.typography.bodySmall)
                                 }
                                 "Color" -> {
-                                    StampSlider("Hue randomness", s.hueJitter, 0f..1f) { stamp(s.copy(hueJitter = it)) }
-                                    StampSlider("Saturation randomness", s.saturationJitter, 0f..1f) { stamp(s.copy(saturationJitter = it)) }
+                                    StampSlider("Hue randomness", s.hueJitter, 0f..1f) { s.copy(hueJitter = it) }
+                                    StampSlider("Saturation randomness", s.saturationJitter, 0f..1f) { s.copy(saturationJitter = it) }
                                     Text("Variation is applied to the selected canvas color for each stamp.", style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(enabled = !busy && !importing, onClick = onDismiss) { Text("Cancel") }
-                        Button(enabled = !busy && !importing && p.displayName.isNotBlank(), onClick = { onSave(draft.copy(preset = p.copy(displayName = p.displayName.trim()))) }) { Text("Save and use") }
+                        TipAction("Cancel", Icons.Outlined.Close, enabled = !busy && !importing, onClick = onDismiss)
+                        TipAction("Save and use", Icons.Outlined.Check, enabled = !busy && !importing && p.displayName.isNotBlank(), onClick = { onSave(draft.copy(preset = p.copy(displayName = p.displayName.trim()))) })
                     }
                 }
             }
@@ -157,21 +167,60 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
         var view by remember { mutableStateOf<BrushSourcePad?>(null) }
         var erasing by remember { mutableStateOf(false) }
         var sourceSize by remember { mutableFloatStateOf(18f) }
-        AlertDialog(onDismissRequest = { sourceDrawing = false }, title = { Text("Draw $sourceTarget source") }, text = {
-            Column {
-                AndroidView(factory = { BrushSourcePad(it).also { view = it; it.setTexture(if (sourceTarget == "Shape") s.shapeTexture else s.grainTexture) } }, update = { it.erasing = erasing; it.sizePx = sourceSize }, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
-                Text("Paint width · ${sourceSize.roundToInt()} px")
-                Slider(sourceSize, { sourceSize = it }, valueRange = 1f..64f)
-                Row { TextButton(onClick = { erasing = !erasing }) { Text(if (erasing) "Paint" else "Erase") }; TextButton(onClick = { view?.clear() }) { Text("Clear") } }
+        val sourcePad: @Composable (Modifier) -> Unit = { modifier ->
+            AndroidView(factory = { BrushSourcePad(it).also {
+                view = it
+                it.setTexture(if (sourceTarget == "Shape") s.shapeTexture else s.grainTexture)
+            } }, update = { it.erasing = erasing; it.sizePx = sourceSize }, modifier = modifier)
+        }
+        val sourceControls: @Composable () -> Unit = {
+            Text(if (erasing) "Erase source" else "Paint source", style = MaterialTheme.typography.labelMedium)
+            TipPreviewSlider("Paint width (px)", sourceSize, 1f..64f,
+                { BrushPreset.Blank.copy(baseSizePx = it, pressureToSize = PressureCurve(1f, 1f, 1f)) }, actualSize = true) { sourceSize = it }
+            Row {
+                TipAction(if (erasing) "Paint" else "Erase", if (erasing) Icons.Outlined.Draw else Icons.Outlined.AutoFixNormal, onClick = { erasing = !erasing })
+                TipAction("Clear", Icons.Outlined.DeleteSweep, onClick = { view?.clear() })
             }
-        }, confirmButton = { TextButton(onClick = { view?.texture()?.let { source(it) }; sourceDrawing = false }) { Text("Use source") } },
-            dismissButton = { TextButton(onClick = { sourceDrawing = false }) { Text("Cancel") } })
+        }
+        Dialog(onDismissRequest = { sourceDrawing = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.widthIn(max = 800.dp).fillMaxWidth().fillMaxHeight(.94f), shape = MaterialTheme.shapes.large) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Draw $sourceTarget source", style = MaterialTheme.typography.titleLarge)
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                        val areaWidth = maxWidth
+                        val areaHeight = maxHeight
+                        if (areaWidth > areaHeight) {
+                            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                sourcePad(Modifier.size(minOf(areaHeight, areaWidth * .45f)))
+                                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { sourceControls() }
+                            }
+                        } else {
+                            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    sourcePad(Modifier.size(minOf(areaWidth, (areaHeight - 140.dp).coerceAtLeast(64.dp))))
+                                }
+                                sourceControls()
+                            }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TipAction("Cancel", Icons.Outlined.Close, onClick = { sourceDrawing = false })
+                        TipAction("Use source", Icons.Outlined.Check, onClick = { view?.texture()?.let { source(it) }; sourceDrawing = false })
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun SourceActions(busy: Boolean, onImport: () -> Unit, onDraw: () -> Unit, onInvert: (() -> Unit)?, onRotate: (() -> Unit)?) {
-    Row(Modifier.horizontalScroll(rememberScrollState())) { TextButton(enabled = !busy, onClick = onImport) { Text("Import image") }; TextButton(onClick = onDraw) { Text("Draw source") }; onInvert?.let { TextButton(onClick = it) { Text("Invert") } }; onRotate?.let { TextButton(onClick = it) { Text("Rotate") } } }
+    Row(Modifier.horizontalScroll(rememberScrollState())) {
+        TipAction("Import image", Icons.Outlined.AddPhotoAlternate, enabled = !busy, onClick = onImport)
+        TipAction("Draw source", Icons.Outlined.Draw, enabled = !busy, onClick = onDraw)
+        onInvert?.let { TipAction("Invert", Icons.Outlined.InvertColors, onClick = it) }
+        onRotate?.let { TipAction("Rotate", Icons.AutoMirrored.Outlined.RotateRight, onClick = it) }
+    }
 }
 
 @Composable
@@ -190,11 +239,5 @@ private fun TextureSwatch(texture: BrushTexture) {
         }
     }
     DisposableEffect(bitmap) { onDispose { bitmap.recycle() } }
-    Image(bitmap.asImageBitmap(), "Brush source", modifier = Modifier.size(96.dp).background(Color.Black))
-}
-
-@Composable
-private fun StampSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int = 0, onValue: (Float) -> Unit) {
-    Text("$label · ${"%.2f".format(value)}", style = MaterialTheme.typography.bodyMedium)
-    Slider(value.coerceIn(range), onValue, valueRange = range, steps = steps, modifier = Modifier.fillMaxWidth())
+    Image(bitmap.asImageBitmap(), "Tip source", modifier = Modifier.size(96.dp).background(Color.Black))
 }

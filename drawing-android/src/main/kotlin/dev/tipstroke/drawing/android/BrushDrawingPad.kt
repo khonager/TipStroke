@@ -19,7 +19,7 @@ class BrushDrawingPad(context: Context) : View(context) {
     private var activePointer = -1
     private val color = RgbaColor(.22f, .3f, .72f)
 
-    init { contentDescription = "Brush drawing pad"; setBackgroundColor(Color.rgb(250, 250, 250)) }
+    init { contentDescription = "Tip drawing pad"; setBackgroundColor(Color.rgb(250, 250, 250)) }
     fun setBrush(value: BrushPreset) {
         if (brush == value) return
         brush = value
@@ -118,7 +118,7 @@ class BrushSourcePad(context: Context) : View(context) {
         Canvas(bitmap).drawBitmap(source, null, Rect(0, 0, 256, 256), Paint(Paint.FILTER_BITMAP_FLAG))
         source.recycle(); invalidate()
     }
-    init { contentDescription = "Draw brush source"; setBackgroundColor(Color.BLACK) }
+    init { contentDescription = "Draw tip source"; setBackgroundColor(Color.BLACK) }
     fun clear() { bitmap.eraseColor(Color.TRANSPARENT); invalidate() }
     fun texture(): BrushTexture {
         val pixels = IntArray(256 * 256)

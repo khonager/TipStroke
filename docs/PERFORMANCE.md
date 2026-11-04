@@ -162,3 +162,9 @@ Export holds one rendered bitmap at a time, but source codecs and the encoder ha
 their own buffers. There is a 36,000-output-frame limit. Measure native playback
 frame drops, seek latency, memory, thermal behavior, and export throughput on
 physical devices with representative long-GOP, rotated, and variable-rate clips.
+
+Tip selection and slider endpoint thumbnails share the native raster preview view.
+They render a fixed document-space sample into an output-sized cached bitmap,
+recycled on parameter/size changes and detach. Endpoint definitions are immutable
+copies, with no updates to the selected tip or canvas while comparing limits.
+Hover labels observe UI hover events only; the drawing/input pipeline is unchanged.

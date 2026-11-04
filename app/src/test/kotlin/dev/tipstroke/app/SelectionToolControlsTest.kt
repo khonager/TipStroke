@@ -29,7 +29,7 @@ class SelectionToolControlsTest {
         compose.onNodeWithContentDescription("Drawing tools").assertIsDisplayed()
         compose.onNodeWithText("Actions ▾").assertIsDisplayed().performClick()
         compose.onNodeWithText("Select all").performClick()
-        compose.onNodeWithText("Pencil").performClick()
+        compose.onNodeWithContentDescription("Pencil").performClick()
         compose.onNodeWithText("Actions ▾").assertDoesNotExist()
         compose.onNodeWithContentDescription("Drawing tools").performClick()
         compose.onNodeWithText("Select").performClick()

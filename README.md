@@ -45,9 +45,9 @@ Android Studio is optional. To install manually, enable USB debugging on your ph
 
 Debug builds install as **TipStroke Debug** (`dev.tipstroke.app.debug`) alongside the signed release app. This avoids version-code and signing-key conflicts with releases and preserves their drawings. Each app has its own local library; export/import projects to transfer drawings between them.
 
-`./tipstroke laptop` starts a normal JVM desktop process in its own Linux window using Compose Multiplatform. Its canvas is a direct AWT drawing component backed by sparse 256 px raster tiles, so samples do not flow through Compose state and a stroke does not copy the whole canvas. It supports Pencil, Ink, Airbrush, Eraser, bounded undo/redo, PNG open/export, mouse drawing, tablet-pointer drawing, middle/right/Space drag panning, trackpad or wheel panning, and Ctrl/Meta+scroll zooming. The desktop defaults come from the same `:core` brush models as Android.
+`./tipstroke laptop` starts a normal JVM desktop process in its own Linux window using Compose Multiplatform. Its canvas is a direct AWT drawing component backed by sparse 256 px raster tiles, so samples do not flow through Compose state and a stroke does not copy the whole canvas. It supports Pencil, Ink, Airbrush, Eraser, bounded undo/redo, PNG open/export, mouse drawing, tablet-pointer drawing, middle/right/Space drag panning, trackpad or wheel panning, and Ctrl/Meta+scroll zooming. The desktop defaults come from the same `:core` tip models as Android.
 
-This is intentionally a useful compatibility renderer rather than a claim that Java2D reproduces Jetpack Ink. Standard JVM pointer events do not expose Linux tablet pressure, tilt, eraser ends, or pad buttons consistently, so tablets currently draw at constant pressure on desktop. Use the desktop target for quick tool/UI/workflow checks and a physical Android tablet for final brush shape, pressure/tilt, palm rejection, and input-to-photon checks. The optional `./tipstroke emulator` path remains available when a test specifically needs the complete Android UI or project format.
+This is intentionally a useful compatibility renderer rather than a claim that Java2D reproduces Jetpack Ink. Standard JVM pointer events do not expose Linux tablet pressure, tilt, eraser ends, or pad buttons consistently, so tablets currently draw at constant pressure on desktop. Use the desktop target for quick tool/UI/workflow checks and a physical Android tablet for final tip shape, pressure/tilt, palm rejection, and input-to-photon checks. The optional `./tipstroke emulator` path remains available when a test specifically needs the complete Android UI or project format.
 
 `./tipstroke desktop-package` creates a self-contained app under `desktop/build/compose/binaries/main/app/`, including the required runtime. On NixOS, desktop and emulator commands automatically enter `nix develop` for host libraries. The flake remains optional on conventional Linux distributions.
 
@@ -69,9 +69,9 @@ Obtainium users who want dev builds need to include prereleases. For a rolling r
 
 Open **Layers** in the top bar. Add paint layers with **+ Paint** or use **+ Image** to choose any raster format Android can decode on the device. Layer order, visibility, and opacity are editable. Select an image and tap **Move & resize on canvas**: drag to move, pinch to resize, and twist to rotate it. Choose **Eraser** to hide image pixels through a source-resolution mask; the imported file remains untouched. Imported images use a persisted document URI as the authoritative original and store transforms and masks separately, so scaling down and back to 100% does not resample or discard the original pixels.
 
-Tap **Select**, choose **Lasso** or **Rectangle**, and draw with a finger or stylus to constrain edits on the current paint or image layer. On paint layers, choose **Move** and drag to reposition only the selected pixels; the move is undoable. **Adjust** beside the brush tools opens a compact Brush Studio with hardness, pressure-size, pressure-opacity, and speed-taper controls. TipStroke remembers size, opacity, and tuning separately for every brush and for the eraser.
+Tap **Select**, choose **Lasso** or **Rectangle**, and draw with a finger or stylus to constrain edits on the current paint or image layer. On paint layers, choose **Move** and drag to reposition only the selected pixels; the move is undoable. **Adjust** beside the tip tools opens a compact Tip Studio with hardness, pressure-size, pressure-opacity, and speed-taper controls. TipStroke remembers size, opacity, and tuning separately for every tip and for the eraser.
 
-Stylus side buttons are configurable in Settings. By default, the primary button switches between the current brush and eraser, and the secondary button undoes. TipStroke accepts standard Android stylus events plus the Page Up/Page Down key events reported by Xiaomi Smart Pen 2 on Pad 6; short presses are intended because the system may reserve Xiaomi long-press shortcuts.
+Stylus side buttons are configurable in Settings. By default, the primary button switches between the current tip and eraser, and the secondary button undoes. TipStroke accepts standard Android stylus events plus the Page Up/Page Down key events reported by Xiaomi Smart Pen 2 on Pad 6; short presses are intended because the system may reserve Xiaomi long-press shortcuts.
 
 Pencil and Ink use TipStroke-owned Jetpack Ink 1.1 custom families. Pencil combines pressure, tilt, barrel orientation, speed taper, and clustered procedural paper tooth; Ink uses a smooth pressure nib with pointed entry and exit tapers. Airbrush joins its pressure-sized samples into one native raster silhouette and blurs that mask once, matching the soft eraser technique without stacked translucent outlines. Its wet preview and sparse-tile commit share the same painter.
 
@@ -87,17 +87,19 @@ Open **Settings** from the gallery to assign one-finger drag/hold and two-/three
 
 See [architecture](docs/ARCHITECTURE.md), [input behavior](docs/INPUT.md), and the [reference-device checklist](docs/TESTING.md).
 
-### Create and share brushes (Android)
+### Create and share tips (Android)
 
-Open **Brushes** on the canvas to select brushes, manage favorites, or create a
-new brush from shape and grain sources. Import images or draw your own sources,
+Open the **Tips** grid icon on the canvas to select tips, manage favorites, or create a
+new tip from shape and grain sources. Import images or draw your own sources,
 then tune spacing, scatter, rotation, flow, pressure, tilt, taper, and color dynamics
-in Brush Studio's native drawing pad. Save, duplicate, export, and share `.tipbrush`
+in Tip Studio's native drawing pad. Favorite icons show the actual stroke; hover
+with a stylus or hold an icon to see its name. Slider endpoints preview minimum
+and maximum settings. Save, duplicate, export, and share `.tipbrush`
 files with their textures included.
 
 The favorites bar never scrolls: its capacity follows the available screen space.
 The full library stays one tap away. Public publishing and community rankings are
-not connected. See [Brush library](docs/BRUSH_LIBRARY.md) for supported controls and
+not connected. See [Tip library](docs/BRUSH_LIBRARY.md) for supported controls and
 format details.
 
 On Android, choose **Image / GIF / video** in the gallery to make a canvas from

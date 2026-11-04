@@ -330,3 +330,19 @@ change holds/FPS, paint/undo, save/reopen, background/resume, and compare export
 Verify zoom/pan alignment, no thumbnail refresh churn, drawing only after matching
 seeks, and stable memory. Emulator checks do not establish physical-device frame
 pacing, battery/thermal cost, or stylus latency. MP4 output codec limits vary by device.
+
+## Tip icons, hover labels, and visual slider limits
+
+- `BrushFavoritesDockTest` checks icon accessibility, fitting without scrolling,
+  delayed hover labels, leaving before the delay, touch holds, and tip selection.
+- `BrushStrokePreviewViewTest` checks thumbnail changes for custom shape/grain,
+  tilt and color dynamics, plus bitmap cache invalidation and endpoint size.
+- `BrushCreatorFlowTest` checks editing and applying a drawn source, cancel,
+  endpoint previews without draft mutation, and saving/reopening the definition.
+- Review native screenshots of the phone and tablet docks and the Tip Studio
+  grain controls. On a hover-capable Android device, move the pencil between tips
+  without touching: only the currently hovered name should appear after 650 ms.
+  Touch/pen taps must still select immediately; test a touch hold for labels on
+  devices without hover. Import transparent PNG and opaque textured images from
+  the Shape/Grain image-plus actions, edit them with Draw source, and share/reimport
+  the resulting `.tipbrush` to confirm both source masks travel with the tip.

@@ -79,7 +79,7 @@ data class BrushPreset(
         val Airbrush = BrushPreset(id = BrushId("airbrush-v1"), displayName = "Airbrush", engine = BrushEngine.AIRBRUSH,
             baseSizePx = 96f, opacity = .28f, hardness = .06f, spacing = .08f, stabilization = .1f,
             pressureToSize = PressureCurve(.48f, 1f, .9f), pressureToOpacity = PressureCurve(.26f, 1f, .78f))
-        val Blank = Ink.copy(id = BrushId("blank-stamp"), displayName = "New brush",
+        val Blank = Ink.copy(id = BrushId("blank-stamp"), displayName = "New tip",
             baseSizePx = 32f, spacing = .15f, stabilization = 0f, speedTaper = 0f,
             pressureToSize = PressureCurve(.2f, 1f, 1f), pressureToOpacity = PressureCurve(1f, 1f, 1f),
             stamp = StampBrush())

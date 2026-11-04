@@ -11,7 +11,7 @@ enum class FingerAction(val displayName: String) {
 }
 
 enum class StylusButtonAction(val displayName: String) {
-    TOGGLE_ERASER("Switch brush / eraser"),
+    TOGGLE_ERASER("Switch tip / eraser"),
     UNDO("Undo"),
     REDO("Redo"),
     DISABLED("Disabled"),

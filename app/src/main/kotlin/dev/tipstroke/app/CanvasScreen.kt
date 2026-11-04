@@ -586,7 +586,7 @@ fun CanvasScreen(
                 onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                 pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
                 onStudio = { brushStudioOpen = true }, onTune = { brushStudioOpen = true },
-                tuneDescription = "Adjust brush", horizontal = portrait,
+                tuneDescription = "Adjust tip", horizontal = portrait,
                 modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
                     .then(if (portrait) Modifier.padding(12.dp) else Modifier.padding(start = 20.dp))
                     .then(if (portrait) Modifier.width((viewportWidth - 430.dp).coerceIn(170.dp, 440.dp))

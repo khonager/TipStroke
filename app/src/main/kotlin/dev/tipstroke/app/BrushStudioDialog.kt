@@ -9,6 +9,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +82,25 @@ internal fun BrushStudioDialog(
     onDismiss: () -> Unit,
     onLibrary: (() -> Unit)? = null,
 ) {
+    val previewPreset = brush.copy(
+        opacity = opacity,
+        hardness = hardness,
+        pressureToSize = if (pressureSize) PressureCurve(pressureSizeStart, 1f, pressureSizeExponent) else PressureCurve(1f, 1f, 1f),
+        pressureToOpacity = if (pressureOpacity) PressureCurve(pressureOpacityStart, 1f, pressureOpacityExponent) else PressureCurve(1f, 1f, 1f),
+        speedTaper = if (speedTaper) speedTaperAmount else 0f,
+        pencilPointSize = pencilPointSize,
+        pencilTiltSensitivity = pencilTiltSensitivity,
+        pencilShadeSize = pencilShadeSize,
+        pencilShadeOpacity = pencilShadeOpacity,
+        pencilGrain = pencilGrain,
+        pencilTiltMode = pencilTiltMode,
+        pencilShadeStartRadians = pencilShadeStartRadians,
+        pencilShadeTransitionRadians = pencilShadeTransitionRadians,
+    )
+    @Composable fun StudioSlider(label: String, valueLabel: String, value: Float, range: ClosedFloatingPointRange<Float>,
+        previewAt: (Float) -> BrushPreset, onValue: (Float) -> Unit) {
+        TipPreviewSlider(label, value, range, previewAt, valueLabel = valueLabel, erasing = erasing, onValue = onValue)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Adjust $toolName") },
@@ -112,7 +133,7 @@ internal fun BrushStudioDialog(
                     pencilShadeTransitionRadians = pencilShadeTransitionRadians,
                 )
                 onLibrary?.let { open ->
-                    TextButton(onClick = open, modifier = Modifier.fillMaxWidth()) { Text("Brush library · Create and share") }
+                    TipAction("Tip library · Create and share", Icons.Outlined.GridView, onClick = open)
                 }
                 HorizontalDivider()
                 Column(
@@ -120,11 +141,8 @@ internal fun BrushStudioDialog(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (supportsHardness) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(if (!erasing && brush.engine == BrushEngine.AIRBRUSH) "Spray edge hardness" else "Edge hardness")
-                            Text("${(hardness * 100).roundToInt()}%")
-                        }
-                        Slider(hardness, onHardness, valueRange = 0f..1f)
+                        StudioSlider(if (!erasing && brush.engine == BrushEngine.AIRBRUSH) "Spray edge hardness" else "Edge hardness",
+                            "${(hardness * 100).roundToInt()}%", hardness, 0f..1f, { previewPreset.copy(hardness = it) }, onHardness)
                     }
                     StudioSwitch("Pressure changes size", pressureSize, onPressureSize)
                     StudioSwitch("Pressure changes opacity", pressureOpacity, onPressureOpacity)
@@ -142,6 +160,7 @@ internal fun BrushStudioDialog(
                                 "${(pressureSizeStart * 100).roundToInt()}%",
                                 pressureSizeStart,
                                 .01f..1f,
+                                { previewPreset.copy(pressureToSize = previewPreset.pressureToSize.copy(start = it)) },
                                 onPressureSizeStart,
                             )
                             PressureResponseChips("Size response", pressureSizeExponent, onPressureSizeExponent)
@@ -152,6 +171,7 @@ internal fun BrushStudioDialog(
                                 "${(pressureOpacityStart * 100).roundToInt()}%",
                                 pressureOpacityStart,
                                 .01f..1f,
+                                { previewPreset.copy(pressureToOpacity = previewPreset.pressureToOpacity.copy(start = it)) },
                                 onPressureOpacityStart,
                             )
                             PressureResponseChips(
@@ -166,6 +186,7 @@ internal fun BrushStudioDialog(
                                 "${(speedTaperAmount * 100).roundToInt()}%",
                                 speedTaperAmount,
                                 0f..1f,
+                                { previewPreset.copy(speedTaper = it) },
                                 onSpeedTaperAmount,
                             )
                         }
@@ -181,7 +202,7 @@ internal fun BrushStudioDialog(
                     if (supportsPencilTilt) {
                         HorizontalDivider(Modifier.padding(vertical = 4.dp))
                         Text("Pencil point and shading", style = MaterialTheme.typography.titleSmall)
-                        StudioSlider("Point size", "${(pencilPointSize * 100).roundToInt()}%", pencilPointSize, .5f..2f, onPencilPointSize)
+                        StudioSlider("Point size", "${(pencilPointSize * 100).roundToInt()}%", pencilPointSize, .5f..2f, { previewPreset.copy(pencilPointSize = it) }, onPencilPointSize)
                         Text("Tilt behavior", style = MaterialTheme.typography.bodyMedium)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
@@ -209,6 +230,7 @@ internal fun BrushStudioDialog(
                                     shadeStartUpper,
                                 ),
                                 BrushPreset.MIN_PENCIL_SHADE_START_RADIANS..shadeStartUpper,
+                                { previewPreset.copy(pencilShadeStartRadians = it, pencilShadeTransitionRadians = pencilShadeTransition(it, shadeEnd)) },
                             ) { start ->
                                 val safeStart = start.coerceIn(
                                     BrushPreset.MIN_PENCIL_SHADE_START_RADIANS,
@@ -223,6 +245,7 @@ internal fun BrushStudioDialog(
                                 shadeEnd,
                                 (pencilShadeStartRadians + BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS)..
                                     BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
+                                { previewPreset.copy(pencilShadeTransitionRadians = pencilShadeTransition(pencilShadeStartRadians, it)) },
                             ) { end ->
                                 onPencilShadeTransitionRadians(
                                     pencilShadeTransition(pencilShadeStartRadians, end),
@@ -242,6 +265,7 @@ internal fun BrushStudioDialog(
                                 fullTilt,
                                 BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS..
                                     BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
+                                { previewPreset.copy(pencilTiltSensitivity = pencilTiltSensitivityForFullAngle(it)) },
                             ) { onPencilTiltSensitivity(pencilTiltSensitivityForFullAngle(it)) }
                             Text(
                                 "Contact size changes continuously with the amount of tilt.",
@@ -253,10 +277,11 @@ internal fun BrushStudioDialog(
                             "${(pencilShadeSize * 100).roundToInt()}%",
                             pencilShadeSize,
                             0f..BrushPreset.MAX_PENCIL_SHADE_SIZE,
+                            { previewPreset.copy(pencilShadeSize = it) },
                             onPencilShadeSize,
                         )
-                        StudioSlider("Side opacity", "${(pencilShadeOpacity * 100).roundToInt()}%", pencilShadeOpacity, .2f..1f, onPencilShadeOpacity)
-                        StudioSlider("Graphite grain", "${(pencilGrain * 100).roundToInt()}%", pencilGrain, 0f..1f, onPencilGrain)
+                        StudioSlider("Side opacity", "${(pencilShadeOpacity * 100).roundToInt()}%", pencilShadeOpacity, .2f..1f, { previewPreset.copy(pencilShadeOpacity = it) }, onPencilShadeOpacity)
+                        StudioSlider("Graphite grain", "${(pencilGrain * 100).roundToInt()}%", pencilGrain, 0f..1f, { previewPreset.copy(pencilGrain = it) }, onPencilGrain)
                         TiltCalibrationPad(
                             pointSize = pencilPointSize,
                             sensitivity = pencilTiltSensitivity,
@@ -281,26 +306,9 @@ internal fun BrushStudioDialog(
                 }
             }
         },
-        confirmButton = { Button(onClick = onDismiss) { Text("Done") } },
-        dismissButton = { TextButton(onClick = onReset) { Text("Reset") } },
+        confirmButton = { TipAction("Done", Icons.Outlined.Check, onClick = onDismiss) },
+        dismissButton = { TipAction("Reset", Icons.Outlined.RestartAlt, onClick = onReset) },
     )
-}
-
-@Composable
-private fun StudioSlider(
-    label: String,
-    valueLabel: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    onValue: (Float) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
-            Text(valueLabel, style = MaterialTheme.typography.bodySmall)
-        }
-        Slider(value, onValue, valueRange = range)
-    }
 }
 
 @Composable

@@ -43,9 +43,9 @@ internal object BrushPackage {
     private fun decodeTexture(o: JSONObject): BrushTexture {
         val width = o.getInt("width"); val height = o.getInt("height")
         require(o.getDouble("width") == width.toDouble() && o.getDouble("height") == height.toDouble()) { "Invalid source dimensions." }
-        require(width in 1..256 && height in 1..256) { "Brush sources must be at most 256 × 256." }
+        require(width in 1..256 && height in 1..256) { "Tip sources must be at most 256 × 256." }
         val data = o.getString("coverage")
-        require(data.length <= 90_000) { "Brush source is too large." }
+        require(data.length <= 90_000) { "Tip source is too large." }
         return BrushTexture(width, height, java.util.Base64.getDecoder().decode(data))
     }
 
@@ -80,15 +80,15 @@ internal object BrushPackage {
 
     fun read(input: InputStream): LibraryBrush = input.use {
         val bytes = it.readBounded(MAX_BYTES)
-        require(bytes.size <= MAX_BYTES) { "Brush file is too large." }
+        require(bytes.size <= MAX_BYTES) { "Tip file is too large." }
         decode(bytes.toString(Charsets.UTF_8))
     }
 
     fun decode(text: String): LibraryBrush {
-        require(text.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Brush file is too large." }
+        require(text.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Tip file is too large." }
         val o = JSONObject(text)
-        require(o.getString("format") == "tipstroke-brush" && o.getDouble("version") in listOf(1.0, 2.0)) { "Unsupported brush file version." }
-        require(o.getDouble("schemaVersion") in listOf(2.0, BrushPreset.CURRENT_SCHEMA_VERSION.toDouble())) { "Unsupported brush schema." }
+        require(o.getString("format") == "tipstroke-brush" && o.getDouble("version") in listOf(1.0, 2.0)) { "Unsupported tip file version." }
+        require(o.getDouble("schemaVersion") in listOf(2.0, BrushPreset.CURRENT_SCHEMA_VERSION.toDouble())) { "Unsupported tip schema." }
         fun string(key: String, max: Int, nonempty: Boolean = false): String = o.getString(key).also {
             require(it.length <= max && (!nonempty || it.isNotBlank())) { "Invalid $key." }
         }
@@ -112,7 +112,7 @@ internal object BrushPackage {
             pencilShadeStartRadians = number("shadeStart", BrushPreset.MIN_PENCIL_SHADE_START_RADIANS, BrushPreset.MAX_PENCIL_SHADE_START_RADIANS),
             pencilShadeTransitionRadians = number("shadeTransition", BrushPreset.MIN_PENCIL_SHADE_TRANSITION_RADIANS, BrushPreset.MAX_PENCIL_SHADE_TRANSITION_RADIANS),
             stamp = if (o.has("stamp")) {
-                require(o.getDouble("version") == 2.0 && o.getInt("schemaVersion") >= 3) { "Invalid custom brush version." }
+                require(o.getDouble("version") == 2.0 && o.getInt("schemaVersion") >= 3) { "Invalid custom tip version." }
                 decodeStamp(o.getJSONObject("stamp"))
             } else null,
         ), string("author", 80), string("description", 1000))
@@ -126,17 +126,17 @@ internal class BrushLibrary(context: Context) {
     fun load(): List<LibraryBrush> {
         if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return emptyList()
         val bytes = file.openRead().use { it.readBounded(MAX_LIBRARY_BYTES) }
-        require(bytes.size <= MAX_LIBRARY_BYTES) { "Brush library is too large." }
+        require(bytes.size <= MAX_LIBRARY_BYTES) { "Tip library is too large." }
         val array = JSONArray(bytes.toString(Charsets.UTF_8))
         require(array.length() <= MAX_BRUSHES)
         return (0 until array.length()).map { BrushPackage.decode(array.getJSONObject(it).toString()) }.also { brushes ->
-            require(brushes.map { it.preset.id }.distinct().size == brushes.size) { "Duplicate brush IDs." }
+            require(brushes.map { it.preset.id }.distinct().size == brushes.size) { "Duplicate tip IDs." }
         }
     }
 
     fun save(brushes: List<LibraryBrush>) {
-        require(brushes.size <= MAX_BRUSHES) { "Your library is full (200 brushes)." }
-        require(brushes.map { it.preset.id }.distinct().size == brushes.size) { "Duplicate brush IDs." }
+        require(brushes.size <= MAX_BRUSHES) { "Your library is full (200 tips)." }
+        require(brushes.map { it.preset.id }.distinct().size == brushes.size) { "Duplicate tip IDs." }
         val array = JSONArray()
         brushes.forEach { array.put(JSONObject(BrushPackage.encode(it))) }
         val bytes = array.toString().toByteArray(Charsets.UTF_8)

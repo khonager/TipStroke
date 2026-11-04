@@ -106,8 +106,8 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Brush preview while hovering", color = Color.White)
-                Text("Show the current brush footprint when a stylus is detected above the canvas.", color = Color(0xFFA9ABB1), fontSize = 12.sp)
+                Text("Tip preview while hovering", color = Color.White)
+                Text("Show the current tip footprint when a stylus is detected above the canvas.", color = Color(0xFFA9ABB1), fontSize = 12.sp)
             }
             Switch(settings.showStylusHoverPreview, { onChange(settings.copy(showStylusHoverPreview = it)) })
         }
@@ -219,7 +219,7 @@ private fun GestureSettings.withStylusAction(slot: SettingsSlot.Stylus, action: 
     if (slot.primary) copy(stylusPrimaryButton = action) else copy(stylusSecondaryButton = action)
 
 private fun stylusActionDescription(action: StylusButtonAction) = when (action) {
-    StylusButtonAction.TOGGLE_ERASER -> "Toggle between the eraser and current brush"
+    StylusButtonAction.TOGGLE_ERASER -> "Toggle between the eraser and current tip"
     StylusButtonAction.UNDO -> "Undo the last step"
     StylusButtonAction.REDO -> "Redo the last undone step"
     StylusButtonAction.DISABLED -> "No action"
