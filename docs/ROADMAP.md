@@ -10,7 +10,7 @@ Validate gallery creation/reopening, drag ordering and stacks, crash-resistant a
 2. Draggable corner/perspective handles, blend modes, higher-resolution/adaptive warp meshes, and tiled image pyramids for extremely large sources. Layer renaming, drag/pinch/twist, independent-axis stretch, local Push/Bulge/Pinch, optional snapping, and non-destructive image erasing are available. Photo compositing is manual; automatic subject blending and true 3D sphere projection are not implemented.
 3. Selected raster pixels now support resize/rotate/flip with live preview, Apply/Cancel, linked proportions, optional smoothing, and grouped undo. Lasso/rectangle/ellipse selection and move are available for paint; image selections constrain non-destructive mask editing while whole images retain their own transforms.
 4. Android shape-and-grain brush authoring, imported/drawn editable sources, native freehand testing, dynamics, portable texture packages, a dedicated library, and favorites limited by available dock space are available; see [Brush library](BRUSH_LIBRARY.md). Next: richer rendering such as wet mixing and dual brushes. Public publishing/popularity requires an explicit optional-network policy decision and a backend; it is not implemented.
-5. Refine the initial animation workflow: disk-backed loading and eviction of edited cels for very large projects, device profiling of live recording and MP4 encoding, richer cel manipulation, and more compact iconography after usability review. Worker-decoded cels and copy-on-write frame duplication are available. The separate frame/cel model, shared backgrounds, holds, onion skins, playback modes, live motion/line recording, and MP4/GIF/PNG-sequence export are in the first Android slice.
+5. Refine the initial animation workflow: physical-device profiling of long projects, live recording and MP4 encoding, richer cel manipulation, and more compact iconography after usability review. Disk-backed edited cels, worker decoding, whole-project resolution reduction and copy-on-write frame duplication are available. The separate frame/cel model, shared backgrounds, holds, onion skins, playback modes, live motion/line recording, and MP4/GIF/PNG-sequence export are in the first Android slice.
 6. Real vector layers and the icon/logo workflow with SVG import/export.
 
 ## LATER
@@ -46,3 +46,16 @@ sequential decode and GPU composition for faster export; exact variable-frame-ra
 output timestamps; clip trim controls; draggable drawing ranges and drawing-only
 thumbnails; movable media layers; native iOS parity. GIF remains a CPU-decoded,
 bounded preview. These follow-ups are not part of the current implementation.
+
+
+### Longer Android projects and resolution reduction
+
+Implemented disk-backed inactive animation cels, asynchronous spill of edited
+frames with COW/revision protection, and 50%/25% whole-project raster reduction.
+Cold histories are evicted; source image/video assets retain their quality.
+The conservative simultaneous-layer limit remains resolution/device-dependent;
+animation drawings use timeline cels rather than one layer per drawing.
+Three minutes at 12 FPS is 2,160 drawings, within the existing 10,000-drawing limit.
+This does not establish full-episode device performance. Remaining work includes
+physical-tablet long-session profiling, audio support, faster sequential video
+export, and scene/shot organization for larger productions.

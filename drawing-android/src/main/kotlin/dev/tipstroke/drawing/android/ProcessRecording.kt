@@ -184,9 +184,10 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
             if (existed || rebaseline) enqueue(64) { it.writeByte(5); it.writeUTF(id) }
             val encoded = store.encodedBacking
             if (encoded != null && encoded.isNotEmpty()) {
-                enqueue(encoded.values.sumOf { it.size.toLong() }) { out ->
+                enqueue(encoded.values.sumOf { it.byteCount }) { out ->
                     out.writeByte(2); out.writeUTF(id); out.writeInt(encoded.size)
-                    encoded.forEach { (coordinate, bytes) ->
+                    encoded.forEach { (coordinate, tile) ->
+                        val bytes = tile.readBytes()
                         out.writeInt(coordinate.x); out.writeInt(coordinate.y); out.writeInt(bytes.size); out.write(bytes)
                     }
                 }

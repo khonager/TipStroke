@@ -83,7 +83,7 @@ implemented; PNG sharing exports a flattened image only.
 
 Process version 2 adds action 5 to clear an individual raster store before a replacement baseline. Layer metadata may name a separate raster `store`, and `stores` retains inactive animation drawings in the bounded replay cache. Layer IDs and clipping relationships remain unchanged. Animated projects establish a fresh exact baseline when reopened so runtime store aliases need not be persisted.
 
-Animation lazy loading is a runtime optimization: the on-disk PNG tile layout and schema do not change. Unloaded cel PNG bytes are retained independently of the project directory so atomic autosave cannot invalidate their backing. Save copies those bytes without decoding; frame export decodes transient tiles on the export worker.
+Animation lazy loading is a runtime optimization: the on-disk PNG tile layout and schema do not change. Unloaded cel PNGs are retained in immutable private working files independently of the project directory so atomic autosave cannot invalidate their backing. Save links or copies those files without decoding; frame export decodes transient tiles on the export worker.
 
 ## Portable custom brushes
 
@@ -123,3 +123,18 @@ Portable packages preserve the source and timing fields.
 Export timing is a per-export choice and does not modify the project. MP4 remains
 silent; PNG timing.json includes output FPS and source duration. Still exports and
 gallery thumbnails composite the saved scrub position, including empty gaps.
+
+
+## Android version 8: reduced drawing resolution
+
+Readers accept versions 1–8. Optional `animation.media.canvasScale` is a finite
+positive uniform display scale up to 1 (default 1 for older files). Media width,
+height, cadence, duration and encoded bytes retain their source meaning. The
+canvas, raster tiles and image transforms store their new reduced coordinates.
+Older readers reject version 8 instead of displaying a reduced video's placement
+incorrectly. Native playback, preview, color sampling and export all apply this
+scale; ordinary crop/expand leaves it unchanged. IDs and timeline timing are stable.
+
+Disk-backed inactive cels retain the existing `animation/cels/.../*.png` layout.
+Private animation working files are transient and never part of portable projects;
+snapshot handles keep them alive until save/export finishes. Undo is not persisted.

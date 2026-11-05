@@ -73,6 +73,9 @@ fun CanvasScreen(
     var editorWidthPx by remember { mutableIntStateOf(canvasWidthPx) }
     var editorHeightPx by remember { mutableIntStateOf(canvasHeightPx) }
     var resizeOpen by remember { mutableStateOf(false) }
+    var resolutionOpen by remember { mutableStateOf(false) }
+    var reducingResolution by remember { mutableStateOf(false) }
+    var resolutionFactor by remember { mutableFloatStateOf(.5f) }
     var resizePreviewWidth by remember { mutableIntStateOf(canvasWidthPx) }
     var resizePreviewHeight by remember { mutableIntStateOf(canvasHeightPx) }
     var resizeChanged by remember { mutableStateOf(false) }
@@ -510,6 +513,7 @@ fun CanvasScreen(
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Resize canvas · $resizePreviewWidth × $resizePreviewHeight px", style = MaterialTheme.typography.titleSmall)
                     Text("Drag an edge or corner to add or crop paper", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { resolutionOpen = true }) { Text("Reduce resolution…") }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { surface?.cancelCanvasResize(); resizeOpen = false }) { Text("Cancel") }
                         TextButton(onClick = { surface?.resetCanvasResizePreview() }) { Text("Reset") }
@@ -1130,6 +1134,45 @@ fun CanvasScreen(
         },
         confirmButton = { TextButton(onClick = { snapOptionsOpen = false }) { Text("Done") } },
     )
+
+    if (resolutionOpen) {
+        val targetWidth = kotlin.math.ceil(editorWidthPx * resolutionFactor).toInt()
+        val targetHeight = kotlin.math.ceil(editorHeightPx * resolutionFactor).toInt()
+        AlertDialog(
+            onDismissRequest = { if (!reducingResolution) resolutionOpen = false },
+            title = { Text("Reduce drawing resolution") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Scale the entire drawing and all animation frames to use less memory. Layers stay separate. This removes pixel detail and clears undo history. Export a project copy first if you need the original resolution.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        listOf(.5f, .25f).forEach { factor ->
+                            FilterChip(selected = resolutionFactor == factor, enabled = !reducingResolution,
+                                onClick = { resolutionFactor = factor }, label = { Text("${(factor * 100).toInt()}%") })
+                        }
+                    }
+                    Text("$editorWidthPx × $editorHeightPx → $targetWidth × $targetHeight px")
+                    Text("Layer allowance: ${LayerCapacity.maximum(context, targetWidth, targetHeight)} · Raster pixels: ${(resolutionFactor * resolutionFactor * 100).roundToInt()}% of original")
+                    Text("Image and video source files keep their original quality. Their placement scales with the drawing.", style = MaterialTheme.typography.bodySmall)
+                    if (reducingResolution) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Reducing all drawings…") }
+                }
+            },
+            confirmButton = {
+                Button(enabled = !reducingResolution && targetWidth >= 16 && targetHeight >= 16, onClick = {
+                    val view = surface ?: return@Button
+                    reducingResolution = true
+                    view.reduceResolution(resolutionFactor) { result ->
+                        reducingResolution = false
+                        result.fold(onSuccess = {
+                            editorWidthPx = view.canvasWidthPx; editorHeightPx = view.canvasHeightPx
+                            resolutionOpen = false; resizeOpen = false
+                            saveWithoutLeaving()
+                        }, onFailure = { message = it.message ?: "Could not reduce resolution." })
+                    }
+                }) { Text("Reduce resolution") }
+            },
+            dismissButton = { TextButton(enabled = !reducingResolution, onClick = { resolutionOpen = false }) { Text("Cancel") } },
+        )
+    }
 
     if (animationActivationOpen) AlertDialog(
         onDismissRequest = { animationActivationOpen = false },

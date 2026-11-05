@@ -172,7 +172,7 @@ object ProjectTransfer {
             }
         }
         fun render(id: String, destination: Uri) {
-            val loaded = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
+            val loaded = ProjectPersistence.load(library.projectDirectory(id), lazyAnimation = true).getOrThrow()
             val snapshot = DrawingSnapshot(loaded.widthPx, loaded.heightPx, loaded.selectedId, loaded.layers.map { layer ->
                 when (layer) {
                     is LoadedRaster -> SavedRasterSnapshot(layer.id, layer.name, layer.visible, layer.opacity, layer.tiles, layer.colorUsage, layer.groupId, layer.clipSourceId)

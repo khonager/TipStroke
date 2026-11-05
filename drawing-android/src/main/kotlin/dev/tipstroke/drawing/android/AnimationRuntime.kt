@@ -42,6 +42,8 @@ internal class AnimationRuntime(
     initialFrames: List<AnimationFrame> = listOf(AnimationFrame(FrameId.new())),
     initialFps: Int = 12,
     initialPlayback: PlaybackMode = PlaybackMode.LOOP,
+    private val storage: CelStorage? = null,
+    private val storageError: (Throwable) -> Unit = {},
 ) {
     var media: MediaSource? = null
         private set
@@ -68,8 +70,8 @@ internal class AnimationRuntime(
         stack.mediaColorAt = { x, y ->
             val source = media
             val bitmap = videoColorPreview ?: mediaPreview?.takeIf { it.timeUs == mediaPositionUs }?.bitmap
-            if (source == null || bitmap == null || x < 0 || y < 0 || x >= source.width || y >= source.height) 0
-            else bitmap.getPixel((x * bitmap.width / source.width).toInt(), (y * bitmap.height / source.height).toInt())
+            if (source == null || bitmap == null || x < 0 || y < 0 || x >= source.width * source.canvasScale || y >= source.height * source.canvasScale) 0
+            else bitmap.getPixel((x * bitmap.width / (source.width * source.canvasScale)).toInt(), (y * bitmap.height / (source.height * source.canvasScale)).toInt())
         }
         stack.layers.forEach { layer ->
             if (existingAsBackground) backgroundLayerIds += layer.id
@@ -113,6 +115,12 @@ internal class AnimationRuntime(
                 centerY = transform.centerY + offsetY,
             ) }
         }
+    }
+
+    fun applyResolution(stores: Map<TileStore, TileStore>, factor: Float) {
+        rasterCels.values.forEach { cels -> cels.replaceAll { _, store -> stores.getValue(store) } }
+        imageCels.values.forEach { cels -> cels.replaceAll { _, transform -> transform.reduced(factor) } }
+        media = media?.let { it.copy(canvasScale = it.canvasScale * factor) }
     }
 
     fun setBackground(id: LayerId, background: Boolean) {
@@ -250,10 +258,10 @@ internal class AnimationRuntime(
         val active = stack.layers.filterIsInstance<RasterLayerRuntime>().mapTo(mutableSetOf()) { it.tiles }
         val bitmaps = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Bitmap, Boolean>())
         active.forEach { bitmaps.addAll(it.residentBitmaps()) }
-        val encoded = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<ByteArray, Boolean>())
+        val encoded = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<EncodedTile, Boolean>())
         return rasterCels.values.flatMap { it.values }.distinct().sumOf { store ->
             val pixels = store.residentBitmaps().filter { bitmaps.add(it) }.sumOf { it.allocationByteCount.toLong() }
-            val compressed = store.encodedBacking?.values.orEmpty().filter { encoded.add(it) }.sumOf { it.size.toLong() }
+            val compressed = store.encodedBacking?.values.orEmpty().filter { encoded.add(it) }.sumOf { it.memoryBytes }
             pixels + compressed + if (store in active) 0L else store.history.estimatedBytes
         }
     }
@@ -426,12 +434,52 @@ internal class AnimationRuntime(
             }
         }
     }
+    var storageEnabled = true
+    var trimmingSuspended = false
+    private var keepResident = emptySet<FrameId>()
+    private var spilling = false
+    private var storageFailed = false
+
     fun trimCleanFrames(keep: Set<Int>) {
-        val ids = keep.mapNotNull { frames.getOrNull(it)?.id }.toSet()
-        val active = stack.layers.filterIsInstance<RasterLayerRuntime>().map { it.tiles }.toSet()
-        rasterCels.values.forEach { cels -> cels.forEach { (id, store) ->
-            if (id !in ids && store !in active && store !in loading && store !in loadingPins) store.unloadIfClean()
-        } }
+        keepResident = keep.mapNotNull { frames.getOrNull(it)?.id }.toSet()
+        trimInactive()
+    }
+
+    private fun coldStores(): List<TileStore> {
+        val pinned = stack.layers.filterIsInstance<RasterLayerRuntime>().mapTo(mutableSetOf()) { it.tiles }
+        rasterCels.values.forEach { cels -> cels.filterKeys { it in keepResident }.values.forEach { pinned += it } }
+        return rasterCels.values.flatMap { it.values }.distinct().filter {
+            it !in pinned && it !in loading && it !in loadingPins
+        }
+    }
+
+    private fun trimInactive() {
+        if (!storageEnabled || trimmingSuspended) return
+        val cold = coldStores()
+        cold.forEach { store ->
+            if (store.encodedBacking != null) {
+                store.unloadIfClean()
+                store.history.clear()
+            }
+        }
+        val disk = storage ?: return
+        if (spilling || storageFailed) return
+        val store = cold.firstOrNull { it.isResident && it.encodedBacking == null && (it.allocatedTileCount > 0 || it.history.estimatedBytes > 0) } ?: return
+        val revision = store.revision
+        val lease = store.duplicate()
+        spilling = true
+        AnimationStorage.executor.execute {
+            val encoded = runCatching { lease.encodeTo(disk) }
+            ProjectPersistence.mainHandler.post {
+                lease.discard()
+                spilling = false
+                encoded.fold(onSuccess = { store.acceptBacking(revision, it) }, onFailure = {
+                    storageFailed = true // Keep pixels and undo intact; do not repeatedly retry a full disk.
+                    storageError(it)
+                })
+                trimInactive()
+            }
+        }
     }
 
     fun snapshot(): SavedAnimationSnapshot {
@@ -508,5 +556,11 @@ internal class AnimationRuntime(
 internal object AnimationDecoding {
     val executor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
         Thread(task, "TipStroke-animation-decode").apply { isDaemon = true }
+    }
+}
+
+internal object AnimationStorage {
+    val executor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "TipStroke-animation-storage").apply { isDaemon = true }
     }
 }

@@ -90,14 +90,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var animationErrorListener: ((String) -> Unit)? = null
     private fun animationNeighbourIndices(active: AnimationRuntime): Set<Int> =
         ((active.selectedIndex - active.onionBefore)..(active.selectedIndex + active.onionAfter))
-            .filterTo(mutableSetOf()) { it in active.frames.indices }
+            .filterTo(mutableSetOf()) { it in active.frames.indices }.apply {
+                if (active.media != null) active.frames.indexOfFirst { (it.sourceTimeUs ?: 0) > active.mediaPositionUs }
+                    .takeIf { it >= 0 }?.let(::add)
+            }
     private fun warmAnimationNeighbours() {
+        updateAnimationStoragePins()
         val active = animation ?: return
         val keep = animationNeighbourIndices(active)
         active.prepareFrames(keep) { result ->
             if (animation === active) {
                 result.exceptionOrNull()?.let { animationErrorListener?.invoke(it.message ?: "Could not load frame") }
-                active.trimCleanFrames(animationNeighbourIndices(active))
+                if (strokeRecording == null && motionRecording == null) active.trimCleanFrames(animationNeighbourIndices(active))
                 rasterView.invalidate()
             }
         }
@@ -431,6 +435,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        animation?.storageEnabled = true
         if (predictor == null) predictor = runCatching { MotionEventPredictor.newInstance(this) }.getOrNull()
         animation?.takeIf { it.media != null }?.let { configureMediaPlayback() }
     }
@@ -441,6 +446,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun onDetachedFromWindow() {
+        animation?.storageEnabled = false
         if (toolSmudgePointer != null) finishSmudgeTool()
         clearShapeHold()
         cancelFill()
@@ -703,8 +709,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (wasRevealing) notifyLayers()
     }
 
-    fun undo() { if (fillRequest != null) { cancelFill(); return }; cancelFill(); layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
-    fun redo() { cancelFill(); layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
+    fun undo() { if (reducingResolution) return; if (fillRequest != null) { cancelFill(); return }; cancelFill(); layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
+    fun redo() { if (reducingResolution) return; cancelFill(); layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun resetView() = rasterView.fitCanvas()
     val canvasWidthPx: Int get() = layerStack.canvasWidth
     val canvasHeightPx: Int get() = layerStack.canvasHeight
@@ -776,6 +782,47 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         notifyVisiblePalette()
         publishAnimation()
         return true
+    }
+    private var reducingResolution = false
+
+    /** Uniformly resample every raster cel without decoding the entire timeline. */
+    fun reduceResolution(factor: Float, onComplete: (Result<Unit>) -> Unit) {
+        cancelFill()
+        if (reducingResolution || !isEnabled || (factor != .5f && factor != .25f) ||
+            kotlin.math.ceil(canvasWidthPx * factor) < 16 || kotlin.math.ceil(canvasHeightPx * factor) < 16 ||
+            activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty() ||
+            motionRecording != null || strokeRecording != null || imageGestureInProgress) {
+            onComplete(Result.failure(IllegalStateException("Finish editing before reducing resolution; each edge must remain at least 16 pixels.")))
+            return
+        }
+        stopAnimationPlayback()
+        val original = layerStack
+        val activeAnimation = animation
+        val operation = ResolutionReduction(original, activeAnimation, factor, CelStorage.forFilesDirectory(context.filesDir))
+        reducingResolution = true
+        isEnabled = false
+        ProjectPersistence.executor.execute {
+            val prepared = runCatching { operation.prepare() }
+            ProjectPersistence.mainHandler.post {
+                val result = prepared.mapCatching {
+                    check(layerStack === original && animation === activeAnimation) { "Drawing changed while reducing resolution" }
+                    operation.commit()
+                    clearSelection(); lastSelection = null
+                    cancelCanvasResize(restoreView = false)
+                    animationThumbnails.clear(); pendingThumbnails.clear(); pendingAnimationFrame = null
+                    processRecorder?.stop("Recording stopped: canvas resolution changed.")
+                    processRecorder?.detach()
+                    configureMediaPlayback()
+                    rasterView.fitCanvas(rasterView.transform.rotationDegrees)
+                    warmAnimationNeighbours()
+                    notifyHistory(); notifyLayers(); notifyVisiblePalette(); publishAnimation()
+                }
+                operation.release()
+                reducingResolution = false
+                isEnabled = true
+                onComplete(result)
+            }
+        }
     }
     fun showBrushAdjustmentPreview() {
         gestureHandler.removeCallbacks(hideBrushPreview)
@@ -1105,7 +1152,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     fun enableAnimation(existingAsBackground: Boolean) {
         if (animation != null || activeDrawingPointerId != null) return
-        animation = AnimationRuntime(layerStack, existingAsBackground)
+        animation = AnimationRuntime(layerStack, existingAsBackground, storage = CelStorage.forFilesDirectory(context.filesDir),
+            storageError = { animationErrorListener?.invoke("Could not store inactive drawings: ${it.message}") })
         rasterView.animation = animation
         rasterView.invalidate()
         publishAnimation()
@@ -1157,6 +1205,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
         stopAnimationPlayback()
         active.addBlankFrame()
+        warmAnimationNeighbours()
         rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
     }
     fun duplicateAnimationFrame() {
@@ -1164,6 +1213,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (active.media != null) return
         stopAnimationPlayback()
         active.duplicateFrame()
+        warmAnimationNeighbours()
         rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
     }
     fun deleteAnimationFrame() {
@@ -1218,7 +1268,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (animation === active && result.isSuccess) {
                     active.thumbnail(frameId, sizePx)?.let { animationThumbnails[frameId] = it }
                     while (animationThumbnails.size > 16) animationThumbnails.remove(animationThumbnails.keys.first())
-                    active.trimCleanFrames(animationNeighbourIndices(active))
+                    if (strokeRecording == null && motionRecording == null) active.trimCleanFrames(animationNeighbourIndices(active))
                     thumbnailRevision++; publishAnimation()
                 }
             }
@@ -1375,13 +1425,20 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         gestureHandler.removeCallbacks(playbackStep)
         publishAnimation()
     }
+    private fun updateAnimationStoragePins() {
+        animation?.trimmingSuspended = strokeRecording != null || motionRecording != null ||
+            pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()
+    }
     private fun publishAnimation() {
+        updateAnimationStoragePins()
         if (!animationPlaying || strokeRecording != null) {
             processRecorder?.sync(layerStack, animation != null, animation = animation)
         }
         animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null))
     }
     fun publishDiagnostics() {
+        updateAnimationStoragePins()
+        if (strokeRecording == null && motionRecording == null) animation?.let { it.trimCleanFrames(animationNeighbourIndices(it)) }
         val memory = memoryBudgetAdvisor.snapshot(
             layerStack.canvasWidth,
             layerStack.canvasHeight,
@@ -1402,6 +1459,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         layerStack = createLayerStack(widthPx, heightPx)
         processRecorder = ProcessRecorder(widthPx, heightPx)
         processReadError = null
+        animation?.storageEnabled = false
         animation = null
         rasterView.animation = null
         clearSelection()
@@ -1456,8 +1514,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     rasterView.layerStack = replacement
                     replacement.replaceWith(project)
                     animation?.mediaPreview?.clear()
+                    animation?.storageEnabled = false
                     animation = project.animation?.let { saved ->
-                        AnimationRuntime(replacement, true, saved.frames, saved.fps, saved.playbackMode).apply { restore(saved) }
+                        AnimationRuntime(replacement, true, saved.frames, saved.fps, saved.playbackMode,
+                            CelStorage.forFilesDirectory(context.filesDir),
+                            { animationErrorListener?.invoke("Could not store inactive drawings: ${it.message}") }).apply { restore(saved) }
                     }
                     animationThumbnails.clear(); pendingThumbnails.clear(); pendingAnimationFrame = null
                     warmAnimationNeighbours()

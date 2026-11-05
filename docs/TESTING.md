@@ -346,3 +346,22 @@ pacing, battery/thermal cost, or stylus latency. MP4 output codec limits vary by
   devices without hover. Import transparent PNG and opaque textured images from
   the Shape/Grain image-plus actions, edit them with Draw source, and share/reimport
   the resulting `.tipbrush` to confirm both source masks travel with the tip.
+
+
+## Long animation working storage and resolution reduction
+
+`AnimationStorageTest` covers edited-cel eviction/reload, stale compression after
+an intervening edit, and storage failure retaining original pixels.
+`LazyAnimationTest` verifies disk-backed cels survive atomic saves and export with
+no resident PNG payload. `ResolutionReductionTest` compares filtered pixels across
+tile boundaries, preserves IDs/groups/image masks/timing across save/reopen,
+reduces a 2,160-frame (three-minute at 12 FPS) timeline while cold cels remain
+unloaded, verifies preparation failure rollback, media-scale compatibility, and
+an increased layer allowance through the surface entry point.
+
+Physical-device follow-up: import a three-minute clip, draw across the timeline,
+watch memory after leaving frames, revisit and edit cold cels, reduce resolution,
+save/reopen and export both cadences. Verify video/GIF/color-picker alignment at
+50% and 25%, backgrounding during reduction, and storage-full behavior. Inspect
+actual playback frame pacing, export time, thermals and pen latency on the tablet;
+JVM tests do not establish those properties. MP4 export remains silent.

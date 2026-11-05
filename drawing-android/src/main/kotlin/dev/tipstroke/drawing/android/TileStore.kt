@@ -21,16 +21,16 @@ class TileStore(
     private var pencilPreviewDot = false
     private val replayLive = ReplayCapture()
     private val tiles = mutableMapOf<TileCoordinate, Bitmap>()
-    internal var encodedBacking: Map<TileCoordinate, ByteArray>? = null
+    internal var encodedBacking: Map<TileCoordinate, EncodedTile>? = null
         private set
     internal var isResident = true
         private set
-    internal fun deferTiles(encoded: Map<TileCoordinate, ByteArray>) {
+    internal fun deferTiles(encoded: Map<TileCoordinate, EncodedTile>) {
         discard()
         encodedBacking = encoded
         isResident = encoded.isEmpty()
     }
-    internal fun installDecoded(encoded: Map<TileCoordinate, ByteArray>, decoded: Map<TileCoordinate, Bitmap>) {
+    internal fun installDecoded(encoded: Map<TileCoordinate, EncodedTile>, decoded: Map<TileCoordinate, Bitmap>) {
         if (encodedBacking !== encoded || isResident) { decoded.values.forEach(Bitmap::recycle); return }
         replaceTiles(decoded)
         encodedBacking = encoded
@@ -42,6 +42,15 @@ class TileStore(
         isResident = false
         tileContentBounds.clear(); dirtyContentBoundsTiles.clear(); contentBoundsInitialized = false
     }
+    internal fun acceptBacking(expectedRevision: Long, encoded: Map<TileCoordinate, EncodedTile>): Boolean {
+        if (revision != expectedRevision || !isResident) return false
+        encodedBacking = encoded
+        return true
+    }
+    // A COW lease pins existing pixels without copying a whole cel on the input thread.
+    internal fun encodeTo(storage: CelStorage): Map<TileCoordinate, EncodedTile> =
+        encodedBacking ?: tiles.mapValues { (_, bitmap) -> storage.store(bitmap) }
+    internal fun residentTiles(): Map<TileCoordinate, Bitmap> = tiles.toMap()
     internal fun residentBitmaps(): Collection<Bitmap> = tiles.values
     private fun writableTile(coordinate: TileCoordinate): Bitmap {
         check(isResident) { "Frame must finish loading before editing" }
@@ -62,11 +71,11 @@ class TileStore(
     companion object {
         // Ownership changes happen on the surface thread, never on decoding workers.
         private val sharedReferences = java.util.WeakHashMap<Bitmap, Int>()
-        internal fun decodeTiles(encoded: Map<TileCoordinate, ByteArray>): Map<TileCoordinate, Bitmap> {
+        internal fun decodeTiles(encoded: Map<TileCoordinate, EncodedTile>): Map<TileCoordinate, Bitmap> {
             val decoded = linkedMapOf<TileCoordinate, Bitmap>()
             try {
                 encoded.forEach { (coordinate, bytes) ->
-                    val bitmap = requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) { "Cannot decode animation tile" }
+                    val bitmap = bytes.decode()
                     require(bitmap.width == 256 && bitmap.height == 256) { "Invalid animation tile size" }
                     decoded[coordinate] = bitmap.copy(Bitmap.Config.ARGB_8888, true)
                     bitmap.recycle()

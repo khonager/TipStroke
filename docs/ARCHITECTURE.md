@@ -268,11 +268,13 @@ ends; there is no per-sample readback.
 GIF preview uses one persistent `Movie` decoder on the animation worker, one
 in-flight request and one replacement request, and a 1280 px preview edge. Playback
 uses elapsed source time at 1×, skipping late previews instead of slowing the clip.
-Only active, next, and requested onion-skin cels are prefetched; clean inactive cels can unload.
-Edited cels still occupy sparse tile memory. Media playback runs once; Play at the
+Only active, next, and requested onion-skin cels are prefetched. Inactive edited
+cels spill to immutable private PNG files via a separate worker and revision-checked
+COW leases; clean cels unload. Cold histories are released after backing succeeds. Media playback runs once; Play at the
 end restarts it. Ordinary cel animation retains its playback modes and editing UI.
 
-Export runs on the project worker using a persistent `MediaMetadataRetriever`
+Editor and gallery exports retain cold cels as disk handles. Export runs on the
+project worker using a persistent `MediaMetadataRetriever`
 (or `Movie`) and one composed output bitmap at a time. **Smooth video + held
 drawings** uses the source cadence (container rate/average, 30 FPS fallback);
 **Video at drawing FPS** samples at drawing FPS. Both cover the original source
@@ -284,11 +286,21 @@ Video preview respects native variable-rate cadence, while export samples to a
 constant cadence, not the original variable-rate timestamp sequence.
 
 Video audio is not imported or exported. Media timelines do not support live
-stroke/image-motion recording. The source remains at its original size and canvas
-origin when the canvas resizes; it is not a movable layer. Import is transactional
+stroke/image-motion recording. The source remains at its current displayed size and canvas
+origin when paper edges resize; it is not a movable layer. Import is transactional
 on the project worker: 8192 px/side, 16 megapixels, 512 MiB/asset (32 MiB GIF),
 24 hours maximum, and 10,000 authored drawings. Export is limited to 36,000 output
 frames and 4096 px/side for MP4, subject to device encoder support. Sources are
 never silently trimmed or resized. Atomic saves hard-link immutable source bytes
 where supported, otherwise copy them. Portable projects include the source.
 This Android feature does not change independent iOS or desktop import paths.
+
+
+Resolution reduction is a separate transaction from paper-edge crop/expand.
+`ResolutionReduction` captures COW leases on the surface thread, prepares tiled
+resamples and disk backing on the project worker, then replaces stores atomically
+on the surface thread. Layer/frame IDs, ordering, clipping/grouping and timings
+survive. Image transforms and `MediaSource.canvasScale` carry the uniform scale;
+source assets and source-coordinate erase masks remain intact. Native video,
+GIF preview, color picking and export apply the same media scale. See PERFORMANCE
+for working-set bounds and PROJECT_FORMAT for schema 8.

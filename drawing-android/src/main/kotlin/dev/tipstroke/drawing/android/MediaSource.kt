@@ -18,15 +18,17 @@ internal data class MediaSource(
     val height: Int,
     val durationUs: Long,
     val frameRate: Double = 30.0,
+    val canvasScale: Float = 1f,
 ) {
     init {
+        require(canvasScale.isFinite() && canvasScale > 0f && canvasScale <= 1f)
         require(frameRate.isFinite() && frameRate in 1.0..120.0)
         require(kind == "video" || kind == "gif") { "Unsupported media source" }
         require(width in 1..8192 && height in 1..8192 && width.toLong() * height <= 16_777_216) { "Media dimensions are too large" }
         require(durationUs in 1..86_400_000_000L) { "Invalid media duration" }
     }
 
-    fun json() = JSONObject().put("kind", kind).put("width", width).put("height", height).put("durationUs", durationUs).put("frameRate", frameRate)
+    fun json() = JSONObject().put("kind", kind).put("width", width).put("height", height).put("durationUs", durationUs).put("frameRate", frameRate).put("canvasScale", canvasScale)
 
     companion object {
         const val ASSET_PATH = "assets/media/timeline.source"
@@ -66,7 +68,7 @@ internal data class MediaSource(
             val duration = json.getLong("durationUs")
             val fps = if (json.has("frameRate")) json.getDouble("frameRate")
                 else if (kind == "gif") 50.0 else videoTiming(file, duration).second
-            return MediaSource(file, kind, json.getInt("width"), json.getInt("height"), duration, fps)
+            return MediaSource(file, kind, json.getInt("width"), json.getInt("height"), duration, fps, json.optDouble("canvasScale", 1.0).toFloat())
         }
     }
 }

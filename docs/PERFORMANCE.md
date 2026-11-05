@@ -18,7 +18,30 @@ Current safeguards:
 - No storage, networking, database, DI framework, or serialization exists in the hot path.
 - Animation cels remain separate sparse tile stores. Holds are metadata, onion skins draw neighboring cels without duplicating them, and export renders one frame at a time on the project executor. Moving a lasso no longer allocates blank destination tiles across the lasso's full bounding box.
 
-Animation opens only the selected frame as decoded raster tiles. Other saved cels retain immutable compressed PNG bytes and decode on a serial worker before selection, thumbnail generation, or onion-skin display. Unedited decoded cels outside the selected/onion range can be evicted back to their compressed backing. Save and export preserve unloaded cels directly; export decodes one tile at a time. PNG bytes are still read during project loading, and edited cels remain resident, so this is not a total project-memory cap. Duplicate Frame and live drawing carry-forward share unchanged tile bitmaps with copy-on-write detachment at every raster mutation. Undo snapshots remain independent and bounded. Diagnostics count shared resident animation bitmaps once.
+Animation opens only the selected frame as decoded raster tiles. Other saved
+cels retain immutable disk-backed PNG handles, independent of the replaceable
+project directory. A serial decoding worker prepares selection/onion/thumbnail
+frames. Inactive edited cels are compressed to private working files on a separate
+serial worker, one cel at a time. A copy-on-write lease pins source pixels; a
+revision check rejects stale compression if the user edits that cel meanwhile.
+Eviction rechecks the current/neighbor/loading pins before releasing pixels.
+Cold cel undo history is cleared only after backing is available; the current and
+onion range retain their bounded histories. Live drawing recording suspends
+trimming until recording finishes.
+
+Save/export snapshots share immutable backing handles; autosave hard-links PNGs
+when possible and copies files otherwise. Export decodes one tile at a time.
+Neither all compressed PNG bytes nor all edited raster cels need stay in RAM.
+Storage failures retain original pixels, report an error, and stop further spill
+attempts for that open runtime. This is a working-set improvement, not an absolute
+process-memory cap: active layers, onion skins, recent edits waiting for the worker,
+histories, image sources and codec buffers still cost memory. Disk use grows with
+authored artwork. Weak backing leases protect in-flight snapshots; dead revisions
+are swept periodically on worker writes and stale working files on first use in
+the next process. Working files use private files storage, not OS-purgeable cache.
+Duplicate Frame and drawing carry-forward share unchanged bitmaps with COW
+mutation. Diagnostics count shared resident bitmaps once and file handles as zero
+pixel payload bytes.
 
 The debug overlay reports approximate FPS/event rate, tool, pressure, tilt, zoom, allocated tiles, last dirty tile count, undo bytes, process memory, estimated document bytes, device-available memory, and an advisory count of fully painted raster layers remaining at the current canvas resolution. Android's managed-heap class is not an absolute PSS limit: process PSS also includes code, shared pages, EGL buffers, and other graphics allocations. The advisory budget therefore preserves the observed non-document process baseline and adds 75% of the app heap class as a conservative growing-document allowance, while also respecting Android's current system low-memory threshold. This live headroom estimate is advisory and separate from the canvas layer admission limit. Memory is also sampled with the overlay off: elevated pressure appears in Layers and entering critical pressure shows a dismissible warning. Process memory is sampled at most once every two seconds to keep it off the input hot path. The overlay is off by default.
 
@@ -152,8 +175,8 @@ GIF preview retains one worker decoder, one in-flight request, one replacement
 request, and one 1280 px bitmap. Playback can skip preview samples to preserve
 source speed. Source decoder allocations are separate from these bitmap bounds.
 Scrubbing creates no drawing slots or raster tiles. Only authored drawings have
-metadata and sparse cels. Clean saved cels outside the active/next/onion range unload;
-edited cels and compressed project data remain resident, so large paintings still
+metadata and sparse cels. Saved cels outside the active/next/onion range unload; edited inactive cels
+spill asynchronously to disk. Active paintings, pending spills and codecs still
 have a memory cost. Native pointer samples never decode media or write files.
 
 Export still decodes/composites/encodes individual samples on a worker. Smooth
@@ -185,3 +208,24 @@ layer creation, duplication, selection copy/cut, cel copy/move, and live drawing
 recording before mutating artwork. Existing documents above the allowance still
 open and remain editable; new layers require deleting layers or reducing canvas
 size. Permanent artwork remains sparse 256 px tiles with bounded undo.
+
+
+## Reducing drawing resolution
+
+Resize → Reduce resolution offers 50% or 25% on both axes (dimensions round up).
+It resamples all raster layers/cels and scales every image transform and media
+placement, without flattening layers or changing timing. Half dimensions use
+approximately one quarter of the raster pixels; quarter dimensions use one
+sixteenth, subject to 256 px tile rounding. The layer admission formula is
+recomputed at the new size. Original image/video assets and source-coordinate
+image masks remain unchanged, so their memory/storage costs do not shrink.
+
+The operation pins original stores with COW leases, runs on the project worker,
+and installs results only after every cel is ready. It uses one output tile plus
+a source window at most 1025×1025 px for quarter reduction; cold source tiles decode
+only into that window. Output PNGs go straight to working storage; only active
+raster layers decode for commit. No full-project decode or canvas-sized bitmap is
+needed. Failures during preparation preserve original pixels and dimensions.
+The editor blocks drawing during preparation, clears undo/selection on success,
+and stops process-recording continuation at the old resolution. Reduce is a
+permanent resample: export a project copy first to preserve full-resolution detail.

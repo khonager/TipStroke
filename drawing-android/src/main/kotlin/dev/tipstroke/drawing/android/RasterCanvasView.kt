@@ -220,7 +220,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         canvas.clipRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat())
         animation?.let { active -> active.media?.let { media -> active.mediaPreview?.takeIf { (animationPlaying || it.timeUs == active.mediaPositionUs) }?.bitmap?.let { frame ->
             bitmapPaint.alpha = 255
-            canvas.drawBitmap(frame, null, RectF(0f, 0f, media.width.toFloat(), media.height.toFloat()), bitmapPaint)
+            canvas.drawBitmap(frame, null, RectF(0f, 0f, media.width * media.canvasScale, media.height * media.canvasScale), bitmapPaint)
         } } }
         layerStack.layers.forEach { layer ->
             drawOnionForLayer(canvas, layer)

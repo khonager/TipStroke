@@ -42,6 +42,7 @@ internal class MediaVideoView(
         val save = canvas.save()
         canvas.concat(matrix)
         canvas.clipRect(0, 0, canvasWidth, canvasHeight)
+        canvas.scale(source.canvasScale, source.canvasScale)
         super.dispatchDraw(canvas)
         canvas.restoreToCount(save)
     }

@@ -113,7 +113,7 @@ internal class LayerStack(
         canvas.clipRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat())
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         animation.media?.let { media -> mediaBitmap?.let {
-            canvas.drawBitmap(it, null, RectF(0f, 0f, media.width.toFloat(), media.height.toFloat()), paint)
+            canvas.drawBitmap(it, null, RectF(0f, 0f, media.width * media.canvasScale, media.height * media.canvasScale), paint)
         } }
         fun drawFrameLayer(layer: CanvasLayerRuntime, coverage: Boolean = false, ancestors: Set<LayerId> = emptySet()) {
             if (layer.id in ancestors || (!coverage && (!layer.visible || layer.opacity <= 0f))) return

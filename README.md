@@ -111,3 +111,18 @@ Export smooth video with held drawings, or sample the video at drawing FPS; both
 keep the source duration. MP4 is silent. GIF and PNG-sequence export are also available.
 Import supports 16 megapixels and 512 MiB per source (32 MiB for GIF). Projects
 support 10,000 authored drawings; export supports 36,000 output frames.
+
+
+For longer Android animations, inactive drawings now move to private disk storage
+instead of keeping every edited frame in RAM. Use animation frames / **Add drawing
+here** for time; the layer limit applies to the layer stack, not the number of
+drawings. Three minutes at 12 drawing FPS is 2,160 drawings. Undo history outside
+the active/onion-skin range is released when those drawings move out of memory.
+
+Use **Resize → Reduce resolution** to scale the whole drawing, including animation
+frames, to 50% or 25% per side. Layers remain separate and timing stays unchanged.
+Half-size dimensions need roughly a quarter of the raster pixels and increase the
+canvas's layer allowance (up to 64). This permanently removes pixel detail and
+clears undo history; export a `.tipstroke` copy first to keep the original.
+Image/video source files retain their quality. Tablet playback/export performance
+still depends on the artwork and device; MP4 exports currently have no audio.

@@ -378,7 +378,7 @@ internal data class SavedAnimationSnapshot(
     val backgroundLayerIds: Set<LayerId>,
     val rasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, Bitmap>>>,
     val imageCels: Map<LayerId, Map<FrameId, ImageTransform>>,
-    val encodedRasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, ByteArray>>> = emptyMap(),
+    val encodedRasterCels: Map<LayerId, Map<FrameId, Map<TileCoordinate, EncodedTile>>> = emptyMap(),
     val media: MediaSource? = null,
     val mediaPositionUs: Long = 0,
 )
@@ -421,7 +421,7 @@ internal data class LoadedImage(
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    internal const val SCHEMA_VERSION = 7
+    internal const val SCHEMA_VERSION = 8
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -491,7 +491,7 @@ internal object ProjectPersistence {
                     cels.forEach { (frameId, tiles) ->
                         if (tiles.isNotEmpty()) {
                             val directory = File(temporary, "animation/cels/${layerId.value}/${frameId.value}").apply { mkdirs() }
-                            tiles.forEach { (coordinate, bytes) -> File(directory, "${coordinate.x}_${coordinate.y}.png").writeBytes(bytes) }
+                            tiles.forEach { (coordinate, bytes) -> bytes.writeTo(File(directory, "${coordinate.x}_${coordinate.y}.png")) }
                         }
                     }
                 }
@@ -659,7 +659,7 @@ internal object ProjectPersistence {
                     val celDirectory = File(directory, "animation/cels/${layer.id.value}/${frame.id.value}")
                     frame.id to celDirectory.listFiles().orEmpty().mapNotNull { file ->
                         val match = Regex("(-?\\d+)_(-?\\d+)\\.png").matchEntire(file.name) ?: return@mapNotNull null
-                        TileCoordinate(match.groupValues[1].toInt(), match.groupValues[2].toInt()) to file.readBytes()
+                        TileCoordinate(match.groupValues[1].toInt(), match.groupValues[2].toInt()) to CelStorage.forFilesDirectory(requireNotNull(directory.parentFile?.parentFile)).retain(file)
                     }.toMap()
                 }.filterValues { it.isNotEmpty() }
             } else emptyMap()
@@ -767,7 +767,7 @@ internal object ProjectPersistence {
             val decoder = mediaDecoder ?: MediaFrameDecoder(source)
             try {
                 val frame = decoder.frame(timeUs, maxOf(outputWidth, outputHeight))
-                try { canvas.drawBitmap(frame, null, RectF(0f, 0f, source.width.toFloat(), source.height.toFloat()), paint) }
+                try { canvas.drawBitmap(frame, null, RectF(0f, 0f, source.width * source.canvasScale, source.height * source.canvasScale), paint) }
                 finally { frame.recycle() }
             } catch (failure: Throwable) { output.recycle(); throw failure }
             finally { if (mediaDecoder == null) decoder.close() }
@@ -786,7 +786,7 @@ internal object ProjectPersistence {
                                 canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint)
                             }
                         if (!shared) animation?.encodedRasterCels?.get(layer.id)?.get(frameId)?.forEach { (coordinate, bytes) ->
-                            val bitmap = requireNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) { "Cannot decode animation tile" }
+                            val bitmap = bytes.decode()
                             try { canvas.drawBitmap(bitmap, (coordinate.x * TILE_SIZE).toFloat(), (coordinate.y * TILE_SIZE).toFloat(), paint) }
                             finally { bitmap.recycle() }
                         }

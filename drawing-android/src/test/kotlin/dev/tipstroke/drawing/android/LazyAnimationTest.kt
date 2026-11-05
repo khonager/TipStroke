@@ -36,7 +36,7 @@ class LazyAnimationTest {
             it.eraseColor(Color.BLUE); it.compress(Bitmap.CompressFormat.PNG, 100, bytes); it.recycle()
         }
         for (index in 1..2) animation.celRaster(store.selectedId, animation.frames[index].id)!!.deferTiles(
-            mapOf(TileCoordinate(0, 0) to bytes.toByteArray()))
+            mapOf(TileCoordinate(0, 0) to EncodedTile.inMemory(bytes.toByteArray())))
         val entered = java.util.concurrent.CountDownLatch(1)
         val release = java.util.concurrent.CountDownLatch(1)
         AnimationDecoding.executor.execute { entered.countDown(); release.await(10, TimeUnit.SECONDS) }
@@ -73,6 +73,7 @@ class LazyAnimationTest {
             val saved = loaded.animation!!
             assertEquals(1, saved.rasterCels.getValue(layerId).size)
             assertTrue(saved.encodedRasterCels.getValue(layerId).getValue(frames[1].id).isNotEmpty())
+            assertEquals(0L, saved.encodedRasterCels.getValue(layerId).getValue(frames[1].id).values.sumOf { it.memoryBytes })
             val stack = LayerStack(context.contentResolver, 256, 256) {}
             stack.replaceWith(loaded)
             val animation = AnimationRuntime(stack, true, frames).apply { restore(saved) }
