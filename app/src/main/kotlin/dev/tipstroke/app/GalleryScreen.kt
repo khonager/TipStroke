@@ -482,6 +482,9 @@ private fun NewDrawingDialog(onDismiss: () -> Unit, onCreate: (String, Int, Int)
                     OutlinedTextField(width, { width = it.filter(Char::isDigit); selectedId = null }, Modifier.weight(1f), label = { Text("Width px") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number))
                     OutlinedTextField(height, { height = it.filter(Char::isDigit); selectedId = null }, Modifier.weight(1f), label = { Text("Height px") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
+                if (validWidth != null && validHeight != null) Text(
+                    "1/${dev.tipstroke.drawing.android.LayerCapacity.maximum(context, validWidth, validHeight)} Layers · smaller canvases allow more layers",
+                    style = MaterialTheme.typography.labelMedium)
                 Text("Each side: $MIN_CANVAS_SIDE–$MAX_CANVAS_SIDE px. Drawings use sparse tiles, so empty areas take little space.", style = MaterialTheme.typography.bodySmall)
                 if (selectedId == null) {
                     OutlinedTextField(presetName, { presetName = it }, Modifier.fillMaxWidth(), label = { Text("Custom preset name") }, singleLine = true)

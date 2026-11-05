@@ -365,6 +365,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var selectionTool = SelectionTool.LASSO
     private val selectionPoints = mutableListOf<Point>()
     private var selectionRegion: SelectionRegion? = null
+    private var lastSelection: SelectionRegion? = null
     private var selectionMoveMode = false
     private var transformSelectionOriginal: SelectionRegion? = null
     private var pendingSelectionTransform: SelectionTransform? = null
@@ -767,6 +768,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (active != null && !active.framesResident(active.frames.indices.toList())) return false
         stopAnimationPlayback()
         clearSelection()
+        lastSelection = null
         layerStack.resizeCanvas(width.toInt(), height.toInt(), left, top, animation)
         rasterView.fitCanvas(rasterView.transform.rotationDegrees)
         notifyHistory()
@@ -805,14 +807,25 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         chromeBottomInsetPx = bottomPx.coerceAtLeast(0f)
         chromeApproachMarginPx = approachMarginPx.coerceAtLeast(0f)
     }
-    fun addPaintLayer() { layerStack.addRaster(); animation?.register(layerStack.selected()); notifyLayers(); notifyHistory(); publishAnimation() }
+    val maximumLayers: Int get() = LayerCapacity.maximum(context, layerStack.canvasWidth, layerStack.canvasHeight)
+    var memoryPressureListener: ((MemoryPressure) -> Unit)? = null
+    var capacityWarningListener: ((String) -> Unit)? = null
+    private fun canAddLayers(count: Int = 1): Boolean {
+        if (layerStack.layers.size + count <= maximumLayers) return true
+        capacityWarningListener?.invoke("Layer limit reached (${layerStack.layers.size}/$maximumLayers). Delete unused layers, or use a smaller canvas.")
+        return false
+    }
+    fun addPaintLayer() { if (!canAddLayers()) return; layerStack.addRaster(); animation?.register(layerStack.selected()); notifyLayers(); notifyHistory(); publishAnimation() }
     fun duplicateSelectedLayers() {
+        if (!canAddLayers(layerStack.selectedLayerIds().size)) return
         if (layerStack.duplicateSelected().isNotEmpty()) {
             layerStack.layers.forEach { animation?.register(it) }
             notifyLayers(); notifyHistory(); notifyVisiblePalette(); publishAnimation()
         }
     }
-    fun addImage(uri: android.net.Uri): Result<Unit> = layerStack.addImage(uri).map {
+    fun addImage(uri: android.net.Uri): Result<Unit> = if (!canAddLayers()) {
+        Result.failure(IllegalStateException("Layer limit reached. Delete an unused layer before importing a photo."))
+    } else layerStack.addImage(uri).map {
         animation?.register(layerStack.selected()); notifyLayers(); notifyHistory(); publishAnimation()
     }
     fun selectLayerGroup(groupId: String) { layerStack.selectGroup(groupId); notifyLayers(); notifyHistory() }
@@ -933,7 +946,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
 
+    fun restoreSelection(): Boolean {
+        val region = selectionRegion ?: lastSelection ?: return false
+        clearMovePreview()
+        selectionMoveMode = false
+        selectionRegion = region
+        rasterView.selectionRegion = region
+        selectionListener?.invoke(selectionMode, true)
+        rasterView.invalidate()
+        return true
+    }
     fun clearSelection() {
+        selectionRegion?.let { lastSelection = it }
         transformSelectionOriginal = null; pendingSelectionTransform = null
         selectionPointerId = null
         previousSelection = null
@@ -953,6 +977,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(selectionMode, true)
     }
     fun duplicateSelection() {
+        if (!canAddLayers(layerStack.selectedRasters().size)) return
         val selection = selectionRegion ?: return
         if (layerStack.duplicateSelection(selection).isNotEmpty()) {
             layerStack.layers.forEach { animation?.register(it) }
@@ -963,6 +988,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
     }
     fun moveSelectionToNewLayer() {
+        if (!canAddLayers(layerStack.selectedRasters().size)) return
         val selection = selectionRegion ?: return
         val sources = layerStack.selectedRasters().map { it.tiles }
         if (sources.isEmpty()) return
@@ -1238,6 +1264,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.invalidate(); notifyLayers(); publishAnimation()
     }
     fun copyCelToNewLayer(move: Boolean) {
+        if (!canAddLayers()) return
         if (animation?.copySelectedRasterCelToNewLayer(move) == null) return
         rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
     }
@@ -1290,6 +1317,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
     fun startLiveDrawingRecording(): Boolean {
+        if (!canAddLayers()) return false
         val active = animation ?: return false
         if (active.media != null) return false
         if (layerStack.selectedRaster() == null || settings.erasing || activeDrawingPointerId != null) return false
@@ -1354,13 +1382,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null))
     }
     fun publishDiagnostics() {
-        if (!settings.debug) return
         val memory = memoryBudgetAdvisor.snapshot(
             layerStack.canvasWidth,
             layerStack.canvasHeight,
             layerStack.estimatedDocumentBytes() + (animation?.inactiveTileBytes() ?: 0L),
         )
-        publishDiagnostics(lastDiagnostics.withMemory(memory))
+        memoryPressureListener?.invoke(if (memory.documentBytes == 0L) MemoryPressure.NORMAL else memory.pressure)
+        if (settings.debug) publishDiagnostics(lastDiagnostics.withMemory(memory))
     }
     fun configureBlank(widthPx: Int, heightPx: Int) {
         stopAnimationPlayback(); animation?.mediaPreview?.clear(); cancelColorPick()
@@ -1377,6 +1405,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         animation = null
         rasterView.animation = null
         clearSelection()
+        lastSelection = null
         rasterView.layerStack = layerStack
         rasterView.fitCanvas()
         publishLayers()
@@ -1423,6 +1452,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     val replacement = createLayerStack(project.widthPx, project.heightPx)
                     layerStack = replacement
                     clearSelection()
+                    lastSelection = null
                     rasterView.layerStack = replacement
                     replacement.replaceWith(project)
                     animation?.mediaPreview?.clear()

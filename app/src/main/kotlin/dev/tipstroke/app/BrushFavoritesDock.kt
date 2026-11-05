@@ -9,6 +9,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import dev.tipstroke.core.model.RgbaColor
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -30,6 +31,7 @@ internal fun BrushFavoritesDock(
     pixelToolsAvailable: Boolean, onPixelTool: (PixelTool) -> Unit,
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String = "Tools",
+    onReselect: () -> Unit = {},
 ) {
     var toolsOpen by remember { mutableStateOf(false) }
     Surface(modifier, color = Color(0xE6202125), shape = MaterialTheme.shapes.large,
@@ -51,10 +53,18 @@ internal fun BrushFavoritesDock(
                         "Smudge" -> Icons.Outlined.BlurOn
                         "Select" -> Icons.Outlined.SelectAll
                         else -> Icons.Outlined.Build
-                    })
+                    }, onLongClick = onReselect, stateLabel = toolLabel)
                     DropdownMenu(toolsOpen, { toolsOpen = false }) {
                         fun action(callback: () -> Unit) { toolsOpen = false; callback() }
-                        DropdownMenuItem(text = { Text("Select") }, onClick = { action(onSelect) }, modifier = Modifier.semantics { contentDescription = "Select" })
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .combinedClickable(role = Role.Button, onClick = { action(onSelect) },
+                                onLongClick = { action(onReselect) }, onLongClickLabel = "Reselect previous area")
+                            .semantics { contentDescription = "Select" }.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.SelectAll, null)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Select")
+                        }
                         DropdownMenuItem(text = { Text("Eraser") }, onClick = { action(onEraser) }, modifier = Modifier.semantics { contentDescription = "Eraser" })
                         DropdownMenuItem(text = { Text("Smudge") }, onClick = { action(onSmudge) }, modifier = Modifier.semantics { contentDescription = "Smudge" })
                         if (pixelToolsAvailable) PixelTool.entries.forEach { tool ->
@@ -74,12 +84,12 @@ internal fun BrushFavoritesDock(
 
 @Composable
 private fun DockCell(description: String, selected: Boolean, extent: Float, beside: Boolean, onClick: () -> Unit,
-    icon: ImageVector? = null, preset: BrushPreset? = null) {
+    icon: ImageVector? = null, preset: BrushPreset? = null, onLongClick: (() -> Unit)? = null, stateLabel: String? = null) {
     TipHint(description, beside) { showHint ->
         Surface(color = if (selected) Color(0xFFF4F4F2) else Color.Transparent, shape = MaterialTheme.shapes.small) {
             Box(Modifier.size(extent.dp).clip(MaterialTheme.shapes.small)
-                .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = showHint)
-                .semantics { contentDescription = description; this.selected = selected }, contentAlignment = Alignment.Center) {
+                .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick ?: showHint, onLongClickLabel = if (onLongClick != null) "Reselect previous area" else description)
+                .semantics { contentDescription = description; this.selected = selected; stateLabel?.let { stateDescription = it } }, contentAlignment = Alignment.Center) {
                 if (preset != null) TipStrokeThumbnail(preset, Modifier.fillMaxSize().padding(2.dp),
                     color = if (selected) RgbaColor(.22f, .3f, .72f) else RgbaColor(.58f, .7f, 1f))
                 else if (icon != null) Icon(icon, null, tint = if (selected) Color(0xFF17181B) else Color.White,

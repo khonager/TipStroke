@@ -108,6 +108,7 @@ fun CanvasScreen(
     var animationOpen by remember { mutableStateOf(false) }
     var animationActivationOpen by remember { mutableStateOf(false) }
     var animationState by remember { mutableStateOf<AnimationUiState?>(null) }
+    var memoryPressure by remember { mutableStateOf(MemoryPressure.NORMAL) }
     var message by remember { mutableStateOf<String?>(null) }
     var ready by remember { mutableStateOf(library == null) }
     var savesInFlight by remember { mutableIntStateOf(0) }
@@ -273,7 +274,7 @@ fun CanvasScreen(
         applyTuning(brushPreferences.load(preset))
     }
     fun selectSelectionTool() {
-        smudging = false
+        smudging = false; erasing = false
         selectToolActive = true; selectionMode = true; movingSelection = false
         imageTransforming = false; layersOpen = false; colorPickerOpen = false
         phoneAdjustmentsOpen = true
@@ -307,7 +308,7 @@ fun CanvasScreen(
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(surface, originalImageColors) { surface?.setOriginalImageColors(originalImageColors) }
     LaunchedEffect(surface, debug) {
-        while (debug && surface != null) {
+        while (surface != null) {
             surface?.publishDiagnostics()
             delay(2_000)
         }
@@ -458,6 +459,13 @@ fun CanvasScreen(
                     if (animationState == null && updated?.hasMedia == true) animationOpen = true
                     animationState = updated
                 }
+                view.memoryPressureListener = { pressure ->
+                    if (pressure == MemoryPressure.CRITICAL && memoryPressure != pressure) {
+                        message = "Painting memory is nearly full. Save your drawing and delete unused layers or reduce the canvas size before adding more detail."
+                    }
+                    memoryPressure = pressure
+                }
+                view.capacityWarningListener = { message = it }
                 view.animationErrorListener = { message = it }
                 view.colorPickedListener = { picked -> color = picked }
                 view.visiblePaletteListener = { drawingPalette = it }
@@ -477,7 +485,7 @@ fun CanvasScreen(
                         }
                         outcome.exceptionOrNull()?.let { message = it.message ?: "Drawing could not be opened." }
                     }
-                } else view.publishLayers()
+                } else view.configureBlank(canvasWidthPx, canvasHeightPx)
             } },
             update = { view ->
                 view.chromeOcclusionListener = if (compactPhone) ({ occluded ->
@@ -583,6 +591,7 @@ fun CanvasScreen(
                 toolLabel = when { erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
                 onCapacity = { favoriteCapacity = it }, onLibrary = { brushToEdit = null; brushLibraryOpen = true },
                 onBrush = ::selectRegularBrush, onSelect = ::selectSelectionTool,
+                onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then hold Select to use it again." },
                 onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                 pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
                 onStudio = { brushStudioOpen = true }, onTune = { brushStudioOpen = true },
@@ -639,6 +648,7 @@ fun CanvasScreen(
                     toolLabel = when { erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
                     onCapacity = { favoriteCapacity = it }, onLibrary = { brushToEdit = null; brushLibraryOpen = true },
                     onBrush = ::selectRegularBrush, onSelect = ::selectSelectionTool,
+                    onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then hold Select to use it again." },
                     onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                     pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
                     onStudio = { brushStudioOpen = true },
@@ -697,6 +707,7 @@ fun CanvasScreen(
             onTool = { tool -> selectionTool = tool; movingSelection = false; selectionMode = true; surface?.setSelectionTool(tool) },
             onMove = { movingSelection = !movingSelection; selectionMode = false },
             onSelectAll = { surface?.selectAll() },
+            onReselect = { selectSelectionTool(); surface?.restoreSelection() },
             onDuplicate = { surface?.duplicateSelection() },
             canTransform = selectedLayerIds.isNotEmpty() && selectedLayerIds.all { id -> layers.any { it.id == id && it.kind == LayerKind.RASTER } },
             onTransform = {
@@ -704,12 +715,12 @@ fun CanvasScreen(
                     movingSelection = false; selectionMode = false; selectionTransformOpen = true
                 }
             },
-            onClear = { movingSelection = false; surface?.clearSelection() },
+            onClear = { movingSelection = false; selectionMode = true; surface?.clearSelection() },
             modifier = if (compactPhone) Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
                 .safeDrawingPadding().padding(start = 8.dp, end = 8.dp, top = if (landscapeDock) 80.dp else 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
                 .widthIn(max = 390.dp).fillMaxWidth()
             else Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
-                .safeDrawingPadding().padding(if (portrait) 12.dp else 20.dp).width(if (portrait) 360.dp else 180.dp),
+                .safeDrawingPadding().padding(if (portrait) 12.dp else 20.dp).width(if (portrait) 360.dp else 208.dp),
         )
 
         if (imageTransforming && !layersOpen && !resizeOpen) Surface(
@@ -758,6 +769,8 @@ fun CanvasScreen(
             )
             LayersPanel(
                 layers = layers,
+                memoryPressure = memoryPressure,
+                maximumLayers = surface?.maximumLayers ?: LayerCapacity.maximum(context, canvasWidthPx, canvasHeightPx),
                 previews = layerPreviews,
                 selectedId = selectedLayerId,
                 selectedIds = selectedLayerIds,
@@ -1286,57 +1299,6 @@ private fun PhoneChromeHandle(onClick: () -> Unit, modifier: Modifier = Modifier
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
-}
-
-@Composable private fun SelectionControls(
-    referenceName: String?, referenceLayers: List<Pair<LayerId, String>>, onReference: (LayerId?) -> Unit,
-    operation: dev.tipstroke.core.geometry.SelectionOperation, onOperation: (dev.tipstroke.core.geometry.SelectionOperation) -> Unit,
-    onInvert: () -> Unit, onCut: () -> Unit, onDelete: () -> Unit,
-    hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, canDuplicate: Boolean,
-    onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit,
-    onDuplicate: () -> Unit, onClear: () -> Unit, canTransform: Boolean, onTransform: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var menu by remember { mutableStateOf<String?>(null) }
-    Surface(modifier, color = Color(0xED202125), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
-        Column(Modifier.padding(4.dp)) {
-            Row {
-                Box(Modifier.weight(1f)) {
-                    TextButton(onClick = { menu = "shape" }, modifier = Modifier.fillMaxWidth()) { Text(if (moving) "Move ▾" else tool.name.lowercase().replaceFirstChar { it.uppercase() } + " ▾", maxLines = 1) }
-                    DropdownMenu(menu == "shape", { menu = null }) {
-                        SelectionTool.entries.forEach { shape -> DropdownMenuItem(text = { Text(shape.name.lowercase().replaceFirstChar { it.uppercase() }) }, onClick = { onTool(shape); menu = null }) }
-                        DropdownMenuItem(text = { Text("Move pixels") }, enabled = hasSelection && canMove, onClick = { onMove(); menu = null })
-                        DropdownMenuItem(text = { Text("Rotate, resize or flip") }, enabled = hasSelection && canTransform,
-                            onClick = { onTransform(); menu = null })
-                    }
-                }
-                Box(Modifier.weight(1f)) {
-                    TextButton(onClick = { menu = "mode" }, modifier = Modifier.fillMaxWidth()) { Text(operation.name.lowercase().replaceFirstChar { it.uppercase() } + " ▾", maxLines = 1) }
-                    DropdownMenu(menu == "mode", { menu = null }) {
-                        dev.tipstroke.core.geometry.SelectionOperation.entries.forEach { mode -> DropdownMenuItem(text = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) }, onClick = { onOperation(mode); onTool(tool); menu = null }) }
-                    }
-                }
-            }
-            Row {
-                Box(Modifier.weight(1f)) {
-                    TextButton(onClick = { menu = "edit" }, modifier = Modifier.fillMaxWidth()) { Text("Actions ▾") }
-                    DropdownMenu(menu == "edit", { menu = null }) {
-                        listOf("Select all" to onSelectAll, "Invert" to onInvert, "Clear" to onClear,
-                            "Duplicate" to onDuplicate, "Cut to layer" to onCut, "Delete pixels" to onDelete).forEachIndexed { index, (label, action) ->
-                            DropdownMenuItem(text = { Text(label) }, enabled = index < 2 || (hasSelection && (index == 2 || canDuplicate)), onClick = { action(); menu = null })
-                        }
-                    }
-                }
-                Box(Modifier.weight(1f)) {
-                    TextButton(onClick = { menu = "reference" }, modifier = Modifier.fillMaxWidth()) { Text(if (referenceName == null) "Reference ▾" else "Reference •", maxLines = 1) }
-                    DropdownMenu(menu == "reference", { menu = null }) {
-                        DropdownMenuItem(text = { Text("Reference strokes: Off") }, onClick = { onReference(null); menu = null })
-                        referenceLayers.forEach { (id, name) -> DropdownMenuItem(text = { Text(name) }, onClick = { onReference(id); menu = null }) }
-                    }
-                }
-            }
-        }
-    }
 }
 
 private val PixelTool.displayName: String get() = when (this) {

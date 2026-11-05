@@ -20,7 +20,7 @@ Current safeguards:
 
 Animation opens only the selected frame as decoded raster tiles. Other saved cels retain immutable compressed PNG bytes and decode on a serial worker before selection, thumbnail generation, or onion-skin display. Unedited decoded cels outside the selected/onion range can be evicted back to their compressed backing. Save and export preserve unloaded cels directly; export decodes one tile at a time. PNG bytes are still read during project loading, and edited cels remain resident, so this is not a total project-memory cap. Duplicate Frame and live drawing carry-forward share unchanged tile bitmaps with copy-on-write detachment at every raster mutation. Undo snapshots remain independent and bounded. Diagnostics count shared resident animation bitmaps once.
 
-The debug overlay reports approximate FPS/event rate, tool, pressure, tilt, zoom, allocated tiles, last dirty tile count, undo bytes, process memory, estimated document bytes, device-available memory, and an advisory count of fully painted raster layers remaining at the current canvas resolution. Android's managed-heap class is not an absolute PSS limit: process PSS also includes code, shared pages, EGL buffers, and other graphics allocations. The advisory budget therefore preserves the observed non-document process baseline and adds 75% of the app heap class as a conservative growing-document allowance, while also respecting Android's current system low-memory threshold. It never prevents layer creation: empty and partially painted layers remain sparse, so the displayed capacity is deliberately a conservative comparison unit rather than a hard layer limit. Process memory is sampled at most once every two seconds to keep it off the input hot path. The overlay is off by default.
+The debug overlay reports approximate FPS/event rate, tool, pressure, tilt, zoom, allocated tiles, last dirty tile count, undo bytes, process memory, estimated document bytes, device-available memory, and an advisory count of fully painted raster layers remaining at the current canvas resolution. Android's managed-heap class is not an absolute PSS limit: process PSS also includes code, shared pages, EGL buffers, and other graphics allocations. The advisory budget therefore preserves the observed non-document process baseline and adds 75% of the app heap class as a conservative growing-document allowance, while also respecting Android's current system low-memory threshold. This live headroom estimate is advisory and separate from the canvas layer admission limit. Memory is also sampled with the overlay off: elevated pressure appears in Layers and entering critical pressure shows a dismissible warning. Process memory is sampled at most once every two seconds to keep it off the input hot path. The overlay is off by default.
 
 ## Benchmark next
 
@@ -168,3 +168,20 @@ They render a fixed document-space sample into an output-sized cached bitmap,
 recycled on parameter/size changes and detach. Endpoint definitions are immutable
 copies, with no updates to the selected tip or canvas while comparing limits.
 Hover labels observe UI hover events only; the drawing/input pipeline is unchanged.
+
+
+## Android layer allowance
+
+New drawing and Layers show `used/maximum Layers`. The allowance uses 75% of the
+device heap class divided by the tile-rounded full-canvas RGBA size, reserves two
+full layers for edits/undo, and clamps the result to 1–64. It is a conservative
+admission policy, not preallocation or a guarantee against all memory pressure.
+Photos count as layers; source caches, history, animation cels and recording also
+use memory, so the live warning can appear before the layer allowance is reached.
+A smaller canvas permits more layers. Resizing recalculates the allowance.
+
+Add Layer and Import are disabled at the limit. Native entry points also reject
+layer creation, duplication, selection copy/cut, cel copy/move, and live drawing
+recording before mutating artwork. Existing documents above the allowance still
+open and remain editable; new layers require deleting layers or reducing canvas
+size. Permanent artwork remains sparse 256 px tiles with bounded undo.

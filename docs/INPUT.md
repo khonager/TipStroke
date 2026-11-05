@@ -12,7 +12,7 @@
 - Image transform mode temporarily takes priority over configured finger actions. One-finger drag moves the selected image; two-finger translation, pinch, and twist move, resize, and rotate it. When one finger of a two-finger transform lifts, the gesture rebases to the remaining finger so continued movement is smooth and does not jump. Leaving transform mode restores the configured actions.
 - Resize canvas mode places native drag handles at all four corners and edge midpoints. Dragging a handle changes the corresponding document edges in whole pixels, with each side clamped to 16–8192 px. The preview shows added paper and shades cropped pixels; Cancel leaves the document untouched, and Apply commits the previewed bounds.
 - Two or more fingers continue to pan, zoom, and rotate the camera simultaneously; rotation can be locked. Scaling and rotation are anchored at the gesture centroid, so the document point between the fingers remains beneath that point while pinching. After a moved multi-finger gesture loses a pointer, navigation rebases to the remaining finger so a configured one-finger drag can continue without a jump.
-- Select mode temporarily routes a one-pointer finger or stylus drag to a freehand lasso, rectangle or ellipse in document space. The selection constrains subsequent paint-layer drawing and erasing. Move translates selected pixels on every selected paint layer and whole selected image layers together. Choosing Move without a marquee selects the whole canvas. Artwork follows the pointer live; releasing commits the move as one undo step on the primary layer. Cancelling discards the preview. Duplicate copies the selected pixels from each selected paint layer into a new sparse layer while preserving the originals. On an image layer the selection constrains edits to the image's original-resolution erase mask; whole-image movement remains the image transform mode. Select All and Clear live in the tool’s Actions menu; choosing a tip returns to drawing while retaining the selection.
+- Select mode temporarily routes a one-pointer finger or stylus drag to a freehand lasso, rectangle or ellipse in document space. The selection constrains subsequent paint-layer drawing and erasing. Move translates selected pixels on every selected paint layer and whole selected image layers together. Choosing Move without a marquee selects the whole canvas. Artwork follows the pointer live; releasing commits the move as one undo step on the primary layer. Cancelling discards the preview. Duplicate copies the selected pixels from each selected paint layer into a new sparse layer while preserving the originals. On an image layer the selection constrains edits to the image's original-resolution erase mask; whole-image movement remains the image transform mode. Select All, Deselect and Erase selected pixels are direct icon actions; choosing a tip returns to drawing while retaining the selection.
 - Selecting a layer keeps the layer list compact. Its ⋮ button opens a scrollable settings overlay; Done or tapping outside closes the overlay while keeping that layer selected.
 - In the Layers panel, hold a layer row to drag it. Rows stay in place until release. Over the name/control side, a blue line marks the nearest legal gap and a label says which layer or group it is above/below. The thumbnail column is reserved for grouping: a preview highlights and the label says Group with/Add to group; gaps in that column do nothing. The panel scrolls when a dragged layer nears its top or bottom edge, gradually speeding up toward the edge. A right swipe still adds a layer to the multi-layer selection.
 - A completed lasso owns a copy of its sampled points, so clearing the temporary gesture buffer cannot invalidate later hit testing or movement. Moving a large selection visits only tiles that contain selected pixels and their destination tiles.
@@ -174,11 +174,21 @@ selection rotation and scaling are not included in this selection toolset.
 ### Select tool controls and layer clipping
 
 Select lives beside Pencil, Ink and Eraser in the tool rail/dock. Selecting it
-replaces size/opacity controls with compact Shape, Mode, Actions and Reference
-menus in the same area. Choosing a drawing tool restores tip controls without
+replaces size/opacity controls with an icon palette in the same area. Lasso,
+rectangle and ellipse sit above New/Add/Subtract/Intersect; active choices are
+highlighted. Each icon has an accessibility label and a hover/hold explanation. Choosing a drawing tool restores tip controls without
 clearing an existing selection or Reference strokes. There is no permanent
-selection banner over the canvas. Move is in Shape; copy/cut/delete, all, invert
-and clear are in Actions.
+selection banner over the canvas. Select all, Invert, Deselect, Move, Transform,
+Erase selected pixels, Copy to layer and Cut to layer are direct actions.
+Deselect removes only the boundary; Erase selected pixels removes artwork and
+supports Undo. Selecting Select clears the eraser state, keeping the active icon
+and native drawing mode consistent.
+
+Hold Select in the tools menu, the drawing-tools dock button, or a selection
+shape icon to recall the last area, including after deselecting and switching to
+a new layer. One document-space region is retained; changing documents or
+resizing the canvas resets recall. A normal brush/eraser switch keeps the current
+selection boundary.
 
 In layer settings, **Clip to layer** chooses another paint or image layer as live
 coverage for already-painted content. The destination keeps all of its original

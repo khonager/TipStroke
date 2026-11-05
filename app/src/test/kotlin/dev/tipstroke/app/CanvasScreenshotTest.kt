@@ -115,6 +115,11 @@ class CanvasScreenshotTest {
         }
     }
 
+    @Config(sdk = [35], qualifiers = "w800dp-h360dp-land-xhdpi")
+    @Test fun renderLandscapeSelectionToolsForVisualReview() = render(1600, 720, "tipstroke-landscape-selection.png") {
+        CanvasScreen(initialSelectionOpen = true, onBackToGallery = {})
+    }
+
     @Test fun renderSelectionControlsForVisualReview() = render(1600, 2560, "tipstroke-selection.png") {
         CanvasScreen(initialSelectionOpen = true)
     }

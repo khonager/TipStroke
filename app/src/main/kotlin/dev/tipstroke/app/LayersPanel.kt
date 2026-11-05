@@ -47,6 +47,8 @@ internal fun LayersPanel(
     previews: Map<LayerId, Bitmap>,
     selectedId: LayerId?,
     selectedIds: Set<LayerId>,
+    memoryPressure: dev.tipstroke.drawing.android.MemoryPressure = dev.tipstroke.drawing.android.MemoryPressure.NORMAL,
+    maximumLayers: Int = Int.MAX_VALUE,
     referenceLayerId: LayerId? = null,
     onReferenceStrokes: (LayerId?) -> Unit = {},
     onClipLayer: (LayerId?) -> Unit = {},
@@ -163,10 +165,16 @@ internal fun LayersPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Layers", color = Color(0xFFF5F5F2), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onImportImage) { Text("Import") }
-                TextButton(onClick = onAddPaint) { Text("＋ Layer") }
+                TextButton(onClick = onImportImage, enabled = layers.size < maximumLayers) { Text("Import") }
+                TextButton(onClick = onAddPaint, enabled = layers.size < maximumLayers) { Text("＋ Layer") }
                 TextButton(onClick = onDismiss) { Text("Done") }
             }
+            Text("${layers.size}/$maximumLayers Layers", color = Color.White, fontSize = 14.sp)
+            if (layers.size >= maximumLayers) Text("Layer limit reached. Delete unused layers to add more.",
+                color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            if (memoryPressure != dev.tipstroke.drawing.android.MemoryPressure.NORMAL) Text(
+                "Memory is running low. Photos and undo history also use painting memory.",
+                color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             Text(dropHint, color = if (drop != null) Color(0xFF75A7FF) else Color(0xFF9B9DA3), fontSize = 12.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
