@@ -129,9 +129,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (videoView == null) {
                     val time = mediaPlaybackOffsetUs + (SystemClock.uptimeMillis() - playbackStartedAt) * 1000L
                     if (time >= active.media!!.durationUs) { stopAnimationPlayback(); seekMedia(active.media!!.durationUs - 1); return }
-                    presentMediaTime(time, true)
-                    active.mediaPreview?.prepare(time) { result ->
-                        if (animation === active && result.isSuccess) rasterView.invalidate()
+                    active.mediaPreview?.prepare(time, playback = true) { result ->
+                        if (animation === active && animationPlaying) {
+                            result.onSuccess {
+                                presentMediaTime(active.mediaPreview?.timeUs ?: time, true)
+                                rasterView.invalidate()
+                            }.onFailure { stopAnimationPlayback(); animationErrorListener?.invoke(it.message ?: "Cannot play clip") }
+                        }
                     }
                     gestureHandler.postDelayed(this, 33L)
                 }
@@ -232,7 +236,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>, Int, Float) -> Unit)? = null
     var animationListener: ((AnimationUiState?) -> Unit)? = null
-        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null)) }
+        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = importingClip || pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null)) }
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
@@ -1058,6 +1062,66 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun deleteSelectedLayer() { if (layerStack.deleteSelected()) { animation?.unregisterMissingLayers(); notifyLayers(); notifyHistory(); publishAnimation() } }
     fun publishLayers() { notifyLayers(); notifyHistory(); notifyVisiblePalette() }
+    private var importingClip = false
+
+    /** Enable a single-track edit without copying decoded video or raster cels. */
+    fun enableVideoEditing() {
+        if (importingClip || activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+        stopAnimationPlayback()
+        if (animation == null) enableAnimation(true)
+        val active = animation ?: return
+        active.editingSource()?.let { source ->
+            if (active.media?.edit == null) { active.replaceMedia(source, false); configureMediaPlayback(); publishAnimation() }
+        }
+    }
+
+    fun addTimelineMedia(uri: android.net.Uri) {
+        if (importingClip || activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+        stopAnimationPlayback()
+        if (animation == null) enableAnimation(true)
+        val active = animation ?: return
+        importingClip = true; publishAnimation()
+        ProjectPersistence.executor.execute {
+            val result = runCatching { importClip(context, uri) }
+            ProjectPersistence.mainHandler.post {
+                importingClip = false
+                if (animation !== active || !isAttachedToWindow) { result.getOrNull()?.second?.file?.delete(); return@post }
+                result.onSuccess { (name, asset) ->
+                    runCatching {
+                        val previous = active.editingSource()
+                        val id = java.util.UUID.randomUUID().toString()
+                        val clip = dev.tipstroke.core.model.MediaClip(id, id, name, 0, asset.durationUs)
+                        val edit = dev.tipstroke.core.model.VideoEdit(previous?.edit?.clips.orEmpty() + clip)
+                        val source = MediaSource(asset.file, "sequence", previous?.width ?: canvasWidthPx,
+                            previous?.height ?: canvasHeightPx, edit.durationUs, maxOf(previous?.frameRate ?: 30.0, asset.frameRate),
+                            previous?.canvasScale ?: 1f, edit, previous?.assets.orEmpty() + (id to asset))
+                        active.replaceMedia(source)
+                        active.showMediaTime(edit.startUs(edit.clips.lastIndex))
+                        configureMediaPlayback(); publishAnimation()
+                    }.onFailure { asset.file.delete(); animationErrorListener?.invoke(it.message ?: "Cannot add clip") }
+                }.onFailure { animationErrorListener?.invoke(it.message ?: "Cannot import clip") }
+                publishAnimation()
+            }
+        }
+    }
+
+    fun updateVideoEdit(edit: dev.tipstroke.core.model.VideoEdit, seekUs: Long? = null) {
+        val active = animation ?: return
+        val source = active.editingSource() ?: return
+        if (activeDrawingPointerId != null || importingClip || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+        stopAnimationPlayback()
+        runCatching {
+            active.replaceMedia(source.copy(durationUs = edit.durationUs, edit = edit))
+            seekUs?.let(active::showMediaTime)
+            configureMediaPlayback(); publishAnimation()
+        }.onFailure { animationErrorListener?.invoke(it.message ?: "Cannot edit timeline") }
+    }
+
+    fun undoVideoEdit(redo: Boolean = false) {
+        if (importingClip || activeDrawingPointerId != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return
+        stopAnimationPlayback(); animation?.undoVideoEdit(redo); configureMediaPlayback(); publishAnimation()
+    }
+
     private fun configureMediaPlayback() {
         videoView?.let { it.release(); removeView(it) }; videoView = null
         rasterView.hardwareVideo = false
@@ -1434,7 +1498,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (!animationPlaying || strokeRecording != null) {
             processRecorder?.sync(layerStack, animation != null, animation = animation)
         }
-        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null))
+        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = importingClip || pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null))
     }
     fun publishDiagnostics() {
         updateAnimationStoragePins()
@@ -1587,13 +1651,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun mediaFrameReady(): Boolean {
+        if (importingClip) return false
         val active = animation ?: return true
         if (active.media == null) return true
         return !mediaSeeking && mediaCelLoading == null && active.mediaDrawingActive
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!isEnabled || pendingAnimationFrame != null || transformSelectionOriginal != null) return true
+        if (!isEnabled || importingClip || pendingAnimationFrame != null || transformSelectionOriginal != null) return true
         if (!mediaFrameReady()) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) stopAnimationPlayback()
             val index = event.actionIndex.coerceIn(0, event.pointerCount - 1)

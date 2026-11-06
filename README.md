@@ -126,3 +126,29 @@ canvas's layer allowance (up to 64). This permanently removes pixel detail and
 clears undo history; export a `.tipstroke` copy first to keep the original.
 Image/video source files retain their quality. Tablet playback/export performance
 still depends on the artwork and device; MP4 exports currently have no audio.
+
+### Single-track video editing (Android)
+
+Open **Animation → Add photo / video** on a blank canvas, or import a video from
+the gallery and choose **Edit clips & keyframes**. Use **+ Media** to combine
+photos, GIFs, and video clips on one track. Photos start at five seconds; change
+that with **Trim / duration**.
+
+Select a clip, scrub or use **Go to time**, then **Split here**. Split twice and
+**Delete clip** to remove a middle section. **Move earlier/later** reorders
+sections; **Duplicate clip** repeats one. Edits close gaps automatically. Video
+trim handles refer to the original source, so trimmed footage can be restored
+after saving and reopening.
+
+Use **Keyframe here** at two different times to animate position, scale, rotation,
+and opacity, with Linear, Smooth, or Hold interpolation. Tap a diamond to edit or
+delete a keyframe. **Transition** sets a crossfade into the selected clip; zero
+means a cut. **Undo edit / Redo edit** retain the last 50 timeline edits during
+the session. Drawing overlays keep their positions on the overall timeline when
+clips move; they do not follow clips.
+
+Saves and `.tipstroke` packages include the sources, cuts, keyframes, and
+transitions. MP4, GIF, and PNG-sequence export use the edited timeline. MP4 is
+silent; audio editing, automatic image morphing, and iOS/desktop video editing
+are not included. Edited previews decode on a worker and may drop frames on
+slower devices without changing timeline speed or exported timing.

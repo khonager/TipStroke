@@ -229,3 +229,16 @@ needed. Failures during preparation preserve original pixels and dimensions.
 The editor blocks drawing during preparation, clears undo/selection on success,
 and stops process-recording continuation at the old resolution. Reduce is a
 permanent resample: export a project copy first to preserve full-resolution detail.
+
+## Edited video tracks
+
+No source video is expanded into raster cels. Clip edits and the last 50 undo
+revisions retain metadata and immutable encoded assets. Preview decoding is
+worker-only at a maximum 1280 px edge, with one active request and one replacement;
+crossfades hold at most two source decoders. Photo previews are reused until
+source/preview-size changes. No filmstrip thumbnails are decoded during scrubbing.
+Edited video playback currently seeks through MediaMetadataRetriever and can
+drop preview frames, particularly for long-GOP footage. It keeps the wall-clock
+speed; export samples every planned output frame. Sequential hardware decoding
+and GPU composition remain performance follow-ups. Validate on physical tablets
+before claiming production frame pacing, stylus latency, or thermal behavior.

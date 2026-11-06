@@ -138,3 +138,35 @@ scale; ordinary crop/expand leaves it unchanged. IDs and timeline timing are sta
 Disk-backed inactive cels retain the existing `animation/cels/.../*.png` layout.
 Private animation working files are transient and never part of portable projects;
 snapshot handles keep them alive until save/export finishes. Undo is not persisted.
+
+## Version 9: edited media track
+
+`animation.media.kind = "sequence"` stores an ordered `edit` clip array and an
+`assets` object keyed by stable asset IDs. Each asset retains the prior media
+metadata (`kind`, oriented dimensions, duration, frame rate); `image` is now a
+supported asset kind. Files live at `assets/media/clips/<asset-id>.source`.
+The reserved `original` asset retains `assets/media/timeline.source` when an
+older single-source canvas becomes editable, preserving live source references
+across atomic saves. Recursive sequences and unsafe asset IDs are rejected.
+
+Each clip has stable `id`/`assetId`, a display `name`, `sourceInUs`, `durationUs`,
+`transitionUs`, and ordered `keyframes`. Keyframes contain clip-local `timeUs`,
+normalized canvas-relative `x`/`y`, fit-relative `scale`, degree `rotation`,
+`opacity`, and outgoing `easing` (`LINEAR`, `SMOOTH`, `HOLD`). Splitting/trimming
+shifts keys without discarding surrounding keys, so negative/local out-of-range
+key times are valid and preserve the original interpolation curve. They are not
+shown as editable diamonds outside the current clip window.
+
+Incoming transitions overlap the previous clip; their length is at most half
+of either clip. Duration is the sum of clip durations minus transitions. Limits:
+1,000 clips, 1,000 assets, 1,000 keys per clip, 10,000 keys per track, 24 hours total. Video/GIF source
+ranges must be in bounds; still images can hold longer than their default duration.
+Source assets are retained after clip deletion so session undo survives saves.
+Timeline undo/redo is bounded to 50 metadata revisions and is not serialized.
+
+Drawing overlays remain in overall timeline time. A shorter edit can leave
+existing drawings beyond the new end; version 9 preserves these cels and times
+without rendering them until the timeline extends again. Frame-based animations
+receive equivalent microsecond start/duration values when media is first added.
+Versions 1–8 continue to load; older apps reject version 9 rather than silently
+losing edits. Transfer uses the existing package size limits.

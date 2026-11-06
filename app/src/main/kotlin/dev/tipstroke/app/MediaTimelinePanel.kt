@@ -35,10 +35,15 @@ internal fun MediaTimelinePanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     onOnion: (Boolean) -> Unit = {},
+    onImportMedia: () -> Unit = {},
+    onEnableVideoEdit: () -> Unit = {},
+    onVideoEdit: (dev.tipstroke.core.model.VideoEdit, Long?) -> Unit = { _, _ -> },
+    onUndoVideoEdit: (Boolean) -> Unit = {},
 ) {
     var dragTime by remember { mutableStateOf<Long?>(null) }
     var lastSeekAt by remember { mutableLongStateOf(0L) }
     var settings by remember { mutableStateOf(false) }
+    var drawingTools by remember { mutableStateOf(false) }
     var fps by remember(state.fps) { mutableStateOf(state.fps.toString()) }
     val frame = state.frames[state.selectedIndex]
     val ticks = (MediaTimeline.durationUs(frame, state.fps) * state.fps / 1_000_000.0).roundToInt().coerceAtLeast(1)
@@ -47,6 +52,8 @@ internal fun MediaTimelinePanel(
     fun seconds(timeUs: Long) = String.format(Locale.ROOT, "%.2fs", timeUs / 1_000_000.0)
     Surface(modifier, color = Color(0xFF202125)) {
         Column(Modifier.padding(horizontal = 12.dp)) {
+            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            VideoEditControls(state, onImportMedia, onEnableVideoEdit, onVideoEdit, onSeek, onUndoVideoEdit)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onPlayPause, enabled = state.playing || !state.loading,
                     modifier = Modifier.semantics { contentDescription = if (state.playing) "Pause video" else "Play video" }) {
@@ -54,6 +61,7 @@ internal fun MediaTimelinePanel(
                 }
                 Text("${seconds(time)} / ${seconds(state.mediaDurationUs)}", color = Color.White, fontSize = 11.sp,
                     modifier = Modifier.weight(1f))
+                if (state.videoEdit != null) TextButton(onClick = { drawingTools = !drawingTools }) { Text("Drawings") }
                 TextButton(onClick = { if (state.playing) onPlayPause(); settings = true }) { Text("${state.fps} FPS") }
                 TextButton(onClick = onClose, modifier = Modifier.semantics { contentDescription = "Close media timeline" }) { Text("×") }
             }
@@ -66,6 +74,7 @@ internal fun MediaTimelinePanel(
             }, onValueChangeFinished = { dragTime?.let(onSeek); dragTime = null },
                 valueRange = 0f..(state.mediaDurationUs - 1).coerceAtLeast(1).toFloat(),
                 modifier = Modifier.fillMaxWidth().height(32.dp).semantics { contentDescription = "Scrub video" })
+            if (state.videoEdit == null || drawingTools) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onAdd, enabled = !state.loading && !state.playing) { Text("Add drawing here") }
                 TextButton(onClick = { onSeek((state.mediaPositionUs - 1_000_000L / state.fps).coerceAtLeast(0)) },
@@ -83,6 +92,7 @@ internal fun MediaTimelinePanel(
                     FilterChip(selected = state.mediaDrawingActive && index == state.selectedIndex,
                         onClick = { onSelect(index) }, label = { Text("${index + 1} · ${seconds(drawing.sourceTimeUs ?: 0)}", fontSize = 11.sp) })
                 }
+            }
             }
         }
     }

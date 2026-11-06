@@ -43,7 +43,7 @@ drawing-FPS merged silent exports. No video thumbnail churn during playback.
 
 Follow-ups: physical-device playback/thermal profiling; audio passthrough;
 sequential decode and GPU composition for faster export; exact variable-frame-rate
-output timestamps; clip trim controls; draggable drawing ranges and drawing-only
+output timestamps; draggable drawing ranges and drawing-only
 thumbnails; movable media layers; native iOS parity. GIF remains a CPU-decoded,
 bounded preview. These follow-ups are not part of the current implementation.
 
@@ -59,3 +59,14 @@ Three minutes at 12 FPS is 2,160 drawings, within the existing 10,000-drawing li
 This does not establish full-episode device performance. Remaining work includes
 physical-tablet long-session profiling, audio support, faster sequential video
 export, and scene/shot organization for larger productions.
+
+
+### Single-track video edits (Android)
+
+Implemented mixed photo/GIF/video tracks, split/trim/delete/duplicate/reorder,
+photo duration, exact clip-relative seeking, transform/opacity keyframes with
+three interpolation modes, overlapping crossfades, bounded timeline undo/redo,
+versioned local persistence/transfer, and shared preview/export composition.
+Drawing overlays remain attached to global timeline time. Audio, image morphing,
+clip-linked drawing ranges, sequential/GPU preview performance, and native
+iOS/desktop parity remain future work.

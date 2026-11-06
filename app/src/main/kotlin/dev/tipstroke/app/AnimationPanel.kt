@@ -65,10 +65,15 @@ internal fun AnimationPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     onSeekMedia: (Long) -> Unit = {},
+    onImportMedia: () -> Unit = {},
+    onEnableVideoEdit: () -> Unit = {},
+    onVideoEdit: (dev.tipstroke.core.model.VideoEdit, Long?) -> Unit = { _, _ -> },
+    onUndoVideoEdit: (Boolean) -> Unit = {},
 ) {
     if (state.hasMedia) {
         MediaTimelinePanel(state, onSeekMedia, onSelectFrame, onAddFrame, onDeleteFrame,
             onExposure, onFps, onPlayPause, onClose, modifier,
+            onImportMedia = onImportMedia, onEnableVideoEdit = onEnableVideoEdit, onVideoEdit = onVideoEdit, onUndoVideoEdit = onUndoVideoEdit,
             onOnion = { enabled -> onOnion(if (enabled) 1 else 0, if (enabled) 1 else 0, state.onionOpacity) })
         return
     }
@@ -98,6 +103,7 @@ internal fun AnimationPanel(
         shape = RoundedCornerShape(15.dp), border = BorderStroke(1.dp, Color(0x885D626B)), shadowElevation = 8.dp,
     ) {
         Column {
+        TextButton(onClick = onImportMedia, enabled = !state.loading && !state.playing) { Text("Add photo / video") }
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Row(Modifier.height(58.dp).padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onPlayPause, modifier = Modifier.width(48.dp).semantics {

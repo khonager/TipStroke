@@ -421,7 +421,7 @@ internal data class LoadedImage(
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    internal const val SCHEMA_VERSION = 8
+    internal const val SCHEMA_VERSION = 9
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -481,11 +481,14 @@ internal object ProjectPersistence {
             }
             val animationJson = snapshot.animation?.let { animation ->
                 animation.media?.let { media ->
-                    val asset = File(temporary, MediaSource.ASSET_PATH)
-                    asset.parentFile?.mkdirs()
-                    // Immutable source: link through atomic revisions without copying a video each autosave.
-                    try { Files.createLink(asset.toPath(), media.file.toPath()) }
-                    catch (_: java.io.IOException) { media.file.copyTo(asset) }
+                    val sources = if (media.kind == "sequence") media.assets.mapKeys { if (it.key == "original") MediaSource.ASSET_PATH else "assets/media/clips/${it.key}.source" }
+                        else mapOf(MediaSource.ASSET_PATH to media)
+                    sources.forEach { (path, source) ->
+                        val asset = File(temporary, path)
+                        asset.parentFile?.mkdirs()
+                        try { Files.createLink(asset.toPath(), source.file.toPath()) }
+                        catch (_: java.io.IOException) { source.file.copyTo(asset) }
+                    }
                 }
                 animation.encodedRasterCels.forEach { (layerId, cels) ->
                     cels.forEach { (frameId, tiles) ->
@@ -691,7 +694,7 @@ internal object ProjectPersistence {
                     require(restored.frames.zipWithNext().all { (a, b) -> (a.sourceTimeUs ?: 0) <= (b.sourceTimeUs ?: 0) }) { "Drawing times must be chronological" }
                 }
                 restored.frames.forEach { frame -> frame.sourceTimeUs?.let { time ->
-                    require(restored.media != null && time < restored.media.durationUs) { "Invalid media timestamp" }
+                    require(restored.media != null && (restored.media.edit != null || time < restored.media.durationUs)) { "Invalid media timestamp" }
                 } }
             }
         }

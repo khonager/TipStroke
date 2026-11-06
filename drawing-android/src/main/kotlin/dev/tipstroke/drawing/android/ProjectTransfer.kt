@@ -152,7 +152,7 @@ object ProjectTransfer {
             for (i in 0 until frames.length()) {
                 val frame = frames.getJSONObject(i)
                 require(safeId.matches(frame.getString("id")) && frameIds.add(frame.getString("id"))) { "Invalid frame ID" }
-                if (frame.has("sourceTimeUs")) require(media != null && frame.getLong("sourceTimeUs") in 0 until media.durationUs) { "Invalid source timestamp" }
+                if (frame.has("sourceTimeUs")) require(media != null && frame.getLong("sourceTimeUs") >= 0 && (media.edit != null || frame.getLong("sourceTimeUs") < media.durationUs)) { "Invalid source timestamp" }
                 if (frame.has("durationUs")) require(frame.getLong("durationUs") > 0) { "Invalid drawing duration" }
                 require(frame.optInt("exposure", 1) in 1..600) { "Invalid frame exposure" }
             }

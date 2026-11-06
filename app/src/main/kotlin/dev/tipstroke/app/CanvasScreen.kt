@@ -177,6 +177,9 @@ fun CanvasScreen(
         touchDrawing = gestureSettings.oneFingerDrag == FingerAction.DRAW
     }
 
+    val importTimelineMedia = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { surface?.addTimelineMedia(it); animationOpen = true }
+    }
     val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
@@ -836,6 +839,10 @@ fun CanvasScreen(
                 thumbnailForFrame = { surface?.animationFrameThumbnail(it) },
                 onExposure = { surface?.setAnimationExposure(it) },
                 onSeekMedia = { surface?.seekMedia(it) },
+                onImportMedia = { importTimelineMedia.launch(arrayOf("image/*", "video/*")) },
+                onEnableVideoEdit = { surface?.enableVideoEditing() },
+                onVideoEdit = { edit, time -> surface?.updateVideoEdit(edit, time) },
+                onUndoVideoEdit = { surface?.undoVideoEdit(it) },
                 onFps = { surface?.setAnimationFps(it) },
                 onPlaybackMode = { surface?.setAnimationPlaybackMode(it) },
                 onPlayPause = { surface?.toggleAnimationPlayback() },

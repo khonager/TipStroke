@@ -11,6 +11,8 @@ import dev.tipstroke.core.model.LayerId
 import dev.tipstroke.core.model.PlaybackMode
 import dev.tipstroke.core.model.RecordingTiming
 import dev.tipstroke.core.model.MediaTimeline
+import dev.tipstroke.core.model.VideoEdit
+import dev.tipstroke.core.model.MediaClip
 import android.graphics.Bitmap
 import java.util.LinkedHashMap
 
@@ -31,6 +33,11 @@ data class AnimationUiState(
     val mediaPositionUs: Long = 0,
     val mediaDurationUs: Long = 0,
     val mediaDrawingActive: Boolean = true,
+    val videoEdit: VideoEdit? = null,
+    val photoAssetIds: Set<String> = emptySet(),
+    val clipSourceDurationsUs: Map<String, Long> = emptyMap(),
+    val canUndoVideoEdit: Boolean = false,
+    val canRedoVideoEdit: Boolean = false,
 )
 
 enum class AnimationRecordingKind { IMAGE_MOTION, LIVE_DRAWING }
@@ -45,6 +52,38 @@ internal class AnimationRuntime(
     private val storage: CelStorage? = null,
     private val storageError: (Throwable) -> Unit = {},
 ) {
+    private val editUndo = ArrayDeque<MediaSource>()
+    private val editRedo = ArrayDeque<MediaSource>()
+    fun replaceMedia(source: MediaSource, remember: Boolean = true) {
+        if (remember) { media?.let { editUndo.addLast(it) }; while (editUndo.size > 50) editUndo.removeFirst(); editRedo.clear() }
+        if (media == null) {
+            var time = 0L
+            frames.replaceAll { frame ->
+                val duration = MediaTimeline.durationUs(frame, fps)
+                frame.copy(sourceTimeUs = time, durationUs = duration).also { time += duration }
+            }
+        }
+        mediaPreview?.clear()
+        media = source
+        mediaPreview = source.takeIf { it.kind != "video" }?.let(::MediaPreview)
+        showMediaTime(mediaPositionUs)
+    }
+    fun undoVideoEdit(redo: Boolean) {
+        val from = if (redo) editRedo else editUndo
+        val to = if (redo) editUndo else editRedo
+        if (from.isEmpty()) return
+        media?.let(to::addLast)
+        val restored = from.removeLast()
+        // Keep immutable assets reachable across saves while history still references them.
+        replaceMedia(if (restored.edit != null) restored.copy(assets = media!!.assets + restored.assets) else restored, false)
+    }
+    fun editingSource(): MediaSource? {
+        val source = media ?: return null
+        if (source.edit != null) return source
+        val id = "original"
+        val edit = VideoEdit(listOf(MediaClip(id, id, "Original ${source.kind}", 0, source.durationUs)))
+        return MediaSource(source.file, "sequence", source.width, source.height, edit.durationUs, source.frameRate, source.canvasScale, edit = edit, assets = mapOf(id to source))
+    }
     var media: MediaSource? = null
         private set
     var mediaPreview: MediaPreview? = null
@@ -118,6 +157,7 @@ internal class AnimationRuntime(
     }
 
     fun applyResolution(stores: Map<TileStore, TileStore>, factor: Float) {
+        editUndo.clear(); editRedo.clear()
         rasterCels.values.forEach { cels -> cels.replaceAll { _, store -> stores.getValue(store) } }
         imageCels.values.forEach { cels -> cels.replaceAll { _, transform -> transform.reduced(factor) } }
         media = media?.let { it.copy(canvasScale = it.canvasScale * factor) }
@@ -391,6 +431,8 @@ internal class AnimationRuntime(
         frames.toList(), selectedIndex, fps, playbackMode, playing,
         onionBefore, onionAfter, onionOpacity, backgroundLayerIds.toSet(), recording, thumbnailRevision,
         hasMedia = media != null, mediaPositionUs = mediaPositionUs, mediaDurationUs = media?.durationUs ?: 0, mediaDrawingActive = mediaDrawingActive,
+        clipSourceDurationsUs = media?.assets.orEmpty().mapValues { it.value.durationUs },
+        videoEdit = media?.edit, photoAssetIds = media?.assets.orEmpty().filterValues { it.kind == "image" }.keys, canUndoVideoEdit = editUndo.isNotEmpty(), canRedoVideoEdit = editRedo.isNotEmpty(),
     )
 
     private val loading = java.util.IdentityHashMap<TileStore, MutableList<(Result<Unit>) -> Unit>>()
@@ -495,9 +537,10 @@ internal class AnimationRuntime(
     }
 
     fun restore(saved: SavedAnimationSnapshot) {
+        editUndo.clear(); editRedo.clear()
         mediaPreview?.clear()
         media = saved.media
-        mediaPreview = media?.takeIf { it.kind == "gif" }?.let(::MediaPreview)
+        mediaPreview = media?.takeIf { it.kind != "video" }?.let(::MediaPreview)
         backgroundLayerIds.clear()
         backgroundLayerIds += saved.backgroundLayerIds
         rasterCels.clear()

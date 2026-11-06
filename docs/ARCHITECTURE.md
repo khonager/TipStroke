@@ -304,3 +304,23 @@ survive. Image transforms and `MediaSource.canvasScale` carry the uniform scale;
 source assets and source-coordinate erase masks remain intact. Native video,
 GIF preview, color picking and export apply the same media scale. See PERFORMANCE
 for working-set bounds and PROJECT_FORMAT for schema 8.
+
+### Single-track media editing
+
+`:core` owns `VideoEdit`, immutable clip ranges, keyframe interpolation and overlap
+math, with no platform types. Android `MediaSource` adds a composition of local
+encoded assets. `ClipFrameDecoder` uses at most two active native video/GIF
+decoders, bounded photo previews, and a native Canvas compositor. Preview,
+thumbnails, still export, and animation export share this compositor. The
+original unedited single-video path still uses MediaPlayer.
+
+Edited playback uses a wall clock and latest-request coalescing on the decoding
+worker. Completed playback previews are presented even if a newer request is
+queued; scrubbing presents only the latest requested frame. Drawing overlays
+advance to the decoded frame's timestamp to keep media and paint aligned.
+Timeline controls publish metadata only; pen samples remain in DrawingSurface.
+Imports and saves run on the project worker. Immutable working assets use private
+files with weak leases held by the runtime/history/snapshots, and old-process
+working files are removed on first import. Atomic saves hard-link source files
+where supported, with copy fallback. Resolution reduction clears timeline undo
+alongside raster undo to avoid restoring incompatible canvas scales.

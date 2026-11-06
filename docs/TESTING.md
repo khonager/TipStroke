@@ -365,3 +365,37 @@ save/reopen and export both cadences. Verify video/GIF/color-picker alignment at
 50% and 25%, backgrounding during reduction, and storage-full behavior. Inspect
 actual playback frame pacing, export time, thermals and pen latency on the tablet;
 JVM tests do not establish those properties. MP4 export remains silent.
+
+## Single-track video editing
+
+`VideoEditTest` checks split/delete/reorder source ranges, boundary selection,
+overlap duration, validation, keyframe replacement, and exact curve preservation
+through splits/trims and source-range restoration for all three easing modes. JVM `ClipMediaTest` checks
+bounded history, retained drawing times after shortening the track, and invalid
+asset references/ranges. `MediaTimelinePanelTest` exercises splitting, saving a
+scale keyframe, and extending a photo hold; it writes `build/qa/video-timeline.png`.
+
+`ClipMediaInstrumentedTest` uses real Android image/video decoding. It checks
+crossfade pixels and keyed movement, repeated atomic saves/reopen/undo, converted
+legacy source paths, mixed-video cut order in MP4 output, edited duration,
+portable transfer, latest-only seeks, native preview pixels, real-time playback,
+and background/resume. File-backed ImageDecoder is not implemented by the JVM
+Robolectric runtime; these checks belong in instrumentation.
+
+```sh
+./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.ClipMediaInstrumentedTest,dev.tipstroke.drawing.android.MediaImportInstrumentedTest,dev.tipstroke.drawing.android.MediaPlaybackInstrumentedTest
+```
+
+On a physical tablet: combine portrait and landscape photos/video, set two pose
+keys, crossfade, split twice/remove the middle, reorder clips and undo/redo.
+Save/reopen/share the project; compare exported timing and pixels to the preview.
+Test long-GOP/high-resolution footage, cancellation, low disk space, and pen input
+after scrubbing/import. Confirm drawing overlays stay at overall timeline times.
+Review short-landscape and portrait controls; **Drawings** expands the overlay
+controls while clip tools remain a single horizontally scrollable row. MP4 is
+silent; emulator correctness checks do not establish physical playback throughput.
+
+Validated on the API 35 tablet emulator: all six clip-editing instrumentation
+checks and all seven existing media import/playback checks passed. The full
+`assembleDebug test lint` run passed; final clip lookup/control adjustments also
+passed core/UI tests, lint, APK assembly, and the six clip instrumentation checks.

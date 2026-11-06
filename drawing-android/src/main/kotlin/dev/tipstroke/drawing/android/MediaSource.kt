@@ -7,6 +7,7 @@ import android.media.MediaMetadataRetriever
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import org.json.JSONObject
+import dev.tipstroke.core.model.*
 import java.io.Closeable
 import java.io.File
 
@@ -19,16 +20,29 @@ internal data class MediaSource(
     val durationUs: Long,
     val frameRate: Double = 30.0,
     val canvasScale: Float = 1f,
+    val edit: VideoEdit? = null,
+    val assets: Map<String, MediaSource> = emptyMap(),
 ) {
     init {
         require(canvasScale.isFinite() && canvasScale > 0f && canvasScale <= 1f)
         require(frameRate.isFinite() && frameRate in 1.0..120.0)
-        require(kind == "video" || kind == "gif") { "Unsupported media source" }
+        require(kind in setOf("video", "gif", "image", "sequence")) { "Unsupported media source" }
         require(width in 1..8192 && height in 1..8192 && width.toLong() * height <= 16_777_216) { "Media dimensions are too large" }
         require(durationUs in 1..86_400_000_000L) { "Invalid media duration" }
+        if (kind == "sequence") {
+            require(edit != null && edit.durationUs == durationUs && assets.size in 1..1000)
+            require(assets.keys.all { it.matches(Regex("[a-zA-Z0-9_-]{1,100}")) })
+            require(assets.values.none { it.kind == "sequence" })
+            edit.clips.forEach { clip ->
+                val asset = requireNotNull(assets[clip.assetId]) { "Missing clip asset" }
+                require(asset.kind == "image" || clip.sourceInUs + clip.durationUs <= asset.durationUs) { "Clip extends past source" }
+            }
+        } else require(edit == null && assets.isEmpty())
     }
 
-    fun json() = JSONObject().put("kind", kind).put("width", width).put("height", height).put("durationUs", durationUs).put("frameRate", frameRate).put("canvasScale", canvasScale)
+    fun json(): JSONObject = JSONObject().put("kind", kind).put("width", width).put("height", height).put("durationUs", durationUs).put("frameRate", frameRate).put("canvasScale", canvasScale).apply {
+        edit?.let { put("edit", it.json()); put("assets", JSONObject().apply { assets.forEach { (id, source) -> put(id, source.json()) } }) }
+    }
 
     companion object {
         const val ASSET_PATH = "assets/media/timeline.source"
@@ -49,12 +63,28 @@ internal data class MediaSource(
             } catch (_: Exception) { durationUs to fallbackFps }
             finally { extractor.release() }
         }
-        fun read(directory: File, json: JSONObject): MediaSource {
-            val file = File(directory, ASSET_PATH)
+        fun read(directory: File, json: JSONObject): MediaSource = readAt(directory, json, ASSET_PATH)
+        private fun readAt(directory: File, json: JSONObject, path: String): MediaSource {
+            if (json.getString("kind") == "sequence") {
+                require(path == ASSET_PATH) { "Nested media sequence" }
+                val entries = json.getJSONObject("assets")
+                require(entries.length() in 1..1000)
+                val assets = entries.keys().asSequence().associateWith { id ->
+                    require(id.matches(Regex("[a-zA-Z0-9_-]{1,100}")))
+                    val entry = entries.getJSONObject(id)
+                    require(entry.getString("kind") != "sequence") { "Nested media sequence" }
+                    readAt(directory, entry, if (id == "original") ASSET_PATH else "assets/media/clips/$id.source")
+                }
+                val edit = readVideoEdit(json.getJSONArray("edit"))
+                require(json.getLong("durationUs") == edit.durationUs) { "Invalid edited duration" }
+                return MediaSource(File(directory, ASSET_PATH), "sequence", json.getInt("width"), json.getInt("height"),
+                    edit.durationUs, json.getDouble("frameRate"), json.optDouble("canvasScale", 1.0).toFloat(), edit, assets)
+            }
+            val file = File(directory, path)
             // Early media builds stored this one level higher. Normalize on the project worker
             // so runtime references remain valid after the next atomic project replacement.
             val legacy = File(directory, "assets/timeline.source")
-            if (!file.isFile && legacy.isFile) {
+            if (path == ASSET_PATH && !file.isFile && legacy.isFile) {
                 file.parentFile?.mkdirs()
                 try { java.nio.file.Files.createLink(file.toPath(), legacy.toPath()) }
                 catch (_: Exception) {
@@ -78,8 +108,11 @@ internal data class MediaSource(
 internal class MediaFrameDecoder(private val source: MediaSource) : Closeable {
     private var video: MediaMetadataRetriever? = null
     private var gif: Movie? = null
+    private var composition: ClipFrameDecoder? = null
     init {
-        if (source.kind == "video") {
+        if (source.kind == "sequence") composition = ClipFrameDecoder(source)
+        else if (source.kind == "image") Unit
+        else if (source.kind == "video") {
             val retriever = MediaMetadataRetriever()
             try { retriever.setDataSource(source.file.path); video = retriever }
             catch (error: Throwable) { retriever.release(); throw error }
@@ -90,6 +123,8 @@ internal class MediaFrameDecoder(private val source: MediaSource) : Closeable {
     }
 
     fun frame(timeUs: Long, maxEdge: Int): Bitmap {
+        composition?.let { return it.frame(timeUs, maxEdge) }
+        if (source.kind == "image") return decodeClipImage(source.file, maxEdge)
         val time = timeUs.coerceIn(0, source.durationUs - 1)
         val scale = minOf(1f, maxEdge.toFloat() / maxOf(source.width, source.height))
         val width = (source.width * scale).toInt().coerceAtLeast(1)
@@ -110,7 +145,7 @@ internal class MediaFrameDecoder(private val source: MediaSource) : Closeable {
         }
     }
 
-    override fun close() { video?.release(); video = null; gif = null }
+    override fun close() { video?.release(); video = null; gif = null; composition?.close(); composition = null }
 }
 
 /** One in-flight seek and one replacement request; fast scrubbing cannot build a decode backlog. */
@@ -121,10 +156,12 @@ internal class MediaPreview(private val source: MediaSource) {
         private set
     private var decoder: MediaFrameDecoder? = null // Accessed only on AnimationDecoding.executor.
     private var busy = false
+    private var playing = false
     private var generation = 0
     private var pending: Pair<Long, (Result<Unit>) -> Unit>? = null
 
-    fun prepare(time: Long, complete: (Result<Unit>) -> Unit) {
+    fun prepare(time: Long, playback: Boolean = false, complete: (Result<Unit>) -> Unit) {
+        playing = playback
         if (timeUs == time) { complete(Result.success(Unit)); return }
         pending = time to complete
         if (!busy) decodeNext()
@@ -140,7 +177,7 @@ internal class MediaPreview(private val source: MediaSource) {
             ProjectPersistence.mainHandler.post {
                 busy = false
                 if (token != generation) { result.getOrNull()?.recycle(); decodeNext(); return@post }
-                if (pending != null) result.getOrNull()?.recycle()
+                if (pending != null && !playing) result.getOrNull()?.recycle()
                 else {
                     result.onSuccess { bitmap?.recycle(); bitmap = it; timeUs = request.first }
                     request.second(result.map { Unit })
