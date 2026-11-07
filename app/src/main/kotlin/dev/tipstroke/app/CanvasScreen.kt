@@ -1233,7 +1233,7 @@ private fun EditorChrome(
             ChromeGroup {
                 IconAction("Undo", enabled = canUndo, onClick = onUndo) { UndoIcon() }
                 IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
-                TipAction("Fit canvas", Icons.Outlined.CenterFocusStrong, onClick = onReset)
+                CompositionLocalProvider(LocalContentColor provides Color.White) { TipAction("Fit canvas", Icons.Outlined.CenterFocusStrong, onClick = onReset) }
                 Text("$zoomPercent%", color = Color(0xFFD8D9DC), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp))
             }
         }
@@ -1242,8 +1242,8 @@ private fun EditorChrome(
             if (showTopColorSwitcher) {
                 ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker, compact = true)
             }
-            TipAction("Export", Icons.Outlined.FileDownload, onClick = onExport)
-            TipAction("Resize", Icons.Outlined.Crop, onClick = onResize)
+            CompositionLocalProvider(LocalContentColor provides Color.White) { TipAction("Export", Icons.Outlined.FileDownload, onClick = onExport) }
+            CompositionLocalProvider(LocalContentColor provides Color.White) { TipAction("Resize", Icons.Outlined.Crop, onClick = onResize) }
             CompositionLocalProvider(LocalContentColor provides if (animationOpen) Color(0xFFED6A5A) else Color.White) {
                 TipAction("Animate", Icons.Outlined.Movie, onClick = onAnimation)
             }
