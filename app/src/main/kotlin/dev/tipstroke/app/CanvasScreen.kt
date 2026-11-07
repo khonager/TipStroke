@@ -11,6 +11,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
@@ -414,6 +416,7 @@ fun CanvasScreen(
         resizeOpen = true
     }
 
+    CompositionLocalProvider(LocalTipPreviewColor provides color) {
     CompositionLocalProvider(LocalColorDrop provides { position, droppedColor, released ->
         colorDropPosition = if (released) null else position
         if (released && position != null) surface?.dropColor(position.x, position.y, droppedColor)
@@ -1197,6 +1200,7 @@ fun CanvasScreen(
         }) { Text("Shared background") } },
     )
 
+    }
 }
 
 @Composable
@@ -1229,7 +1233,7 @@ private fun EditorChrome(
             ChromeGroup {
                 IconAction("Undo", enabled = canUndo, onClick = onUndo) { UndoIcon() }
                 IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
-                TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 13.dp)) { Text("Fit", fontSize = 13.sp) }
+                TipAction("Fit canvas", Icons.Outlined.CenterFocusStrong, onClick = onReset)
                 Text("$zoomPercent%", color = Color(0xFFD8D9DC), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp))
             }
         }
@@ -1238,15 +1242,13 @@ private fun EditorChrome(
             if (showTopColorSwitcher) {
                 ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker, compact = true)
             }
-            TextButton(onClick = onExport, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Export", fontSize = 13.sp) }
-            TextButton(onClick = onResize, contentPadding = PaddingValues(horizontal = 12.dp)) { Text("Resize", fontSize = 13.sp) }
-            TextButton(onClick = onAnimation, contentPadding = PaddingValues(horizontal = 12.dp),
-                colors = ButtonDefaults.textButtonColors(contentColor = if (animationOpen) Color(0xFFED6A5A) else Color.White)) {
-                Text("Animate", fontSize = 13.sp)
+            TipAction("Export", Icons.Outlined.FileDownload, onClick = onExport)
+            TipAction("Resize", Icons.Outlined.Crop, onClick = onResize)
+            CompositionLocalProvider(LocalContentColor provides if (animationOpen) Color(0xFFED6A5A) else Color.White) {
+                TipAction("Animate", Icons.Outlined.Movie, onClick = onAnimation)
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Debug", color = Color(0xFFD8D9DC), fontSize = 11.sp)
-                Switch(checked = debug, onCheckedChange = { onDebug() }, modifier = Modifier.scale(.68f).semantics { contentDescription = "Debug overlay" })
+            CompositionLocalProvider(LocalContentColor provides if (debug) Color(0xFFED6A5A) else Color.White) {
+                TipAction(if (debug) "Hide debug overlay" else "Show debug overlay", Icons.Outlined.BugReport, onClick = onDebug)
             }
         }
     }

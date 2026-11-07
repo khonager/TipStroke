@@ -97,6 +97,8 @@ with a stylus or hold an icon to see its name. Slider endpoints preview minimum
 and maximum settings. Save, duplicate, export, and share `.tipbrush`
 files with their textures included.
 
+Tip preview icons use the selected drawing color and update when it changes.
+Light and dark colors use contrasting neutral preview backgrounds.
 The favorites bar never scrolls: its capacity follows the available screen space.
 The full library stays one tap away. Public publishing and community rankings are
 not connected. See [Tip library](docs/BRUSH_LIBRARY.md) for supported controls and
@@ -132,7 +134,8 @@ still depends on the artwork and device; MP4 exports currently have no audio.
 Open **Animation → Add photo / video** on a blank canvas, or import a video from
 the gallery and choose **Edit clips & keyframes**. Use **+ Media** to combine
 photos, GIFs, and video clips on one track. Photos start at five seconds; change
-that with **Trim / duration**.
+that with **Trim / duration**. Timeline actions use icons; hover with a stylus or
+mouse, or hold an icon, to see its action name.
 
 Select a clip, scrub or use **Go to time**, then **Split here**. Split twice and
 **Delete clip** to remove a middle section. **Move earlier/later** reorders

@@ -10,7 +10,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
-import dev.tipstroke.core.model.RgbaColor
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -90,8 +89,7 @@ private fun DockCell(description: String, selected: Boolean, extent: Float, besi
             Box(Modifier.size(extent.dp).clip(MaterialTheme.shapes.small)
                 .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick ?: showHint, onLongClickLabel = if (onLongClick != null) "Reselect previous area" else description)
                 .semantics { contentDescription = description; this.selected = selected; stateLabel?.let { stateDescription = it } }, contentAlignment = Alignment.Center) {
-                if (preset != null) TipStrokeThumbnail(preset, Modifier.fillMaxSize().padding(2.dp),
-                    color = if (selected) RgbaColor(.22f, .3f, .72f) else RgbaColor(.58f, .7f, 1f))
+                if (preset != null) TipStrokeThumbnail(preset, Modifier.fillMaxSize().padding(2.dp))
                 else if (icon != null) Icon(icon, null, tint = if (selected) Color(0xFF17181B) else Color.White,
                     modifier = Modifier.size(minOf(24f, extent).dp))
             }

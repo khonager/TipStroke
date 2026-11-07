@@ -38,7 +38,7 @@ class MediaTimelinePanelTest {
         content {
             MediaTimelinePanel(state, {}, {}, {}, {}, { holdChanges++ }, { fps = it }, {}, {})
         }
-        compose.onNodeWithText("12 FPS").performClick()
+        compose.onNodeWithContentDescription("Drawing timing · 12 FPS").performClick()
         compose.onNodeWithText("Drawing FPS (1–60)").performTextReplacement("24")
         compose.onNodeWithText("Apply").performClick()
         assertEquals(24, fps)
@@ -62,14 +62,14 @@ class MediaTimelinePanelTest {
                 onVideoEdit = { edit, time -> state = state.copy(videoEdit = edit, mediaDurationUs = edit.durationUs,
                     mediaPositionUs = time ?: state.mediaPositionUs) })
         }
-        compose.onNodeWithText("Split here").performClick()
+        compose.onNodeWithContentDescription("Split here").performClick()
         assertEquals(2, state.videoEdit!!.clips.size)
         assertEquals(1_000_000L, state.videoEdit!!.clips[1].sourceInUs)
-        compose.onNodeWithText("Keyframe here").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Keyframe here").performScrollTo().performClick()
         compose.onNodeWithText("Scale (%)").performScrollTo().performTextReplacement("150")
         compose.onNodeWithText("Save keyframe").performClick()
         assertEquals(1.5f, state.videoEdit!!.clips[1].keyframes.single().pose.scale)
-        compose.onNodeWithText("Trim / duration").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Trim / duration").performScrollTo().performClick()
         compose.onNodeWithText("Photo duration (seconds)").performTextReplacement("8")
         compose.onNodeWithText("Apply trim").performClick()
         assertEquals(8_000_000L, state.videoEdit!!.clips[1].durationUs)

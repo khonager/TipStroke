@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,15 +57,14 @@ internal fun MediaTimelinePanel(
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             VideoEditControls(state, onImportMedia, onEnableVideoEdit, onVideoEdit, onSeek, onUndoVideoEdit)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onPlayPause, enabled = state.playing || !state.loading,
-                    modifier = Modifier.semantics { contentDescription = if (state.playing) "Pause video" else "Play video" }) {
-                    Text(if (state.playing) "Pause" else "Play")
-                }
+                TipAction(if (state.playing) "Pause video" else "Play video",
+                    if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                    enabled = state.playing || !state.loading, onClick = onPlayPause)
                 Text("${seconds(time)} / ${seconds(state.mediaDurationUs)}", color = Color.White, fontSize = 11.sp,
                     modifier = Modifier.weight(1f))
-                if (state.videoEdit != null) TextButton(onClick = { drawingTools = !drawingTools }) { Text("Drawings") }
-                TextButton(onClick = { if (state.playing) onPlayPause(); settings = true }) { Text("${state.fps} FPS") }
-                TextButton(onClick = onClose, modifier = Modifier.semantics { contentDescription = "Close media timeline" }) { Text("×") }
+                if (state.videoEdit != null) TipAction(if (drawingTools) "Hide drawings" else "Show drawings", Icons.Outlined.Brush, onClick = { drawingTools = !drawingTools })
+                TipAction("Drawing timing · ${state.fps} FPS", Icons.Outlined.Tune, onClick = { if (state.playing) onPlayPause(); settings = true })
+                TipAction("Close media timeline", Icons.Outlined.Close, onClick = onClose)
             }
             Slider(value = time.toFloat(), onValueChange = {
                 if (dragTime == null && state.playing) onPlayPause()
@@ -76,15 +77,15 @@ internal fun MediaTimelinePanel(
                 modifier = Modifier.fillMaxWidth().height(32.dp).semantics { contentDescription = "Scrub video" })
             if (state.videoEdit == null || drawingTools) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onAdd, enabled = !state.loading && !state.playing) { Text("Add drawing here") }
-                TextButton(onClick = { onSeek((state.mediaPositionUs - 1_000_000L / state.fps).coerceAtLeast(0)) },
-                    enabled = !state.playing && !state.loading, modifier = Modifier.semantics { contentDescription = "Previous drawing step" }) { Text("‹") }
-                TextButton(onClick = { onSeek((state.mediaPositionUs + 1_000_000L / state.fps).coerceAtMost(state.mediaDurationUs - 1)) },
-                    enabled = !state.playing && !state.loading, modifier = Modifier.semantics { contentDescription = "Next drawing step" }) { Text("›") }
+                TipAction("Add drawing here", Icons.Outlined.Add, enabled = !state.loading && !state.playing, onClick = onAdd)
+                TipAction("Previous drawing step", Icons.Outlined.SkipPrevious, onClick = { onSeek((state.mediaPositionUs - 1_000_000L / state.fps).coerceAtLeast(0)) },
+                    enabled = !state.playing && !state.loading)
+                TipAction("Next drawing step", Icons.Outlined.SkipNext, onClick = { onSeek((state.mediaPositionUs + 1_000_000L / state.fps).coerceAtMost(state.mediaDurationUs - 1)) },
+                    enabled = !state.playing && !state.loading)
                 if (state.mediaDrawingActive) {
-                    TextButton(onClick = { onHold((ticks - 1).coerceAtLeast(1)) }, enabled = !state.playing) { Text("−") }
+                    TipAction("Shorten drawing hold", Icons.Outlined.Remove, enabled = !state.playing, onClick = { onHold((ticks - 1).coerceAtLeast(1)) })
                     Text("Hold $ticks · ${seconds(MediaTimeline.durationUs(frame, state.fps))}", color = Color.White, fontSize = 12.sp)
-                    TextButton(onClick = { onHold((ticks + 1).coerceAtMost(600)) }, enabled = !state.playing) { Text("+") }
+                    TipAction("Extend drawing hold", Icons.Outlined.Add, enabled = !state.playing, onClick = { onHold((ticks + 1).coerceAtMost(600)) })
                 } else Text("No drawing here", color = Color.LightGray, fontSize = 12.sp)
             }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 6.dp)) {

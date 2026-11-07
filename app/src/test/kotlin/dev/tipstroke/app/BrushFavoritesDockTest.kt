@@ -1,5 +1,6 @@
 package dev.tipstroke.app
 
+import androidx.core.view.descendants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -104,6 +105,45 @@ class BrushFavoritesDockTest {
         assertEquals(1, selected)
         compose.mainClock.advanceTimeBy(2100)
         compose.onNodeWithText("Textured tip").assertDoesNotExist()
+    }
+
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun selectedColorRepaintsSelectedAndUnselectedTipIcons() {
+        var color by mutableStateOf(RgbaColor(1f, 0f, 0f))
+        val tips = listOf(BrushPreset.Blank.copy(id = BrushId("first")), BrushPreset.Blank.copy(id = BrushId("second")))
+        val screen = Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get()
+        screen.setContent {
+            TipStrokeTheme {
+                CompositionLocalProvider(LocalTipPreviewColor provides color) {
+                    BrushFavoritesDock(tips.first(), tips, true, {}, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                        Modifier.width(400.dp))
+                }
+            }
+        }
+        fun assertColor(red: Boolean) {
+            compose.waitForIdle()
+            compose.runOnIdle {
+                val views = (screen.window.decorView as android.view.ViewGroup).descendants
+                    .filterIsInstance<dev.tipstroke.drawing.android.BrushStrokePreviewView>().toList()
+                assertEquals(2, views.size)
+                views.forEach { view ->
+                    val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+                    view.draw(android.graphics.Canvas(bitmap))
+                    try {
+                        assertTrue((0 until bitmap.width).any { x -> (0 until bitmap.height).any { y ->
+                            val pixel = bitmap.getPixel(x, y)
+                            android.graphics.Color.alpha(pixel) > 32 && if (red)
+                                android.graphics.Color.red(pixel) > android.graphics.Color.green(pixel) + 30
+                            else android.graphics.Color.green(pixel) > android.graphics.Color.red(pixel) + 30
+                        } })
+                    } finally { bitmap.recycle() }
+                }
+            }
+        }
+        assertColor(true)
+        compose.runOnIdle { color = RgbaColor(0f, 1f, 0f) }
+        assertColor(false)
     }
 
     @Test fun pinsRemainOrderedAndPersistWithoutDuplicating() {

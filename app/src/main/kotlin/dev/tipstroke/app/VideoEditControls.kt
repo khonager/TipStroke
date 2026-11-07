@@ -8,6 +8,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,8 +41,8 @@ internal fun VideoEditControls(
     val enabled = !state.loading && !state.playing
     if (edit == null) {
         Row(Modifier.horizontalScroll(rememberScrollState())) {
-            TextButton(onClick = onImport, enabled = enabled) { Text("Add photo / video") }
-            if (state.hasMedia) TextButton(onClick = onEnable, enabled = enabled) { Text("Edit clips & keyframes") }
+            TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, onClick = onImport, enabled = enabled)
+            if (state.hasMedia) TipAction("Edit clips & keyframes", Icons.Outlined.VideoSettings, onClick = onEnable, enabled = enabled)
         }
         return
     }
@@ -56,31 +59,31 @@ internal fun VideoEditControls(
         }
     }
     Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onImport, enabled = enabled) { Text("+ Media") }
-        TextButton(onClick = { editSafely {
+        TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, onClick = onImport, enabled = enabled)
+        TipAction("Split here", Icons.Outlined.ContentCut, onClick = { editSafely {
             val id = UUID.randomUUID().toString()
             selectedId = id
             onEdit(edit.split(index, local, id), state.mediaPositionUs)
-        } }, enabled = enabled && edit.clips.size < 1000 && local in 1 until clip.durationUs) { Text("Split here") }
-        TextButton(onClick = { dialog = "seek" }, enabled = enabled) { Text("Go to time") }
-        TextButton(onClick = { dialog = "trim" }, enabled = enabled) { Text("Trim / duration") }
-        TextButton(onClick = { keyTime = null; dialog = "key" }, enabled = enabled) { Text("Keyframe here") }
-        TextButton(onClick = { dialog = "transition" }, enabled = enabled && index > 0) { Text("Transition") }
-        TextButton(onClick = { editSafely {
+        } }, enabled = enabled && edit.clips.size < 1000 && local in 1 until clip.durationUs)
+        TipAction("Go to time", Icons.Outlined.Schedule, onClick = { dialog = "seek" }, enabled = enabled)
+        TipAction("Trim / duration", Icons.Outlined.Timer, onClick = { dialog = "trim" }, enabled = enabled)
+        TipAction("Keyframe here", Icons.Outlined.Diamond, onClick = { keyTime = null; dialog = "key" }, enabled = enabled)
+        TipAction("Transition", Icons.Outlined.Compare, onClick = { dialog = "transition" }, enabled = enabled && index > 0)
+        TipAction("Move earlier", Icons.AutoMirrored.Outlined.KeyboardArrowLeft, onClick = { editSafely {
             val next = edit.move(index, index - 1); onEdit(next, next.startUs(index - 1))
-        } }, enabled = enabled && index > 0) { Text("Move earlier") }
-        TextButton(onClick = { editSafely {
+        } }, enabled = enabled && index > 0)
+        TipAction("Move later", Icons.AutoMirrored.Outlined.KeyboardArrowRight, onClick = { editSafely {
             val next = edit.move(index, index + 1); onEdit(next, next.startUs(index + 1))
-        } }, enabled = enabled && index < edit.clips.lastIndex) { Text("Move later") }
-        TextButton(onClick = { editSafely {
+        } }, enabled = enabled && index < edit.clips.lastIndex)
+        TipAction("Duplicate clip", Icons.Outlined.ContentCopy, onClick = { editSafely {
             val copy = clip.copy(id = UUID.randomUUID().toString(), transitionUs = 0)
             val next = edit.normalized(edit.clips.take(index + 1) + copy + edit.clips.drop(index + 1))
             selectedId = copy.id; onEdit(next, next.startUs(index + 1))
-        } }, enabled = enabled && edit.clips.size < 1000) { Text("Duplicate clip") }
-        TextButton(onClick = { editSafely { val next = edit.delete(index); selectedId = null; onEdit(next, start.coerceAtMost(next.durationUs - 1)) } },
-            enabled = enabled && edit.clips.size > 1) { Text("Delete clip") }
-        TextButton(onClick = { onUndo(false) }, enabled = enabled && state.canUndoVideoEdit) { Text("Undo edit") }
-        TextButton(onClick = { onUndo(true) }, enabled = enabled && state.canRedoVideoEdit) { Text("Redo edit") }
+        } }, enabled = enabled && edit.clips.size < 1000)
+        TipAction("Delete clip", Icons.Outlined.DeleteOutline, onClick = { editSafely { val next = edit.delete(index); selectedId = null; onEdit(next, start.coerceAtMost(next.durationUs - 1)) } },
+            enabled = enabled && edit.clips.size > 1)
+        TipAction("Undo edit", Icons.AutoMirrored.Outlined.Undo, onClick = { onUndo(false) }, enabled = enabled && state.canUndoVideoEdit)
+        TipAction("Redo edit", Icons.AutoMirrored.Outlined.Redo, onClick = { onUndo(true) }, enabled = enabled && state.canRedoVideoEdit)
     }
     if (clip.keyframes.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         itemsIndexed(clip.keyframes.filter { it.timeUs in 0..clip.durationUs }, key = { _, key -> key.timeUs }) { _, key ->

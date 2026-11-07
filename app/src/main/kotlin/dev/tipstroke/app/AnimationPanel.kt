@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,7 +105,7 @@ internal fun AnimationPanel(
         shape = RoundedCornerShape(15.dp), border = BorderStroke(1.dp, Color(0x885D626B)), shadowElevation = 8.dp,
     ) {
         Column {
-        TextButton(onClick = onImportMedia, enabled = !state.loading && !state.playing) { Text("Add photo / video") }
+        TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, enabled = !state.loading && !state.playing, onClick = onImportMedia)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Row(Modifier.height(58.dp).padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onPlayPause, modifier = Modifier.width(48.dp).semantics {

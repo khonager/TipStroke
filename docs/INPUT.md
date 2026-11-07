@@ -300,3 +300,10 @@ The new renderer bypasses Jetpack Ink and incrementally stamps shape/grain masks
 into sparse tiles. Shape-hold snapping is disabled for custom stamp strokes so it
 does not replace scattered or textured marks with fitted geometry. The native
 studio pad supports stylus pressure/tilt and full-pressure finger drawing.
+
+
+The canvas toolbar uses icons for fit, export, resize, animation, and diagnostics.
+The media timeline uses 48 dp icon actions for import, editing, playback, drawing
+controls, timing, and close. Stylus/mouse hover and touch long-press show action
+names; accessibility descriptions retain those names. Clip names, timestamps,
+and dialog confirmations remain text.

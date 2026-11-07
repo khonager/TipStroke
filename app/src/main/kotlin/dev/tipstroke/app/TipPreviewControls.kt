@@ -80,12 +80,17 @@ internal fun TipAction(label: String, icon: ImageVector, enabled: Boolean = true
     }
 }
 
+internal val LocalTipPreviewColor = compositionLocalOf { RgbaColor(.22f, .3f, .72f) }
+
+internal fun tipPreviewBackground(color: RgbaColor): Color =
+    if (.2126f * color.red + .7152f * color.green + .0722f * color.blue > .6f) Color(0xFF303238) else Color(0xFFFAFAFA)
+
 /** Every thumbnail uses the same native raster painter, including imported shape/grain masks. */
 @Composable
 internal fun TipStrokeThumbnail(preset: BrushPreset, modifier: Modifier = Modifier, actualSize: Boolean = false,
-    color: RgbaColor = RgbaColor(.22f, .3f, .72f), erasing: Boolean = false) {
+    color: RgbaColor = LocalTipPreviewColor.current, erasing: Boolean = false) {
     AndroidView(factory = { BrushStrokePreviewView(it).apply { importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO } },
-        update = { it.setPreview(preset, erasing, preset.opacity, color, usePresetSize = actualSize, thumbnail = true) }, modifier = modifier)
+        update = { it.setPreview(preset, erasing, preset.opacity, color, usePresetSize = actualSize, thumbnail = true) }, modifier = modifier.background(tipPreviewBackground(color), MaterialTheme.shapes.extraSmall))
 }
 
 /** Pure endpoint presets never change the draft or invoke the user's value callback. */

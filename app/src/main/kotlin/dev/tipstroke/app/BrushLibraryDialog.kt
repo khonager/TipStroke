@@ -217,6 +217,7 @@ internal fun BrushLibraryDialog(
 
 @Composable
 internal fun LegacyBrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: String?, onSave: (LibraryBrush) -> Unit, onDismiss: () -> Unit, onConvert: () -> Unit) {
+    val previewColor = LocalTipPreviewColor.current
     var draft by remember(initial) { mutableStateOf(initial) }
     val p = draft.preset
     fun update(preset: BrushPreset) { draft = draft.copy(preset = preset) }
@@ -229,8 +230,8 @@ internal fun LegacyBrushCreatorDialog(initial: LibraryBrush, busy: Boolean, mess
                 Text("Tip Studio", style = MaterialTheme.typography.headlineSmall)
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 AndroidView(factory = { BrushStrokePreviewView(it) }, update = {
-                    it.setPreview(p, false, p.opacity, RgbaColor(.25f, .25f, .28f), usePresetSize = true)
-                }, modifier = Modifier.fillMaxWidth().height(110.dp).background(Color(0xFFFAFAFA)))
+                    it.setPreview(p, false, p.opacity, previewColor, usePresetSize = true)
+                }, modifier = Modifier.fillMaxWidth().height(110.dp).background(tipPreviewBackground(previewColor)))
                 Text("Native stroke preview · pressure and tilt vary across the sample", style = MaterialTheme.typography.bodySmall)
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(p.displayName, { update(p.copy(displayName = it.take(60))) }, label = { Text("Tip name") }, singleLine = true, modifier = Modifier.fillMaxWidth())

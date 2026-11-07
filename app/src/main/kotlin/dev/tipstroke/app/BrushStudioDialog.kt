@@ -375,6 +375,7 @@ private fun BrushTipPreview(
         pencilShadeStartRadians = pencilShadeStartRadians,
         pencilShadeTransitionRadians = pencilShadeTransitionRadians,
     )
+    val previewColor = LocalTipPreviewColor.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Live tip preview", style = MaterialTheme.typography.titleSmall)
@@ -383,7 +384,7 @@ private fun BrushTipPreview(
         Box(
             Modifier.fillMaxWidth().height(104.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFFFAFAFA), RoundedCornerShape(14.dp))
+                .background(tipPreviewBackground(previewColor), RoundedCornerShape(14.dp))
                 .border(1.dp, Color(0xFF777A82), RoundedCornerShape(14.dp))
                 .semantics { contentDescription = "$toolName live tip preview" },
         ) {
@@ -394,7 +395,7 @@ private fun BrushTipPreview(
                         brush = previewBrush,
                         erasing = erasing,
                         opacity = opacity,
-                        color = RgbaColor(.25f, .25f, .28f),
+                        color = previewColor,
                     )
                 },
                 modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp),

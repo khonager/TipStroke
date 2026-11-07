@@ -130,3 +130,10 @@ algorithms are unchanged. iOS and desktop do not gain this editor in this change
 Public publishing, rankings, and a network-backed community store remain outside
 the current no-network policy. The library includes actual bundled and local
 tips, with no fabricated popularity or publisher verification.
+
+
+Tip thumbnails in the favorites dock, library, and slider endpoints inherit the
+current canvas drawing color, including changes from the color picker or eyedropper.
+Selection changes highlight the cell without replacing the stroke color. Native
+preview caches invalidate on color changes; contrasting neutral backdrops keep
+both light and dark tips visible. Live native stroke previews use the same color.
