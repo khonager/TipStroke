@@ -285,6 +285,17 @@ with cumulative centisecond timing; its final duration can round to GIF precisio
 Video preview respects native variable-rate cadence, while export samples to a
 constant cadence, not the original variable-rate timestamp sequence.
 
+Video bitmap extraction (import validation, edited-track previews and export)
+tries scaled `OPTION_CLOSEST` frames first. If Android returns null or a codec
+runtime exception, it requests an unscaled frame at the same timestamp and
+downscales it on the worker, preserving the decoded orientation/aspect ratio.
+The full-size temporary is recycled immediately; source dimension limits still
+apply. A successful unscaled fallback is remembered for that decoder. If both
+paths fail, the retriever is released and reopened once before reporting an
+actionable error. It never substitutes a distant keyframe or a stale preview for
+an export frame. Recovery/failure details are recorded in bounded local
+diagnostics. Hardware `MediaPlayer` playback is unchanged.
+
 Video audio is not imported or exported. Media timelines do not support live
 stroke/image-motion recording. The source remains at its current displayed size and canvas
 origin when paper edges resize; it is not a movable layer. Import is transactional

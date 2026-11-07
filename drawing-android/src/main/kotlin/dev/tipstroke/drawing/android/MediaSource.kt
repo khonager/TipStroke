@@ -106,16 +106,14 @@ internal data class MediaSource(
 /** Confined to a worker. Android Movie supplies timestamp seeking and GIF disposal compositing. */
 @Suppress("DEPRECATION")
 internal class MediaFrameDecoder(private val source: MediaSource) : Closeable {
-    private var video: MediaMetadataRetriever? = null
+    private var video: VideoFrameDecoder? = null
     private var gif: Movie? = null
     private var composition: ClipFrameDecoder? = null
     init {
         if (source.kind == "sequence") composition = ClipFrameDecoder(source)
         else if (source.kind == "image") Unit
         else if (source.kind == "video") {
-            val retriever = MediaMetadataRetriever()
-            try { retriever.setDataSource(source.file.path); video = retriever }
-            catch (error: Throwable) { retriever.release(); throw error }
+            video = VideoFrameDecoder(source)
         } else {
             require(source.file.length() <= 32L * 1024 * 1024) { "GIF exceeds the 32 MiB import limit" }
             gif = requireNotNull(Movie.decodeFile(source.file.path)) { "Cannot decode GIF" }
@@ -129,11 +127,7 @@ internal class MediaFrameDecoder(private val source: MediaSource) : Closeable {
         val scale = minOf(1f, maxEdge.toFloat() / maxOf(source.width, source.height))
         val width = (source.width * scale).toInt().coerceAtLeast(1)
         val height = (source.height * scale).toInt().coerceAtLeast(1)
-        video?.let {
-            return requireNotNull(it.getScaledFrameAtTime(time, MediaMetadataRetriever.OPTION_CLOSEST, width, height)) {
-                "Cannot decode video frame at ${time / 1000} ms"
-            }
-        }
+        video?.let { return it.frame(time, maxEdge) }
         val movie = requireNotNull(gif)
         return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
             val canvas = Canvas(bitmap)
@@ -145,7 +139,7 @@ internal class MediaFrameDecoder(private val source: MediaSource) : Closeable {
         }
     }
 
-    override fun close() { video?.release(); video = null; gif = null; composition?.close(); composition = null }
+    override fun close() { video?.close(); video = null; gif = null; composition?.close(); composition = null }
 }
 
 /** One in-flight seek and one replacement request; fast scrubbing cannot build a decode backlog. */

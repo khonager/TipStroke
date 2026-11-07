@@ -301,6 +301,22 @@ Share-sheet recipients and real stylus latency still need physical-device valida
 
 ## Android media canvas import and playback
 
+`VideoFrameDecoderTest` injects Android retriever failures to cover null/throwing
+scaled decoding at 830 ms, same-timestamp unscaled recovery, orientation-aware
+downscaling, bitmap ownership, remembered fallback mode, one bounded reopen,
+source-open failures, diagnostic reporting, and no extra allocations after OOM.
+These JVM tests exercise recovery policy, not vendor codec support. On the
+affected device, retry the original video at 830 ms, scrub in both directions,
+save/reopen, and export; if it still fails, collect the new local decode events
+and original media for a codec-specific reproduction. Include HEVC/HDR phone
+recordings as well as H.264 in physical-device checks.
+`VideoFrameDecoderInstrumentedTest` forces the scaled API to return null while
+using the real Android decoder for fallback. It compares portrait H.264 frame
+pixels and preview sizes across forward/backward seeks and the last frame.
+The fallback regression and all 13 existing media/clip instrumentation checks
+passed on the API 35 tablet emulator. `assembleDebug test lint` also passed;
+the original failing Samsung video still needs physical-device verification.
+
 Core MediaTimelineTest covers gaps, overlap replacement, unchanged holds after FPS
 changes, grid snapping, fractional export cadence, and equal source duration across
 export modes. Runtime tests cover free scrubbing without new cels, authored drawing
