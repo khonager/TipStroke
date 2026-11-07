@@ -4,6 +4,15 @@ Open **Tips** directly from the canvas dock. The library has All tips,
 My tips, and Favorites sections, stroke previews, search, import, and
 **Create tip**. Tip selection is independent of the adjustment controls.
 
+The library uses one column on narrow phones and a responsive grid of at least
+280 dp-wide cards on larger windows, capped at 1040 dp overall. A small title/action
+bar stays visible; filters, search, and status messages scroll with the cards so
+short landscape windows retain room for complete previews. Cards show an 80 dp
+stroke preview, pinning, use, and edit/customize actions. More actions expands
+sharing, export, duplicate/delete, description, and favorite reordering inline.
+The preview itself selects the tip. All card content remains scrollable at large
+font sizes and in split windows.
+
 ## Original tips
 
 Create tip starts a new shape-and-grain tip, not a copy of Pencil, Ink, or

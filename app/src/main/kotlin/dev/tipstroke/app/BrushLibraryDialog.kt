@@ -14,8 +14,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -24,7 +24,6 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -43,10 +42,10 @@ internal fun BrushLibraryDialog(
     onFavorites: (List<String>) -> Unit = {}, onLibraryChanged: (List<LibraryBrush>) -> Unit = {},
 ) {
     val context = LocalContext.current
-    val compact = LocalConfiguration.current.screenHeightDp < 500
     var searchOpen by remember { mutableStateOf(false) }
     val library = remember { BrushLibrary(context) }
     val scope = rememberCoroutineScope()
+    val gridState = rememberLazyGridState()
     var brushes by remember { mutableStateOf<List<LibraryBrush>>(emptyList()) }
     var ready by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -107,97 +106,118 @@ internal fun BrushLibraryDialog(
         }
     }
     Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.widthIn(max = 720.dp).fillMaxWidth().fillMaxHeight(.94f), shape = MaterialTheme.shapes.large) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!compact) Text("Tip library", style = MaterialTheme.typography.headlineSmall)
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("All tips", "My tips", "Favorites").forEach { name ->
-                        FilterChip(section == name, { section = name }, label = { Text(name) })
-                    }
-                }
-                if (!compact) Text("${favoriteIds.size.coerceAtMost(favoriteCapacity)} / $favoriteCapacity favorite slots in this layout. " +
-                    if (favoriteIds.size > favoriteCapacity) "Extra pins return when there is more room." else "Pin tips for quick access on the canvas.",
-                    style = MaterialTheme.typography.bodySmall)
-                if (!compact || searchOpen) OutlinedTextField(query, { query = it }, label = { Text("Search tips") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row {
+        Surface(Modifier.widthIn(max = 1040.dp).fillMaxWidth().fillMaxHeight(.98f), shape = MaterialTheme.shapes.large) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Tip library", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     TipAction("Create tip", Icons.Outlined.Add, enabled = ready && !busy, onClick = {
                         editing = BrushLibrary.copyOf(LibraryBrush(BrushPreset.Blank))
                     })
-                    TipAction("Import", Icons.Outlined.FileOpen, enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) })
-                    if (compact) TipAction("Search", Icons.Outlined.Search, onClick = { searchOpen = !searchOpen })
+                    TipAction("Search", Icons.Outlined.Search, onClick = {
+                        searchOpen = !searchOpen
+                        scope.launch { gridState.animateScrollToItem(0) }
+                    })
+                    TipAction("Back to canvas", Icons.Outlined.Close, enabled = !busy, onClick = onDismiss)
                 }
-                if (busy || !ready && message == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-                message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 val all = BrushPreset.builtIns.map { LibraryBrush(it, "TipStroke") } + brushes
                 val shown = (when (section) {
                     "My tips" -> brushes
                     "Favorites" -> favoriteIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } }
                     else -> all
                 }).filter { it.preset.displayName.contains(query, true) || it.author.contains(query, true) }
-                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (shown.isEmpty()) item { Text(if (query.isBlank()) "Your tips will appear here. Create a new shape-and-grain tip or import a shared file." else "No matching tips.") }
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(280.dp), state = gridState, modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TipAction("Import", Icons.Outlined.FileOpen, enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) })
+                                listOf("All tips", "My tips", "Favorites").forEach { name ->
+                                    FilterChip(section == name, { section = name }, label = { Text(name) })
+                                }
+                            }
+                            if (searchOpen) OutlinedTextField(query, { query = it }, label = { Text("Search tips") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            if (section == "Favorites") Text("${favoriteIds.size.coerceAtMost(favoriteCapacity)} / $favoriteCapacity canvas slots. Extra pins return when there is more room.", style = MaterialTheme.typography.bodySmall)
+                            if (busy || !ready && message == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                            message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        }
+                    }
+                    if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Text(if (query.isBlank()) "Your tips will appear here. Create a new shape-and-grain tip or import a shared file." else "No matching tips.") }
                     items(shown, key = { it.preset.id.value }) { item ->
                         val featured = item.preset.id in BrushPreset.builtIns.map { it.id }
                         val favorite = item.preset.id.value in favoriteIds
+                        var moreOpen by remember { mutableStateOf(false) }
                         OutlinedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(item.preset.displayName, style = MaterialTheme.typography.titleMedium)
-                                if (item.preset.id == current.id) Text("Selected", style = MaterialTheme.typography.labelSmall)
-                                Text("${if (item.preset.stamp != null) "Shape & grain" else item.preset.engine.name.lowercase()}${if (item.author.isNotBlank()) " · ${item.author}" else ""}")
-                                TipStrokeThumbnail(item.preset, Modifier.fillMaxWidth().height(64.dp).background(Color(0xFFFAFAFA))
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(item.preset.displayName, style = MaterialTheme.typography.titleMedium)
+                                        Text(if (item.preset.id == current.id) "Selected" else if (item.author.isNotBlank()) item.author else "Custom tip",
+                                            style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    TipAction(if (favorite) "Unpin favorite" else if (favoriteIds.size >= favoriteCapacity) "Favorite bar is full" else "Pin favorite", if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, enabled = !busy && (favorite || favoriteIds.size < favoriteCapacity), onClick = {
+                                        onFavorites(if (favorite) favoriteIds - item.preset.id.value else favoriteIds + item.preset.id.value)
+                                    })
+                                }
+                                TipStrokeThumbnail(item.preset, Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFFAFAFA))
                                     .clickable(enabled = !busy, onClickLabel = "Use tip") { onUse(item.preset); onDismiss() }
                                     .semantics { contentDescription = "Select ${item.preset.displayName}" })
-                                TipAction(if (favorite) "Unpin favorite" else if (favoriteIds.size >= favoriteCapacity) "Favorite bar is full" else "Pin favorite", if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, enabled = !busy && (favorite || favoriteIds.size < favoriteCapacity), onClick = {
-                                    onFavorites(if (favorite) favoriteIds - item.preset.id.value else favoriteIds + item.preset.id.value)
-                                })
-                                if (favorite && section == "Favorites") TipAction("Move to front", Icons.Outlined.VerticalAlignTop, onClick = {
-                                    onFavorites(listOf(item.preset.id.value) + favoriteIds.filterNot { it == item.preset.id.value })
-                                })
-                                if (item.description.isNotBlank()) Text(item.description, style = MaterialTheme.typography.bodySmall)
                                 Row {
                                     TipAction("Use", Icons.Outlined.Check, enabled = !busy, onClick = { onUse(item.preset); onDismiss() })
                                     TipAction(if (featured) "Customize" else "Edit", Icons.Outlined.Edit, enabled = ready && !busy, onClick = { editing = if (featured) BrushLibrary.copyOf(item) else item })
-                                    TipAction("Export", Icons.Outlined.FileDownload, enabled = !busy, onClick = {
-                                        pendingExport = item
-                                        exporter.launch("${item.preset.displayName.replace(Regex("[^a-zA-Z0-9 _-]"), "_")}.tipbrush")
-                                    })
-                                    TipAction("Share", Icons.Outlined.Share, enabled = !busy, onClick = {
-                                        busy = true
-                                        scope.launch {
-                                            val result = withContext(Dispatchers.IO) { runCatching {
-                                                val directory = File(context.cacheDir, "shared-brushes").apply { mkdirs() }
-                                                // Keep a bounded cache without revoking recent shares immediately.
-                                                directory.listFiles()?.sortedByDescending { it.lastModified() }?.drop(19)?.forEach { it.delete() }
-                                                val file = File.createTempFile("brush-", ".tipbrush", directory)
-                                                file.writeText(BrushPackage.encode(item))
-                                                FileProvider.getUriForFile(context, "${context.packageName}.brush-files", file)
-                                            } }
-                                            busy = false
-                                            result.onSuccess { uri ->
-                                                runCatching {
-                                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                                                        type = "application/json"
-                                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                                        putExtra(Intent.EXTRA_SUBJECT, item.preset.displayName)
-                                                        clipData = ClipData.newRawUri("TipStroke tip", uri)
-                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                                    }, "Share tip"))
-                                                }.onFailure { message = "No sharing app is available. Use Export instead." }
-                                            }.onFailure { message = "Could not prepare tip for sharing." }
-                                        }
-                                    })
+                                    Spacer(Modifier.weight(1f))
+                                    TipAction("More actions for ${item.preset.displayName}", Icons.Outlined.MoreHoriz, onClick = { moreOpen = !moreOpen })
                                 }
-                                if (!featured) Row {
-                                    TipAction("Duplicate", Icons.Outlined.ContentCopy, enabled = ready && !busy, onClick = {
-                                        editing = BrushLibrary.copyOf(item).let { it.copy(preset = it.preset.copy(displayName = "${it.preset.displayName} copy".take(60))) }
+                                if (moreOpen) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (item.description.isNotBlank()) Text(item.description, style = MaterialTheme.typography.bodySmall)
+                                    if (favorite && section == "Favorites") TipAction("Move to front", Icons.Outlined.VerticalAlignTop, onClick = {
+                                        onFavorites(listOf(item.preset.id.value) + favoriteIds.filterNot { it == item.preset.id.value })
                                     })
-                                    TipAction("Delete", Icons.Outlined.DeleteOutline, enabled = ready && !busy, onClick = { deleting = item })
+                                    Row {
+                                        TipAction("Export", Icons.Outlined.FileDownload, enabled = !busy, onClick = {
+                                            pendingExport = item
+                                            exporter.launch("${item.preset.displayName.replace(Regex("[^a-zA-Z0-9 _-]"), "_")}.tipbrush")
+                                        })
+                                        TipAction("Share", Icons.Outlined.Share, enabled = !busy, onClick = {
+                                            busy = true
+                                            scope.launch {
+                                                val result = withContext(Dispatchers.IO) { runCatching {
+                                                    val directory = File(context.cacheDir, "shared-brushes").apply { mkdirs() }
+                                                    // Keep a bounded cache without revoking recent shares immediately.
+                                                    directory.listFiles()?.sortedByDescending { it.lastModified() }?.drop(19)?.forEach { it.delete() }
+                                                    val file = File.createTempFile("brush-", ".tipbrush", directory)
+                                                    file.writeText(BrushPackage.encode(item))
+                                                    FileProvider.getUriForFile(context, "${context.packageName}.brush-files", file)
+                                                } }
+                                                busy = false
+                                                result.onSuccess { uri ->
+                                                    runCatching {
+                                                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                                                            type = "application/json"
+                                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                                            putExtra(Intent.EXTRA_SUBJECT, item.preset.displayName)
+                                                            clipData = ClipData.newRawUri("TipStroke tip", uri)
+                                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                        }, "Share tip"))
+                                                    }.onFailure { message = "No sharing app is available. Use Export instead." }
+                                                }.onFailure { message = "Could not prepare tip for sharing." }
+                                            }
+                                        })
+                                    }
+                                    if (!featured) Row {
+                                        TipAction("Duplicate", Icons.Outlined.ContentCopy, enabled = ready && !busy, onClick = {
+                                            editing = BrushLibrary.copyOf(item).let { it.copy(preset = it.preset.copy(displayName = "${it.preset.displayName} copy".take(60))) }
+                                        })
+                                        TipAction("Delete", Icons.Outlined.DeleteOutline, enabled = ready && !busy, onClick = { deleting = item })
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                TipAction("Back to canvas", Icons.Outlined.Close, enabled = !busy, onClick = onDismiss)
             }
         }
     }

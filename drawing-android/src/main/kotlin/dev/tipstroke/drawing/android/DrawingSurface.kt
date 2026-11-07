@@ -245,6 +245,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var stylusButtonListener: ((StylusButton) -> Unit)? = null
     var chromeOcclusionListener: ((Boolean) -> Unit)? = null
     private var chromeOccludedByStroke = false
+    private var chromeLeftInsetPx = 0f
+    private var chromeRightInsetPx = 0f
     private var chromeTopInsetPx = 0f
     private var chromeBottomInsetPx = 0f
     private var chromeApproachMarginPx = 0f
@@ -853,7 +855,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         gestureHandler.removeCallbacks(hideBrushPreview)
         gestureHandler.postDelayed(hideBrushPreview, 300L)
     }
-    fun setChromeOcclusionInsets(topPx: Float, bottomPx: Float, approachMarginPx: Float) {
+    fun setChromeOcclusionInsets(topPx: Float, bottomPx: Float, approachMarginPx: Float, leftPx: Float = 0f, rightPx: Float = 0f) {
+        chromeLeftInsetPx = leftPx.coerceAtLeast(0f)
+        chromeRightInsetPx = rightPx.coerceAtLeast(0f)
         chromeTopInsetPx = topPx.coerceAtLeast(0f)
         chromeBottomInsetPx = bottomPx.coerceAtLeast(0f)
         chromeApproachMarginPx = approachMarginPx.coerceAtLeast(0f)
@@ -2631,8 +2635,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (chromeOcclusionListener == null || index !in 0 until event.pointerCount || height <= 0) return
         val y = event.getY(index)
         setChromeOccludedByStroke(
-            y <= chromeTopInsetPx + chromeApproachMarginPx ||
-                y >= height - chromeBottomInsetPx - chromeApproachMarginPx,
+            (chromeTopInsetPx > 0f && y <= chromeTopInsetPx + chromeApproachMarginPx) ||
+                (chromeBottomInsetPx > 0f && y >= height - chromeBottomInsetPx - chromeApproachMarginPx) ||
+                (chromeLeftInsetPx > 0f && event.getX(index) <= chromeLeftInsetPx + chromeApproachMarginPx) ||
+                (chromeRightInsetPx > 0f && event.getX(index) >= width - chromeRightInsetPx - chromeApproachMarginPx),
         )
     }
 

@@ -431,11 +431,8 @@ fun CanvasScreen(
         val viewportHeight = maxHeight
         val compactPhone = minOf(maxWidth, maxHeight) < 600.dp
         val compactLandscape = !portrait && maxHeight < 760.dp
-        val safeWidth = viewportWidth - with(density) {
-            (WindowInsets.safeDrawing.getLeft(this, androidx.compose.ui.unit.LayoutDirection.Ltr) +
-                WindowInsets.safeDrawing.getRight(this, androidx.compose.ui.unit.LayoutDirection.Ltr)).toDp()
-        }
-        val landscapeDock = compactPhone && !portrait && safeWidth >= 560.dp
+        val safeInsets = WindowInsets.safeDrawing
+        val landscapeDock = compactPhone && !portrait
         fun manuallyHidePhoneChrome() {
             if (!compactPhone) return
             phoneChromeManuallyHidden = true
@@ -501,9 +498,11 @@ fun CanvasScreen(
                     phoneChromeOccludedByStroke = occluded
                 }) else null
                 view.setChromeOcclusionInsets(
-                    topPx = with(density) { (if (landscapeDock && phoneAdjustmentsOpen) 196.dp else 72.dp).toPx() },
+                    topPx = with(density) { (if (landscapeDock) 0.dp else 72.dp).toPx() },
                     bottomPx = with(density) { (if (landscapeDock) 0.dp else if (phoneAdjustmentsOpen) 196.dp else 72.dp).toPx() },
                     approachMarginPx = with(density) { 36.dp.toPx() },
+                    leftPx = with(density) { if (landscapeDock) 64.dp.toPx() + safeInsets.getLeft(this, androidx.compose.ui.unit.LayoutDirection.Ltr) else 0f },
+                    rightPx = with(density) { if (landscapeDock) (if (phoneAdjustmentsOpen) 458.dp else 64.dp).toPx() + safeInsets.getRight(this, androidx.compose.ui.unit.LayoutDirection.Ltr) else 0f },
                 )
             },
         )
@@ -582,8 +581,9 @@ fun CanvasScreen(
                 onAnimation = ::openAnimation,
                 onDebug = { debug = !debug },
                 onHide = ::manuallyHidePhoneChrome,
-                modifier = Modifier.align(if (landscapeDock) Alignment.TopStart else Alignment.TopCenter)
-                    .safeDrawingPadding().padding(4.dp).then(if (landscapeDock) Modifier.width(308.dp) else Modifier),
+                vertical = landscapeDock,
+                modifier = Modifier.align(if (landscapeDock) Alignment.CenterStart else Alignment.TopCenter)
+                    .safeDrawingPadding().padding(4.dp).then(if (landscapeDock) Modifier.width(54.dp).fillMaxHeight() else Modifier),
             )
         } else if (!resizeOpen && phoneChromeManuallyHidden) {
             PhoneChromeHandle(
@@ -646,14 +646,13 @@ fun CanvasScreen(
             )
         } else if (!resizeOpen && phoneChromeVisible) {
             Column(
-                Modifier.align(if (!portrait) Alignment.TopEnd else Alignment.BottomCenter)
-                    .safeDrawingPadding().padding(start = 4.dp, end = 4.dp, bottom = 4.dp,
-                        top = if (!portrait && !landscapeDock) 64.dp else 4.dp)
-                    .then(if (landscapeDock) Modifier.width(safeWidth - 340.dp) else Modifier.widthIn(max = 520.dp)),
+                Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
+                    .safeDrawingPadding().padding(4.dp)
+                    .then(if (landscapeDock) Modifier.width(56.dp).fillMaxHeight() else Modifier.widthIn(max = 520.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 BrushFavoritesDock(
-                    selected = brush, favorites = favoriteBrushes, horizontal = true,
+                    selected = brush, favorites = favoriteBrushes, horizontal = !landscapeDock,
                     brushActive = !erasing && !smudging && !selectToolActive && pixelTool == null,
                     toolLabel = when { erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
                     onCapacity = { favoriteCapacity = it }, onLibrary = { brushToEdit = null; brushLibraryOpen = true },
@@ -664,7 +663,7 @@ fun CanvasScreen(
                     onStudio = { brushStudioOpen = true },
                     onTune = { phoneAdjustmentsOpen = !phoneAdjustmentsOpen },
                     tuneDescription = if (phoneAdjustmentsOpen) "Hide size and opacity" else "Show size and opacity",
-                    modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth(),
+                    modifier = if (landscapeDock) Modifier.fillMaxHeight() else Modifier.widthIn(max = 520.dp).fillMaxWidth(),
                 )
             }
         }
@@ -694,8 +693,8 @@ fun CanvasScreen(
                 horizontal = true,
                 showColorSwitcher = false,
                 horizontalWidthFraction = 1f,
-                modifier = Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
-                    .safeDrawingPadding().padding(start = 8.dp, end = 8.dp, top = if (landscapeDock) 80.dp else 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
+                modifier = Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
+                    .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
                     .widthIn(max = 390.dp).fillMaxWidth(),
             )
         }
@@ -726,8 +725,8 @@ fun CanvasScreen(
                 }
             },
             onClear = { movingSelection = false; selectionMode = true; surface?.clearSelection() },
-            modifier = if (compactPhone) Modifier.align(if (landscapeDock) Alignment.TopEnd else Alignment.BottomCenter)
-                .safeDrawingPadding().padding(start = 8.dp, end = 8.dp, top = if (landscapeDock) 80.dp else 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
+            modifier = if (compactPhone) Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
+                .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
                 .widthIn(max = 390.dp).fillMaxWidth()
             else Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
                 .safeDrawingPadding().padding(if (portrait) 12.dp else 20.dp).width(if (portrait) 360.dp else 208.dp),
@@ -1275,18 +1274,16 @@ private fun PhoneEditorChrome(
     onAnimation: () -> Unit,
     onDebug: () -> Unit,
     onHide: () -> Unit,
+    vertical: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier.widthIn(max = 520.dp).fillMaxWidth(),
+        modifier.then(if (vertical) Modifier else Modifier.widthIn(max = 520.dp).fillMaxWidth()),
         color = Color(0xE6202125),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, Color(0xB345474D)),
     ) {
-        Row(
-            Modifier.height(48.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        val actions: @Composable () -> Unit = {
             if (onBack != null) {
                 IconButton(onClick = onBack, modifier = Modifier.size(38.dp).semantics { contentDescription = "Back to gallery" }) { BackIcon() }
             }
@@ -1329,6 +1326,11 @@ private fun PhoneEditorChrome(
                 }
             }
         }
+        if (vertical) Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) { actions() }
+        else Row(Modifier.height(48.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 3.dp),
+            verticalAlignment = Alignment.CenterVertically) { actions() }
+
     }
 }
 

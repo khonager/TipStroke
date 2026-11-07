@@ -53,6 +53,48 @@ class BrushCreatorFlowTest {
         }
     }
 
+    @Config(sdk = [35], qualifiers = "w800dp-h360dp-land-mdpi")
+    @Test fun libraryFitsCompleteTipInLandscape() = checkLibraryLayout("landscape")
+
+    @Config(sdk = [35], qualifiers = "w320dp-h640dp-port-mdpi")
+    @Test fun libraryFitsNarrowPhone() = checkLibraryLayout("phone")
+
+    @Config(sdk = [35], qualifiers = "w1280dp-h800dp-land-mdpi")
+    @Test fun libraryFitsTablet() = checkLibraryLayout("tablet")
+
+    private fun checkLibraryLayout(size: String) {
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { BrushLibraryDialog(BrushPreset.Pencil, {}, {}) }
+        }
+        compose.waitUntil(30_000) { compose.onAllNodes(hasContentDescription("Create tip") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Select Pencil").assertIsDisplayed()
+        compose.onAllNodesWithContentDescription("Use")[0].assertIsDisplayed()
+        val preview = compose.onNodeWithContentDescription("Select Pencil").fetchSemanticsNode().boundsInRoot
+        assertTrue("Preview must retain its full height", preview.height >= 80f)
+        val use = compose.onAllNodesWithContentDescription("Use")[0].fetchSemanticsNode().boundsInRoot
+        assertTrue("Action must retain its full touch target", use.height >= 48f)
+        compose.runOnIdle {
+            val root = org.robolectric.shadows.ShadowDialog.getLatestDialog().window!!.decorView
+            val image = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+            root.draw(android.graphics.Canvas(image))
+            val output = java.io.File("build/qa/tip-library-$size.png").also { it.parentFile?.mkdirs() }
+            output.outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            image.recycle()
+        }
+    }
+
+    @Test fun searchReturnsToControlsAfterScrolling() {
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { BrushLibraryDialog(BrushPreset.Pencil, {}, {}) }
+        }
+        compose.waitUntil(30_000) { compose.onAllNodes(hasContentDescription("Create tip") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Select Airbrush").performScrollTo()
+        compose.onNodeWithContentDescription("Search").performClick()
+        compose.onNodeWithText("Search tips").assertIsDisplayed().performTextInput("Ink")
+        compose.onNodeWithContentDescription("Select Ink").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Select Pencil").assertDoesNotExist()
+    }
+
     @Test fun createSaveReopenAndCancelPreservesSavedPreset() {
         val library = BrushLibrary(RuntimeEnvironment.getApplication())
         library.save(emptyList())
@@ -116,7 +158,8 @@ class BrushCreatorFlowTest {
         compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithText("Soft graphite").assertIsDisplayed()
         assertEquals("Soft graphite", library.load().single().preset.displayName)
-        compose.onNodeWithContentDescription("Delete").performClick()
+        compose.onNodeWithContentDescription("More actions for Soft graphite").performClick()
+        compose.onNodeWithContentDescription("Delete").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Cancel").performClick()
         assertEquals(1, library.load().size)
         compose.runOnIdle {

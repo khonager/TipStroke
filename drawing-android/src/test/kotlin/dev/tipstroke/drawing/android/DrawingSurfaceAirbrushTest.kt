@@ -149,6 +149,27 @@ class DrawingSurfaceAirbrushTest {
         assertEquals(listOf(true, false), chromeOcclusionChanges)
     }
 
+    @Test fun landscapeChromeTracksSideRailsInsteadOfTopAndBottom() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            layout(0, 0, 800, 400)
+            configureBlank(512, 512)
+            settings.brush = BrushPreset.Airbrush.copy(hardness = 1f)
+            settings.gestures = settings.gestures.copy(oneFingerDrag = FingerAction.DRAW)
+            setChromeOcclusionInsets(0f, 0f, 36f, leftPx = 64f, rightPx = 64f)
+        }
+        val changes = mutableListOf<Boolean>()
+        surface.chromeOcclusionListener = { changes += it }
+        val time = SystemClock.uptimeMillis()
+        surface.dispatchTouchEvent(fingerEvent(time, time, MotionEvent.ACTION_DOWN, 400f, 20f))
+        surface.dispatchTouchEvent(fingerEvent(time, time + 8, MotionEvent.ACTION_MOVE, 400f, 380f))
+        assertTrue(changes.isEmpty())
+        surface.dispatchTouchEvent(fingerEvent(time, time + 16, MotionEvent.ACTION_MOVE, 80f, 200f))
+        surface.dispatchTouchEvent(fingerEvent(time, time + 24, MotionEvent.ACTION_MOVE, 400f, 200f))
+        surface.dispatchTouchEvent(fingerEvent(time, time + 32, MotionEvent.ACTION_MOVE, 720f, 200f))
+        surface.dispatchTouchEvent(fingerEvent(time, time + 40, MotionEvent.ACTION_UP, 720f, 200f))
+        assertEquals(listOf(true, false, true, false), changes)
+    }
+
     @Test fun secondFingerCancelsTouchMarkAndSwitchesToNavigation() {
         val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
             layout(0, 0, 800, 800)
