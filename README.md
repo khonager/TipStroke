@@ -75,6 +75,13 @@ Stylus side buttons are configurable in Settings. By default, the primary button
 
 Pencil and Ink use TipStroke-owned Jetpack Ink 1.1 custom families. Pencil combines pressure, tilt, barrel orientation, speed taper, and clustered procedural paper tooth; Ink uses a smooth pressure nib with pointed entry and exit tapers. Airbrush joins its pressure-sized samples into one native raster silhouette and blurs that mask once, matching the soft eraser technique without stacked translucent outlines. Its wet preview and sparse-tile commit share the same painter.
 
+On Android 14+, **Tips → Jetpack Ink** offers Round, Stamp, Graphite, and Soft
+comparison brushes alongside the existing custom tips. **Create tip** lets you
+choose Custom tip or Jetpack Ink tip; Ink Studio includes a native drawing pad
+and shape, texture, flow, pressure, and tilt controls. Large Ink marks can still
+pause at pen-up during raster tile completion. See [Brush library](docs/BRUSH_LIBRARY.md)
+for the controls and supported features. iOS integration follows separately.
+
 ## Gallery, export, and gestures
 
 TipStroke starts in **Your drawings**. Create a named canvas up to 8192×8192, or reopen a local project with its paint tiles, image sources, transforms, layer ordering, and opacity intact. Projects autosave every 30 seconds, when the app backgrounds, and before returning to the gallery.

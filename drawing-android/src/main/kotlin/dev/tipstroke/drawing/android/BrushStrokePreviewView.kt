@@ -112,14 +112,14 @@ class BrushStrokePreviewView @JvmOverloads constructor(
                     centerY + sin(progress * PI * 2).toFloat() * height * .09f,
                 ),
                 pressure = pressure,
-                tiltRadians = if (!erasing && (brush.engine == BrushEngine.PENCIL || brush.stamp != null)) {
+                tiltRadians = if (!erasing && (brush.engine == BrushEngine.PENCIL || brush.stamp != null || brush.ink != null)) {
                     progress * BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS
                 } else {
                     0f
                 },
                 // Put the tilted Pencil's broad axis across the path so its changing contact is
                 // legible in this short horizontal sample.
-                orientationRadians = if (!erasing && (brush.engine == BrushEngine.PENCIL || brush.stamp != null)) (PI / 2).toFloat() else 0f,
+                orientationRadians = if (!erasing && (brush.engine == BrushEngine.PENCIL || brush.stamp != null || brush.ink != null)) (PI / 2).toFloat() else 0f,
                 elapsedNanos = elapsedNanos,
                 buttonState = 0,
                 kind = PointerKind.STYLUS,

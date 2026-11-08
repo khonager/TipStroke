@@ -87,9 +87,13 @@ Animation lazy loading is a runtime optimization: the on-disk PNG tile layout an
 
 ## Portable custom brushes
 
-The independent `.tipbrush` package is now version 2 with brush schema 3. An optional
+The independent `.tipbrush` package uses version 2 with brush schema 3 or 4 for
+shape-and-grain definitions. Jetpack Ink definitions use package version 3 and
+brush schema 4, with an `ink` object containing texture, aspect, roundness,
+rotation, particle mode, accumulation, flow, and tilt size. They cannot also
+contain `stamp`, and require the INK engine. Older readers reject the new schema. An optional
 stamp definition embeds two bounded grayscale source images (shape and grain) as
-base64 bytes and all current stamp dynamics. Version 1 / schema 2 packages remain
+base64 bytes and all current stamp dynamics. Version 1 / schema 2 and version 2 / schema 3 packages remain
 readable. Imports allocate new local IDs. Library storage and package bounds are
 documented in [Brush library](BRUSH_LIBRARY.md). Raster documents do not store live
 brush objects; completed custom marks are permanent raster tiles, and process

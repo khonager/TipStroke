@@ -284,3 +284,27 @@ this Linux host (3 warm-ups, 11 measured runs) gave median 219.46 → 46.00 ms f
 25-sample eraser batch on one 256 px tile at 180 px. These are host microbenchmarks,
 not Android frame times or pen latency; they isolate the redundant rendering work.
 Use the checked-in device benchmarks for representative hardware measurements.
+
+
+## Jetpack Ink comparison path
+
+The separate Android Ink category allows comparison without changing existing
+custom presets. Ordinary freehand authoring uses InProgressStrokesView and native
+MotionEvents, including pressure and prediction. Soft spray uses one GPU texture
+per particle rather than CPU raster stamps during wet authoring. This is not a
+guarantee of equal cost for all tips: dense particles still create geometry and
+overdraw, and screen-size mode can reach many full-resolution document tiles.
+
+Finished meshes use one reusable 256 px HardwareBufferRenderer target. Each
+reached tile requires GPU completion and CPU readback before its pixels enter the
+permanent raster layer. Completion currently runs synchronously on the UI thread;
+large marks can therefore pause at pen-up. No full-canvas readback or allocation
+is introduced. Creator thumbnails cache their output but rendering a changed
+thumbnail also incurs readback. Reference-constrained, fitted-shape, and animation
+paths can rebuild geometry. Moving ordered tile completion to a worker with an
+atomic wet/dry handoff remains follow-up work, as does physical stylus latency
+profiling. Emulator correctness tests do not establish hardware frame pacing.
+
+`JetpackInkInstrumentedTest` exercises the actual pinned native families and GPU
+tile renderer, confirms visible pixels and preview/commit agreement, and checks
+undo/redo. API 34 is required; existing brushes retain their prior support range.

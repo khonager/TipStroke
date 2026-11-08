@@ -67,7 +67,7 @@ fun CanvasScreen(
         libraryBrushes = withContext(Dispatchers.IO) { runCatching { BrushLibrary(context).load() }.getOrDefault(emptyList()) }
     }
     val favoriteBrushes = favoriteIds.mapNotNull { id ->
-        (BrushPreset.builtIns + libraryBrushes.map { it.preset }).firstOrNull { it.id.value == id }
+        (BrushPreset.libraryBuiltIns + libraryBrushes.map { it.preset }).firstOrNull { it.id.value == id }
     }
     val colorHistoryPreferences = remember { ColorHistoryPreferences(context) }
     val initialBrushTuning = remember { brushPreferences.load(BrushPreset.Ink) }
@@ -276,6 +276,10 @@ fun CanvasScreen(
         size = pixelSize
     }
     fun selectRegularBrush(preset: BrushPreset = brush) {
+        if (preset.ink != null && android.os.Build.VERSION.SDK_INT < 34) {
+            message = "Jetpack Ink comparison tips require Android 14 or newer."
+            return
+        }
         smudging = false
         selectToolActive = false; selectionMode = false; movingSelection = false
         pixelTool = null
@@ -999,11 +1003,11 @@ fun CanvasScreen(
         onDismiss = { brushLibraryOpen = false; brushToEdit = null },
     )
 
-    LaunchedEffect(brushStudioOpen, brush.stamp) {
-        if (brushStudioOpen && brush.stamp != null && !erasing) { brushStudioOpen = false; brushToEdit = brush.id; brushLibraryOpen = true }
+    LaunchedEffect(brushStudioOpen, brush.stamp, brush.ink) {
+        if (brushStudioOpen && (brush.stamp != null || brush.ink != null) && !erasing) { brushStudioOpen = false; brushToEdit = brush.id; brushLibraryOpen = true }
     }
 
-    if (brushStudioOpen && (brush.stamp == null || erasing)) BrushStudioDialog(
+    if (brushStudioOpen && ((brush.stamp == null && brush.ink == null) || erasing)) BrushStudioDialog(
         toolName = if (erasing) "Eraser" else brush.displayName,
         brush = brush,
         erasing = erasing,

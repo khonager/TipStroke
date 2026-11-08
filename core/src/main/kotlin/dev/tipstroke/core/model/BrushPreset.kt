@@ -40,8 +40,10 @@ data class BrushPreset(
     val pencilShadeStartRadians: Float = DEFAULT_PENCIL_SHADE_START_RADIANS,
     val pencilShadeTransitionRadians: Float = DEFAULT_PENCIL_SHADE_TRANSITION_RADIANS,
     val stamp: StampBrush? = null,
+    val ink: InkBrush? = null,
 ) {
     init {
+        require(ink == null || (stamp == null && engine == BrushEngine.INK && schemaVersion >= 4))
         require(speedTaper in 0f..1f)
         require(pencilPointSize in .5f..2f)
         require(pencilTiltSensitivity in 0f..1f)
@@ -53,7 +55,7 @@ data class BrushPreset(
     }
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 3
+        const val CURRENT_SCHEMA_VERSION = 4
         const val MIN_PENCIL_FULL_TILT_RADIANS = .08f
         const val MAX_PENCIL_FULL_TILT_RADIANS = 1.2f
         const val DEFAULT_PENCIL_FULL_TILT_RADIANS = .55f
@@ -84,6 +86,23 @@ data class BrushPreset(
             pressureToSize = PressureCurve(.2f, 1f, 1f), pressureToOpacity = PressureCurve(1f, 1f, 1f),
             stamp = StampBrush())
         val builtIns = listOf(Pencil, Ink, Airbrush)
+        val BlankInk = Ink.copy(id = BrushId("blank-jetpack-ink"), displayName = "New Ink tip",
+            baseSizePx = 32f, stabilization = .1f, speedTaper = 0f,
+            pressureToSize = PressureCurve(.2f, 1f, 1f), pressureToOpacity = PressureCurve(1f, 1f, 1f),
+            ink = InkBrush())
+        val jetpackInk = listOf(
+            BlankInk.copy(id = BrushId("jetpack-round-v1"), displayName = "Jetpack Round"),
+            BlankInk.copy(id = BrushId("jetpack-stamp-v1"), displayName = "Jetpack Stamp",
+                baseSizePx = 180f, spacing = .02f, stabilization = 0f, pressureToSize = PressureCurve(1f, 1f),
+                ink = InkBrush(particles = true, accumulate = true, flow = .5834822f, rotationDegrees = 10.057312f)),
+            BlankInk.copy(id = BrushId("jetpack-graphite-v1"), displayName = "Jetpack Graphite",
+                baseSizePx = 24f, opacity = .8f, pressureToOpacity = PressureCurve(.15f, 1f, 1f),
+                ink = InkBrush(texture = InkTexture.GRAPHITE, aspectRatio = .5f, particles = true, flow = .15f, tiltSize = 1.5f)),
+            BlankInk.copy(id = BrushId("jetpack-soft-v1"), displayName = "Jetpack Soft",
+                baseSizePx = 96f, spacing = .08f,
+                ink = InkBrush(texture = InkTexture.SOFT, particles = true, accumulate = true, flow = .12f)),
+        )
+        val libraryBuiltIns = builtIns + jetpackInk
     }
 }
 

@@ -23,6 +23,26 @@ class BrushLibraryTest {
         }
     }
 
+    @Test fun inkPackagesPersistSeparatelyAndRejectMixedOrDowngradedRenderers() {
+        val ink = LibraryBrush(BrushPreset.jetpackInk.last(), "Artist", "Ink comparison")
+        val encoded = BrushPackage.encode(ink)
+        assertEquals(ink, BrushPackage.decode(encoded))
+        val library = BrushLibrary(context)
+        val custom = LibraryBrush(BrushPreset.Blank)
+        library.save(listOf(custom, ink))
+        assertEquals(listOf(custom, ink), library.load())
+        for (broken in listOf(
+            JSONObject(encoded).put("version", 2),
+            JSONObject(encoded).put("schemaVersion", 3),
+            JSONObject(encoded).put("stamp", JSONObject(BrushPackage.encode(custom)).getJSONObject("stamp")),
+            JSONObject(encoded).put("ink", JSONObject.NULL),
+            JSONObject(encoded).put("engine", "AIRBRUSH"),
+        )) assertTrue(runCatching { BrushPackage.decode(broken.toString()) }.isFailure)
+        assertTrue(runCatching { BrushPackage.decode(JSONObject(encoded).apply {
+            getJSONObject("ink").put("particles", false)
+        }.toString()) }.isFailure)
+    }
+
     @Test fun allEnginesAndDetailedSettingsSurvivePortableRoundTrip() {
         BrushPreset.builtIns.forEach { base ->
             val original = LibraryBrush(base.copy(

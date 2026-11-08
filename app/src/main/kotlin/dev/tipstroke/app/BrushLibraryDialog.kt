@@ -50,6 +50,7 @@ internal fun BrushLibraryDialog(
     var ready by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var choosingCreator by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<LibraryBrush?>(null) }
     var deleting by remember { mutableStateOf<LibraryBrush?>(null) }
     var pendingExport by remember { mutableStateOf<LibraryBrush?>(null) }
@@ -59,7 +60,10 @@ internal fun BrushLibraryDialog(
         val result = withContext(Dispatchers.IO) { runCatching { library.load() } }
         result.onSuccess {
             brushes = it; ready = true; onLibraryChanged(it)
-            if (editBrushId != null) editing = it.firstOrNull { entry -> entry.preset.id == editBrushId } ?: LibraryBrush(current)
+            if (editBrushId != null) editing = it.firstOrNull { entry -> entry.preset.id == editBrushId }
+                ?: LibraryBrush(current).let { draft ->
+                    if (BrushPreset.libraryBuiltIns.any { preset -> preset.id == current.id }) BrushLibrary.copyOf(draft) else draft
+                }
         }
             .onFailure { message = "Could not load tips. Your saved library has been preserved." }
     }
@@ -111,7 +115,7 @@ internal fun BrushLibraryDialog(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Tip library", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                     TipAction("Create tip", Icons.Outlined.Add, enabled = ready && !busy, onClick = {
-                        editing = BrushLibrary.copyOf(LibraryBrush(BrushPreset.Blank))
+                        choosingCreator = true
                     })
                     TipAction("Search", Icons.Outlined.Search, onClick = {
                         searchOpen = !searchOpen
@@ -119,8 +123,9 @@ internal fun BrushLibraryDialog(
                     })
                     TipAction("Back to canvas", Icons.Outlined.Close, enabled = !busy, onClick = onDismiss)
                 }
-                val all = BrushPreset.builtIns.map { LibraryBrush(it, "TipStroke") } + brushes
+                val all = BrushPreset.libraryBuiltIns.map { LibraryBrush(it, "TipStroke") } + brushes
                 val shown = (when (section) {
+                    "Jetpack Ink" -> all.filter { it.preset.ink != null }
                     "My tips" -> brushes
                     "Favorites" -> favoriteIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } }
                     else -> all
@@ -135,11 +140,15 @@ internal fun BrushLibraryDialog(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TipAction("Import", Icons.Outlined.FileOpen, enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) })
-                                listOf("All tips", "My tips", "Favorites").forEach { name ->
+                                listOf("All tips", "Jetpack Ink", "My tips", "Favorites").forEach { name ->
                                     FilterChip(section == name, { section = name }, label = { Text(name) })
                                 }
                             }
                             if (searchOpen) OutlinedTextField(query, { query = it }, label = { Text("Search tips") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            if (section == "Jetpack Ink") Text(
+                                if (android.os.Build.VERSION.SDK_INT < 34) "Jetpack Ink drawing requires Android 14 or newer. Existing custom tips are still available."
+                                else "Compare native Ink tips with your existing brushes. Soft is a spray-style brush; erasing keeps the current raster eraser.",
+                                style = MaterialTheme.typography.bodySmall)
                             if (section == "Favorites") Text("${favoriteIds.size.coerceAtMost(favoriteCapacity)} / $favoriteCapacity canvas slots. Extra pins return when there is more room.", style = MaterialTheme.typography.bodySmall)
                             if (busy || !ready && message == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                             message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -147,15 +156,16 @@ internal fun BrushLibraryDialog(
                     }
                     if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Text(if (query.isBlank()) "Your tips will appear here. Create a new shape-and-grain tip or import a shared file." else "No matching tips.") }
                     items(shown, key = { it.preset.id.value }) { item ->
-                        val featured = item.preset.id in BrushPreset.builtIns.map { it.id }
+                        val featured = item.preset.id in BrushPreset.libraryBuiltIns.map { it.id }
                         val favorite = item.preset.id.value in favoriteIds
+                        val usable = item.preset.ink == null || android.os.Build.VERSION.SDK_INT >= 34
                         var moreOpen by remember { mutableStateOf(false) }
                         OutlinedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(item.preset.displayName, style = MaterialTheme.typography.titleMedium)
-                                        Text(if (item.preset.id == current.id) "Selected" else if (item.author.isNotBlank()) item.author else "Custom tip",
+                                        Text(if (item.preset.id == current.id) "Selected" else if (item.author.isNotBlank()) item.author else if (item.preset.ink != null) "Jetpack Ink" else "Custom tip",
                                             style = MaterialTheme.typography.bodySmall)
                                     }
                                     TipAction(if (favorite) "Unpin favorite" else if (favoriteIds.size >= favoriteCapacity) "Favorite bar is full" else "Pin favorite", if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, enabled = !busy && (favorite || favoriteIds.size < favoriteCapacity), onClick = {
@@ -163,10 +173,10 @@ internal fun BrushLibraryDialog(
                                     })
                                 }
                                 TipStrokeThumbnail(item.preset, Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFFAFAFA))
-                                    .clickable(enabled = !busy, onClickLabel = "Use tip") { onUse(item.preset); onDismiss() }
+                                    .clickable(enabled = !busy && usable, onClickLabel = "Use tip") { onUse(item.preset); onDismiss() }
                                     .semantics { contentDescription = "Select ${item.preset.displayName}" })
                                 Row {
-                                    TipAction("Use", Icons.Outlined.Check, enabled = !busy, onClick = { onUse(item.preset); onDismiss() })
+                                    TipAction("Use", Icons.Outlined.Check, enabled = !busy && usable, onClick = { onUse(item.preset); onDismiss() })
                                     TipAction(if (featured) "Customize" else "Edit", Icons.Outlined.Edit, enabled = ready && !busy, onClick = { editing = if (featured) BrushLibrary.copyOf(item) else item })
                                     Spacer(Modifier.weight(1f))
                                     TipAction("More actions for ${item.preset.displayName}", Icons.Outlined.MoreHoriz, onClick = { moreOpen = !moreOpen })
@@ -221,10 +231,30 @@ internal fun BrushLibraryDialog(
             }
         }
     }
+    if (choosingCreator) AlertDialog(
+        onDismissRequest = { choosingCreator = false }, title = { Text("Create a tip") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                choosingCreator = false; editing = BrushLibrary.copyOf(LibraryBrush(BrushPreset.Blank))
+            }, modifier = Modifier.fillMaxWidth()) { Text("Custom tip") }
+            Text("Shape and grain, including your own images.", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = {
+                choosingCreator = false; editing = BrushLibrary.copyOf(LibraryBrush(BrushPreset.BlankInk))
+            }, modifier = Modifier.fillMaxWidth()) { Text("Jetpack Ink tip") }
+            Text("Native Ink shapes, textures, stamps and dynamics. Drawing requires Android 14 or newer.", style = MaterialTheme.typography.bodySmall)
+        } }, confirmButton = {}, dismissButton = {
+            TextButton(onClick = { choosingCreator = false }) { Text("Cancel") }
+        })
     editing?.let { initial ->
         BrushCreatorDialog(initial, busy, message, onSave = { item ->
             val next = if (brushes.any { it.preset.id == item.preset.id }) brushes.map { if (it.preset.id == item.preset.id) item else it } else brushes + item
-            save(next) { editing = null; section = "My tips"; onUse(item.preset); message = "Tip saved and selected." }
+            save(next) {
+                editing = null
+                section = if (item.preset.ink != null) "Jetpack Ink" else "My tips"
+                if (item.preset.ink == null || android.os.Build.VERSION.SDK_INT >= 34) {
+                    onUse(item.preset); message = "Tip saved and selected."
+                } else message = "Tip saved. Drawing with it requires Android 14 or newer."
+            }
         }, onDismiss = { editing = null })
     }
     deleting?.let { item ->

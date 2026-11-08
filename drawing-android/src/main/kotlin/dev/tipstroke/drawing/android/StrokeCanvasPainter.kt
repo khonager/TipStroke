@@ -157,6 +157,11 @@ internal object StrokeCanvasPainter {
             canvas.restoreToCount(saveCount)
             return
         }
+        if (stroke.style.brush.ink != null && stroke.style.blend == BlendBehavior.PAINT) {
+            JetpackInkRendering.draw(canvas, stroke)
+            canvas.restoreToCount(saveCount)
+            return
+        }
         val samples = stroke.samples
         if (stroke.style.blend == BlendBehavior.PAINT && stroke.style.brush.engine == BrushEngine.PENCIL) {
             drawPencil(canvas, stroke, paint, replaceExisting = false, capStart = true, capEnd = true)

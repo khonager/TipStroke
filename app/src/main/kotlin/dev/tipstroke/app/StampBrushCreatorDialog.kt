@@ -29,6 +29,10 @@ import kotlin.math.roundToInt
 @Composable
 internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: String?, onSave: (LibraryBrush) -> Unit, onDismiss: () -> Unit) {
     var draft by remember(initial) { mutableStateOf(initial) }
+    if (draft.preset.ink != null) {
+        InkBrushCreatorDialog(draft, busy, message, onSave, onDismiss)
+        return
+    }
     if (draft.preset.stamp == null) {
         LegacyBrushCreatorDialog(draft, busy, message, onSave, onDismiss, onConvert = {
             draft = draft.copy(preset = draft.preset.copy(schemaVersion = BrushPreset.CURRENT_SCHEMA_VERSION,

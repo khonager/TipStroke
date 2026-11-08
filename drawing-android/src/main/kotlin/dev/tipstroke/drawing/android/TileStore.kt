@@ -251,7 +251,7 @@ class TileStore(
                     val maskStroke = stroke.copy(style = stroke.style.copy(
                         blend = dev.tipstroke.core.model.BlendBehavior.PAINT,
                         referenceStrokes = null,
-                        brush = stroke.style.brush.copy(engine = dev.tipstroke.core.model.BrushEngine.AIRBRUSH, stamp = null),
+                        brush = stroke.style.brush.copy(engine = dev.tipstroke.core.model.BrushEngine.AIRBRUSH, stamp = null, ink = null),
                     ))
                     StrokeCanvasPainter.draw(maskCanvas, maskStroke)
                     (stroke.style.referenceStrokes as? ReferenceStrokes)?.drawCoverage(maskCanvas, maskCanvas.clipBounds)
@@ -376,28 +376,35 @@ class TileStore(
         val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
         if (dirty.isEmpty()) return emptySet()
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        dirty.forEach { coordinate ->
-            val bitmap = writableTile(coordinate)
-            val pressureOpacity = pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)
-            val rendered = if (pressureOpacity) Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) else bitmap
-            val canvas = Canvas(rendered)
-            canvas.save()
-            canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
-            stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
-            renderer.draw(canvas, inkStroke, Matrix())
-            canvas.restore()
-            if (pressureOpacity) {
-                StrokeCanvasPainter.applyPressureOpacityMask(
-                    rendered,
-                    stroke,
-                    coordinate.x * tileSize,
-                    coordinate.y * tileSize,
-                )
-                Canvas(bitmap).drawBitmap(rendered, 0f, 0f, null)
-                rendered.recycle()
+        val gpu = if (stroke.style.brush.ink != null && android.os.Build.VERSION.SDK_INT >= 34) JetpackInkRendering.TileRenderer() else null
+        try {
+            dirty.forEach { coordinate ->
+                val bitmap = writableTile(coordinate)
+                val pressureOpacity = stroke.style.brush.ink == null && pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)
+                val rendered = if (pressureOpacity) Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) else bitmap
+                val canvas = Canvas(rendered)
+                canvas.save()
+                canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+                stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
+                if (android.os.Build.VERSION.SDK_INT >= 34 && gpu != null) gpu.draw(canvas, inkStroke, renderer) else renderer.draw(canvas, inkStroke, Matrix())
+                canvas.restore()
+                if (pressureOpacity) {
+                    StrokeCanvasPainter.applyPressureOpacityMask(
+                        rendered,
+                        stroke,
+                        coordinate.x * tileSize,
+                        coordinate.y * tileSize,
+                    )
+                    Canvas(bitmap).drawBitmap(rendered, 0f, 0f, null)
+                    rendered.recycle()
+                }
+                if (bitmap.isFullyTransparent()) { removeTile(coordinate) }
             }
-            if (bitmap.isFullyTransparent()) { removeTile(coordinate) }
-        }
+        } catch (error: Exception) {
+            restore(before)
+            before.values.forEach { it?.recycle() }
+            throw error
+        } finally { if (android.os.Build.VERSION.SDK_INT >= 34) gpu?.close() }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke, ink = inkStroke))))
         lastDirtyTiles = dirty

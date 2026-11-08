@@ -48,6 +48,7 @@ data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeSty
         // can never be clipped at a sparse-tile boundary.
         val custom = style.brush.stamp
         val radius = style.sizePx * if (style.blend == BlendBehavior.ERASE) 1.35f
+        else if (style.brush.ink != null) (1f + style.brush.ink.tiltSize) * .8f + 1f
         else if (custom != null) (1f + custom.tiltSize) * (1f + custom.scatter)
         else when (style.brush.engine) {
             BrushEngine.PENCIL -> maxOf(

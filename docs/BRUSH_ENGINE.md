@@ -30,7 +30,7 @@ Opacity uses a separate pressure channel from size. Ink treats a rapid collapse 
 
 Jetpack Ink 1.1 custom brushes are alpha API. TipStroke accepts that source-compatibility risk during the pre-release period and pins an exact version. Upgrades require device checks for family construction, texture rendering, live/final handoff, and project reopening. Project files contain raster pixels and versioned TipStroke brush settings—not serialized Ink objects—so an Ink API migration cannot invalidate existing artwork.
 
-`SelfOverlap.ACCUMULATE`, particle-gap custom coats, and `StampingTexture` airbrush coats currently render in `InProgressStrokesView` but produce an empty finalized image through `CanvasStrokeRenderer` in `1.1.0-alpha08`. Airbrush therefore uses the native blurred raster path for both its live result and permanent tiles. The connected-device visual regression test exercises that production path so an attractive wet preview cannot silently disappear at commit.
+`SelfOverlap.ACCUMULATE` and `StampingTexture` require the hardware mesh renderer on Android 14+. Drawing them directly to a software `Canvas(Bitmap)` can produce an empty result. The original Airbrush retains its blurred raster path. The separate Jetpack Ink comparison brushes use a hardware tile target for finalization, described below.
 
 Eraser gestures still use a cancellable sparse-tile transaction while the pointer is down because Ink does not author a clear-blend stroke over the already-composited lower layers. Only the new segment and intersecting tiles are processed. The normal live eraser computes a continuous capsule falloff directly in the reached pixel rectangles, interpolating pressure-driven width and opacity between sample endpoints. Adjacent segments share endpoint widths and the same radial falloff, so separately blurred caps cannot leave seams. The live eraser ignores speed taper: moving faster must not narrow the contact at event boundaries. Hardness controls a smooth radial feather with a one-pixel antialias transition at a hard edge. Selection/reference-constrained and pixel erasing retain their clipped mask path. The normal path retains coverage plus nearest-centerline distance per reached pixel. Width and opacity come from that nearest segment, with stronger coverage winning equal-distance ties. As the line continues, its pressure gradient replaces the provisional rounded endpoint, including reducing provisional coverage when pressure falls; retaining the strongest endpoint forever would leave circular opacity bands. Coverage is applied against the touch-down snapshot, so samples do not accumulate erasing and completed earlier gestures remain intact. Constrained/pixel erasing retains its maximum-coverage mask. Lifting and starting another gesture can erase further. Cancellation restores before snapshots and pen-up records one bounded undo transaction; both release the temporary coverage masks.
 
@@ -121,3 +121,31 @@ tiles. The grid is chosen by softness, not by canvas resolution or camera zoom;
 hard edges retain full-resolution sampling. This intentionally approximates broad
 blur coverage to bound temporary memory. Existing artwork and frozen v1 replay
 renderers are unchanged; newly authored raster patches retain the new pixels exactly.
+
+## Android Jetpack Ink comparison library
+
+Schema 4 adds optional platform-independent `BrushPreset.ink` settings, mutually
+exclusive with `stamp` and restricted to the INK engine. The original built-in
+list remains unchanged; `libraryBuiltIns` also includes four Ink comparison tips.
+`TipStrokeInkBrushes` translates the settings into custom tips, behaviors, and
+solid, tiling graphite, or soft stamping paint. Smoothing maps to a 1–30 ms native
+window (Ink rejects zero). Pressure curves use a 33-point piecewise-linear approximation of the saved power
+curve, with denser sampling at light pressure. Accumulating tips always use
+particles: the pinned engine retains the initial contact size with continuous
+ACCUMULATE geometry, so particle geometry is needed for changing pressure/tilt.
+
+Ordinary freehand input goes directly from MotionEvent to InProgressStrokesView.
+Completion renders the finished native mesh through HardwareBufferRenderer into
+a reusable 256 × 256 target, then composites its pixels into reached raster tiles.
+This preserves the mesh-only opacity and texture features that the software Ink
+renderer cannot handle. The raster tile snapshots still provide undo, persistence,
+and exact process replay. No Ink objects or GPU buffers become project data.
+New definitions bypass the legacy Ink pressure-mask correction.
+
+Thumbnail, sample, fitted-shape, reference/clip-constrained, and animation painters
+use the same family construction and hardware tile renderer. These auxiliary paths
+can rebuild whole stroke geometry and have higher cost than ordinary native wet
+authoring. Pixel tools and erasing keep their existing rendering semantics. The
+comparison brushes require API 34; there is no silent CPU brush substitution on
+older Android. Native instrumentation checks real rendering, preview/commit pixel
+agreement, and undo/redo; host tests cannot load Android Ink's JNI implementation.

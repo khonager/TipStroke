@@ -417,7 +417,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     if (pending.reveal != null) {
                         finishStrokeRecording(pending.reveal, stroke)
                     } else if (stroke.style.blend == BlendBehavior.PAINT) {
-                        val rasterStroke = if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
+                        val rasterStroke = if (stroke.style.brush.ink == null && pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
                             Stroke(createInkBrush(stroke.style, includePressureOpacity = false), inkStroke.inputs)
                         } else inkStroke
                         store.commitInk(stroke, rasterStroke, inkRenderer)
@@ -1805,7 +1805,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val style = styleForTarget(baseStyle, target)
                 shapeStyle = style
                 shapeSnapped = false
-                if ((style.brush.stamp != null && style.pixelTool == null) || target.image != null || style.blend == BlendBehavior.ERASE ||
+                if (style.brush.ink != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
+                    (style.referenceStrokes != null || layerStack.selected().clipSourceId != null)) {
+                    rasterPreviewStyle = style
+                    rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
+                } else if ((style.brush.stamp != null && style.pixelTool == null) || target.image != null || style.blend == BlendBehavior.ERASE ||
                     ((style.referenceStrokes != null || layerStack.selected().clipSourceId != null) && style.pixelTool != PixelTool.LINE)) {
                     customPreviewStyle = style
                     target.store.beginLiveStroke()
@@ -2670,7 +2674,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val image = target.image ?: return style.copy(referenceStrokes = (style.referenceStrokes as? ReferenceStrokes)?.forTarget(target.store))
         val localSelection = style.selection?.let { selection -> imageLocalSelection(image, selection) }
         return style.copy(
-            brush = style.brush.copy(engine = BrushEngine.AIRBRUSH, stamp = null),
+            brush = style.brush.copy(engine = BrushEngine.AIRBRUSH, stamp = null, ink = null),
             sizePx = style.sizePx / image.transform.scale.coerceAtLeast(.02f),
             opacity = 1f,
             color = RgbaColor(1f, 1f, 1f),
@@ -2701,7 +2705,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun createInkBrush(style: StrokeStyle, includePressureOpacity: Boolean = true, previewAlpha: Int? = null): Brush {
         val c = style.color
-        val alpha = previewAlpha ?: (style.opacity * c.alpha * 255).roundToInt().coerceIn(1, 255)
+        val alpha = previewAlpha ?: (style.opacity * c.alpha * (style.brush.ink?.flow ?: 1f) * 255).roundToInt().coerceIn(1, 255)
         val argb = Color.argb(alpha, (c.red * 255).roundToInt(), (c.green * 255).roundToInt(), (c.blue * 255).roundToInt())
         val brushPreset = if (includePressureOpacity) style.brush else {
             style.brush.copy(pressureToOpacity = PressureCurve(1f, 1f, 1f))

@@ -1,7 +1,7 @@
 # Android tip creation, selection, and sharing
 
 Open **Tips** directly from the canvas dock. The library has All tips,
-My tips, and Favorites sections, stroke previews, search, import, and
+Jetpack Ink, My tips, and Favorites sections, stroke previews, search, import, and
 **Create tip**. Tip selection is independent of the adjustment controls.
 
 The library uses one column on narrow phones and a responsive grid of at least
@@ -15,8 +15,9 @@ font sizes and in split windows.
 
 ## Original tips
 
-Create tip starts a new shape-and-grain tip, not a copy of Pencil, Ink, or
-Airbrush. Its native raster renderer lays down a sequence of stamps. The three
+Create tip offers **Custom tip** (the existing shape-and-grain creator) and
+**Jetpack Ink tip** (Ink Studio). Custom tip starts an independent shape-and-grain
+definition rather than copying Pencil, Ink, or Airbrush. Its native raster renderer lays down a sequence of stamps. The three
 legacy tips remain available; Customize retains their existing editor and
 **Design with shape & grain** converts a copy to the new renderer.
 
@@ -57,6 +58,29 @@ still reserved; the custom editor does not expose an ineffective smoothing slide
 Reference: [Procreate Brush Studio settings](https://help.procreate.com/procreate/handbook/brushes/brush-studio-settings)
 uses shape, grain, and stroke-path controls; the native implementation and source
 assets here are TipStroke's own.
+
+## Jetpack Ink comparison tips
+
+The **Jetpack Ink** category contains Jetpack Round, Jetpack Stamp, Jetpack
+Graphite, and Jetpack Soft, plus saved Ink definitions. Existing custom tips and
+Pencil/Ink/Airbrush are retained. These comparison tips require **Android 14+**;
+older devices can manage their files but cannot select them for drawing.
+
+**Create tip → Jetpack Ink tip** opens Ink Studio with About, Tip, Stroke, and
+Dynamics sections. Controls cover solid/graphite/soft texture, aspect, roundness,
+angle, continuous or separate stamps, spacing, overlapping buildup, flow,
+smoothing, pressure size/opacity, tilt size, and speed taper. Accumulating tips require
+separate stamps; soft texture and pressure opacity imply overlapping buildup.
+The live pad uses the canvas's native Ink authoring surface. Changing a setting
+clears the pad; Sample draws a pressure/tilt test. Save, customize, duplicate,
+favorite, import, and export use the same local library as other tips.
+
+These are comparison brushes, not automatic conversions of existing tips.
+Jetpack Soft is an accumulating textured spray, with a different appearance from
+the original Airbrush's single blurred silhouette. Erasing retains the existing
+raster eraser. Imported image sources, scatter, and color jitter remain in the
+Custom tip creator. iOS integration is deferred; no cross-platform input path is
+introduced.
 
 ## Favorites that fit
 
@@ -120,7 +144,9 @@ tip renderer is not changed, and its codec refuses custom tip commands.
 ## Format and storage
 
 `.tipbrush` JSON uses `format: "tipstroke-brush"`, package `version: 2`, and tip
-`schemaVersion: 3` for custom tips. The optional `stamp` object contains the
+`schemaVersion: 3` or `4` for shape-and-grain tips. Jetpack Ink definitions use
+package `version: 3`, tip `schemaVersion: 4`, and an `ink` object instead of
+`stamp`; older readers reject them rather than silently changing the brush. The optional `stamp` object contains the
 parameters and source images as bounded base64 coverage bytes with dimensions.
 Existing package v1 / tip schema 2 files still import as legacy presets. Unknown
 versions, invalid ranges/enums, missing image sources, and oversized/invalid source

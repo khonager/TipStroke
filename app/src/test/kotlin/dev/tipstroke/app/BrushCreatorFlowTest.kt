@@ -95,6 +95,53 @@ class BrushCreatorFlowTest {
         compose.onNodeWithContentDescription("Select Pencil").assertDoesNotExist()
     }
 
+    @Test fun openingInkStudioFromABundledTipSavesANewIdentity() {
+        val library = BrushLibrary(RuntimeEnvironment.getApplication())
+        library.save(emptyList())
+        val bundled = BrushPreset.jetpackInk.first()
+        var selected: BrushPreset? = null
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { BrushLibraryDialog(bundled, { selected = it }, {}, editBrushId = bundled.id) }
+        }
+        compose.waitUntil(30_000) { compose.onAllNodesWithText("Ink Studio").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Save and use").performClick()
+        compose.waitUntil(10_000) { selected != null }
+        assertNotEquals(bundled.id, selected!!.id)
+        assertEquals(bundled.ink, library.load().single().preset.ink)
+    }
+
+    @Test fun inkCategoryAndCreatorSaveAlongsideExistingCustomTips() {
+        val library = BrushLibrary(RuntimeEnvironment.getApplication())
+        val original = LibraryBrush(BrushPreset.Blank.copy(id = dev.tipstroke.core.model.BrushId("kept-custom")))
+        library.save(listOf(original))
+        var selected: BrushPreset? = null
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { BrushLibraryDialog(BrushPreset.Pencil, { selected = it }, {}) }
+        }
+        compose.waitUntil(30_000) { compose.onAllNodes(hasContentDescription("Create tip") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Jetpack Ink").performClick()
+        compose.onNodeWithContentDescription("Select Jetpack Round").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Select Pencil").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Create tip").performClick()
+        compose.onNodeWithText("Jetpack Ink tip").performClick()
+        compose.onNodeWithText("Ink Studio").assertIsDisplayed()
+        compose.onNodeWithText("Tip name").performTextReplacement("My soft Ink")
+        compose.onNodeWithText("Tip").performClick()
+        compose.onNodeWithText("Soft").performClick()
+        compose.onNodeWithContentDescription("Save and use").performClick()
+        compose.waitUntil(10_000) { selected != null }
+        assertEquals(dev.tipstroke.core.model.InkTexture.SOFT, selected!!.ink!!.texture)
+        assertTrue(selected!!.ink!!.particles)
+        assertEquals(original, library.load().first())
+        assertEquals(selected, library.load().last().preset)
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("My soft Ink"))
+        compose.onNodeWithContentDescription("Edit").performScrollTo().performClick()
+        compose.onNodeWithText("Ink Studio").assertIsDisplayed()
+        compose.onNodeWithText("Tip name").performTextReplacement("Discarded Ink edit")
+        compose.onNodeWithContentDescription("Cancel").performClick()
+        assertEquals("My soft Ink", library.load().last().preset.displayName)
+    }
+
     @Test fun createSaveReopenAndCancelPreservesSavedPreset() {
         val library = BrushLibrary(RuntimeEnvironment.getApplication())
         library.save(emptyList())
@@ -109,6 +156,7 @@ class BrushCreatorFlowTest {
             throw error
         }
         compose.onNodeWithContentDescription("Create tip").performClick()
+        compose.onNodeWithText("Custom tip").performClick()
         compose.onNodeWithText("Tip name").performTextReplacement("Soft graphite")
         compose.onNodeWithText("Creator name (optional)").performTextReplacement("Artist")
         compose.onNodeWithText("Grain").performClick()

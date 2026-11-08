@@ -20,6 +20,7 @@ dependencies {
     implementation("androidx.ink:ink-authoring:$inkVersion")
     implementation("androidx.ink:ink-brush:$inkVersion")
     implementation("androidx.ink:ink-strokes:$inkVersion")
+    implementation("androidx.ink:ink-geometry:$inkVersion")
     implementation("androidx.ink:ink-rendering:$inkVersion")
     implementation("androidx.input:input-motionprediction:1.0.0")
     testImplementation("junit:junit:4.13.2")
