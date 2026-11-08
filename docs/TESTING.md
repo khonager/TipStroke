@@ -415,3 +415,27 @@ Validated on the API 35 tablet emulator: all six clip-editing instrumentation
 checks and all seven existing media import/playback checks passed. The full
 `assembleDebug test lint` run passed; final clip lookup/control adjustments also
 passed core/UI tests, lint, APK assembly, and the six clip instrumentation checks.
+
+### Dense brushes and size units
+
+`BrushSizeControlsTest`, `BrushSizeUnitTest`, `StampPathTest`,
+`DrawingSurfaceAirbrushTest`, `AirbrushPreviewTest`, and `StampBrushRenderingTest`
+cover the unit menu/persistence, zoom conversion, subpixel continuity, frozen stroke
+size, cancellation, bounded preview memory, preview coverage, and the supplied
+180 px / 0.02-spacing / 0.5834822-flow round stamp reproduction. Existing native
+`TileStoreTest` pressure, batch, undo, and replay cases cover the eraser changes.
+
+On a physical tablet, run:
+
+```sh
+./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.BrushPerformanceInstrumentedTest,dev.tipstroke.drawing.android.LiveEraserInstrumentedTest
+```
+
+Inspect `brush-qa/render-times.txt` and `eraser-qa/update-times.txt` in connected-test
+additional output. These report rendering time, not pen-to-photon latency. Compare
+fast diagonal/looping stylus and finger strokes on 128, 2048 and 8192 px canvases,
+with the imported round stamp, Airbrush and soft Eraser. Try both size units at fit,
+1× and high zoom, a long pressure-changing stroke, cancellation, undo/redo,
+selection/reference clips, and painting over lower visible layers. Watch both the
+moving tip and pen-up handoff. No physical Android device was connected for the
+November 8, 2026 implementation checks, so device timings remain to be collected.

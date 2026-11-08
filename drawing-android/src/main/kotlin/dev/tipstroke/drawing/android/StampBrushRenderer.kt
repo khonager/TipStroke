@@ -11,15 +11,25 @@ internal class StampBrushRenderer(private val style: StrokeStyle) : AutoCloseabl
     private val config = requireNotNull(style.brush.stamp)
     val path = StampPath(style)
     private val shape = shapeBitmap(config, style.brush.hardness)
-    private val grain = grainBitmap(config)
+    private val hasGrain = config.grain != StampGrain.NONE && config.grainDepth > 0f
+    private val grain = if (hasGrain) grainBitmap(config) else null
     private val shapeShader = BitmapShader(shape, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-    private val grainShader = BitmapShader(grain, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+    private val grainShader = grain?.let { BitmapShader(it, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        shader = ComposeShader(shapeShader, grainShader, PorterDuff.Mode.DST_IN)
+        shader = grainShader?.let { ComposeShader(shapeShader, it, PorterDuff.Mode.DST_IN) }
     }
     private val hsv = FloatArray(3).also { Color.colorToHSV(Color.rgb((style.color.red * 255).roundToInt(), (style.color.green * 255).roundToInt(), (style.color.blue * 255).roundToInt()), it) }
     private val tint = FloatArray(3)
     private val matrix = Matrix()
+    private var lastTint: Int? = null
+    private val fixedTipEligible = !hasGrain && config.rotationJitter == 0f && !config.followDirection &&
+        config.sizeJitter == 0f && config.tiltSize == 0f && config.startTaperPx == 0f &&
+        config.hueJitter == 0f && config.saturationJitter == 0f && style.brush.speedTaper == 0f &&
+        style.brush.pressureToSize.start == style.brush.pressureToSize.end
+    private var fixedTip: Bitmap? = null
+    private var fixedTipScale = 1f
+    private val blitPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val destination = RectF()
 
     fun draw(canvas: Canvas, stamps: List<BrushStamp>) {
         val saved = canvas.save()
@@ -33,19 +43,58 @@ internal class StampBrushRenderer(private val style: StrokeStyle) : AutoCloseabl
             matrix.postScale(stamp.size / shape.width, stamp.size * config.aspectRatio / shape.height)
             matrix.postRotate(stamp.angle)
             matrix.postTranslate(stamp.x, stamp.y)
-            shapeShader.setLocalMatrix(matrix)
-            matrix.reset()
-            matrix.setScale(config.grainScale / grain.width, config.grainScale / grain.height)
-            if (config.grainPlacement == GrainPlacement.STAMP) matrix.postTranslate(stamp.x - stamp.size / 2f, stamp.y - stamp.size / 2f)
-            grainShader.setLocalMatrix(matrix)
+            if (grainShader != null && grain != null) {
+                shapeShader.setLocalMatrix(matrix)
+            }
             tint[0] = (hsv[0] + stamp.hue + 360f) % 360f
             tint[1] = (hsv[1] + stamp.saturation).coerceIn(0f, 1f)
             tint[2] = hsv[2]
-            paint.colorFilter = PorterDuffColorFilter(Color.HSVToColor(tint), PorterDuff.Mode.SRC_IN)
+            val color = Color.HSVToColor(tint)
+            if (color != lastTint) {
+                paint.colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
+                lastTint = color
+            }
             paint.alpha = (stamp.alpha * 255).roundToInt()
-            canvas.drawRect(bounds.left, bounds.top, bounds.right, bounds.bottom, paint)
+            if (grainShader == null || grain == null) {
+                // A bitmap blit avoids evaluating two shaders over a mostly transparent
+                // bounding square for every overlapping stamp. Flow and spacing stay exact.
+                if (fixedTipEligible) drawFixedTip(canvas, stamp)
+                else canvas.drawBitmap(shape, matrix, paint)
+            } else {
+                matrix.reset()
+                matrix.setScale(config.grainScale / grain.width, config.grainScale / grain.height)
+                if (config.grainPlacement == GrainPlacement.STAMP) matrix.postTranslate(stamp.x - stamp.size / 2f, stamp.y - stamp.size / 2f)
+                grainShader.setLocalMatrix(matrix)
+                canvas.drawRect(bounds.left, bounds.top, bounds.right, bounds.bottom, paint)
+            }
         }
         canvas.restoreToCount(saved)
+    }
+
+    private fun drawFixedTip(canvas: Canvas, stamp: BrushStamp) {
+        val tip = fixedTip ?: run {
+            // Bake a stable size/angle/tint once. Dense round brushes otherwise repeat
+            // the same resampling and color filter dozens of times at each position.
+            // Only a tip is cached, never artwork; cap it independently of canvas size.
+            fixedTipScale = min(1f, 1020f / (stamp.size * 1.44f))
+            val edge = (ceil(stamp.size * 1.44f * fixedTipScale).toInt() + 4).coerceAtMost(1024)
+            Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888).also { bitmap ->
+                val scratch = Canvas(bitmap)
+                scratch.translate(edge / 2f, edge / 2f)
+                scratch.scale(fixedTipScale, fixedTipScale)
+                scratch.rotate(stamp.angle)
+                scratch.scale(stamp.size / shape.width, stamp.size * config.aspectRatio / shape.height)
+                val alpha = paint.alpha
+                paint.alpha = 255
+                scratch.drawBitmap(shape, -shape.width / 2f, -shape.height / 2f, paint)
+                paint.alpha = alpha
+                fixedTip = bitmap
+            }
+        }
+        val half = tip.width / (2f * fixedTipScale)
+        destination.set(stamp.x - half, stamp.y - half, stamp.x + half, stamp.y + half)
+        blitPaint.alpha = paint.alpha
+        canvas.drawBitmap(tip, null, destination, blitPaint)
     }
 
     fun drawClipped(canvas: Canvas, stamps: List<BrushStamp>) {
@@ -60,7 +109,7 @@ internal class StampBrushRenderer(private val style: StrokeStyle) : AutoCloseabl
         canvas.restoreToCount(saved)
     }
 
-    override fun close() { shape.recycle(); grain.recycle() }
+    override fun close() { shape.recycle(); grain?.recycle(); fixedTip?.recycle(); fixedTip = null }
 
     companion object {
         fun bounds(stamp: BrushStamp): Rect {

@@ -7,6 +7,7 @@ import dev.tipstroke.core.drawing.PixelTool
 class CanvasSettings {
     @Volatile var brush: BrushPreset = BrushPreset.Ink
     @Volatile var pixelTool: PixelTool? = null
+    @Volatile var sizeUnit = dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS
     @Volatile var sizePx: Float = BrushPreset.Ink.baseSizePx
     @Volatile var opacity: Float = 1f
     @Volatile var color: RgbaColor = RgbaColor(0.05f, 0.05f, 0.06f)

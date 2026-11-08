@@ -6,6 +6,7 @@ import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.model.*
 import org.junit.Assert.*
+import kotlin.math.roundToInt
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -42,6 +43,32 @@ class StampBrushRenderingTest {
         assertFalse(live.history.canUndo())
         assertTrue(live.history.redo())
         assertTrue(actual.getValue(TileCoordinate(1, 1)).sameAs(live.snapshotTiles().getValue(TileCoordinate(1, 1))))
+    }
+
+    @Test fun easyFingerKeepsFlowAndItsWetPixelsAcrossTileBoundaries() {
+        // Reproduction from the supplied easy finger tipbrush, including dense spacing.
+        val brush = BrushPreset.Blank.copy(baseSizePx = 180f, hardness = 1f, spacing = .02f,
+            pressureToSize = PressureCurve(1f, 1f), pressureToOpacity = PressureCurve(1f, 1f),
+            speedTaper = 0f, stamp = StampBrush(grainDepth = 0f, grainScale = 2f,
+                rotationDegrees = 10.057312f, flow = .5834822f))
+        val stroke = stroke(brush).copy(style = stroke(brush).style.copy(sizePx = 180f, opacity = 1f))
+        val store = TileStore(768, 512)
+        store.beginLiveStroke()
+        store.appendLiveStroke(stroke.copy(samples = stroke.samples.take(1)))
+        assertTrue(kotlin.math.abs((255 * .5834822f).roundToInt() - Color.alpha(store.colorAt(200, 240))) <= 1)
+        stroke.samples.zipWithNext().forEach { (a, b) ->
+            store.appendLiveStroke(stroke.copy(samples = listOf(a, b)))
+        }
+        val wet = store.snapshotTiles()
+        store.finishLiveStroke(stroke)
+        val expected = TileStore(768, 512).also { it.commit(stroke) }.snapshotTiles()
+        assertEquals(expected.keys, wet.keys)
+        expected.forEach { (key, bitmap) -> assertTrue("Dense stamp tile $key differs", bitmap.sameAs(wet.getValue(key))) }
+        assertTrue(store.history.undo())
+        assertEquals(0, store.allocatedTileCount)
+        assertTrue(store.history.redo())
+        val restored = store.snapshotTiles()
+        wet.forEach { (key, bitmap) -> assertTrue(bitmap.sameAs(restored.getValue(key))) }
     }
 
     @Test fun arbitraryMaskAndGrainChangeTheActualPaintedPixels() {

@@ -164,7 +164,7 @@ internal object StrokeCanvasPainter {
             return
         }
         if (stroke.style.blend == BlendBehavior.ERASE || stroke.style.brush.engine == BrushEngine.AIRBRUSH) {
-            if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
+            if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity) || (stroke.style.sizePx > 256f && stroke.style.brush.hardness < .99f)) {
                 drawPressureResponsiveAirbrush(canvas, stroke, paint)
             } else {
                 drawUnifiedAirbrushMask(canvas, stroke, paint)
@@ -544,13 +544,27 @@ internal object StrokeCanvasPainter {
         if (!clip.intersect(floor(bounds.left).toInt(), floor(bounds.top).toInt(),
                 ceil(bounds.right).toInt(), ceil(bounds.bottom).toInt())) return
         val tileSize = 256
-        val halo = ceil(stroke.style.sizePx * 1.5f).toInt() + 2
-        val source = Bitmap.createBitmap(tileSize + 2 * halo, tileSize + 2 * halo, Bitmap.Config.ARGB_8888)
+        // Screen-sized tips can cover thousands of document pixels. Soft coverage
+        // has no texture detail at that scale: sample its mask on a power-of-two
+        // grid and interpolate into the permanent full-resolution tiles. This also
+        // bounds blur workspaces instead of allocating an enormous halo per tile.
+        val softSize = if (paint.maskFilter != null) stroke.style.sizePx * (1f - stroke.style.brush.hardness) else 0f
+        var maskScale = 1f
+        while (softSize * maskScale > 256f) maskScale *= .5f
+        val halo = ceil(softSize * 1.5f * maskScale).toInt() + 2
+        val edge = ceil(tileSize * maskScale).toInt() + 2 * halo
+        val source = Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888)
         val sharpPaint = Paint(paint).apply {
             maskFilter = null
             xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
         }
-        val outputPaint = Paint(paint).apply { maskFilter = null; alpha = 255 }
+        val outputPaint = Paint(paint).apply { maskFilter = null; alpha = 255; isFilterBitmap = maskScale < 1f }
+        val blurPaint = Paint().apply {
+            maskFilter = if (maskScale == 1f) paint.maskFilter else {
+                val radius = stroke.style.sizePx * .42f * (1f - stroke.style.brush.hardness) * maskScale
+                if (radius > .01f) BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL) else null
+            }
+        }
         val offset = IntArray(2)
         try {
             for (ty in Math.floorDiv(clip.top, tileSize)..Math.floorDiv(clip.bottom - 1, tileSize)) {
@@ -559,19 +573,29 @@ internal object StrokeCanvasPainter {
                     val top = ty * tileSize
                     source.eraseColor(Color.TRANSPARENT)
                     val scratch = Canvas(source)
-                    scratch.translate((halo - left).toFloat(), (halo - top).toFloat())
-                    drawSharpPressureMask(scratch, stroke, sharpPaint)
-                    val mask = source.extractAlpha(Paint().apply { maskFilter = paint.maskFilter }, offset)
+                    scratch.translate(halo - left * maskScale, halo - top * maskScale)
+                    scratch.scale(maskScale, maskScale)
+                    drawAirbrushCoverage(scratch, stroke, sharpPaint)
+                    val mask = source.extractAlpha(blurPaint, offset)
                     try {
                         val save = canvas.save()
                         canvas.clipRect(left, top, left + tileSize, top + tileSize)
-                        canvas.drawBitmap(mask, (left - halo + offset[0]).toFloat(),
-                            (top - halo + offset[1]).toFloat(), outputPaint)
+                        val x = left + (offset[0] - halo) / maskScale
+                        val y = top + (offset[1] - halo) / maskScale
+                        canvas.drawBitmap(mask, null,
+                            RectF(x, y, x + mask.width / maskScale, y + mask.height / maskScale), outputPaint)
                         canvas.restoreToCount(save)
                     } finally { mask.recycle() }
                 }
             }
         } finally { source.recycle() }
+    }
+
+    internal fun drawAirbrushCoverage(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
+        if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)) {
+            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+            drawSharpPressureMask(canvas, stroke, paint)
+        } else drawUnifiedAirbrushMask(canvas, stroke, paint)
     }
 
     private fun drawSharpPressureMask(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {

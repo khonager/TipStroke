@@ -52,8 +52,13 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var photoBrushArea: Pair<dev.tipstroke.core.geometry.Point, Float>? = null
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
+    private val airbrushPreview = AirbrushPreview()
     var previewStroke: CompletedStroke? = null
-        set(value) { field = value; postInvalidateOnAnimation() }
+        set(value) {
+            field = value
+            if (value == null) airbrushPreview.close()
+            postInvalidateOnAnimation()
+        }
     private var pencilPreviewStore: TileStore? = null
     private var pencilPreviewLayerId: LayerId? = null
     var adjustmentPreviewStroke: CompletedStroke? = null
@@ -207,6 +212,11 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         if (w > 0 && h > 0 && (w != oldw || h != oldh)) fitCanvas(transform.rotationDegrees)
     }
 
+    override fun onDetachedFromWindow() {
+        airbrushPreview.close()
+        super.onDetachedFromWindow()
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         bitmapPaint.isFilterBitmap = !pixelArtCanvas
@@ -265,7 +275,11 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             }
         }
         drawFillFeedback(canvas)
-        previewStroke?.let { stroke -> layerStack.withClip(canvas, layerStack.selected()) { StrokeCanvasPainter.draw(canvas, stroke) } }
+        previewStroke?.let { stroke -> layerStack.withClip(canvas, layerStack.selected()) {
+            if (stroke.style.pixelTool == null && stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH) {
+                airbrushPreview.draw(canvas, stroke, transform.scale)
+            } else StrokeCanvasPainter.draw(canvas, stroke)
+        } }
         stylusHoverPreview?.let { preview -> drawStylusHoverPreview(canvas, preview) }
         if (showImageTransformBounds) {
             drawSelectedImageBounds(canvas)

@@ -8,7 +8,7 @@ Current safeguards:
 
 - Ink is eagerly initialized before the first stroke.
 - The procedural Pencil texture is generated once per drawing surface; custom Ink families are cached in a 32-entry LRU keyed by effective tuning.
-- Airbrush holds only the current sample list and unified preview path while drawing; it neither copies full layers nor mutates or redraws permanent tiles per sample.
+- Airbrush holds the current sample list and a bounded viewport coverage buffer while drawing; it neither copies full layers nor mutates or redraws permanent tiles per sample.
 - Unbuffered stylus dispatch and motion prediction are requested.
 - Canvas pixels use sparse 256×256 tiles; only intersecting tiles allocate and redraw.
 - Undo snapshots cover affected tiles only and have a 96 MiB configurable budget.
@@ -242,3 +242,45 @@ drop preview frames, particularly for long-GOP footage. It keeps the wall-clock
 speed; export samples every planned output frame. Sequential hardware decoding
 and GPU composition remain performance follow-ups. Validate on physical tablets
 before claiming production frame pacing, stylus latency, or thermal behavior.
+
+## Dense stamps, eraser batches, and screen-sized tips
+
+The `easy finger` reproduction is a 180 px round stamp at 0.02 spacing (one mark
+every 3.6 document pixels), flow 0.5834822 and no grain. Its previous path evaluated
+a composed shape/grain shader over every stamp bounding square, even with grain
+disabled, and allocated a color filter for every stamp on every tile. The no-grain
+path now blits the shape bitmap and reuses the tint filter. A stable size/angle/tint
+also caches a transformed, tinted tip (at most 1024 × 1024 ARGB pixels), released
+with the stroke. It preserves stamp count and flow; this is not event dropping or a change to the imported preset.
+
+The direct eraser reads original/result pixels once per intersecting tile rectangle
+per input batch, writes the union of changed rectangles once, and rejects more
+distant centerline coverage before evaluating pressure/falloff. Two reusable
+256 × 256 integer buffers serve the whole gesture. The sparse per-tile byte-alpha
+and float-distance fields, cancellation, and pressure-band correction remain.
+
+Airbrush input no longer copies the complete sample list on every MotionEvent.
+Input and drawing share the UI thread; completion freezes the samples. Its preview
+coverage buffer grows in powers of two to at most 1024 × 1024 ARGB pixels (4 MiB),
+plus a temporary extracted alpha mask with the scaled blur halo. It is released on
+completion, cancellation or view detachment. It contains coverage only, never a copy
+of artwork. The full-resolution pressure painter sizes its scratch halo from actual
+softness, and downsamples only broad soft coverage so its source workspace stays
+at most 1028 × 1028 pixels. Sharp coverage remains at document resolution.
+
+These changes reduce redundant work and bound soft-mask workspace; they do not
+establish constant latency at arbitrary brush size/resolution. Stamps and eraser
+still process reached full-resolution tiles; long airbrush strokes still replay
+samples, and pen-up still commits on the UI thread. High-resolution screen-sized
+strokes can reach many tiles. Physical-device input-to-display profiling is required
+before claiming a frame-rate guarantee. Use `LiveEraserInstrumentedTest` and
+`BrushPerformanceInstrumentedTest` for render-only timings; neither measures display
+latency. Future worker commits must preserve ordered edits and an atomic wet/dry
+handoff rather than mutate live bitmaps concurrently.
+
+A temporary Robolectric native-Skia comparison against the pre-change classes on
+this Linux host (3 warm-ups, 11 measured runs) gave median 219.46 → 46.00 ms for a
+720-document-pixel dense round-stamp sweep at 180 px, and 32.98 → 18.56 ms for a
+25-sample eraser batch on one 256 px tile at 180 px. These are host microbenchmarks,
+not Android frame times or pen latency; they isolate the redundant rendering work.
+Use the checked-in device benchmarks for representative hardware measurements.

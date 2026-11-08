@@ -14,6 +14,20 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class BrushPreferencesTest {
+    @Test fun sizeUnitsPersistGloballyWithoutChangingBrushTuning() {
+        val context = RuntimeEnvironment.getApplication()
+        val stored = context.getSharedPreferences("brush-settings", android.content.Context.MODE_PRIVATE)
+        stored.edit().clear().commit()
+        val preferences = BrushPreferences(context)
+        assertEquals(dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS, preferences.loadSizeUnit())
+        preferences.saveSizeUnit(dev.tipstroke.core.drawing.BrushSizeUnit.SCREEN_DP)
+        assertEquals(dev.tipstroke.core.drawing.BrushSizeUnit.SCREEN_DP, BrushPreferences(context).loadSizeUnit())
+        assertEquals(BrushPreset.Ink.baseSizePx, preferences.load(BrushPreset.Ink).sizePx, .001f)
+        stored.edit().putString("size_unit", "future-unit").commit()
+        assertEquals(dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS, preferences.loadSizeUnit())
+        stored.edit().clear().commit()
+    }
+
     @Test fun tuningPersistsPerBrushAndSeparatelyForEraser() {
         val context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences("brush-settings", android.content.Context.MODE_PRIVATE).edit().clear().commit()

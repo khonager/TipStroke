@@ -24,6 +24,29 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class DrawingSurfaceAirbrushTest {
+    @Test fun screenSizeIsResolvedAtTouchDownAndFrozenForTheStroke() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            layout(0, 0, 800, 800)
+            configureBlank(4096, 4096)
+            settings.brush = BrushPreset.Airbrush
+            settings.sizePx = 60f
+            settings.sizeUnit = dev.tipstroke.core.drawing.BrushSizeUnit.SCREEN_DP
+        }
+        val raster = surface.getChildAt(0) as RasterCanvasView
+        val down = SystemClock.uptimeMillis()
+        surface.dispatchTouchEvent(stylusEvent(down, down, MotionEvent.ACTION_DOWN, 260f, 400f))
+        val documentSize = requireNotNull(raster.previewStroke).style.sizePx
+        assertEquals(60f * surface.resources.displayMetrics.density,
+            documentSize * raster.transform.scale, .001f)
+        surface.settings.sizePx = 20f
+        surface.settings.sizeUnit = dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS
+        surface.dispatchTouchEvent(stylusEvent(down, down + 8, MotionEvent.ACTION_MOVE, 400f, 400f))
+        assertEquals(documentSize, requireNotNull(raster.previewStroke).style.sizePx, .001f)
+        surface.dispatchTouchEvent(stylusEvent(down, down + 16, MotionEvent.ACTION_CANCEL, 400f, 400f))
+        assertNull(raster.previewStroke)
+        assertEquals(0, requireNotNull(raster.layerStack.selectedStore()).allocatedTileCount)
+    }
+
     @Test fun penUpPressureUsesTheLastDrawingPressure() {
         assertEquals(.72f, stabilizedTerminalPressure(.72f, .01f), .001f)
         assertEquals(.4f, stabilizedTerminalPressure(null, .4f), .001f)

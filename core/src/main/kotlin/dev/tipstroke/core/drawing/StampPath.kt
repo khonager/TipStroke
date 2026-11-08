@@ -12,7 +12,9 @@ class StampPath(private val style: StrokeStyle) {
     private var untilNext = 0f
     private var distance = 0f
     private var index = 0
-    private val step = max(1f, style.sizePx * style.brush.spacing.coerceIn(.02f, 2f))
+    // Subpixel document tips occur in screen-size mode when zoomed in. A fixed
+    // one-document-pixel floor would turn a continuous screen stroke into dots.
+    private val step = max(min(1f, style.sizePx * .25f), style.sizePx * style.brush.spacing.coerceIn(.02f, 2f))
 
     fun append(samples: List<StrokeSample>): List<BrushStamp> = buildList {
         for (sample in samples) {
@@ -31,7 +33,7 @@ class StampPath(private val style: StrokeStyle) {
             val speed = length / ((sample.elapsedNanos - start.elapsedNanos).coerceAtLeast(1_000_000L) / 1_000_000_000f)
             val startDistance = distance
             var travelled = untilNext
-            // Bound corrupted input jumps; ordinary strokes retain one-pixel minimum spacing.
+            // Bound corrupted input jumps; ordinary strokes retain their configured arc-length spacing.
             val increment = max(step, length / 8192f)
             while (travelled <= length) {
                 val t = travelled / length
@@ -61,7 +63,7 @@ class StampPath(private val style: StrokeStyle) {
             val radius = style.sizePx * brush.scatter * sqrt(noise(seed, 2))
             val theta = noise(seed, 3) * 2f * PI.toFloat()
             out += BrushStamp(sample.position.x + cos(theta) * radius, sample.position.y + sin(theta) * radius,
-                size.coerceAtLeast(.1f), brush.rotationDegrees + (if (brush.followDirection) direction else 0f) +
+                size.coerceAtLeast(.001f), brush.rotationDegrees + (if (brush.followDirection) direction else 0f) +
                     (noise(seed, 4) * 2f - 1f) * brush.rotationJitter,
                 (style.opacity * style.color.alpha * style.brush.pressureToOpacity.map(sample.opacityPressure) * brush.flow *
                     (1f - brush.opacityJitter * noise(seed, 5)) * fade).coerceIn(0f, 1f),

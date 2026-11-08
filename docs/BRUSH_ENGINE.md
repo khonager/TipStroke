@@ -89,3 +89,35 @@ captures exact sparse patches for these strokes, and the frozen v1 command codec
 rejects a stamp definition rather than dropping it. Existing recorded v1 brush
 algorithms and project raster pixels are unaffected. See [Brush library](BRUSH_LIBRARY.md)
 for source limits, authoring controls, and package compatibility.
+
+## Brush size units and broad soft coverage
+
+On Android, tap the size value (`px ▾`) to choose **Canvas pixels** or **Screen size
+(dp)**. This is one locally remembered preference shared by regular/custom brushes
+and eraser, independent of saved brush definitions and project files. Canvas pixels
+remain the default. Screen mode resolves `size × display density / camera zoom`
+into document pixels at touch-down, so the nominal tip keeps its visible diameter
+across canvas resolutions and zoom levels. Pressure/tilt still shape that nominal
+tip. Hover and adjustment previews use the same conversion. The stroke retains its
+resolved size through completion. The number is reinterpreted when switching units;
+existing artwork and brush packages are not resized. Pixel tools and the bounded
+smudge tool always use canvas pixels. This preference is Android-only.
+
+Custom stamps without effective grain use a filtered shape-bitmap blit and reuse
+unchanged tint filters. Fixed size/angle/tint tips additionally bake that transform
+once into a reusable tip bitmap capped at 1024 × 1024; dynamic tips retain their
+per-stamp transform. The extra filtering can slightly change edge antialiasing. Grain-enabled stamps retain their world/stamp grain shaders.
+Neither spacing, flow nor the number of overlapping stamps is reduced for speed.
+Tiny document-space tips use subpixel stamp spacing instead of a one-pixel floor.
+
+The wet Airbrush samples visible coverage plus its blur halo in a reusable buffer
+of at most 1024 × 1024 pixels, using the camera zoom to avoid unnecessary offscreen
+resolution. It blurs that mask once per draw rather than rebuilding it for each
+visible document tile. A long stroke still costs time proportional to its sample
+count. Preview sampling can soften fine detail at extreme zoom-out; pen-up uses the
+permanent tile painter. For very broad soft tips, that painter samples only the soft
+coverage on a power-of-two grid and interpolates it into full-resolution raster
+tiles. The grid is chosen by softness, not by canvas resolution or camera zoom;
+hard edges retain full-resolution sampling. This intentionally approximates broad
+blur coverage to bound temporary memory. Existing artwork and frozen v1 replay
+renderers are unchanged; newly authored raster patches retain the new pixels exactly.

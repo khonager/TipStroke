@@ -840,7 +840,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         )
         val previewStyle = StrokeStyle(
             brush = previewBrush,
-            sizePx = settings.sizePx,
+            sizePx = resolvedBrushSize(),
             opacity = settings.opacity,
             color = if (erasing) RgbaColor(1f, 1f, 1f) else settings.color,
             // A neutral paint stamp keeps an eraser preview visible without touching artwork.
@@ -1875,7 +1875,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val target = pendingTargets.remove(pointerId)
                 pendingSamples.remove(pointerId)?.let { rawSamples ->
                     val samples = stabilizeLiftOffOpacity(rawSamples)
-                    val style = customPreviewStyle ?: rasterPreviewStyle ?: pencilPreviewStyle ?: currentStyle(event, index.coerceAtLeast(0))
+                    val style = customPreviewStyle ?: rasterPreviewStyle ?: pencilPreviewStyle ?: shapeStyle ?: currentStyle(event, index.coerceAtLeast(0))
                     val reveal = strokeRecording?.takeIf { target?.image == null &&
                         layerStack.selectedId == it.layerId && style.blend == BlendBehavior.PAINT }
                         ?.copy(downAt = strokeDownAt)
@@ -2464,7 +2464,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val pencilContext = if (pencilPreviewStyle != null) samples.takeLast(2) else emptyList()
         samples += additions
         rasterPreviewStyle?.let { style ->
-            rasterView.previewStroke = CompletedStroke(samples.toList(), style)
+            // Input and onDraw share the UI thread. Keep the list, avoiding an O(n)
+            // copy on every MotionEvent; freeze it only when completing the gesture.
+            rasterView.previewStroke = CompletedStroke(samples, style)
             return
         }
         pencilPreviewStyle?.let { style ->
@@ -2648,11 +2650,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         chromeOcclusionListener?.invoke(occluded)
     }
 
+    private fun resolvedBrushSize() = if (settings.smudging) settings.sizePx else settings.sizeUnit.documentPixels(
+        settings.sizePx, rasterView.transform.scale, resources.displayMetrics.density, settings.pixelTool,
+    )
+
     private fun currentStyle(event: MotionEvent, index: Int): StrokeStyle {
         val isHardwareEraser = index in 0 until event.pointerCount && event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
         val erasing = settings.erasing || isHardwareEraser
         val brush = if (erasing) settings.brush.copy(hardness = settings.eraserHardness) else settings.brush
-        return StrokeStyle(brush, settings.sizePx, settings.opacity, settings.color,
+        return StrokeStyle(brush, resolvedBrushSize(), settings.opacity, settings.color,
             if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
             pixelTool = settings.pixelTool,
             referenceStrokes = referenceLayerId?.let { id ->
@@ -2709,7 +2715,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             BrushEngine.AIRBRUSH -> .08f
             BrushEngine.INK -> .1f
         }
-        return Brush.createWithColorIntArgb(family, liveColor, style.sizePx.coerceAtLeast(1f), epsilon)
+        val size = style.sizePx.coerceAtLeast(.001f)
+        return Brush.createWithColorIntArgb(family, liveColor, size, minOf(epsilon, size * .1f))
     }
 
     private fun startPencilPreview(stroke: CompletedStroke) {

@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import dev.tipstroke.core.drawing.BrushSizeUnit
 import dev.tipstroke.core.model.RgbaColor
 import kotlin.math.roundToInt
 
@@ -39,7 +40,13 @@ internal fun TipControls(
     horizontalWidthFraction: Float = .62f,
     sizeRange: ClosedFloatingPointRange<Float> = 1f..180f,
     modifier: Modifier = Modifier,
+    sizeUnit: BrushSizeUnit = BrushSizeUnit.CANVAS_PIXELS,
+    onSizeUnit: ((BrushSizeUnit) -> Unit)? = null,
 ) {
+    val unitLabel = if (sizeUnit == BrushSizeUnit.SCREEN_DP) "dp" else "px"
+    val sizeLabel: @Composable () -> Unit = {
+        SizeValue(size, unitLabel, sizeUnit, onSizeUnit)
+    }
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         if (showColorSwitcher) {
             ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker)
@@ -51,7 +58,7 @@ internal fun TipControls(
                     .background(Color(0xD9202125), RoundedCornerShape(20.dp)).padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                PrecisionSlider("Size", "${size.roundToInt()} px", size, sizeRange, 1f, onSize, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
+                PrecisionSlider("Size", "${size.roundToInt()} $unitLabel", size, sizeRange, 1f, onSize, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f), sizeLabel)
                 PrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
             }
         } else {
@@ -63,10 +70,11 @@ internal fun TipControls(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 VerticalPrecisionSlider(
-                    "Size", "${size.roundToInt()} px", size, sizeRange, 1f, onSize,
+                    "Size", "${size.roundToInt()} $unitLabel", size, sizeRange, 1f, onSize,
                     onAdjustmentStart, onAdjustmentEnd,
                     trackHeight = verticalTrackHeight,
                     compact = compactVertical,
+                    valueContent = sizeLabel,
                 )
                 HorizontalDivider(
                     Modifier.padding(vertical = if (compactVertical) 2.dp else 8.dp),
@@ -79,6 +87,29 @@ internal fun TipControls(
                     compact = compactVertical,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SizeValue(size: Float, unitLabel: String, unit: BrushSizeUnit, onUnit: ((BrushSizeUnit) -> Unit)?) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Text("${size.roundToInt()} $unitLabel${if (onUnit != null) " ▾" else ""}",
+            color = Color(0xFFED6A5A), fontSize = 12.sp,
+            modifier = if (onUnit == null) Modifier else Modifier
+                .clickable { open = true }
+                .semantics { contentDescription = "Brush size units: ${if (unit == BrushSizeUnit.SCREEN_DP) "Screen size" else "Canvas pixels"}" })
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(text = { Text("Canvas pixels (px)") }, onClick = {
+                onUnit?.invoke(BrushSizeUnit.CANVAS_PIXELS); open = false
+            })
+            DropdownMenuItem(text = { Text("Screen size (dp)") }, onClick = {
+                onUnit?.invoke(BrushSizeUnit.SCREEN_DP); open = false
+            })
+            Text("Screen size stays constant as you zoom.\nApplies to brushes and eraser; pixel tools and smudge use px.",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -144,11 +175,12 @@ private fun PrecisionSlider(
     onAdjustmentStart: () -> Unit,
     onAdjustmentEnd: () -> Unit,
     modifier: Modifier = Modifier,
+    valueContent: (@Composable () -> Unit)? = null,
 ) {
     Column(modifier) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, color = Color(0xFFE7E7E5), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Text(valueLabel, color = Color(0xFFED6A5A), fontSize = 12.sp)
+            if (valueContent != null) valueContent() else Text(valueLabel, color = Color(0xFFED6A5A), fontSize = 12.sp)
         }
         Slider(
             value = value,
@@ -173,10 +205,11 @@ private fun VerticalPrecisionSlider(
     onAdjustmentEnd: () -> Unit,
     trackHeight: Dp,
     compact: Boolean,
+    valueContent: (@Composable () -> Unit)? = null,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, color = Color(0xFFE7E7E5), fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium)
-        Text(valueLabel, color = Color(0xFFED6A5A), fontSize = if (compact) 10.sp else 12.sp)
+        if (valueContent != null) valueContent() else Text(valueLabel, color = Color(0xFFED6A5A), fontSize = if (compact) 10.sp else 12.sp)
         Spacer(Modifier.height(if (compact) 3.dp else 6.dp))
         SmallStepButton("+", compact) {
             onAdjustmentStart(); onValue((value + step).coerceIn(range)); onAdjustmentEnd()

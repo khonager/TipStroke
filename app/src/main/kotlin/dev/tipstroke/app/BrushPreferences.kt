@@ -1,6 +1,7 @@
 package dev.tipstroke.app
 
 import android.content.Context
+import dev.tipstroke.core.drawing.BrushSizeUnit
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.core.model.PencilTiltMode
 
@@ -28,6 +29,12 @@ internal data class BrushTuning(
 
 internal class BrushPreferences(context: Context) {
     private val preferences = context.getSharedPreferences("brush-settings", Context.MODE_PRIVATE)
+
+    fun loadSizeUnit(): BrushSizeUnit = runCatching {
+        BrushSizeUnit.valueOf(preferences.getString("size_unit", null) ?: BrushSizeUnit.CANVAS_PIXELS.name)
+    }.getOrDefault(BrushSizeUnit.CANVAS_PIXELS)
+
+    fun saveSizeUnit(unit: BrushSizeUnit) { preferences.edit().putString("size_unit", unit.name).apply() }
 
     fun load(brush: BrushPreset): BrushTuning {
         val prefix = "brush_${brush.id.value}_"

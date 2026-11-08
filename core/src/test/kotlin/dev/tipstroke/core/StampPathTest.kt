@@ -4,6 +4,7 @@ import dev.tipstroke.core.drawing.*
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.model.*
 import kotlin.test.*
+import kotlin.math.abs
 
 class StampPathTest {
     private val style = StrokeStyle(BrushPreset.Blank.copy(spacing = .17f, stamp = StampBrush(scatter = .4f,
@@ -24,6 +25,15 @@ class StampPathTest {
         val spaced = style.copy(brush = style.brush.copy(spacing = 1f, stamp = StampBrush(count = 3)), sizePx = 20f)
         assertEquals(18, StampPath(spaced).append(samples).size)
         assertEquals(1, StampPath(style).append(listOf(samples.first(), samples.first())).size)
+    }
+
+    @Test fun subpixelScreenTipsStayContinuousWhenZoomedIn() {
+        val tiny = style.copy(sizePx = .02f, brush = BrushPreset.Blank.copy(
+            spacing = .02f, pressureToSize = PressureCurve(1f, 1f), stamp = StampBrush()))
+        val marks = StampPath(tiny).append(listOf(sample(0f, 0), sample(1f, 100_000_000)))
+        assertTrue(marks.size > 100)
+        assertTrue(marks.all { abs(it.size - .02f) < .0001f })
+        assertTrue(marks.zipWithNext().all { (a, b) -> b.x - a.x <= .006f })
     }
 
     @Test fun sourceBytesAreImmutableAndValidateDimensions() {

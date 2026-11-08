@@ -58,6 +58,7 @@ fun CanvasScreen(
 ) {
     val context = LocalContext.current
     val brushPreferences = remember { BrushPreferences(context) }
+    var brushSizeUnit by remember { mutableStateOf(brushPreferences.loadSizeUnit()) }
     val shelfPreferences = remember { BrushShelfPreferences(context) }
     var favoriteIds by remember { mutableStateOf(shelfPreferences.load()) }
     var libraryBrushes by remember { mutableStateOf<List<LibraryBrush>>(emptyList()) }
@@ -240,6 +241,7 @@ fun CanvasScreen(
                 pencilShadeStartRadians = pencilShadeStartRadians,
                 pencilShadeTransitionRadians = pencilShadeTransitionRadians,
             )
+            sizeUnit = brushSizeUnit
             sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.smudging = smudging
             this.eraserHardness = eraserHardness; this.debug = debug; gestures = effectiveGestureSettings
         }
@@ -312,7 +314,7 @@ fun CanvasScreen(
             StylusButtonAction.DISABLED -> Unit
         }
     }
-    LaunchedEffect(brush, erasing, smudging, pixelTool, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
+    LaunchedEffect(brush, erasing, smudging, pixelTool, brushSizeUnit, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(surface, originalImageColors) { surface?.setOriginalImageColors(originalImageColors) }
     LaunchedEffect(surface, debug) {
@@ -615,6 +617,13 @@ fun CanvasScreen(
             if (!selectToolActive) TipControls(
                 size = size, opacity = opacity, color = color, frequentColors = drawingPalette,
                 sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
+                sizeUnit = if (pixelTool != null || smudging) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
+                onSizeUnit = if (pixelTool != null || smudging) null else { unit ->
+                    brushSizeUnit = unit
+                    brushPreferences.saveSizeUnit(unit)
+                    surface?.settings?.sizeUnit = unit
+                    surface?.showBrushAdjustmentPreview()
+                },
                 onSize = {
                     size = it
                     if (pixelTool != null) pixelSize = it
@@ -672,6 +681,13 @@ fun CanvasScreen(
             TipControls(
                 size = size,
                 sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
+                sizeUnit = if (pixelTool != null || smudging) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
+                onSizeUnit = if (pixelTool != null || smudging) null else { unit ->
+                    brushSizeUnit = unit
+                    brushPreferences.saveSizeUnit(unit)
+                    surface?.settings?.sizeUnit = unit
+                    surface?.showBrushAdjustmentPreview()
+                },
                 opacity = opacity,
                 color = color,
                 frequentColors = drawingPalette,
