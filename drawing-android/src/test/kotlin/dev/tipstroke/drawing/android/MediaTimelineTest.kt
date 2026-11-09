@@ -86,6 +86,21 @@ class MediaTimelineTest {
         assertEquals(1_000_000L, runtime.snapshot().mediaPositionUs)
     }
 
+    @Test fun automaticDrawingCreationPreservesCursorAndReusesTheCel() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 64, 48) {}
+        val frame = AnimationFrame(FrameId("first"), sourceTimeUs = 0, durationUs = 83_333)
+        val runtime = AnimationRuntime(stack, false, listOf(frame), 12)
+        runtime.restore(SavedAnimationSnapshot(listOf(frame), 0, 12, PlaybackMode.LOOP, 0, 0, 0f,
+            emptySet(), emptyMap(), emptyMap(), media = MediaSource(File("test.mp4"), "video", 64, 48, 2_000_000)))
+        runtime.showMediaTime(510_000)
+        runtime.ensureMediaDrawingAtCursor()
+        assertTrue(runtime.mediaDrawingActive)
+        assertEquals(510_000L, runtime.mediaPositionUs)
+        assertEquals(500_000L, runtime.currentFrame.sourceTimeUs)
+        runtime.ensureMediaDrawingAtCursor()
+        assertEquals(2, runtime.frames.size)
+    }
+
     @Test fun negativeSourceTimestampIsRejected() {
         assertThrows(IllegalArgumentException::class.java) { AnimationFrame(FrameId("bad"), sourceTimeUs = -1) }
     }

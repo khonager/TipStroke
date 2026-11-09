@@ -1680,13 +1680,19 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (!isEnabled || importingClip || pendingAnimationFrame != null || transformSelectionOriginal != null) return true
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && !mediaSeeking && mediaCelLoading == null &&
+            !selectionMode && !selectionMoveMode && !isTransformingImage() && !settings.erasing && !settings.smudging &&
+            event.pointerCount == 1 && isDrawingPointer(event, event.actionIndex) && animation?.mediaDrawingActive == false) {
+            stopAnimationPlayback()
+            val result = runCatching { animation?.ensureMediaDrawingAtCursor() }
+            if (result.isFailure) { animationErrorListener?.invoke(result.exceptionOrNull()?.message ?: "Cannot add drawing"); return true }
+            rasterView.invalidate(); notifyLayers(); notifyHistory(); publishAnimation()
+        }
         if (!mediaFrameReady()) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) stopAnimationPlayback()
             val index = event.actionIndex.coerceIn(0, event.pointerCount - 1)
             if (handleMousePan(event, index)) return true
             if (event.pointerCount > 1 || !isDrawingPointer(event, index)) return handleTouchGesture(event)
-            if (event.actionMasked == MotionEvent.ACTION_DOWN && !mediaSeeking && animation?.mediaDrawingActive == false)
-                animationErrorListener?.invoke("Tap Add drawing here to draw at this time.")
             return true
         }
         resizeOverlay?.let { return it.dispatchTouchEvent(event) }

@@ -335,3 +335,9 @@ polygon. Vertices and lines remain in the native canvas overlay.
 Add/subtract/intersect selection gestures retain the existing selection outline
 while the new region is drafted. Commit replaces both outlines with the combined
 result; cancellation restores the prior selection.
+
+Drawing on an uncovered imported-video time automatically creates the drawing
+cel on the drawing-FPS grid and routes the initiating touch into that cel. This
+preserves the displayed media cursor and avoids another decoder seek. Scrubbing,
+panning, selection, erasing and smudging do not create blank cels. Manual Add
+remains available for deliberate empty drawings.

@@ -199,6 +199,13 @@ internal class AnimationRuntime(
         return changed
     }
 
+    fun ensureMediaDrawingAtCursor() {
+        if (media == null || mediaDrawingActive) return
+        val position = mediaPositionUs
+        addMediaDrawing()
+        showMediaTime(position)
+    }
+
     fun addMediaDrawing(duplicate: Boolean = false) {
         val source = media ?: return
         val start = MediaTimeline.snap(mediaPositionUs, fps, source.durationUs)
