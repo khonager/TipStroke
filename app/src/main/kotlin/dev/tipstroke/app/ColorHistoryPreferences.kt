@@ -47,6 +47,6 @@ internal class ColorHistoryPreferences(context: Context) {
 
     private companion object {
         const val KEY_COLORS = "recent"
-        const val MAX_COLORS = 10
+        const val MAX_COLORS = 32
     }
 }

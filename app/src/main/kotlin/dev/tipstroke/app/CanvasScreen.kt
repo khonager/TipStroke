@@ -69,6 +69,7 @@ fun CanvasScreen(
     val favoriteBrushes = favoriteIds.mapNotNull { id ->
         (BrushPreset.libraryBuiltIns + libraryBrushes.map { it.preset }).firstOrNull { it.id.value == id }
     }
+    val colorShelf = remember { ColorShelf(context) }
     val colorHistoryPreferences = remember { ColorHistoryPreferences(context) }
     val initialBrushTuning = remember { brushPreferences.load(BrushPreset.Ink) }
     val initialEraserTuning = remember { brushPreferences.loadEraser() }
@@ -422,7 +423,7 @@ fun CanvasScreen(
         resizeOpen = true
     }
 
-    CompositionLocalProvider(LocalTipPreviewColor provides RgbaColor(.22f, .3f, .72f)) {
+    CompositionLocalProvider(LocalTipPreviewColor provides RgbaColor(.22f, .3f, .72f), LocalColorShelf provides colorShelf) {
     CompositionLocalProvider(LocalColorDrop provides { position, droppedColor, released ->
         colorDropPosition = if (released) null else position
         if (released && position != null) surface?.dropColor(position.x, position.y, droppedColor)
@@ -551,7 +552,7 @@ fun CanvasScreen(
                 layersOpen = layersOpen, onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
                 showTopColorSwitcher = !portrait,
                 color = color,
-                frequentColors = drawingPalette,
+                frequentColors = if (colorShelf.recent) colorHistory else drawingPalette,
                 onColor = { color = it },
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
                 onBack = if (onBackToGallery != null) leaveEditor else null,
@@ -619,7 +620,7 @@ fun CanvasScreen(
             )
 
             if (!selectToolActive) TipControls(
-                size = size, opacity = opacity, color = color, frequentColors = drawingPalette,
+                size = size, opacity = opacity, color = color, frequentColors = if (colorShelf.recent) colorHistory else drawingPalette,
                 sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
                 sizeUnit = if (pixelTool != null || smudging) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
                 onSizeUnit = if (pixelTool != null || smudging) null else { unit ->
@@ -694,7 +695,7 @@ fun CanvasScreen(
                 },
                 opacity = opacity,
                 color = color,
-                frequentColors = drawingPalette,
+                frequentColors = if (colorShelf.recent) colorHistory else drawingPalette,
                 onSize = {
                     size = it
                     if (pixelTool != null) pixelSize = it

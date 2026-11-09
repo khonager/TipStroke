@@ -126,9 +126,11 @@ internal fun ColorSwitcher(
         RgbaColor(.05f, .05f, .06f), RgbaColor(.93f, .42f, .35f),
         RgbaColor(.2f, .45f, .9f), RgbaColor(.18f, .65f, .48f), RgbaColor(1f, 1f, 1f),
     )
-    val choices = (frequentColors + defaults).distinctBy(::colorKey).filter { colorKey(it) != colorKey(color) }.take(4)
+    val shelf = LocalColorShelf.current
+    val slots = shelf?.slots ?: 4
+    val choices = (frequentColors + if (shelf?.recent == true) emptyList() else defaults).distinctBy(::colorKey).filter { colorKey(it) != colorKey(color) }.take(slots)
     Row(
-        Modifier.width(if (compact) 100.dp else 116.dp).height(if (compact) 46.dp else 58.dp)
+        Modifier.width((if (compact) 70 else 86).dp + ((slots + 1) / 2 * if (compact) 20 else 26).dp).height(if (compact) 46.dp else 58.dp)
             .background(Color(0xD9202125), RoundedCornerShape(if (compact) 16.dp else 20.dp))
             .border(1.dp, Color(0xB345474D), RoundedCornerShape(if (compact) 16.dp else 20.dp))
             .padding(if (compact) 4.dp else 5.dp),
@@ -142,11 +144,16 @@ internal fun ColorSwitcher(
                 .clickable(onClick = onOpenColorPicker)
                 .semantics { contentDescription = "Open color picker" },
         )
+        if (shelf != null) Text(
+            if (shelf.recent) "R" else "D", color = Color.White,
+            modifier = Modifier.clickable { shelf.toggleSource() }.semantics {
+                contentDescription = if (shelf.recent) "Recent colors; switch to drawing colors" else "Drawing colors; switch to recent colors"
+            })
         Column(verticalArrangement = Arrangement.spacedBy(if (compact) 3.dp else 4.dp)) {
-            choices.chunked(2).forEachIndexed { rowIndex, row ->
+            choices.chunked((slots + 1) / 2).forEachIndexed { rowIndex, row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 3.dp else 4.dp)) {
                     row.forEachIndexed { columnIndex, option ->
-                        val position = rowIndex * 2 + columnIndex + 1
+                        val position = rowIndex * ((slots + 1) / 2) + columnIndex + 1
                         Box(
                             Modifier.size(if (compact) 17.dp else 22.dp).clip(CircleShape).background(option.toCompose())
                                 .border(1.dp, Color.White.copy(alpha = .82f), CircleShape)

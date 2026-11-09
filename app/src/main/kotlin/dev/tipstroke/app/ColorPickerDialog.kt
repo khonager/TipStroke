@@ -178,6 +178,7 @@ internal fun ColorPickerPanel(
                 )
                 Spacer(Modifier.height(18.dp))
                 HistorySection(colorHistory.take(10), onColor = ::choose, onClear = onClearHistory)
+                LocalColorShelf.current?.let { shelf -> ColorShelfEditor(shelf, selected, ::choose) }
             }
             footer()
         }

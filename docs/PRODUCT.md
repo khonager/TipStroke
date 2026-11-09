@@ -34,3 +34,10 @@ Gallery animation export offers Canvas / 50% / 25% output size and smooth-video 
 drawing-FPS timing, matching editor export. It defaults to 50% to avoid forcing
 large imported-video canvases through full-resolution encoding. Still images
 continue to default to canvas size. Encoder size limits still apply.
+
+Quick color controls have 2–16 spaces, configured in Colors. D/R switches between
+adaptive drawing colors and exact recently drawn colors. Space count and source
+are retained across launches; these slots are not editable saved swatches. The
+separate saved palette holds up to 64 exact colors, with explicit save/remove
+controls, independent of average-color changes. Existing eyedropper sampling of
+paint and imported images feeds the current color, which can then be saved.
