@@ -16,6 +16,29 @@ import kotlin.math.floor
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SelectionTransformTest {
+    @Test fun polygonTapsKeepDraftUntilFirstCornerClosesIt() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication())
+        surface.layout(0, 0, 512, 512); surface.configureBlank(512, 512)
+        surface.setSelectionTool(SelectionTool.POLYGON)
+        val view = surface.getChildAt(0) as RasterCanvasView
+        fun tap(x: Float, y: Float) {
+            for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
+                val event = android.view.MotionEvent.obtain(0, 0, action, x, y, 0)
+                surface.dispatchTouchEvent(event); event.recycle()
+            }
+        }
+        tap(50f, 50f); tap(300f, 50f); tap(300f, 300f)
+        assertNull(view.selectionRegion)
+        assertEquals(3, view.selectionDraftPoints.size)
+        tap(50f, 50f)
+        assertNotNull(view.selectionRegion)
+        assertTrue(view.selectionDraftPoints.isEmpty())
+        tap(80f, 80f)
+        surface.setSelectionTool(SelectionTool.LASSO)
+        assertTrue(view.selectionDraftPoints.isEmpty())
+        assertNotNull(view.selectionRegion)
+    }
+
     private fun store(): TileStore = TileStore(8192, 8192).apply {
         val first = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { setPixel(254, 40, Color.RED) }
         val second = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {

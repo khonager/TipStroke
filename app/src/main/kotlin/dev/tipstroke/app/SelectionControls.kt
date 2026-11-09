@@ -40,6 +40,7 @@ internal fun SelectionControls(
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 FlowRow(horizontalArrangement = Arrangement.Center) {
                     Row {
+                        SelectionAction("Polygon selection", Icons.Outlined.Polyline, !moving && tool == SelectionTool.POLYGON) { onTool(SelectionTool.POLYGON) }
                         SelectionAction("Lasso selection", Icons.Outlined.Gesture, !moving && tool == SelectionTool.LASSO,
                             onLongClick = onReselect) { onTool(SelectionTool.LASSO) }
                         SelectionAction("Rectangle selection", Icons.Outlined.CropSquare, !moving && tool == SelectionTool.RECTANGLE,
@@ -57,6 +58,7 @@ internal fun SelectionControls(
                         }
                     }
                 }
+                if (!moving && tool == SelectionTool.POLYGON) Text("Tap corners; tap the first dot to close.", color = Color.White)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color(0xFF55575D))
                 FlowRow(maxItemsInEachRow = if (wide) 5 else 3,
                     horizontalArrangement = Arrangement.Center) {

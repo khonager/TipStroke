@@ -326,3 +326,8 @@ receives native input directly and independently of this raster batching.
 Long-press frame reordering shows a floating thumbnail following the pointer,
 dims the source frame, and marks the insertion edge at the destination. Dropping
 uses that same destination index; cancelling leaves frame order unchanged.
+
+Polygon selection places one connected corner per tap. After at least three
+corners, tap the larger first dot to close and apply the current selection
+operation. Switching tools or leaving selection mode cancels an unfinished
+polygon. Vertices and lines remain in the native canvas overlay.

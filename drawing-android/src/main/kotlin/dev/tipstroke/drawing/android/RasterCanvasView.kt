@@ -40,6 +40,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     }
     var selectionRegion: SelectionRegion? = null
         set(value) { field = value; invalidate() }
+    var selectionDraftVertices = false
     var selectionDraftPoints: List<Point> = emptyList()
         set(value) { field = value; invalidate() }
     var movingLayerIds: Set<LayerId> = emptySet()
@@ -400,6 +401,12 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             val path = it.toAndroidPath(selectionPreviewOffset.x, selectionPreviewOffset.y)
             selectionPreviewMatrix?.let(path::transform)
             canvas.drawPath(path, selectionPaint)
+        }
+        if (selectionDraftVertices) {
+            selectionPaint.pathEffect = null
+            selectionDraftPoints.forEachIndexed { index, point ->
+                canvas.drawCircle(point.x, point.y, (if (index == 0) 7f else 4f) / transform.scale.coerceAtLeast(.08f), selectionPaint)
+            }
         }
         if (selectionDraftPoints.size >= 2) {
             val draft = Path().apply {

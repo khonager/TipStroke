@@ -26,7 +26,7 @@ import dev.tipstroke.core.geometry.transformed
 import dev.tipstroke.core.model.*
 import kotlin.math.*
 
-enum class SelectionTool { RECTANGLE, LASSO, ELLIPSE }
+enum class SelectionTool { RECTANGLE, LASSO, ELLIPSE, POLYGON }
 
 internal fun galleryQuarterTurns(rotationDegrees: Float): Int = (rotationDegrees / 90f).roundToInt().mod(4)
 
@@ -931,11 +931,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.invalidate()
     }
     fun setSelectionMode(enabled: Boolean) {
+        if (!enabled && selectionTool == SelectionTool.POLYGON) cancelPolygon()
         selectionMode = enabled
         if (enabled) { selectionMoveMode = false; setImageTransformMode(false) }
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
     fun setSelectionTool(tool: SelectionTool) {
+        if (tool != selectionTool && selectionTool == SelectionTool.POLYGON) cancelPolygon()
         selectionTool = tool
         selectionMoveMode = false
         selectionMode = true
@@ -2185,7 +2187,43 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
 
+    private fun cancelPolygon() {
+        selectionPoints.clear()
+        previousSelection = null
+        selectionPointerId = null
+        rasterView.selectionDraftPoints = emptyList()
+        rasterView.selectionDraftVertices = false
+    }
+
+    private fun handlePolygon(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL) { cancelPolygon(); return true }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) selectionPointerId = event.getPointerId(0)
+        val index = selectionPointerId?.let(event::findPointerIndex) ?: -1
+        if (index < 0) return true
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            selectionPointerId = null
+            if (Build.VERSION.SDK_INT >= 33 && event.flags and MotionEvent.FLAG_CANCELED != 0) { cancelPolygon(); return true }
+            val position = rasterView.screenToDocument(event.getX(index), event.getY(index))
+            val point = Point(position.x, position.y)
+            val first = selectionPoints.firstOrNull()
+            val closeRadius = 18f * resources.displayMetrics.density / rasterView.transform.scale.coerceAtLeast(.08f)
+            if (selectionPoints.size >= 3 && first != null && hypot(point.x - first.x, point.y - first.y) <= closeRadius) {
+                val draft = SelectionRegion(selectionPoints.toList())
+                selectionRegion = selectionRegion?.combined(draft, selectionOperation) ?: draft
+                cancelPolygon()
+                rasterView.selectionRegion = selectionRegion
+                selectionListener?.invoke(true, selectionRegion != null)
+            } else {
+                selectionPoints += point
+                rasterView.selectionDraftVertices = true
+                rasterView.selectionDraftPoints = selectionPoints.toList()
+            }
+        }
+        return true
+    }
+
     private fun handleSelection(event: MotionEvent): Boolean {
+        if (selectionTool == SelectionTool.POLYGON) return handlePolygon(event)
         if (event.actionMasked == MotionEvent.ACTION_DOWN) selectionPointerId = event.getPointerId(event.actionIndex)
         val index = selectionPointerId?.let(event::findPointerIndex) ?: -1
         if (index < 0) return true
