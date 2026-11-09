@@ -70,3 +70,16 @@ versioned local persistence/transfer, and shared preview/export composition.
 Drawing overlays remain attached to global timeline time. Audio, image morphing,
 clip-linked drawing ranges, sequential/GPU preview performance, and native
 iOS/desktop parity remain future work.
+
+### Video drawing coverage proposals (awaiting visual preference)
+
+- Recommended: a coverage strip beneath video thumbnails, with colored painted
+  spans and hatched undrawn gaps, plus Next undrawn navigation. Derive coverage
+  from actual cel content and hold duration, not just whether a frame entry exists.
+- Alternative: thumbnail grid with drawn/blank badges; useful for frame-by-frame
+  review but consumes more screen area and thumbnail decoding work.
+- Combined: strip for navigation with an optional grid expanded on demand.
+
+Keep timestamps as secondary details instead of the primary frame labels. A
+future coverage implementation must handle erasing a cel back to empty and
+shared backgrounds without marking an entire video as drawn.
