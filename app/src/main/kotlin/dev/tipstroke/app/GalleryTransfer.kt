@@ -35,21 +35,19 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
         pending = null
         val uri = result.data?.data
         if (result.resultCode == Activity.RESULT_OK && uri != null && request != null) {
-            busy = true
-            scope.launch {
-                val outcome = withContext(projectIo) { runCatching {
-                    if (request.second == "TipStroke") {
-                        ProjectTransfer.exportProjects(library, request.first, requireNotNull(context.contentResolver.openOutputStream(uri, "w")))
-                    } else {
-                        ProjectTransfer.exportMedia(context, library, request.first, uri,
-                            ExportFormat.entries.firstOrNull { it.name == request.second },
-                            AnimationExportFormat.entries.firstOrNull { it.name == request.second },
-                            if (ExportFormat.entries.any { it.name == request.second }) 1f else scale, timing)
-                    }
-                } }
-                busy = false
-                message = outcome.fold({ "Export saved." }, { it.message ?: "Export failed." })
-            }
+            val exportScale = if (ExportFormat.entries.any { it.name == request.second }) 1f else scale
+            val exportTiming = timing
+            ExportWork.start(context, work = { progress -> runCatching {
+                if (request.second == "TipStroke") {
+                    ProjectTransfer.exportProjects(library, request.first, requireNotNull(context.contentResolver.openOutputStream(uri, "w")))
+                } else {
+                    ProjectTransfer.exportMedia(context.applicationContext, library, request.first, uri,
+                        ExportFormat.entries.firstOrNull { it.name == request.second },
+                        AnimationExportFormat.entries.firstOrNull { it.name == request.second },
+                        exportScale, exportTiming, progress)
+                }
+            } })
+            onDismiss()
         }
     }
     val source = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->

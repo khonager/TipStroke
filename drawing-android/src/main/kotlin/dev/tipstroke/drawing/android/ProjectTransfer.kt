@@ -163,7 +163,8 @@ object ProjectTransfer {
 
     /** Render one project at a time; batch media are ordinary ZIP files. */
     fun exportMedia(context: Context, library: DrawingLibrary, ids: List<String>, uri: Uri, image: ExportFormat?, animation: AnimationExportFormat?, scale: Float = if (animation != null) .5f else 1f,
-        timing: dev.tipstroke.core.model.MediaExportTiming = dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO) {
+        timing: dev.tipstroke.core.model.MediaExportTiming = dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO,
+        onProgress: (Float) -> Unit = {}) {
         require(ids.isNotEmpty())
         val resolver = context.contentResolver
         if (image == null) ids.forEach { id ->
@@ -172,7 +173,7 @@ object ProjectTransfer {
                 "${manifest.optString("name", "Drawing")} has no animation. Choose an image or TipStroke format instead."
             }
         }
-        fun render(id: String, destination: Uri) {
+        fun render(id: String, destination: Uri, index: Int) {
             val loaded = ProjectPersistence.load(library.projectDirectory(id), lazyAnimation = true).getOrThrow()
             val snapshot = DrawingSnapshot(loaded.widthPx, loaded.heightPx, loaded.selectedId, loaded.layers.map { layer ->
                 when (layer) {
@@ -182,15 +183,16 @@ object ProjectTransfer {
             }, loaded.galleryRotationQuarterTurns, loaded.animation, loaded.backgroundColor, loaded.backgroundOpacity)
             try {
                 if (image != null) ProjectPersistence.export(resolver, destination, snapshot, image, 90, scale, false).getOrThrow()
-                else ProjectPersistence.exportAnimation(resolver, destination, snapshot, requireNotNull(animation), scale, timing).getOrThrow()
+                else ProjectPersistence.exportAnimation(resolver, destination, snapshot, requireNotNull(animation), scale, timing) { onProgress((index + it) / ids.size) }.getOrThrow()
             } finally { snapshot.recycle() }
         }
-        if (ids.size == 1) { render(ids.single(), uri); return }
+        if (ids.size == 1) { render(ids.single(), uri, 0); return }
         val temporary = File.createTempFile("gallery-export", ".tmp", context.cacheDir)
         try {
             ZipOutputStream(requireNotNull(resolver.openOutputStream(uri, "w"))).use { zip ->
                 ids.forEachIndexed { index, id ->
-                    render(id, Uri.fromFile(temporary))
+                    render(id, Uri.fromFile(temporary), index)
+                    onProgress((index + 1f) / ids.size)
                     val name = JSONObject(File(library.projectDirectory(id), "manifest.json").readText()).getString("name")
                         .replace(Regex("[^\\p{L}\\p{N} ._-]"), "_").take(80)
                     addFile(zip, "${index + 1}-$name.${image?.extension ?: animation!!.extension}", temporary)

@@ -727,6 +727,7 @@ internal object ProjectPersistence {
         resolver: ContentResolver, uri: Uri, snapshot: DrawingSnapshot,
         format: AnimationExportFormat, scale: Float,
         timing: dev.tipstroke.core.model.MediaExportTiming = dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO,
+        onProgress: (Float) -> Unit = {},
     ): Result<Unit> = runCatching {
         val animation = requireNotNull(snapshot.animation) { "This drawing has no animation" }
         require(scale > 0f && scale <= 1f)
@@ -739,7 +740,7 @@ internal object ProjectPersistence {
             dev.tipstroke.core.model.MediaExportPlan(source.durationUs, if (format == AnimationExportFormat.GIF) fps.coerceAtMost(50.0) else fps)
         }
         try {
-            AnimationExporter.export(resolver, uri, animation, format, plan) { frameIndex ->
+            AnimationExporter.export(resolver, uri, animation, format, plan, onProgress) { frameIndex ->
                 render(snapshot, resolver, scale, transparent = false, frameIndex = frameIndex, imageCache = cache, mediaDecoder = mediaDecoder, mediaTimeUs = plan?.timeUs(frameIndex))
             }
         } finally { cache.values.forEach(Bitmap::recycle); mediaDecoder?.close() }

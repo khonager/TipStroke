@@ -70,12 +70,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             TipStrokeTheme {
+                androidx.compose.foundation.layout.Box {
                 TipStrokeApp(
                     appState = appState,
                     onSaveActionChanged = { saveActiveDrawing = it },
                     onStylusButtonHandlerChanged = { stylusButtonHandler = it },
                     onImmersiveModeChanged = ::setNavigationBarHiddenForDrawing,
                 )
+                ExportProgressOverlay()
+                }
             }
         }
     }

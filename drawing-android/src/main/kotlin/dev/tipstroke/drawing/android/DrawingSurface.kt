@@ -58,16 +58,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun exportProcess(uri: android.net.Uri, format: AnimationExportFormat, onComplete: (Result<Unit>) -> Unit) {
         getProcessRecording { captured ->
             captured.fold(onSuccess = { recording ->
-                ProjectPersistence.executor.execute {
-                    val result = runCatching {
+                ExportWork.start(context, work = { progress ->
+                    runCatching {
                         ProcessReplay(recording, context.cacheDir).use { replay ->
                             val frames = List(recording.actionCount) { AnimationFrame(FrameId("process-$it")) }
                             val timeline = SavedAnimationSnapshot(frames, 0, 12, PlaybackMode.ONCE, 0, 0, 0f, emptySet(), emptyMap(), emptyMap())
-                            AnimationExporter.export(context.contentResolver, uri, timeline, format) { replay.frame(it) }
+                            AnimationExporter.export(context.contentResolver, uri, timeline, format, onProgress = progress) { replay.frame(it) }
                         }
                     }
-                    ProjectPersistence.mainHandler.post { onComplete(result) }
-                }
+                }, onComplete = onComplete)
             }, onFailure = { onComplete(Result.failure(it)) })
         }
     }
@@ -1651,20 +1650,22 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     fun exportDrawing(uri: android.net.Uri, format: ExportFormat, quality: Int, scale: Float, transparent: Boolean, onComplete: (Result<Unit>) -> Unit) {
         val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation)
-        ProjectPersistence.executor.execute {
+        val accepted = ExportWork.start(context, work = { progress ->
             val result = try { ProjectPersistence.export(context.contentResolver, uri, snapshot, format, quality, scale, transparent) }
             finally { snapshot.recycle() }
-            ProjectPersistence.mainHandler.post { onComplete(result) }
-        }
+            result
+        }, onComplete = onComplete)
+        if (!accepted) snapshot.recycle()
     }
 
     fun exportAnimation(uri: android.net.Uri, format: AnimationExportFormat, scale: Float, timing: dev.tipstroke.core.model.MediaExportTiming = dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO, onComplete: (Result<Unit>) -> Unit) {
         val snapshot = layerStack.snapshot(galleryQuarterTurns(rasterView.transform.rotationDegrees), animation)
-        ProjectPersistence.executor.execute {
-            val result = try { ProjectPersistence.exportAnimation(context.contentResolver, uri, snapshot, format, scale, timing) }
+        val accepted = ExportWork.start(context, work = { progress ->
+            val result = try { ProjectPersistence.exportAnimation(context.contentResolver, uri, snapshot, format, scale, timing, progress) }
             finally { snapshot.recycle() }
-            ProjectPersistence.mainHandler.post { onComplete(result) }
-        }
+            result
+        }, onComplete = onComplete)
+        if (!accepted) snapshot.recycle()
     }
 
     private fun mediaFrameReady(): Boolean {

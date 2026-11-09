@@ -366,3 +366,12 @@ v1 renderer is unchanged.
 Undo transactions retain only opposite-state tiles, losslessly compressing large
 compressible snapshots. Undo/redo swaps this state with current layer pixels; both
 stacks contribute their current retained size to the bounded history budget.
+
+User-initiated exports are owned by `ExportService`, not a Compose dialog. The
+service holds one export at a time on the serialized project worker, with a
+foreground notification and app-wide status observer. Animation encoding reports
+frame progress; preparation and editable-package copying use indeterminate
+progress. Editor exports capture their raster snapshot before queuing work.
+Completion/failure is shown in-app and in a notification (subject to Android's
+notification permission). Leaving the activity does not cancel an export.
+Exports are not automatically resumed after process death or force-stop.

@@ -23,6 +23,7 @@ internal object AnimationExporter {
         animation: SavedAnimationSnapshot,
         format: AnimationExportFormat,
         mediaPlan: MediaExportPlan? = null,
+        onProgress: (Float) -> Unit = {},
         renderFrame: (Int) -> Bitmap,
     ) {
         val timeline = dev.tipstroke.core.model.AnimationTimeline(
@@ -59,6 +60,7 @@ internal object AnimationExporter {
                             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, zip)) { "PNG encoder failed" }
                             zip.closeEntry()
                         } finally { bitmap.recycle() }
+                        onProgress((index + 1f) / ticks.size)
                     }
                 }
             }
@@ -79,13 +81,18 @@ internal object AnimationExporter {
                         }
                         finally { if (bitmap !== first) bitmap.recycle() }
                         start = end
+                        onProgress(end.toFloat() / ticks.size)
                     }
                     gif.finish()
                 } finally { first.recycle() }
             }
             AnimationExportFormat.MP4 -> resolver.openFileDescriptor(uri, "rwt").use { descriptor ->
                 val file = requireNotNull(descriptor) { "Cannot open export destination" }
-                writeMp4(file.fileDescriptor, ticks, fps, durationUs, renderFrame)
+                var rendered = 0
+                writeMp4(file.fileDescriptor, ticks, fps, durationUs) { index ->
+                    onProgress((rendered++).toFloat().div(ticks.size).coerceAtMost(1f))
+                    renderFrame(index)
+                }
             }
         }
     }
