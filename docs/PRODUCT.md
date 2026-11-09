@@ -29,3 +29,8 @@ Drawing progress is an automatic, local recording on Android canvases, including
 Photo reference editing is part of the drawing workflow: import separate image layers, move/rotate/resize/stretch them, optionally snap alignment, and use local Push/Bulge/Pinch to adjust proportions before tracing. Original photo bytes remain intact. Layer opacity and non-destructive erasing support manual reference composites. The photo toolbar appears only while editing a photo; **＋ Layer** always creates a paint layer immediately, with **Import** beside it.
 
 Drawing progress follows edits across animation frames. Playback alone does not add recording steps. Existing recordings stopped by the earlier animation restriction resume with an explicit current-artwork checkpoint; previously unsaved steps cannot be reconstructed.
+
+Gallery animation export offers Canvas / 50% / 25% output size and smooth-video /
+drawing-FPS timing, matching editor export. It defaults to 50% to avoid forcing
+large imported-video canvases through full-resolution encoding. Still images
+continue to default to canvas size. Encoder size limits still apply.

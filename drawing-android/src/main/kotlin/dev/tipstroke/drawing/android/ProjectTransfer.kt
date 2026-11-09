@@ -162,7 +162,8 @@ object ProjectTransfer {
     }
 
     /** Render one project at a time; batch media are ordinary ZIP files. */
-    fun exportMedia(context: Context, library: DrawingLibrary, ids: List<String>, uri: Uri, image: ExportFormat?, animation: AnimationExportFormat?) {
+    fun exportMedia(context: Context, library: DrawingLibrary, ids: List<String>, uri: Uri, image: ExportFormat?, animation: AnimationExportFormat?, scale: Float = if (animation != null) .5f else 1f,
+        timing: dev.tipstroke.core.model.MediaExportTiming = dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO) {
         require(ids.isNotEmpty())
         val resolver = context.contentResolver
         if (image == null) ids.forEach { id ->
@@ -180,8 +181,8 @@ object ProjectTransfer {
                 }
             }, loaded.galleryRotationQuarterTurns, loaded.animation, loaded.backgroundColor, loaded.backgroundOpacity)
             try {
-                if (image != null) ProjectPersistence.export(resolver, destination, snapshot, image, 90, 1f, false).getOrThrow()
-                else ProjectPersistence.exportAnimation(resolver, destination, snapshot, requireNotNull(animation), 1f).getOrThrow()
+                if (image != null) ProjectPersistence.export(resolver, destination, snapshot, image, 90, scale, false).getOrThrow()
+                else ProjectPersistence.exportAnimation(resolver, destination, snapshot, requireNotNull(animation), scale, timing).getOrThrow()
             } finally { snapshot.recycle() }
         }
         if (ids.size == 1) { render(ids.single(), uri); return }

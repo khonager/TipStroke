@@ -25,6 +25,8 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
     LaunchedEffect(library) { drawings = withContext(projectIo) { library.list() } }
     var selected by remember(initialIds) { mutableStateOf(initialIds?.toSet() ?: emptySet()) }
     var format by remember { mutableStateOf("TipStroke") }
+    var scale by remember { mutableFloatStateOf(.5f) }
+    var timing by remember { mutableStateOf(dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
@@ -41,7 +43,8 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
                     } else {
                         ProjectTransfer.exportMedia(context, library, request.first, uri,
                             ExportFormat.entries.firstOrNull { it.name == request.second },
-                            AnimationExportFormat.entries.firstOrNull { it.name == request.second })
+                            AnimationExportFormat.entries.firstOrNull { it.name == request.second },
+                            if (ExportFormat.entries.any { it.name == request.second }) 1f else scale, timing)
                     }
                 } }
                 busy = false
@@ -82,6 +85,20 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
                         Row {
                             RadioButton(format == option, { format = option }, enabled = !busy)
                             TextButton(onClick = { format = option }, enabled = !busy) { Text(if (option == "TipStroke") "TipStroke (editable .tipstroke)" else option.replace('_', ' ')) }
+                        }
+                    }
+                    if (AnimationExportFormat.entries.any { it.name == format }) {
+                        Text("Export size")
+                        Row {
+                            listOf(1f to "Canvas", .5f to "50%", .25f to "25%").forEach { (value, label) ->
+                                FilterChip(selected = scale == value, onClick = { scale = value }, label = { Text(label) }, enabled = !busy)
+                            }
+                        }
+                        dev.tipstroke.core.model.MediaExportTiming.entries.forEach { option ->
+                            Row {
+                                RadioButton(timing == option, { timing = option }, enabled = !busy)
+                                Text(if (option == dev.tipstroke.core.model.MediaExportTiming.SMOOTH_VIDEO) "Smooth video + held drawings" else "Video at drawing FPS")
+                            }
                         }
                     }
                     Text(if (format == "TipStroke") "Preserves layers, animation, image sources, and drawing progress."

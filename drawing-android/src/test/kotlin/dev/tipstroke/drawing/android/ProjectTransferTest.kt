@@ -79,6 +79,29 @@ class ProjectTransferTest {
         } finally { ids.forEach(library::delete); snapshot.recycle(); destination.delete() }
     }
 
+    @Test fun galleryAnimationUsesHalfSizeByDefault() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val layer = LayerId("paint")
+        val snapshot = DrawingSnapshot(32, 32, layer,
+            listOf(SavedRasterSnapshot(layer, "Paint", true, 1f, emptyMap())),
+            animation = SavedAnimationSnapshot(listOf(AnimationFrame(FrameId("frame"))),
+                0, 12, PlaybackMode.LOOP, 0, 0, .3f, emptySet(), emptyMap(), emptyMap()), backgroundColor = Color.BLUE)
+        val id = library.newId()
+        val destination = File.createTempFile("animation-export", ".zip")
+        try {
+            ProjectPersistence.save(context.contentResolver, library, id, "Imported", snapshot).getOrThrow()
+            ProjectTransfer.exportMedia(context, library, listOf(id), android.net.Uri.fromFile(destination), null, AnimationExportFormat.PNG_SEQUENCE)
+            java.util.zip.ZipFile(destination).use { zip ->
+                val entry = zip.entries().toList().first { it.name.endsWith(".png") }
+                val frame = zip.getInputStream(entry).use { android.graphics.BitmapFactory.decodeStream(it) }!!
+                assertEquals(16, frame.width)
+                assertEquals(Color.BLUE, frame.getPixel(8, 8))
+                frame.recycle()
+            }
+        } finally { library.delete(id); snapshot.recycle(); destination.delete() }
+    }
+
     @Test fun invalidPackagesDoNotInstallAnyDrawingsOrEscapeStaging() {
         val library = DrawingLibrary(RuntimeEnvironment.getApplication())
         library.root.deleteRecursively(); library.root.mkdirs()
