@@ -41,3 +41,7 @@ are retained across launches; these slots are not editable saved swatches. The
 separate saved palette holds up to 64 exact colors, with explicit save/remove
 controls, independent of average-color changes. Existing eyedropper sampling of
 paint and imported images feeds the current color, which can then be saved.
+
+Gallery Reorder mode exposes Move earlier / Move later controls on both drawing
+and stack cards. Inside a stack the controls reorder its drawings. Changes use
+the same persisted gallery ordering as drag/drop, without requiring a long press.

@@ -83,6 +83,7 @@ fun GalleryScreen(
     var openStackId by remember { mutableStateOf<String?>(null) }
     var transferOpen by remember { mutableStateOf(false) }
     var transferIds by remember { mutableStateOf<List<String>?>(null) }
+    var reordering by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<DrawingSummary?>(null) }
     var operationError by remember { mutableStateOf<String?>(null) }
@@ -103,6 +104,14 @@ fun GalleryScreen(
     fun refreshGallery() {
         items = library.galleryItems()
         if (openStackId != null && items.none { it is GalleryStack && it.id == openStackId }) openStackId = null
+    }
+
+    fun moveItem(item: GalleryItem, delta: Int) {
+        val index = visibleItems.indexOfFirst { it.key == item.key }
+        val target = visibleItems.getOrNull(index + delta) ?: return
+        if (openStack != null) library.reorderInStack(openStack.id, item.key.removePrefix("drawing:"), target.key.removePrefix("drawing:"), delta > 0)
+        else library.reorderTopLevel(item.key, target.key, delta > 0)
+        refreshGallery()
     }
 
     fun updateDropTarget(point: Offset) {
@@ -235,6 +244,7 @@ fun GalleryScreen(
                             }
                             Row(Modifier.horizontalScroll(rememberScrollState())) {
                                 TextButton(onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) }, enabled = !importingMedia) { Text("Image / GIF / video") }
+                                TextButton(onClick = { reordering = !reordering }) { Text(if (reordering) "Done reordering" else "Reorder") }
                                 TextButton(onClick = { transferIds = null; transferOpen = true }) { Text("Import project") }
                                 TextButton(onClick = {
                                     transferIds = items.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }
@@ -248,6 +258,11 @@ fun GalleryScreen(
                     }
                 }
                 items(visibleItems, key = GalleryItem::key) { item ->
+                    Column {
+                    if (reordering) Row {
+                        TextButton(onClick = { moveItem(item, -1) }, enabled = visibleItems.firstOrNull()?.key != item.key) { Text("Move earlier") }
+                        TextButton(onClick = { moveItem(item, 1) }, enabled = visibleItems.lastOrNull()?.key != item.key) { Text("Move later") }
+                    }
                     when (item) {
                         is GalleryDrawing -> DrawingCard(
                             item.drawing, { onOpen(item.drawing) }, { duplicateDrawing(item.drawing) },
@@ -257,6 +272,7 @@ fun GalleryScreen(
                             thumbnailHeight = thumbnailHeight,
                         )
                         is GalleryStack -> StackCard(item, { openStackId = item.id }, dragModifier(item), thumbnailHeight)
+                    }
                     }
                 }
                 if (openStack == null) item { NewDrawingCard(thumbnailHeight) { creating = true } }
