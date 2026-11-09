@@ -446,3 +446,13 @@ latency cost. History counts both stacks dynamically and caps even tiny edits at
 image: the tested cases now report NORMAL painting pressure. This does not bound
 all transient render/recording allocations or guarantee every incompressible edit
 fits the budget.
+
+Brush-library, favorite-tip and studio parameter thumbnails use a fixed blue ink
+sample. Color-wheel changes must not recolor/rasterize those preview collections.
+The active paint color still applies to actual canvas strokes.
+
+Optional costs to review with the user (not removed automatically): native
+parameter endpoint previews in the brush studio; visible-canvas palette
+aggregation after drawing; onion-skin compositing; animation thumbnail refreshes;
+periodic save attempts when idle. These provide distinct editing/recovery value
+and should be profiled or made optional before removing them.
