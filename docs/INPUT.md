@@ -322,3 +322,7 @@ immediately; raster updates process a display frame's accumulated samples togeth
 Pen-up flushes the remaining samples before commit. Cancellation removes the queued
 frame so no paint/erase can appear after the gesture is cancelled. Jetpack Ink still
 receives native input directly and independently of this raster batching.
+
+Long-press frame reordering shows a floating thumbnail following the pointer,
+dims the source frame, and marks the insertion edge at the destination. Dropping
+uses that same destination index; cancelling leaves frame order unchanged.

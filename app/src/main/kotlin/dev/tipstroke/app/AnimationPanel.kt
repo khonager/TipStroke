@@ -18,6 +18,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
@@ -93,6 +98,9 @@ internal fun AnimationPanel(
     val selectedTick = state.frames.take(state.selectedIndex).sumOf { it.exposure }
     val frameBounds = remember { mutableStateMapOf<FrameId, Rect>() }
     var draggedFrame by remember { mutableStateOf<FrameId?>(null) }
+    var dragPreview by remember { mutableStateOf<Bitmap?>(null) }
+    var dragPositionY by remember { mutableFloatStateOf(0f) }
+    var panelOrigin by remember { mutableStateOf(Offset.Zero) }
     var dragPositionX by remember { mutableFloatStateOf(0f) }
     var scrubTick by remember { mutableFloatStateOf(0f) }
     var scrubbing by remember { mutableStateOf(false) }
@@ -104,6 +112,7 @@ internal fun AnimationPanel(
         modifier.fillMaxWidth(.96f).widthIn(max = 860.dp), color = Color(0xF0202125),
         shape = RoundedCornerShape(15.dp), border = BorderStroke(1.dp, Color(0x885D626B)), shadowElevation = 8.dp,
     ) {
+        Box(Modifier.onGloballyPositioned { panelOrigin = it.boundsInRoot().topLeft }) {
         Column {
         TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, enabled = !state.loading && !state.playing, onClick = onImportMedia)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -125,11 +134,14 @@ internal fun AnimationPanel(
                             detectDragGesturesAfterLongPress(
                                 onDragStart = { offset ->
                                     draggedFrame = frame.id
+                                    dragPreview = thumbnail
+                                    dragPositionY = (frameBounds[frame.id]?.top ?: 0f) + offset.y
                                     dragPositionX = (frameBounds[frame.id]?.left ?: 0f) + offset.x
                                 },
                                 onDrag = { change, amount ->
                                     change.consume()
                                     dragPositionX += amount.x
+                                    dragPositionY += amount.y
                                 },
                                 onDragEnd = {
                                     val source = state.frames.indexOfFirst { it.id == frame.id }
@@ -143,6 +155,15 @@ internal fun AnimationPanel(
                                 onDragCancel = { draggedFrame = null },
                             )
                         }
+                        .drawWithContent {
+                            drawContent()
+                            if (frame.id == dragTarget && draggedFrame != frame.id) {
+                                val source = state.frames.indexOfFirst { it.id == draggedFrame }
+                                val x = if (index > source) size.width else 0f
+                                drawLine(Color.White, Offset(x, 0f), Offset(x, size.height), 4.dp.toPx())
+                            }
+                        }
+                        .graphicsLayer { alpha = if (frame.id == draggedFrame) .25f else 1f }
                         .clip(shape)
                         .background(Color(0xFF34363C), shape)
                         .then(if (selected || frame.id == dragTarget) Modifier.border(
@@ -294,6 +315,18 @@ internal fun AnimationPanel(
                 valueRange = 0f..(timeline.totalTicks - 1).toFloat(),
                 modifier = Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp)
                     .semantics { contentDescription = "Scrub animation, frame ${state.selectedIndex + 1} of ${state.frames.size}" })
+        }
+        }
+        if (draggedFrame != null) {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val half = with(density) { 28.dp.toPx() }
+            Box(Modifier.offset { IntOffset((dragPositionX - panelOrigin.x - half).roundToInt(),
+                (dragPositionY - panelOrigin.y - half).roundToInt()) }
+                .size(56.dp).background(Color(0xFF34363C), RoundedCornerShape(7.dp))
+                .border(2.dp, Color.White, RoundedCornerShape(7.dp))
+                .semantics { contentDescription = "Dragged frame preview" }) {
+                dragPreview?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize().padding(3.dp), contentScale = ContentScale.Fit) }
+            }
         }
         }
     }
