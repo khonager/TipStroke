@@ -2,7 +2,7 @@
 
 The latency budget belongs to stylus sampling and wet rendering. `MotionEvent`s go directly to the native drawing surface—Jetpack Ink for Pencil and Ink, a native raster preview for Airbrush, and sparse tile transactions for erasing. Compose sees only occasional diagnostics/control state.
 
-The old Airbrush approaches either replayed individually blurred segments, producing darker input-sample bands, or stacked native Ink coats, producing concentric outlines. The soft Airbrush now rebuilds only its current in-memory preview silhouette as samples arrive, applies one native blur to that union, and touches no permanent pixels before pen-up. Commit draws the same silhouette only into intersecting sparse tiles. Erasing uses incremental sparse-tile transactions: each update rasterizes only its new segment and schedules invalidation for that document region. Tile compositing rejects tiles outside the current canvas clip.
+The old Airbrush approaches either replayed individually blurred segments, producing darker input-sample bands, or stacked native Ink coats, producing concentric outlines. The soft Airbrush now rebuilds only its current in-memory preview silhouette as samples arrive, applies one native blur to that union, and touches no permanent pixels before pen-up. Commit draws the same silhouette only into intersecting sparse tiles. Erasing uses incremental sparse-tile transactions: each display update rasterizes its accumulated new segments and schedules invalidation for that document region. Tile compositing rejects tiles outside the current canvas clip.
 
 Current safeguards:
 
@@ -11,7 +11,7 @@ Current safeguards:
 - Airbrush holds the current sample list and a bounded viewport coverage buffer while drawing; it neither copies full layers nor mutates or redraws permanent tiles per sample.
 - Unbuffered stylus dispatch and motion prediction are requested.
 - Canvas pixels use sparse 256×256 tiles; only intersecting tiles allocate and redraw.
-- Undo snapshots cover affected tiles only and have a 96 MiB configurable budget.
+- Undo snapshots cover affected tiles only. The default budget reserves a full raster layer and 32 MiB of working space within 75% of the app heap, clamped to 8–96 MiB; a single oversized edit can exceed that budget to retain its undo.
 - Camera navigation is a matrix; artwork is not transformed or resampled.
 - Raster tiles use nearest-neighbor presentation on canvases up to 128×128 px and at 8× zoom or above. Pixel tools paint exact integer cells into the existing sparse tiles; wet marks are drawn by the native raster view and only intersecting tiles are committed.
 - Layer thumbnails fit their visible content. Exact alpha bounds are cached per sparse tile, and only dirty tiles are rescanned after paint changes; preview recomposition does not scan an entire layer or allocate a canvas-sized bitmap.
@@ -154,8 +154,9 @@ the device benchmark before treating the earlier timings as current.
 
 Custom brush sources are bounded immutable 256 × 256 coverage maps. Image import
 checks encoded size/dimensions and downsamples off the input thread. A live stroke
-prepares its two source shaders once, retains arc-length sampling state, and draws
-only newly emitted stamps into intersecting sparse tiles. Transparent faded stamps
+prepares its two source shaders once, retains arc-length sampling state, and records
+newly emitted stamps into native GPU batches on Android 14+ ordinary painting;
+older Android and constrained paths draw them into intersecting sparse tiles. Transparent faded stamps
 allocate no tiles. Stamp count, scatter, size, source dimensions, and path-step
 limits bound work; no full-canvas copies or sample-time file access are added.
 The studio test pad is native and separately bounded to 16 × 2,048 samples and a
@@ -295,9 +296,12 @@ per particle rather than CPU raster stamps during wet authoring. This is not a
 guarantee of equal cost for all tips: dense particles still create geometry and
 overdraw, and screen-size mode can reach many full-resolution document tiles.
 
-Finished meshes use one reusable 256 px HardwareBufferRenderer target. Each
-reached tile requires GPU completion and CPU readback before its pixels enter the
-permanent raster layer. Completion currently runs synchronously on the UI thread;
+Finished meshes use their actual geometry bounds and a reusable 1024 px
+HardwareBufferRenderer atlas, batching up to sixteen sparse 256 px tiles per GPU
+submission/readback. Strokes reaching at least 128 tiles use spatial 2048 px
+regions to draw the geometry once per region rather than once per tile. Only
+requested sparse tiles enter the permanent raster layer. Thumbnail
+rendering retains a separate 256 px target. Completion currently runs synchronously on the UI thread;
 large marks can therefore pause at pen-up. No full-canvas readback or allocation
 is introduced. Creator thumbnails cache their output but rendering a changed
 thumbnail also incurs readback. Reference-constrained, fitted-shape, and animation
@@ -308,3 +312,137 @@ profiling. Emulator correctness tests do not establish hardware frame pacing.
 `JetpackInkInstrumentedTest` exercises the actual pinned native families and GPU
 tile renderer, confirms visible pixels and preview/commit agreement, and checks
 undo/redo. API 34 is required; existing brushes retain their prior support range.
+
+
+## Physical-device profiling at 5632 × 5632
+
+`ScreenStrokePerformanceTest` schedules 250 Hz native stylus MotionEvents for a
+320 ms crossing of a fitted, single-layer 5632 × 5632 document. It tests both a
+180 document-pixel tip and a 180 physical-screen-pixel tip (resolved through camera
+scale), twice per case, with pressure 0.7 and tilt 0.3 radians. Eraser cases start with painted tiles. It records scheduled
+input queue delay, handler cost, native Ink receipt-to-draw-call timing, UI vsync
+gaps, and pen-up-to-history handoff. These are synthetic software measurements,
+not digitizer-to-photon latency. Two strokes are useful reproductions, not a
+statistically robust thermal/endurance benchmark. The requested 120 Hz refresh was
+reported as 60 Hz on both connected devices during these runs.
+
+The earlier [Xiaomi Pad 6 baseline](performance/tablet-before.txt) at this resolution measured 2,278 ms p95 input
+queue delay for the large dense custom brush and about 2–2.9 seconds for comparison
+Ink handoff. The S25 comparison (SM-S931B, API 37) measured the GPU stamp/Ink changes.
+The tablet was then reconnected for final native eraser, frame batching, Airbrush
+commit and memory tests. The S25 report predates these final raster-path changes.
+
+On Android 14+, ordinary custom stamp painting now records **new stamps only** into
+native RenderNodes and displays them at the current camera scale. Pen-up renders
+the same display lists into full-resolution sparse tiles through the bounded atlas.
+Stamp count, spacing, shape, scatter, grain and pressure sampling are unchanged;
+GPU/software antialiasing can differ slightly. Selection and layer clipping remain
+in force. Reference masks and live animation recording retain the existing raster
+path. Cancellation discards provisional nodes. The display list is capped at
+2,048 batches / 65,536 stamps; exceeding it replays into the existing incremental
+raster path for the rest of that gesture, preserving one undo transaction.
+No full canvas bitmap or per-sample Compose state is introduced.
+
+Solid Ink particles retain native geometry: a textured-quad experiment improved
+short strokes but regressed sustained coverage on the tablet and was removed.
+Fully rounded square-aspect Soft particles use their existing circular texture;
+non-square tips keep native capsule geometry.
+
+Input diagnostics publish at most 10 times per second with the overlay enabled;
+with it disabled, MotionEvents publish no diagnostics into Compose. Camera and
+memory notifications remain separate.
+
+See the checked-in [S25 baseline](performance/s25-before.txt) and
+[S25 updated run](performance/s25-after.txt) for measurements and remaining stalls.
+Pen-up tile completion is still synchronous. An asynchronous implementation must
+preserve edit order, keep completed wet strokes visible until atomic tile handoff,
+bound pending coverage, and coordinate undo, save, layer changes and cancellation.
+Large Pencil/eraser pixel work and synchronous completion remain bottlenecks; these
+changes do **not** establish fluid drawing for every brush at every resolution.
+
+## One-layer memory warnings
+
+Layer admission and actual painting headroom are separate. Having no allowance
+for another fully painted layer must not trigger a critical painting warning.
+Warnings now compare tracked document bytes (including undo and images) to the
+75% heap allowance, plus system low-memory headroom. Process PSS is still displayed
+but includes driver/code/shared allocations outside that allowance. Critical means
+95% document use, less than 8 MiB usable headroom, or Android low memory; elevated
+means 85% use or less than 24 MiB headroom. Discarding redo on a new edit subtracts
+its retained bytes, preventing phantom growth in the memory estimate.
+
+`OneLayerMemoryInstrumentedTest` fills all 484 tiles of a 5632 square (121 MiB),
+adds twelve ordinary strokes, verifies bounded history, normal memory pressure,
+and undo/redo on the physical device. This does not promise unlimited history or
+room for every single giant edit, photos, animation frames or recording buffers.
+
+
+The earlier short-stroke tablet run is in [tablet-after.txt](performance/tablet-after.txt);
+it predates the whole-canvas follow-up below and is not the final acceptance result. Pencil
+and single-target eraser batches retain every input sample but update raster pixels
+once per display frame, reducing redundant tile access. Pen-up flushes outstanding
+samples before finalizing the undo transaction. The eraser pixel kernel uses NDK
+C++ with float contraction disabled, retaining the Kotlin nearest-centerline and
+pressure rules. Native/Kotlin differential tests require identical pixels, including
+translucent originals and intersecting strokes. Tile buffers stay in managed code;
+the native critical region only calculates one bounded tile rectangle.
+
+Soft Airbrush commit now shares one blur halo across a 1024 px (4 × 4 tile) region.
+It never caches or copies existing artwork into that buffer. The existing broad-soft
+mask downsampling remains; a region's coverage, halo and extracted alpha need up
+to roughly 21 MiB of temporary workspace at the largest mask scale. Only one region
+is processed at a time. This trades bounded scratch space for less repeated blur
+work. The resulting transaction records exact raster patches for replay.
+
+
+Pencil preview allocation uses the actual pressure/tilt contact bounds (with room
+for rotated corners and antialiasing), instead of the maximum possible shading
+radius around every input segment. Eraser allocation and pixel reads likewise use
+the kernel's pressure-dependent outer radius. This avoids allocating, reading and
+later scanning large rings of untouched tiles. Rotated Pencil coverage is compared
+against the prior conservative tile allocation so tighter bounds cannot silently cut off graphite.
+
+
+## Sustained coverage follow-up (Xiaomi Pad 6)
+
+`reportFastWholeCanvasCoverage` schedules 1,001 full-pressure samples over four
+seconds, alternating 32 full-width sweeps across the fitted 5632 square. Tip size
+is 180 screen pixels (about 718 document pixels). The eraser starts with all 484
+tiles painted. Results check real coverage and memory as well as timing.
+
+The [whole-canvas run](performance/tablet-whole-canvas.txt) demonstrates remaining
+failures; passing the instrumentation means the workload completed correctly,
+**not** that it met a latency target. Dense custom stamp p95 input queue delay
+fell from 1,086 ms to 97 ms after caching its old RenderNode batches in one
+bounded display-resolution compositing layer. The cache is rebuilt every 64
+batches, capped at 2048 px per edge; full-resolution original nodes are retained
+for commit. It still does not achieve one-frame latency.
+
+Jetpack Stamp's textured-quad experiment measured 1,068 ms p95 receipt-to-draw and
+12.7 seconds handoff. [Restoring native circles](performance/tablet-stamp-native-circles.txt)
+measured 370 ms / 4.9 seconds. [Increasing spacing from .02 to .12](performance/tablet-stamp-spacing-012.txt)
+measured 57 ms / 1.7 seconds, with unchanged flow; this changes appearance and is
+an experiment, not a silent rewrite of existing tips. These are separate runs,
+not controlled thermal statistics. The final implementation retains native solid
+geometry and exposes the spacing choice in the creator. The all-tip report contains
+the discarded textured-quad experiment for comparison; the isolated native-circle
+report describes the final Stamp geometry.
+
+Round Ink performs much better on the same device. Dense particle geometry,
+transparent overdraw, growing wet display lists, per-pixel erasing and synchronous
+full-resolution completion are distinct costs. The tablet is not simply too weak,
+and switching language alone does not remove these costs. Broad Pencil/eraser and
+pen-up latency still fail the intended fluid full-canvas experience. Ordered,
+bounded asynchronous tile completion and incremental wet coverage are still needed;
+there is no all-brush/no-lag acceptance claim or creator certification.
+
+Undo now retains only the opposite state of affected tiles. Current pixels remain
+in the layer; undo captures those pixels for redo and swaps the stored state.
+Large opposite states use lossless per-tile raw premultiplied-byte compression
+when it saves at least half the space; incompressible tiles stay raw. Compression
+and decoding currently run synchronously at transaction boundaries, a remaining
+latency cost. History counts both stacks dynamically and caps even tiny edits at
+256 entries. A first full-canvas stroke no longer retains a duplicate 121 MiB after
+image: the tested cases now report NORMAL painting pressure. This does not bound
+all transient render/recording allocations or guarantee every incompressible edit
+fits the budget.

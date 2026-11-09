@@ -13,6 +13,21 @@ import kotlin.math.sin
 class InkBrushDrawingPad(context: Context) : FrameLayout(context) {
     private val surface = DrawingSurface(context)
     private var preset = BrushPreset.BlankInk
+    var sampleTimingListener: ((Double) -> Unit)? = null
+    private val refreshSample = Runnable { showSample() }
+    private fun scheduleSample() {
+        removeCallbacks(refreshSample)
+        // Rebuild after the slider settles rather than blocking every drag event.
+        postDelayed(refreshSample, 180L)
+    }
+    override fun onDetachedFromWindow() {
+        removeCallbacks(refreshSample)
+        super.onDetachedFromWindow()
+    }
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        scheduleSample()
+    }
     private var documentWidth = 0
     private var documentHeight = 0
     init {
@@ -26,7 +41,7 @@ class InkBrushDrawingPad(context: Context) : FrameLayout(context) {
         if (value == preset) return
         preset = value
         configure()
-        clear()
+        scheduleSample()
     }
     private fun configure() {
         surface.settings.brush = preset
@@ -36,12 +51,25 @@ class InkBrushDrawingPad(context: Context) : FrameLayout(context) {
     }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        documentWidth = w.coerceIn(16, 1600); documentHeight = h.coerceIn(16, 600)
-        configure(); clear()
+        val scale = maxOf(1f, w / 1600f, h / 600f)
+        documentWidth = (w / scale).toInt().coerceAtLeast(16)
+        documentHeight = (h / scale).toInt().coerceAtLeast(16)
+        configure(); scheduleSample()
     }
     fun clear() {
+        removeCallbacks(refreshSample)
         if (documentWidth == 0 || documentHeight == 0) return
         surface.configureBlank(documentWidth, documentHeight)
+        fitPad()
+    }
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        if (changed) fitPad()
+    }
+    private fun fitPad() {
+        if (documentWidth == 0 || documentHeight == 0) return
+        (surface.getChildAt(0) as RasterCanvasView).updateTransform(width / 2f, height / 2f,
+            minOf(width.toFloat() / documentWidth, height.toFloat() / documentHeight) * .96f, 0f)
     }
     fun showSample() {
         clear()
@@ -51,9 +79,11 @@ class InkBrushDrawingPad(context: Context) : FrameLayout(context) {
             StrokeSample(0, Point(30f + t * (documentWidth - 60), documentHeight * (.5f + .12f * sin(t * 6.28f))),
                 .2f + .8f * sin(t * 3.14f), t * 1.2f, 0f, i * 10_000_000L, 0, PointerKind.STYLUS)
         }
+        val started = System.nanoTime()
         val raster = surface.getChildAt(0) as RasterCanvasView
         raster.layerStack.selectedStore()?.commit(CompletedStroke(samples,
             StrokeStyle(preset, preset.baseSizePx, preset.opacity, surface.settings.color, BlendBehavior.PAINT)))
         raster.invalidate()
+        sampleTimingListener?.invoke((System.nanoTime() - started) / 1_000_000.0)
     }
 }

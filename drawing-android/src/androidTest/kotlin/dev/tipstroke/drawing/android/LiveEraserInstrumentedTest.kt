@@ -75,6 +75,39 @@ class LiveEraserInstrumentedTest {
         store.discard()
     }
 
+    @Test fun nativeCoverageMatchesKotlinForPressureChangesAndCrossings() {
+        assertTrue("The packaged native eraser library must load on the device", NativeEraser.available)
+        val random = kotlin.random.Random(48)
+        val before = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {
+            setPixels(IntArray(256 * 256) { Color.argb(random.nextInt(256), 20, 70, 140) }, 0, 256, 0, 0, 256, 256)
+        }
+        try {
+            for (hardness in listOf(0f, .35f, 1f)) for (size in listOf(32f, 180f, 718f)) {
+                val native = before.copy(Bitmap.Config.ARGB_8888, true)
+                val kotlin = before.copy(Bitmap.Config.ARGB_8888, true)
+                val fast = LiveEraserCoverage(256, useNative = true)
+                val reference = LiveEraserCoverage(256, useNative = false)
+                val style = style(size).copy(brush = BrushPreset.Ink.copy(hardness = hardness,
+                    pressureToSize = PressureCurve(.1f, 1f), pressureToOpacity = PressureCurve(.05f, 1f)))
+                val points = List(30) { index -> sample(index).copy(
+                    position = Point(random.nextFloat() * 600 - 180, random.nextFloat() * 600 - 180),
+                    pressure = random.nextFloat(), opacityPressure = random.nextFloat()) }
+                val a = IntArray(256 * 256)
+                val b = IntArray(256 * 256)
+                try {
+                    (listOf(points.take(1)) + points.zipWithNext().map { listOf(it.first, it.second) }).forEach { samples ->
+                        val stroke = CompletedStroke(samples, style)
+                        fast.apply(native, before, TileCoordinate(0, 0), stroke)
+                        reference.apply(kotlin, before, TileCoordinate(0, 0), stroke)
+                        native.getPixels(a, 0, 256, 0, 0, 256, 256)
+                        kotlin.getPixels(b, 0, 256, 0, 0, 256, 256)
+                        assertArrayEquals("Coverage changed at size=$size hardness=$hardness", b, a)
+                    }
+                } finally { native.recycle(); kotlin.recycle() }
+            }
+        } finally { before.recycle() }
+    }
+
     @Test fun reportLiveUpdateCostOnTheDevice() {
         val report = StringBuilder("Per-update rendering time; excludes display and input delivery.\n")
         for (size in listOf(48f, 128f, 256f)) {

@@ -170,8 +170,8 @@ internal fun LayersPanel(
                 TextButton(onClick = onDismiss) { Text("Done") }
             }
             Text("${layers.size}/$maximumLayers Layers", color = Color.White, fontSize = 14.sp)
-            if (layers.size >= maximumLayers) Text("Layer limit reached. Delete unused layers to add more.",
-                color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            if (layers.size >= maximumLayers) Text("This canvas supports $maximumLayers layer${if (maximumLayers == 1) "" else "s"}. You can keep drawing on the existing layers.",
+                color = Color(0xFFBFC1C7), fontSize = 12.sp)
             if (memoryPressure != dev.tipstroke.drawing.android.MemoryPressure.NORMAL) Text(
                 "Memory is running low. Photos and undo history also use painting memory.",
                 color = MaterialTheme.colorScheme.error, fontSize = 12.sp)

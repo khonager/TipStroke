@@ -60,6 +60,7 @@ internal class MemoryBudgetAdvisor(context: Context) {
             systemLowMemory = device.lowMemory,
             documentBytes = documentBytes,
             fullLayerBytes = fullLayerBytes,
+            documentBudgetBytes = documentAllowance,
         )
         cached = result
         lastSampleAtMs = now
@@ -96,17 +97,21 @@ internal fun calculateMemoryBudget(
     systemLowMemory: Boolean,
     documentBytes: Long,
     fullLayerBytes: Long,
+    documentBudgetBytes: Long = processBudgetBytes,
 ): MemoryBudgetSnapshot {
-    val processHeadroom = (processBudgetBytes - processBytes).coerceAtLeast(0L)
+    val processHeadroom = (documentBudgetBytes - documentBytes).coerceAtLeast(0L)
     val systemHeadroom = (deviceAvailableBytes - deviceLowMemoryThresholdBytes).coerceAtLeast(0L)
     val usableHeadroom = minOf(processHeadroom, systemHeadroom)
     val remaining = if (fullLayerBytes > 0L) {
         (usableHeadroom / fullLayerBytes).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     } else 0
-    val usage = if (processBudgetBytes > 0L) processBytes.toDouble() / processBudgetBytes else 1.0
+    // Layer capacity is not painting headroom. On the one-layer maximum, reserving
+    // another whole layer reported critical pressure after even a small stroke.
+    // PSS also includes code and driver caches outside the Java heap allowance.
+    val usage = if (documentBudgetBytes > 0L) documentBytes.toDouble() / documentBudgetBytes else 1.0
     val pressure = when {
-        systemLowMemory || usage >= .9 || usableHeadroom < fullLayerBytes -> MemoryPressure.CRITICAL
-        usage >= .7 || usableHeadroom < fullLayerBytes * 3L -> MemoryPressure.ELEVATED
+        systemLowMemory || usage >= .95 || usableHeadroom < 8L * 1024 * 1024 -> MemoryPressure.CRITICAL
+        usage >= .85 || usableHeadroom < 24L * 1024 * 1024 -> MemoryPressure.ELEVATED
         else -> MemoryPressure.NORMAL
     }
     return MemoryBudgetSnapshot(

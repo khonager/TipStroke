@@ -27,6 +27,8 @@ it is not an App Store release.
 
 Set `ANDROID_HOME`/`ANDROID_SDK_ROOT`, or create an untracked `local.properties` containing `sdk.dir=/path/to/Android/Sdk`.
 
+The Android pixel kernel builds with NDK `28.2.13676358` and CMake `3.22.1`. Install them through the [Android SDK Manager](https://developer.android.com/studio/projects/install-ndk), or let Gradle install the pinned versions after accepting SDK licenses.
+
 The short commands are intentionally similar to Flutter/npm workflows:
 
 ```sh

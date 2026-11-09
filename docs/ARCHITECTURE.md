@@ -4,7 +4,7 @@
 
 `:core` is platform-neutral Kotlin. It owns `Document`, `CanvasSpec`, the sealed `Layer` contract, `RasterLayer`, non-destructive `ImageLayer` metadata, versioned `BrushPreset`, colors, transform/tile math, samples, renderer contracts, and bounded undo history. It contains no Android or Ink types.
 
-`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, native wet rendering shows the active stroke, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles. Pencil and Ink use TipStroke custom families from Jetpack Ink 1.1's experimental API; their wet and final renderers share the same texture store and family. Airbrush uses native raster coverage with a bounded viewport-resolution wet mask and a separate permanent tile commit; broad soft coverage uses bounded mask sampling (see `BRUSH_ENGINE.md`). Eraser gestures apply each new segment directly to affected raster tiles inside a cancellable transaction so lower layers are revealed immediately. Image erase masks reuse the same sparse tile and bounded-history machinery in original image coordinates.
+`:drawing-android` owns the hot path. `DrawingSurface` routes raw `MotionEvent`s, native wet rendering shows the active stroke, `RasterCanvasView` composites the ordered runtime layer stack, and each paint layer's `TileStore` allocates/rasterizes only dirty 256×256 premultiplied ARGB tiles. Pencil and Ink use TipStroke custom families from Jetpack Ink 1.1's experimental API; their wet and final renderers share the same texture store and family. Airbrush uses native raster coverage with a bounded viewport-resolution wet mask and a separate permanent tile commit; broad soft coverage uses bounded mask sampling (see `BRUSH_ENGINE.md`). Eraser gestures batch new segments once per display frame into affected raster tiles inside a cancellable transaction so lower layers are revealed immediately. Image erase masks reuse the same sparse tile and bounded-history machinery in original image coordinates.
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
@@ -83,7 +83,7 @@ Gallery **Settings → Troubleshooting → Crash and debug log** shows the retai
 
 ## Drawing-process replay (first version)
 
-Drawing process is separate from animation. New Android canvases automatically record native raster transactions. Existing raster-only drawings without a recording start with their current tiles as a baseline; earlier history cannot be recovered. `ProcessRecorder` receives committed commands from `TileStore`, retains complete immutable brush settings and sample data, and compresses actions on a dedicated serial encoding worker. It does not produce video during drawing. Pencil preserves the actual incremental overlay commands and segment boundaries; Airbrush/pixel tools preserve completed commands; erasing preserves incremental segments. Ink preserves finalized native input batches, noise seed, static-brush phase marker, brush color/size/epsilon and a pinned native dependency identifier. Undo/redo, smudge, moved selections, and other unsupported raster transactions use exact changed-tile PNG patches. Layer order, visibility, opacity, and background changes are metadata actions. New nonempty raster layers receive a baseline once.
+Drawing process is separate from animation. New Android canvases automatically record native raster transactions. Existing raster-only drawings without a recording start with their current tiles as a baseline; earlier history cannot be recovered. `ProcessRecorder` receives committed commands from `TileStore`, retains complete immutable brush settings and sample data, and compresses actions on a dedicated serial encoding worker. It does not produce video during drawing. Pencil preserves the actual incremental overlay commands and segment boundaries; pixel tools preserve completed commands; the shared-region Airbrush painter records exact tile patches; erasing preserves incremental segments. Ink preserves finalized native input batches, noise seed, static-brush phase marker, brush color/size/epsilon and a pinned native dependency identifier. Undo/redo, smudge, moved selections, and other unsupported raster transactions use exact changed-tile PNG patches. Layer order, visibility, opacity, and background changes are metadata actions. New nonempty raster layers receive a baseline once.
 
 `ProcessReplay` reconstructs independent sparse tiles using frozen v1 painters, brush math, families, and textures. The live document remains authoritative raster artwork. Replay uses a bounded resident tile cache with lossless temporary disk backing; it no longer fails merely because the drawing spans more than 512 tiles. Preview rendering has its own serial worker and ignores superseded results. The preview has a fixed-size viewport; loading feedback overlays it and is hidden during playback so controls do not shift or flash between frames. Playback waits for each completed frame before advancing; seeking stays available during rendering. Failed actions reset replay so retry cannot silently skip them. Slow or failed preview steps are included in local diagnostics. Playback/scrubbing happens in a modal **Export → Drawing progress** view, outside the input path; backward seeking rebuilds from the start in this version. Export shares the existing GIF/MP4 encoder, renders one frame at a time, and uses 12 actions/second with a maximum 1280 px edge. The preview uses at most 960 px. Whole completed actions appear at once; this is not real-time pen-motion playback.
 
@@ -335,3 +335,34 @@ files with weak leases held by the runtime/history/snapshots, and old-process
 working files are removed on first import. Atomic saves hard-link source files
 where supported, with copy fallback. Resolution reduction clears timeline undo
 alongside raster undo to avoid restoring incompatible canvas scales.
+
+
+## Android raster acceleration
+
+Android 14+ custom stamps retain bounded RenderNode batches for the wet stroke,
+then use a bounded 1024/2048 px GPU tile atlas to commit full-resolution sparse
+pixels. Old preview batches use a bounded display-resolution compositing layer;
+the original nodes remain available for full-resolution completion. Actual
+Ink mesh bounds determine reached tiles. These are rendering details; the layer
+model and project format remain raster-based and unchanged.
+
+Pencil and ordinary eraser input accumulates all samples and flushes them together
+once per display frame, with a synchronous final flush before pen-up commit.
+Cancellation removes the queued frame and restores the existing transaction.
+The eraser's per-pixel nearest-centerline kernel is implemented in a small Android
+NDK library (`drawing-android/src/main/cpp/eraser.cpp`). It only operates on the
+current tile's gesture-owned arrays, never owns document bitmaps, and does no I/O
+or callbacks. Native loading is warmed during surface initialization. The Kotlin
+implementation remains the host-test/unsupported-load fallback; device tests
+compare both implementations byte-for-byte over pressure changes and crossings.
+`:core` and the native iOS surface are unchanged.
+
+Soft Airbrush commits blur neighboring tiles together in bounded 1024 px
+coverage regions before copying into the permanent 256 px tiles. Selection clips
+are applied during coverage rendering; reference-constrained paths keep the prior
+painter. Exact raster patches preserve these pixels in process replay. The frozen
+v1 renderer is unchanged.
+
+Undo transactions retain only opposite-state tiles, losslessly compressing large
+compressible snapshots. Undo/redo swaps this state with current layer pixels; both
+stacks contribute their current retained size to the bounded history budget.

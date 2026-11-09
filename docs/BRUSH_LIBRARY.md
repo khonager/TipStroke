@@ -130,14 +130,18 @@ The checkmark applies the source; the close icon cancels that source edit.
 `BrushPreset.stamp` supplies the new tip definition, with platform-independent,
 immutable coverage sources in `:core`. `StampPath` samples arc length with a
 one-document-pixel minimum step, carrying spacing and deterministic randomness
-across event batches. Each update renders only new stamps into intersecting 256 px
-tiles. No full layer copies or per-sample IO are introduced. Undo is one bounded
+across event batches. Each update renders only new stamps. On Android 14+, ordinary
+painting records native GPU display lists for wet rendering, then commits them to
+intersecting 256 px tiles; constrained/recording paths and older Android retain
+incremental raster painting. No full layer copies or per-sample IO are introduced. Undo is one bounded
 sparse transaction, and cancellation restores the before snapshots.
 
 The stamp renderer composites a shape mask and a repeating grain mask in document
 coordinates, with bounded size, tilt, scatter, and count. Extremely large corrupt
 input jumps are bounded to 8,192 path steps per segment. Blank faded stamps do not
-allocate tiles. Live pixels become the final pixels at pen-up. Custom paint is
+allocate tiles. Wet and permanent rendering share the same stamps; GPU versus
+software antialiasing may differ slightly. Display-list retention is bounded, with
+a raster fallback for long gestures. Custom paint is
 recorded as exact sparse patches using the existing replay format; the frozen v1
 tip renderer is not changed, and its codec refuses custom tip commands.
 
@@ -172,3 +176,18 @@ current canvas drawing color, including changes from the color picker or eyedrop
 Selection changes highlight the cell without replacing the stroke color. Native
 preview caches invalidate on color changes; contrasting neutral backdrops keep
 both light and dark tips visible. Live native stroke previews use the same color.
+
+
+On short landscape windows, Ink Studio places the native comparison pad beside
+scrolling settings, with Cancel/Save in the header. Portrait keeps the pad above
+the settings. The pad preserves its viewport aspect ratio within a 1600 × 600
+limit and fits its document to the available space, avoiding a flattened strip.
+
+Ink Studio automatically redraws its sample 180 ms after an adjustment settles,
+and on opening/resizing. Clear cancels a queued sample. Sample render time is
+measured on the device and explicitly describes only the small preview; it is
+not a full-canvas latency rating. Dense overlapping stamps show a cost warning
+and a “Try wider spacing” action (.12 tip widths), which deliberately changes
+the preview so the user can judge the appearance. Existing saved tip values are
+preserved. Full-canvas tablet benchmarks still show unacceptable latency for
+some tips; the creator does not certify them as fluid.

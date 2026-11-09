@@ -65,8 +65,12 @@ internal class TipStrokeInkBrushes {
         // In the pinned native engine, continuous ACCUMULATE geometry retains the first
         // contact's size. Use particles so pressure/tilt evolve along accumulating strokes.
         val particles = config.particles || accumulate
+        // Keep solid particles as native geometry. Textured quads reduced short-stroke
+        // costs but made sustained full-canvas buildup substantially more expensive.
+        val circular = config.rounding == 1f && config.aspectRatio == 1f
+        val texturedQuad = config.texture == InkTexture.SOFT && circular
         val tip = BrushTip.builder().setScaleX(1f).setScaleY(config.aspectRatio)
-            .setCornerRounding(config.rounding).setRotationDegrees(config.rotationDegrees)
+            .setCornerRounding(if (texturedQuad) 0f else config.rounding).setRotationDegrees(config.rotationDegrees)
             .setParticleGapDistanceScale(if (particles) preset.spacing.coerceAtLeast(.02f) else 0f)
             .setBehaviors(behaviors.map(::BrushBehavior)).build()
         val textures = when (config.texture) {

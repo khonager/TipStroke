@@ -11,6 +11,20 @@ import dev.tipstroke.core.model.*
 import kotlin.test.*
 
 class CoreTests {
+    @Test fun historyRechecksBudgetWhenUndoSnapshotGrows() {
+        val history = UndoHistory(100)
+        fun transaction() = object : dev.tipstroke.core.drawing.UndoTransaction {
+            override var estimatedBytes = 10L
+            override fun undo() { estimatedBytes = 80L }
+            override fun redo() { estimatedBytes = 10L }
+        }
+        repeat(4) { history.push(transaction()) }
+        assertTrue(history.undo())
+        assertTrue(history.estimatedBytes <= 100L)
+        assertTrue(history.redo())
+        assertTrue(history.estimatedBytes <= 100L)
+    }
+
     @Test fun selectionKeepsItsPointsAfterGestureBufferIsCleared() {
         val gesture = mutableListOf(Point(0f, 0f), Point(100f, 0f), Point(50f, 100f))
         val selection = SelectionRegion(gesture)
@@ -133,6 +147,20 @@ class CoreTests {
         history.push(tx(0, 1)); history.push(tx(1, 2))
         assertTrue(history.undo()); assertEquals(1, value)
         assertFalse(history.undo()); assertTrue(history.redo()); assertEquals(2, value)
+    }
+
+    @Test fun newStrokeAfterUndoReleasesRedoFromMemoryAccounting() {
+        fun tx(bytes: Long) = object : UndoTransaction {
+            override val estimatedBytes = bytes
+            override fun undo() {}
+            override fun redo() {}
+        }
+        val history = UndoHistory(100)
+        history.push(tx(40)); history.push(tx(40)); history.undo()
+        history.push(tx(10))
+        assertEquals(50L, history.estimatedBytes)
+        assertFalse(history.canRedo())
+        assertTrue(history.undo()); assertTrue(history.undo())
     }
 
     @Test fun imageLayerKeepsOriginalSourceSeparateFromTransform() {

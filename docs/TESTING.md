@@ -439,3 +439,27 @@ with the imported round stamp, Airbrush and soft Eraser. Try both size units at 
 selection/reference clips, and painting over lower visible layers. Watch both the
 moving tip and pen-up handoff. No physical Android device was connected for the
 November 8, 2026 implementation checks, so device timings remain to be collected.
+
+
+For physical-device brush profiling at the maximum one-layer tablet reproduction
+size (5632 square), run `ScreenStrokePerformanceTest`. It writes
+`brush-qa/screen-strokes.txt` to connected-test additional output. Use
+`GpuStampInstrumentedTest` for shape/grain/rotation coverage and exact undo/redo,
+`JetpackInkInstrumentedTest` for native Ink/GPU handoff and touch cancellation,
+and `OneLayerMemoryInstrumentedTest` for fully painted one-layer memory headroom.
+The landscape Ink Studio layout is covered by `BrushCreatorFlowTest`, which saves
+`app/build/qa/ink-studio-landscape.png`. Synthetic event timings exclude physical
+input and display scanout; they cannot prove a no-lag stylus experience.
+
+`LiveEraserInstrumentedTest.nativeCoverageMatchesKotlinForPressureChangesAndCrossings`
+requires the packaged NDK kernel to load and compares its output byte-for-byte with
+the Kotlin fallback. `AirbrushCommitInstrumentedTest` checks shared blur-region
+coverage across tile boundaries, selection clipping, and exact undo/redo. NDK
+28.2.13676358 and CMake 3.22.1 are pinned in `:drawing-android`.
+
+For sustained coverage use `ScreenStrokePerformanceTest#reportFastWholeCanvasCoverage`:
+32 sweeps over four seconds at 250 Hz on a 5632 square. Optional instrumentation
+arguments `performanceTip` and `performanceSpacing` isolate construction costs.
+Read the timing report: successful test completion is not a latency pass.
+`InkPreviewInstrumentedTest` verifies automatic initial/changed previews;
+`UndoPixelSnapshotInstrumentedTest` checks compressed premultiplied bytes exactly.

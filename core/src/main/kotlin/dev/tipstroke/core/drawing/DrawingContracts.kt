@@ -74,18 +74,28 @@ interface UndoTransaction { val estimatedBytes: Long; fun undo(); fun redo() }
 class UndoHistory(private val memoryBudgetBytes: Long) {
     private val undo = ArrayDeque<UndoTransaction>()
     private val redo = ArrayDeque<UndoTransaction>()
-    var estimatedBytes: Long = 0; private set
+    // Snapshot transactions exchange the current and opposite state on undo/redo,
+    // so their retained size can change. Derive the total instead of caching it.
+    val estimatedBytes: Long get() = undo.sumOf { it.estimatedBytes } + redo.sumOf { it.estimatedBytes }
     fun push(transaction: UndoTransaction) {
-        undo.addLast(transaction); redo.clear(); estimatedBytes += transaction.estimatedBytes
-        while (estimatedBytes > memoryBudgetBytes && undo.size > 1) estimatedBytes -= undo.removeFirst().estimatedBytes
+        redo.clear()
+        undo.addLast(transaction)
+        trim()
     }
-    fun undo(): Boolean = undo.removeLastOrNull()?.let { it.undo(); redo.addLast(it); true } ?: false
-    fun redo(): Boolean = redo.removeLastOrNull()?.let { it.redo(); undo.addLast(it); true } ?: false
+    fun undo(): Boolean = undo.removeLastOrNull()?.let { it.undo(); redo.addLast(it); trim(preserveRedo = true); true } ?: false
+    fun redo(): Boolean = redo.removeLastOrNull()?.let { it.redo(); undo.addLast(it); trim(); true } ?: false
+    private fun trim(preserveRedo: Boolean = false) {
+        while (undo.size + redo.size > 1 &&
+            (estimatedBytes > memoryBudgetBytes || undo.size + redo.size > 256)) {
+            // Remove only the farthest operation on either side, preserving a
+            // contiguous path through history and the most recent swapped edit.
+            if (undo.size > 1 || (preserveRedo && undo.isNotEmpty())) undo.removeFirst()
+            else if (redo.isNotEmpty()) redo.removeFirst() else undo.removeFirst()
+        }
+    }
     /** Transfers ownership of the newest edit into a compound operation. */
-    fun takeLatestUndoTransaction(): UndoTransaction? = undo.removeLastOrNull()?.also {
-        estimatedBytes -= it.estimatedBytes
-    }
+    fun takeLatestUndoTransaction(): UndoTransaction? = undo.removeLastOrNull()
     fun canUndo() = undo.isNotEmpty()
     fun canRedo() = redo.isNotEmpty()
-    fun clear() { undo.clear(); redo.clear(); estimatedBytes = 0 }
+    fun clear() { undo.clear(); redo.clear() }
 }

@@ -1,0 +1,6 @@
+Xiaomi 23043RP34G; API 34
+250 Hz; one 4-second full-pressure stroke; 32 alternating full-width sweeps covering the canvas.
+queue = scheduled event to UI dispatch; dispatch = handler cost; Ink = authoring receipt to draw calls.
+Frame gaps are UI vsync intervals, not photon latency. Handoff includes Ink debounce and raster commit.
+Jetpack Stamp canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004 documentMiB=121 undoMiB=0 pressure=NORMAL
+ queue p50=0.00 p95=1.00 max=29.00 ms; dispatch p50=0.69 p95=1.69 max=30.57 ms; Ink p50=164.87 p95=369.96 max=1695.84 ms; frames p50=16.67 p95=18.76 max=3488.65 ms; handoff p50=4884.00 p95=4884.00 max=4884.00 ms

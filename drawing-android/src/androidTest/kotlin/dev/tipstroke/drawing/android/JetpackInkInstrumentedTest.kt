@@ -22,6 +22,17 @@ class JetpackInkInstrumentedTest {
             i / 40f, 0f, i * 8_000_000L, 0, PointerKind.STYLUS) },
         StrokeStyle(preset, 64f, .8f, RgbaColor(.1f, .2f, .7f), BlendBehavior.PAINT))
 
+    @Test fun nonCircularInkTipsKeepTheirRoundedGeometry() {
+        assumeTrue(Build.VERSION.SDK_INT >= 34)
+        val brushes = TipStrokeInkBrushes()
+        for (texture in listOf(InkTexture.SOLID, InkTexture.SOFT)) {
+            val preset = BrushPreset.BlankInk.copy(ink = InkBrush(texture = texture,
+                particles = true, accumulate = true, aspectRatio = .3f, rounding = 1f))
+            // A rounded non-square tip is a capsule, not an ellipse cut from a quad.
+            assertEquals(1f, brushes.familyFor(preset).coats.single().tip.cornerRounding, 0f)
+        }
+    }
+
     @Test fun comparisonTipsCommitTheirActualGpuAppearanceAndUndoAsOneStroke() {
         assumeTrue(Build.VERSION.SDK_INT >= 34)
         val renderer = CanvasStrokeRenderer.create(TipStrokeInkBrushes().textureStore)
@@ -41,7 +52,18 @@ class JetpackInkInstrumentedTest {
             assertTrue("${preset.displayName} disappeared on commit", pixels.count { Color.alpha(it) > 0 } > 1000)
             val preview = Bitmap.createBitmap(512, 256, Bitmap.Config.ARGB_8888)
             StrokeCanvasPainter.draw(Canvas(preview), completed)
-            assertTrue("${preset.displayName} preview differs from committed tiles", bitmap.sameAs(preview))
+            var maximumError = 0
+            var totalError = 0L
+            var different = 0
+            for (y in 0 until 256) for (x in 0 until 512) {
+                val a = bitmap.getPixel(x, y); val b = preview.getPixel(x, y)
+                val error = kotlin.math.abs(Color.alpha(a) - Color.alpha(b))
+                maximumError = maxOf(maximumError, error); totalError += error
+                if (a != b) different++
+            }
+            android.util.Log.i("TipStrokeGpuQA", "${preset.displayName} atlas difference: maxAlpha=$maximumError meanAlpha=${totalError / (512.0 * 256)} different=$different")
+            assertTrue("${preset.displayName} atlas altered coverage", maximumError <= 3 && totalError < 512 * 256)
+
             assertTrue(store.history.undo())
             assertEquals(0, store.allocatedTileCount)
             assertTrue(store.history.redo())
@@ -90,7 +112,7 @@ class JetpackInkInstrumentedTest {
                 surface.settings.gestures = GestureSettings(oneFingerDrag = FingerAction.DRAW)
             }
             androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            for (preset in BrushPreset.jetpackInk) for (toolType in listOf(android.view.MotionEvent.TOOL_TYPE_FINGER, android.view.MotionEvent.TOOL_TYPE_STYLUS)) {
+            for (preset in BrushPreset.jetpackInk + BrushPreset.Blank) for (toolType in listOf(android.view.MotionEvent.TOOL_TYPE_FINGER, android.view.MotionEvent.TOOL_TYPE_STYLUS)) {
                 scenario.onActivity {
                     surface.settings.brush = preset
                     surface.settings.sizePx = 48f

@@ -44,5 +44,18 @@ class MemoryBudgetAdvisorTest {
         assertEquals(MemoryPressure.CRITICAL, result.pressure)
     }
 
+    @Test fun oneLayerCanvasDoesNotRequireHeadroomForAnotherWholeLayer() {
+        val result = calculateMemoryBudget(500L * MIB, 692L * MIB, 2_000L * MIB,
+            100L * MIB, false, 100L * MIB, 121L * MIB, documentBudgetBytes = 192L * MIB)
+        assertEquals(0, result.fullLayersRemaining)
+        assertEquals(MemoryPressure.NORMAL, result.pressure)
+    }
+
+    @Test fun actualDocumentExhaustionStillReportsCriticalPressure() {
+        val result = calculateMemoryBudget(500L * MIB, 692L * MIB, 2_000L * MIB,
+            100L * MIB, false, 184L * MIB, 121L * MIB, documentBudgetBytes = 192L * MIB)
+        assertEquals(MemoryPressure.CRITICAL, result.pressure)
+    }
+
     private companion object { const val MIB = 1024L * 1024L }
 }

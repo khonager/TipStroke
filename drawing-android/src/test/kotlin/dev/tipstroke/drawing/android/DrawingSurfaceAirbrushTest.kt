@@ -113,6 +113,7 @@ class DrawingSurfaceAirbrushTest {
         var canUndo = false
         var diagnostics = CanvasDiagnostics()
         surface.historyListener = { undo, _ -> canUndo = undo }
+        surface.settings.debug = true
         surface.diagnosticsListener = { diagnostics = it }
         val downTime = SystemClock.uptimeMillis()
 
@@ -136,6 +137,7 @@ class DrawingSurfaceAirbrushTest {
         var diagnostics = CanvasDiagnostics()
         val chromeOcclusionChanges = mutableListOf<Boolean>()
         surface.historyListener = { undo, _ -> canUndo = undo }
+        surface.settings.debug = true
         surface.diagnosticsListener = { diagnostics = it }
         surface.setChromeOcclusionInsets(topPx = 100f, bottomPx = 100f, approachMarginPx = 40f)
         surface.chromeOcclusionListener = { chromeOcclusionChanges += it }

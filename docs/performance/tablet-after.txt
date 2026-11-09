@@ -1,0 +1,39 @@
+Xiaomi Pad 6 (23043RP34G), API 34. 5632-square, 250 Hz, two 320ms crossings per case.
+First set: 180 document pixels. Second set: 180 physical screen pixels.
+Synthetic software timings exclude digitizer/scanout. Extracted from device test log.
+Ink canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=0.00 p95=7.00 max=23.00 ms; dispatch p50=1.03 p95=2.45 max=26.67 ms; Ink p50=7.83 p95=66.83 max=91.63 ms; frames p50=16.67 p95=33.33 max=250.01 ms; handoff p50=279.00 p95=279.00 max=279.00 ms
+Dense custom canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=1.00 p95=33.00 max=46.00 ms; dispatch p50=2.14 p95=3.36 max=200.92 ms; Ink n/a; frames p50=16.67 p95=49.99 max=200.03 ms; handoff p50=200.00 p95=200.00 max=200.00 ms
+Jetpack Round canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=0.00 p95=1.00 max=8.00 ms; dispatch p50=0.70 p95=1.81 max=5.75 ms; Ink p50=7.24 p95=13.99 max=18.83 ms; frames p50=16.67 p95=16.72 max=266.70 ms; handoff p50=281.00 p95=281.00 max=281.00 ms
+Jetpack Stamp canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=0.00 p95=1.00 max=8.00 ms; dispatch p50=0.63 p95=1.55 max=10.27 ms; Ink p50=7.24 p95=12.87 max=40.77 ms; frames p50=16.67 p95=16.92 max=549.98 ms; handoff p50=574.00 p95=574.00 max=574.00 ms
+Jetpack Graphite canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=0.00 p95=1.00 max=2.00 ms; dispatch p50=0.48 p95=1.49 max=4.70 ms; Ink p50=10.51 p95=22.81 max=66.92 ms; frames p50=16.67 p95=16.72 max=350.01 ms; handoff p50=397.00 p95=397.00 max=397.00 ms
+Jetpack Soft canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=0.00 p95=1.00 max=2.00 ms; dispatch p50=0.68 p95=1.76 max=3.94 ms; Ink p50=5.37 p95=9.74 max=12.41 ms; frames p50=16.67 p95=16.74 max=333.31 ms; handoff p50=334.00 p95=334.00 max=334.00 ms
+Airbrush canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=12.00 p95=25.00 max=31.00 ms; dispatch p50=0.26 p95=0.60 max=681.35 ms; Ink n/a; frames p50=16.67 p95=16.73 max=700.00 ms; handoff p50=681.00 p95=681.00 max=681.00 ms
+Pencil canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=10.00 p95=191.00 max=200.00 ms; dispatch p50=0.49 p95=2.02 max=165.36 ms; Ink p50=9.57 p95=22.36 max=31.74 ms; frames p50=16.67 p95=166.66 max=166.66 ms; handoff p50=90.00 p95=90.00 max=90.00 ms
+Eraser canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=180.0 refresh=60.000004
+queue p50=13.00 p95=38.00 max=46.00 ms; dispatch p50=0.11 p95=0.29 max=18.18 ms; Ink n/a; frames p50=16.67 p95=33.33 max=33.34 ms; handoff p50=18.00 p95=18.00 max=18.00 ms
+Ink canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=2.00 max=3.00 ms; dispatch p50=0.83 p95=1.82 max=3.09 ms; Ink p50=10.44 p95=17.12 max=21.45 ms; frames p50=16.67 p95=16.73 max=416.71 ms; handoff p50=437.00 p95=437.00 max=437.00 ms
+Dense custom canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=2.00 p95=39.00 max=42.00 ms; dispatch p50=1.65 p95=2.72 max=489.16 ms; Ink n/a; frames p50=16.67 p95=33.34 max=516.60 ms; handoff p50=488.00 p95=488.00 max=488.00 ms
+Jetpack Round canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=4.00 ms; dispatch p50=0.68 p95=1.14 max=5.63 ms; Ink p50=8.35 p95=14.09 max=15.04 ms; frames p50=16.67 p95=16.71 max=449.87 ms; handoff p50=462.00 p95=462.00 max=462.00 ms
+Jetpack Stamp canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=6.00 ms; dispatch p50=0.45 p95=1.68 max=5.29 ms; Ink p50=3.47 p95=8.63 max=13.05 ms; frames p50=16.66 p95=17.08 max=800.26 ms; handoff p50=814.00 p95=814.00 max=814.00 ms
+Jetpack Graphite canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=3.00 ms; dispatch p50=0.46 p95=0.94 max=3.50 ms; Ink p50=7.33 p95=10.96 max=33.68 ms; frames p50=16.67 p95=17.00 max=500.06 ms; handoff p50=519.00 p95=519.00 max=519.00 ms
+Jetpack Soft canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=3.00 ms; dispatch p50=0.75 p95=1.91 max=3.36 ms; Ink p50=5.00 p95=7.74 max=10.98 ms; frames p50=16.67 p95=16.73 max=533.19 ms; handoff p50=542.00 p95=542.00 max=542.00 ms
+Airbrush canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=19.00 p95=31.00 max=39.00 ms; dispatch p50=0.14 p95=0.33 max=888.29 ms; Ink n/a; frames p50=16.67 p95=33.34 max=899.94 ms; handoff p50=888.00 p95=888.00 max=888.00 ms
+Pencil canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=2.00 p95=12.00 max=19.00 ms; dispatch p50=0.46 p95=1.02 max=48.41 ms; Ink p50=7.19 p95=14.38 max=20.77 ms; frames p50=16.67 p95=16.76 max=50.00 ms; handoff p50=48.00 p95=48.00 max=48.00 ms
+Eraser canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=367.00 p95=1043.00 max=1074.00 ms; dispatch p50=0.08 p95=0.35 max=605.53 ms; Ink n/a; frames p50=16.66 p95=766.91 max=1066.64 ms; handoff p50=605.00 p95=605.00 max=605.00 ms

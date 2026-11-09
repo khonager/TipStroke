@@ -177,7 +177,11 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var multiEraseTargets = emptyList<Pair<StrokeTarget, StrokeStyle>>()
     private val multiEraseSamples = mutableListOf<StrokeSample>()
     private val pendingTargets = mutableMapOf<Int, StrokeTarget>()
+    private var rasterSamplesRendered = 0
+    private var rasterFramePending = false
+    private val rasterFrame = Runnable { flushRasterSamples() }
     private var customPreviewStyle: StrokeStyle? = null
+    private var gpuStampPreview: GpuStampPreview? = null
     private var rasterPreviewStyle: StrokeStyle? = null
     private var pencilPreviewStyle: StrokeStyle? = null
     private var pencilPreviewStore: TileStore? = null
@@ -402,6 +406,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         addView(colorLoupe, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         // Robolectric cannot load Ink's Android native library; real devices eagerly warm it.
         if (!Build.FINGERPRINT.contains("robolectric", ignoreCase = true)) {
+            NativeEraser.warmUp()
             tipStrokeInkBrushes.prewarm()
             liveView.eagerInit()
         }
@@ -452,9 +457,17 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun onDetachedFromWindow() {
+        flushRasterSamples()
         animation?.storageEnabled = false
         if (toolSmudgePointer != null) finishSmudgeTool()
         clearShapeHold()
+        if (gpuStampPreview != null) {
+            pendingSamples.remove(activeDrawingPointerId)
+            pendingTargets.remove(activeDrawingPointerId)
+            activeDrawingPointerId = null
+            shapeStyle = null
+            clearGpuStampPreview()
+        }
         cancelFill()
         cancelMultiErase()
         clearMovePreview()
@@ -1798,6 +1811,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (target.image != null && referenceLayerId != null) return true
                 requestUnbufferedDispatch(event)
                 activeDrawingPointerId = pointerId
+                rasterSamplesRendered = 0
                 strokeDownAt = event.downTime
                 pendingTargets[pointerId] = target
                 pendingSamples[pointerId] = mutableListOf(sample(event, event.actionIndex).forTarget(target))
@@ -1805,7 +1819,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val style = styleForTarget(baseStyle, target)
                 shapeStyle = style
                 shapeSnapped = false
-                if (style.brush.ink != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
+                if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
+                    style.brush.stamp != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
+                    style.referenceStrokes == null && strokeRecording == null) {
+                    gpuStampPreview = GpuStampPreview(style, target.store.canvasWidth, target.store.canvasHeight).also {
+                        rasterView.gpuStampPreview = it; rasterView.gpuStampLayerId = layerStack.selectedId
+                        rasterView.invalidateTiles(it.append(pendingSamples.getValue(pointerId)))
+                    }
+                } else if (style.brush.ink != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
                     (style.referenceStrokes != null || layerStack.selected().clipSourceId != null)) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
@@ -1822,6 +1843,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 } else if (style.brush.engine == BrushEngine.PENCIL) {
                     pencilPreviewStyle = style
                     startPencilPreview(CompletedStroke(pendingSamples.getValue(pointerId).toList(), style))
+                    rasterSamplesRendered = 1
                     // Ink still authors the stroke, but its alpha/tilt preview is unreliable in
                     // 1.1.0-alpha08. Keep that mesh effectively transparent; the native live
                     // pixels become the permanent raster at pen-up, so the appearance cannot jump.
@@ -1846,7 +1868,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     }
                     appendSamples(pointerId, list, additions)
                     updateChromeOcclusion(event, index)
-                    if (customPreviewStyle != null || rasterPreviewStyle != null) {
+                    if (gpuStampPreview != null || customPreviewStyle != null || rasterPreviewStyle != null) {
                         Unit
                     } else {
                         val prediction = predictor?.predict()
@@ -1876,6 +1898,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         appendSamples(pointerId, list, listOf(sample(event, index).copy(opacityPressure = terminalPressure).forTarget(target)))
                     }
                 }
+                flushRasterSamples()
                 val target = pendingTargets.remove(pointerId)
                 pendingSamples.remove(pointerId)?.let { rawSamples ->
                     val samples = stabilizeLiftOffOpacity(rawSamples)
@@ -1884,7 +1907,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         layerStack.selectedId == it.layerId && style.blend == BlendBehavior.PAINT }
                         ?.copy(downAt = strokeDownAt)
                     if (target != null) {
-                        if (customPreviewStyle != null) {
+                        if (Build.VERSION.SDK_INT >= 34 && gpuStampPreview != null) {
+                            val preview = requireNotNull(gpuStampPreview)
+                            target.store.commitGpuStamp(CompletedStroke(samples, style), preview)
+                            clearGpuStampPreview()
+                            rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers()
+                            drawnColorListener?.invoke(style.color)
+                        } else if (customPreviewStyle != null) {
                             if (samples.size == 1) invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
                             if (reveal != null) target.store.cancelLiveStroke()
                             else target.store.finishLiveStroke(CompletedStroke(samples, style))
@@ -1926,7 +1955,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     }
                     publishAnimation()
                 }
-                if (customPreviewStyle != null) {
+                if (shapeStyle?.brush?.stamp != null && customPreviewStyle == null && rasterPreviewStyle == null) {
+                    clearGpuStampPreview()
+                } else if (customPreviewStyle != null) {
                     customPreviewStyle = null
                 } else if (rasterPreviewStyle != null) {
                     rasterPreviewStyle = null
@@ -2295,7 +2326,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun commitCompoundEdit(edits: List<UndoTransaction>) {
         if (edits.isEmpty()) return
         layerStack.selectedStore()?.history?.push(object : UndoTransaction {
-            override val estimatedBytes = edits.sumOf { it.estimatedBytes }
+            override val estimatedBytes get() = edits.sumOf { it.estimatedBytes }
             override fun undo() { edits.asReversed().forEach { it.undo() } }
             override fun redo() { edits.forEach { it.redo() } }
         })
@@ -2465,25 +2496,31 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun appendSamples(pointerId: Int, samples: MutableList<StrokeSample>, additions: List<StrokeSample>) {
         if (additions.isEmpty()) return
         val previous = samples.lastOrNull()
-        val pencilContext = if (pencilPreviewStyle != null) samples.takeLast(2) else emptyList()
         samples += additions
+        gpuStampPreview?.let { preview ->
+            rasterView.invalidateTiles(preview.append(if (previous != null) listOf(previous) + additions else additions))
+            if (preview.capacityReached) {
+                val target = pendingTargets.getValue(pointerId)
+                val style = preview.style
+                clearGpuStampPreview()
+                customPreviewStyle = style
+                target.store.beginLiveStroke()
+                invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
+            }
+            return
+        }
         rasterPreviewStyle?.let { style ->
             // Input and onDraw share the UI thread. Keep the list, avoiding an O(n)
             // copy on every MotionEvent; freeze it only when completing the gesture.
             rasterView.previewStroke = CompletedStroke(samples, style)
             return
         }
-        pencilPreviewStyle?.let { style ->
-            val preview = pencilPreviewStore ?: return
-            if (previous != null) {
-                val segment = ArrayList<StrokeSample>(additions.size + pencilContext.size).apply {
-                    addAll(pencilContext)
-                    addAll(additions)
-                }
-                rasterView.invalidateTiles(preview.appendPencilPreview(
-                    CompletedStroke(segment, style),
-                    skipFirstSegment = pencilContext.size == 2,
-                ))
+        if (pencilPreviewStyle != null || customPreviewStyle?.blend == BlendBehavior.ERASE) {
+            // Preserve every sample but rasterize a display frame's input together.
+            // Reading/writing the same tiles at stylus sampling frequency starves input.
+            if (!rasterFramePending) {
+                rasterFramePending = true
+                postOnAnimation(rasterFrame)
             }
             return
         }
@@ -2496,6 +2533,35 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             }
             invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(segment, style)))
         }
+    }
+
+    private fun flushRasterSamples() {
+        removeCallbacks(rasterFrame)
+        rasterFramePending = false
+        val pointer = activeDrawingPointerId ?: return
+        val samples = pendingSamples[pointer] ?: return
+        if (samples.size <= rasterSamplesRendered) return
+        val target = pendingTargets[pointer] ?: return
+        val pencil = pencilPreviewStyle
+        if (pencil != null) {
+            val preview = pencilPreviewStore ?: return
+            val start = (rasterSamplesRendered - 2).coerceAtLeast(0)
+            rasterView.invalidateTiles(preview.appendPencilPreview(
+                CompletedStroke(samples.subList(start, samples.size).toList(), pencil),
+                skipFirstSegment = rasterSamplesRendered >= 2,
+            ))
+        } else {
+            val style = customPreviewStyle?.takeIf { it.blend == BlendBehavior.ERASE } ?: return
+            val start = (rasterSamplesRendered - 1).coerceAtLeast(0)
+            invalidateTarget(target, target.store.appendLiveStroke(
+                CompletedStroke(samples.subList(start, samples.size).toList(), style)))
+        }
+        rasterSamplesRendered = samples.size
+    }
+
+    private fun clearGpuStampPreview() {
+        rasterView.gpuStampPreview = null; rasterView.gpuStampLayerId = null
+        gpuStampPreview?.close(); gpuStampPreview = null
     }
 
     private fun clearShapeHold() {
@@ -2612,6 +2678,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun cancelActiveStroke(event: MotionEvent, pointerId: Int) {
+        removeCallbacks(rasterFrame)
+        rasterFramePending = false
         clearShapeHold()
         shapeSnapped = false
         fittedShape = null
@@ -2619,12 +2687,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         fittedSamples = emptyList()
         shapeStyle = null
         if (multiEraseTargets.isNotEmpty()) { cancelMultiErase(); return }
-        if (customPreviewStyle == null && rasterPreviewStyle == null) {
+        if (gpuStampPreview == null && customPreviewStyle == null && rasterPreviewStyle == null) {
             liveView.cancelStroke(event, pointerId)
         }
         if (customPreviewStyle != null) {
             pendingTargets[pointerId]?.let { target -> invalidateTarget(target, target.store.cancelLiveStroke()) }
         }
+        clearGpuStampPreview()
         customPreviewStyle = null
         rasterPreviewStyle = null
         pencilPreviewStyle = null
@@ -2800,10 +2869,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun notifyVisiblePalette() {
         visiblePaletteListener?.invoke(layerStack.visiblePalette(paletteColorCount, originalImageColors))
     }
+    private var lastInputDiagnosticsAt = 0L
     private fun emitDiagnostics(event: MotionEvent, index: Int) {
+        if (!settings.debug) return
         val now = SystemClock.elapsedRealtimeNanos(); frameCount++
         if (now - fpsWindowAt > 500_000_000L) { fps = frameCount * 1_000_000_000f / (now - fpsWindowAt); frameCount = 0; fpsWindowAt = now }
         val delta = now - lastSampleAt; lastSampleAt = now
+        val diagnosticsAt = SystemClock.uptimeMillis()
+        if (diagnosticsAt - lastInputDiagnosticsAt < 100) return
+        lastInputDiagnosticsAt = diagnosticsAt
         val kind = pointerKind(event.getToolType(index)).let {
             if (it == PointerKind.FINGER && settings.emulateMouseWithTouch) PointerKind.MOUSE else it
         }
@@ -2813,7 +2887,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val input = CanvasDiagnostics(fps, pressure, event.getAxisValue(MotionEvent.AXIS_TILT, index),
             kind.name, if (delta > 0) 1_000_000_000f / delta else 0f,
             rasterView.transform.scale, layerStack.allocatedTiles(), layerStack.lastDirtyTiles(), layerStack.undoBytes())
-        publishDiagnostics(if (settings.debug) input.withMemoryFrom(lastDiagnostics) else input)
+        publishDiagnostics(input.withMemoryFrom(lastDiagnostics))
     }
 
     private fun publishDiagnostics(diagnostics: CanvasDiagnostics) {

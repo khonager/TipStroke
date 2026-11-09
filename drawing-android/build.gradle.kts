@@ -3,11 +3,14 @@ plugins { id("com.android.library"); kotlin("android") }
 android {
     namespace = "dev.tipstroke.drawing.android"
     compileSdk = 36
+    ndkVersion = "28.2.13676358"
     defaultConfig {
         minSdk = 29
         consumerProguardFiles("consumer-rules.pro")
+        externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_static" } }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     testOptions { unitTests.isIncludeAndroidResources = true }

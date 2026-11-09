@@ -3,6 +3,7 @@
 .idea/
 local.properties
 **/build/
+**/.cxx/
 *.iml
 .DS_Store
 result

@@ -311,3 +311,14 @@ locally across canvases for regular/custom brushes and eraser. Screen size conve
 to document pixels using display density and camera zoom at touch-down; the current
 stroke keeps that resolved size even if controls change. Hover and size-adjustment
 previews use the same conversion. Pixel tools and smudge stay in canvas pixels.
+
+
+Input diagnostics are disabled in the MotionEvent path when the debug overlay is
+off. With the overlay on, counters are sampled per event but Compose notifications
+are limited to 10 Hz. Camera/zoom and memory notifications remain independent.
+
+Pencil and ordinary eraser events append their full pressure/timestamp samples
+immediately; raster updates process a display frame's accumulated samples together.
+Pen-up flushes the remaining samples before commit. Cancellation removes the queued
+frame so no paint/erase can appear after the gesture is cancelled. Jetpack Ink still
+receives native input directly and independently of this raster batching.

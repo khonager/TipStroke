@@ -59,6 +59,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             if (value == null) airbrushPreview.close()
             postInvalidateOnAnimation()
         }
+    internal var gpuStampPreview: GpuStampPreview? = null
+    internal var gpuStampLayerId: dev.tipstroke.core.model.LayerId? = null
     private var pencilPreviewStore: TileStore? = null
     private var pencilPreviewLayerId: LayerId? = null
     var adjustmentPreviewStroke: CompletedStroke? = null
@@ -239,16 +241,18 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                 when (layer) {
                     is RasterLayerRuntime -> {
                         val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
+                        val gpu = gpuStampPreview?.takeIf { layer.id == gpuStampLayerId }
                         val movingPath = movingSelectionPath.takeIf { layer.id in movingLayerIds }
                         if (movingPath != null) {
                             drawMovingRaster(canvas, layer, movingPath)
-                        } else if (preview == null) {
+                        } else if (preview == null && gpu == null) {
                             bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
                             layer.tiles.draw(canvas, bitmapPaint)
                         } else if (layer.opacity >= .999f) {
                             bitmapPaint.alpha = 255
                             layer.tiles.draw(canvas, bitmapPaint)
-                            preview.draw(canvas, bitmapPaint)
+                            preview?.draw(canvas, bitmapPaint)
+                            gpu?.drawPreview(canvas, transform.scale)
                         } else {
                             layerOpacityPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
                             val visible = canvas.clipBounds
@@ -259,7 +263,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                             )
                             bitmapPaint.alpha = 255
                             layer.tiles.draw(canvas, bitmapPaint)
-                            preview.draw(canvas, bitmapPaint)
+                            preview?.draw(canvas, bitmapPaint)
+                            gpu?.drawPreview(canvas, transform.scale)
                             canvas.restoreToCount(group)
                         }
                     }

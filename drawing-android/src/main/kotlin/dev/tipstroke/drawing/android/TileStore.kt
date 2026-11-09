@@ -13,7 +13,7 @@ class TileStore(
     val canvasWidth: Int,
     val canvasHeight: Int,
     val tileSize: Int = TileGrid.DEFAULT_TILE_SIZE,
-    historyBudgetBytes: Long = 96L * 1024 * 1024,
+    historyBudgetBytes: Long = defaultHistoryBudget(canvasWidth, canvasHeight),
 ) : StrokeRasterizer {
     internal var recordingListener: ((List<ReplayPaint>?, Map<TileCoordinate, Bitmap?>) -> Unit)? = null
     internal var captureReplayPreview = false
@@ -69,6 +69,10 @@ class TileStore(
         else { sharedReferences.remove(bitmap); bitmap.recycle() }
     }
     companion object {
+        internal fun defaultHistoryBudget(width: Int, height: Int): Long =
+            (Runtime.getRuntime().maxMemory() * 3 / 4 - MemoryBudgetAdvisor.fullRasterLayerBytes(width, height) - 32L * 1024 * 1024)
+                .coerceIn(8L * 1024 * 1024, 96L * 1024 * 1024)
+
         // Ownership changes happen on the surface thread, never on decoding workers.
         private val sharedReferences = java.util.WeakHashMap<Bitmap, Int>()
         internal fun decodeTiles(encoded: Map<TileCoordinate, EncodedTile>): Map<TileCoordinate, Bitmap> {
@@ -168,17 +172,47 @@ class TileStore(
         if (dirty.isEmpty()) return emptySet()
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         val preparedPaint = StrokeCanvasPainter.preparePaint(stroke)
-        dirty.forEach { coordinate ->
-            val bitmap = writableTile(coordinate)
-            val canvas = Canvas(bitmap)
-            canvas.save()
-            canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
-            StrokeCanvasPainter.draw(canvas, stroke, preparedPaint)
-            canvas.restore()
-            if (bitmap.isFullyTransparent()) { removeTile(coordinate) }
+        val blockAirbrush = stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH &&
+            stroke.style.brush.stamp == null && stroke.style.brush.ink == null && stroke.style.pixelTool == null &&
+            stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.PAINT && stroke.style.referenceStrokes == null &&
+            preparedPaint.maskFilter != null
+        if (blockAirbrush) {
+            // Blur a bounded 4x4 tile region once, instead of repeating its wide halo
+            // for each tile. The temporary buffer contains this stroke's coverage only.
+            val edge = tileSize * 4
+            val region = Bitmap.createBitmap(edge, edge, Bitmap.Config.ARGB_8888)
+            try {
+                dirty.groupBy { TileCoordinate(it.x / 4, it.y / 4) }.forEach { (block, coordinates) ->
+                    region.eraseColor(Color.TRANSPARENT)
+                    Canvas(region).apply {
+                        translate(-block.x * edge.toFloat(), -block.y * edge.toFloat())
+                        StrokeCanvasPainter.draw(this, stroke, preparedPaint, airbrushBlockSize = edge)
+                    }
+                    coordinates.forEach { coordinate ->
+                        val x = (coordinate.x % 4) * tileSize
+                        val y = (coordinate.y % 4) * tileSize
+                        val bitmap = writableTile(coordinate)
+                        Canvas(bitmap).drawBitmap(region, Rect(x, y, x + tileSize, y + tileSize), Rect(0, 0, tileSize, tileSize), null)
+                        if (bitmap.isFullyTransparent()) removeTile(coordinate)
+                    }
+                }
+            } catch (error: Exception) {
+                restore(before); before.values.forEach { it?.recycle() }; throw error
+            } finally { region.recycle() }
+        } else {
+            dirty.forEach { coordinate ->
+                val bitmap = writableTile(coordinate)
+                val canvas = Canvas(bitmap)
+                canvas.save()
+                canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+                StrokeCanvasPainter.draw(canvas, stroke, preparedPaint)
+                canvas.restore()
+                if (bitmap.isFullyTransparent()) { removeTile(coordinate) }
+            }
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke))))
+        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke),
+            if (blockAirbrush) null else listOf(ReplayPaint(stroke))))
         lastDirtyTiles = dirty
         return dirty
     }
@@ -222,13 +256,14 @@ class TileStore(
             return appendStampStroke(stroke)
         }
         if (recordingListener != null) replayLive.add(ReplayPaint(stroke))
-        val candidates = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
+        val directEraser = stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE &&
+            stroke.style.selection == null && stroke.style.referenceStrokes == null && stroke.style.pixelTool == null
+        val bounds = if (directEraser) LiveEraserCoverage.bounds(stroke) else stroke.bounds
+        val candidates = TileGrid.intersecting(bounds, canvasWidth, canvasHeight, tileSize)
         val dirty = if (stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE) {
             candidates.filterTo(mutableSetOf()) { it in tiles }
         } else candidates
         if (dirty.isEmpty()) return emptySet()
-        val directEraser = stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.ERASE &&
-            stroke.style.selection == null && stroke.style.referenceStrokes == null && stroke.style.pixelTool == null
         val preparedPaint = if (directEraser) null else StrokeCanvasPainter.preparePaint(stroke)
         dirty.forEach { coordinate ->
             if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
@@ -293,7 +328,7 @@ class TileStore(
         val removed = if (pencilPreviewDot && moving) tiles.keys.toSet().also { discard() } else emptySet()
         if (capStart && !moving && tiles.isEmpty()) pencilPreviewDot = true
         if (captureReplayPreview) replayPreview.add(ReplayPaint(stroke, true, capStart, capEnd, skipFirstSegment))
-        val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
+        val dirty = TileGrid.intersecting(StrokeCanvasPainter.pencilBounds(stroke), canvasWidth, canvasHeight, tileSize)
         dirty.forEach { coordinate ->
             val bitmap = writableTile(coordinate)
             Canvas(bitmap).apply {
@@ -371,40 +406,72 @@ class TileStore(
         return dirty
     }
 
-    /** Rasterizes Ink's finalized mesh into pixels, then lets the caller discard the Ink stroke. */
-    fun commitInk(stroke: CompletedStroke, inkStroke: Stroke, renderer: CanvasStrokeRenderer): Set<TileCoordinate> {
-        val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
+    @androidx.annotation.RequiresApi(34)
+    internal fun commitGpuStamp(stroke: CompletedStroke, preview: GpuStampPreview): Set<TileCoordinate> {
+        val dirty = preview.dirtyTiles.toSet()
         if (dirty.isEmpty()) return emptySet()
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        val gpu = if (stroke.style.brush.ink != null && android.os.Build.VERSION.SDK_INT >= 34) JetpackInkRendering.TileRenderer() else null
         try {
-            dirty.forEach { coordinate ->
-                val bitmap = writableTile(coordinate)
-                val pressureOpacity = stroke.style.brush.ink == null && pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)
-                val rendered = if (pressureOpacity) Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) else bitmap
-                val canvas = Canvas(rendered)
-                canvas.save()
-                canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
-                stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
-                if (android.os.Build.VERSION.SDK_INT >= 34 && gpu != null) gpu.draw(canvas, inkStroke, renderer) else renderer.draw(canvas, inkStroke, Matrix())
-                canvas.restore()
-                if (pressureOpacity) {
-                    StrokeCanvasPainter.applyPressureOpacityMask(
-                        rendered,
-                        stroke,
-                        coordinate.x * tileSize,
-                        coordinate.y * tileSize,
-                    )
-                    Canvas(bitmap).drawBitmap(rendered, 0f, 0f, null)
-                    rendered.recycle()
+            GpuTileRasterizer(if (dirty.size >= 128) 2048 else 1024).use { gpu ->
+                gpu.rasterize(dirty, tileSize, preview::draw) { coordinate, pixels, source ->
+                    val bitmap = writableTile(coordinate)
+                    Canvas(bitmap).drawBitmap(pixels, source, Rect(0, 0, tileSize, tileSize), null)
+                    if (bitmap.isFullyTransparent()) removeTile(coordinate)
                 }
-                if (bitmap.isFullyTransparent()) { removeTile(coordinate) }
             }
         } catch (error: Exception) {
-            restore(before)
-            before.values.forEach { it?.recycle() }
-            throw error
-        } finally { if (android.os.Build.VERSION.SDK_INT >= 34) gpu?.close() }
+            restore(before); before.values.forEach { it?.recycle() }; throw error
+        }
+        val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke))))
+        lastDirtyTiles = dirty
+        return dirty
+    }
+
+    /** Rasterizes Ink's finalized mesh into pixels, then lets the caller discard the Ink stroke. */
+    fun commitInk(stroke: CompletedStroke, inkStroke: Stroke, renderer: CanvasStrokeRenderer): Set<TileCoordinate> {
+        // Use the finalized geometry, not the worst possible brush/tilt radius around
+        // the entire input box. The old bound allocated hundreds of empty tiles.
+        val meshBounds = inkStroke.shape.computeBoundingBox() ?: return emptySet()
+        val actualBounds = dev.tipstroke.core.geometry.Rect(meshBounds.xMin - 2f, meshBounds.yMin - 2f,
+            meshBounds.xMax + 2f, meshBounds.yMax + 2f)
+        val dirty = TileGrid.intersecting(actualBounds, canvasWidth, canvasHeight, tileSize)
+        if (dirty.isEmpty()) return emptySet()
+        val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        if (stroke.style.brush.ink != null && android.os.Build.VERSION.SDK_INT >= 34) {
+            try {
+                GpuTileRasterizer(if (dirty.size >= 128) 2048 else 1024).use { gpu ->
+                    gpu.rasterize(dirty, tileSize, { canvas ->
+                        stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
+                        renderer.draw(canvas, inkStroke, Matrix())
+                    }) { coordinate, pixels, source ->
+                        val bitmap = writableTile(coordinate)
+                        Canvas(bitmap).drawBitmap(pixels, source, Rect(0, 0, tileSize, tileSize), null)
+                        if (bitmap.isFullyTransparent()) removeTile(coordinate)
+                    }
+                }
+            } catch (error: Exception) {
+                restore(before)
+                before.values.forEach { it?.recycle() }
+                throw error
+            }
+        } else dirty.forEach { coordinate ->
+            val bitmap = writableTile(coordinate)
+            val pressureOpacity = pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity)
+            val rendered = if (pressureOpacity) Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888) else bitmap
+            val canvas = Canvas(rendered)
+            canvas.save()
+            canvas.translate((-coordinate.x * tileSize).toFloat(), (-coordinate.y * tileSize).toFloat())
+            stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
+            renderer.draw(canvas, inkStroke, Matrix())
+            canvas.restore()
+            if (pressureOpacity) {
+                StrokeCanvasPainter.applyPressureOpacityMask(rendered, stroke, coordinate.x * tileSize, coordinate.y * tileSize)
+                Canvas(bitmap).drawBitmap(rendered, 0f, 0f, null)
+                rendered.recycle()
+            }
+            if (bitmap.isFullyTransparent()) removeTile(coordinate)
+        }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke, ink = inkStroke))))
         lastDirtyTiles = dirty
@@ -968,14 +1035,26 @@ class TileStore(
 
     private class TileSnapshotTransaction(
         private val store: TileStore,
-        private val before: Map<TileCoordinate, Bitmap?>,
-        private val after: Map<TileCoordinate, Bitmap?>,
+        before: Map<TileCoordinate, Bitmap?>,
+        after: Map<TileCoordinate, Bitmap?>,
         private val colorUsage: Pair<Int, Long>? = null,
         commands: List<ReplayPaint>? = null,
     ) : UndoTransaction {
         init { store.applyUsage(colorUsage, 1L); store.recordingListener?.invoke(commands, after) }
-        override val estimatedBytes = (before.values.count { it != null } + after.values.count { it != null }).toLong() * store.tileSize * store.tileSize * 4
-        override fun undo() { store.restore(before); store.recordingListener?.invoke(null, before); store.applyUsage(colorUsage, -1L) }
-        override fun redo() { store.restore(after); store.recordingListener?.invoke(null, after); store.applyUsage(colorUsage, 1L) }
+        // The applied pixels already live in the layer. Retain only the opposite
+        // state, capturing the current state when the user actually undoes/redoes.
+        private var opposite = UndoPixelSnapshot(before)
+        override val estimatedBytes: Long get() = opposite.estimatedBytes
+        private fun swap() {
+            val next = UndoPixelSnapshot(opposite.coordinates.associateWith { store.tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) })
+            opposite.withDecoded { pixels ->
+                store.restore(pixels)
+                // A recorder can retain these immutable pixels asynchronously.
+                store.recordingListener?.invoke(null, pixels)
+            }
+            opposite = next
+        }
+        override fun undo() { swap(); store.applyUsage(colorUsage, -1L) }
+        override fun redo() { swap(); store.applyUsage(colorUsage, 1L) }
     }
 }

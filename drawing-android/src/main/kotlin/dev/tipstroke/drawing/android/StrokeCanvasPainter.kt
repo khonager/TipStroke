@@ -130,7 +130,7 @@ internal object StrokeCanvasPainter {
             }
     }
 
-    fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke)) {
+    fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke), airbrushBlockSize: Int = 256) {
         if (stroke.style.brush.stamp != null && stroke.style.blend == BlendBehavior.PAINT && stroke.style.pixelTool == null) {
             StampBrushRenderer(stroke.style).use { it.drawClipped(canvas, it.path.append(stroke.samples)) }
             return
@@ -170,7 +170,7 @@ internal object StrokeCanvasPainter {
         }
         if (stroke.style.blend == BlendBehavior.ERASE || stroke.style.brush.engine == BrushEngine.AIRBRUSH) {
             if (pressureBehaviorEnabled(stroke.style.brush.pressureToOpacity) || (stroke.style.sizePx > 256f && stroke.style.brush.hardness < .99f)) {
-                drawPressureResponsiveAirbrush(canvas, stroke, paint)
+                drawPressureResponsiveAirbrush(canvas, stroke, paint, airbrushBlockSize)
             } else {
                 drawUnifiedAirbrushMask(canvas, stroke, paint)
             }
@@ -508,6 +508,24 @@ internal object StrokeCanvasPainter {
         layer?.let(canvas::restoreToCount)
     }
 
+    /** Bound the actual graphite contact, including rotated tap corners and join overlap. */
+    internal fun pencilBounds(stroke: CompletedStroke): dev.tipstroke.core.geometry.Rect {
+        var left = Float.POSITIVE_INFINITY
+        var top = Float.POSITIVE_INFINITY
+        var right = Float.NEGATIVE_INFINITY
+        var bottom = Float.NEGATIVE_INFINITY
+        stroke.samples.forEach { sample ->
+            // Speed taper only shrinks the contact, so the untapered tip is conservative.
+            val tip = pencilTipDynamics(stroke, sample)
+            val radius = hypot(tip.width, tip.height) * .5f + 2f
+            left = minOf(left, sample.position.x - radius)
+            top = minOf(top, sample.position.y - radius)
+            right = maxOf(right, sample.position.x + radius)
+            bottom = maxOf(bottom, sample.position.y + radius)
+        }
+        return dev.tipstroke.core.geometry.Rect(left, top, right, bottom)
+    }
+
     internal data class PencilTipDynamics(val width: Float, val height: Float, val alpha: Int)
 
     internal fun pencilTipDynamics(stroke: CompletedStroke, sample: StrokeSample, speedScale: Float = 1f): PencilTipDynamics {
@@ -543,12 +561,11 @@ internal object StrokeCanvasPainter {
      * the preceding segment showing through each new blurred cap, creating colored ridges.
      * Work in document-aligned tiles with a blur halo, including for the wet preview.
      */
-    private fun drawPressureResponsiveAirbrush(canvas: Canvas, stroke: CompletedStroke, paint: Paint) {
+    private fun drawPressureResponsiveAirbrush(canvas: Canvas, stroke: CompletedStroke, paint: Paint, tileSize: Int) {
         val clip = canvas.clipBounds
         val bounds = stroke.bounds
         if (!clip.intersect(floor(bounds.left).toInt(), floor(bounds.top).toInt(),
                 ceil(bounds.right).toInt(), ceil(bounds.bottom).toInt())) return
-        val tileSize = 256
         // Screen-sized tips can cover thousands of document pixels. Soft coverage
         // has no texture detail at that scale: sample its mask on a power-of-two
         // grid and interpolate into the permanent full-resolution tiles. This also

@@ -149,3 +149,23 @@ authoring. Pixel tools and erasing keep their existing rendering semantics. The
 comparison brushes require API 34; there is no silent CPU brush substitution on
 older Android. Native instrumentation checks real rendering, preview/commit pixel
 agreement, and undo/redo; host tests cannot load Android Ink's JNI implementation.
+
+
+## Android device-driven acceleration
+
+On Android 14+, ordinary custom stamp paint uses bounded GPU RenderNode batches
+for wet feedback, then a 1024 px sparse tile atlas for permanent pixels. Round
+accumulating Jetpack Ink particles use a circular mask on quads to reduce geometry.
+Existing stamp parameters and sampling are retained; GPU antialiasing may differ
+slightly from software. Reference-constrained and recording paths retain the
+existing painter, and long display lists fall back to incremental raster painting.
+
+Pencil and ordinary eraser raster work is grouped once per display frame while
+preserving every input sample. Pencil allocates tiles from its actual contact
+geometry. Eraser reads and allocates from its pressure-dependent outer radius and
+uses a native C++ implementation of the existing nearest-centerline pixel kernel;
+device differential tests require identical output to its Kotlin fallback.
+Soft Airbrush commits share blur halos across 4 × 4 tile regions and record
+exact replay patches. These changes preserve sparse permanent raster storage;
+large pen-up commits are still synchronous. See `PERFORMANCE.md` for physical
+measurements and their limits.

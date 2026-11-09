@@ -473,6 +473,37 @@ class TileStoreTest {
         tiled.recycle()
     }
 
+    @Test fun pencilContactBoundsAvoidEmptyTilesWithoutClippingRotatedGraphite() {
+        for (tilt in listOf(0f, .3f, 1.2f)) {
+            val style = ink.copy(brush = BrushPreset.Pencil, sizePx = 718f, opacity = .8f)
+            val samples = listOf(sample(Point(800f, 900f), 0), sample(Point(1200f, 1100f), 16_000_000)).map {
+                it.copy(tiltRadians = tilt, orientationRadians = 1.1f)
+            }
+            val stroke = CompletedStroke(samples, style)
+            val preview = TileStore(2048, 2048)
+            val expected = Bitmap.createBitmap(2048, 2048, Bitmap.Config.ARGB_8888)
+            val actual = Bitmap.createBitmap(2048, 2048, Bitmap.Config.ARGB_8888)
+            try {
+                // Reproduce the prior conservative allocation, including tile-local
+                // Skia clipping; compare the tightened bounds to those exact pixels.
+                dev.tipstroke.core.geometry.TileGrid.intersecting(stroke.bounds, 2048, 2048).forEach { coordinate ->
+                    val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+                    try {
+                        Canvas(tile).apply {
+                            translate(-coordinate.x * 256f, -coordinate.y * 256f)
+                            StrokeCanvasPainter.drawPencilOverlay(this, stroke, capStart = true, capEnd = true)
+                        }
+                        Canvas(expected).drawBitmap(tile, coordinate.x * 256f, coordinate.y * 256f, null)
+                    } finally { tile.recycle() }
+                }
+                preview.appendPencilPreview(stroke, capStart = true, capEnd = true)
+                preview.draw(Canvas(actual), Paint())
+                assertTrue("Actual contact bounds clipped tilted graphite at $tilt", expected.sameAs(actual))
+                if (tilt == 0f) assertTrue("Upright contact must not allocate the worst-case tilt footprint", preview.allocatedTileCount < 16)
+            } finally { preview.discard(); expected.recycle(); actual.recycle() }
+        }
+    }
+
     @Test fun tiltedPencilPreviewDoesNotDependOnInputBatching() {
         val pencil = StrokeStyle(
             BrushPreset.Pencil,

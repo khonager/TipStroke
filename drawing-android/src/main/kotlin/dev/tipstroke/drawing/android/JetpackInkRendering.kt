@@ -1,7 +1,6 @@
 package dev.tipstroke.drawing.android
 
 import android.graphics.*
-import android.hardware.HardwareBuffer
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.ink.brush.Brush
@@ -12,9 +11,6 @@ import androidx.ink.strokes.MutableStrokeInputBatch
 import androidx.ink.strokes.Stroke
 import androidx.ink.strokes.StrokeInput
 import dev.tipstroke.core.drawing.*
-import java.time.Duration
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 /** Native Ink rendering for thumbnails, constrained strokes, and raster completion. */
@@ -58,37 +54,18 @@ internal object JetpackInkRendering {
     /** One reusable 256px GPU target. No full-canvas bitmap, texture or pixel readback. */
     @RequiresApi(34)
     class TileRenderer : AutoCloseable {
-        private val colorSpace = ColorSpace.get(ColorSpace.Named.SRGB)
-        private val buffer = HardwareBuffer.create(256, 256, HardwareBuffer.RGBA_8888, 1,
-            HardwareBuffer.USAGE_GPU_COLOR_OUTPUT or HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE)
-        private val node = RenderNode("Ink raster tile").apply { setPosition(0, 0, 256, 256) }
-        private val hardware = HardwareBufferRenderer(buffer).apply { setContentRoot(node) }
-
+        private val atlas = GpuTileRasterizer(256)
         fun draw(canvas: Canvas, stroke: Stroke, renderer: CanvasStrokeRenderer) {
             val clip = canvas.clipBounds
-            for (y in Math.floorDiv(clip.top, 256)..Math.floorDiv(clip.bottom - 1, 256)) {
-                for (x in Math.floorDiv(clip.left, 256)..Math.floorDiv(clip.right - 1, 256)) {
-                    val left = x * 256f; val top = y * 256f
-                    val recording = node.beginRecording()
-                    recording.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-                    recording.translate(-left, -top)
-                    renderer.draw(recording, stroke, Matrix())
-                    node.endRecording()
-                    val completion = CompletableFuture<HardwareBufferRenderer.RenderResult>()
-                    hardware.obtainRenderRequest().setColorSpace(colorSpace).draw({ it.run() }) { completion.complete(it) }
-                    val result = completion.get(5, TimeUnit.SECONDS)
-                    result.fence.use { fence ->
-                        check(result.status == HardwareBufferRenderer.RenderResult.SUCCESS && fence.await(Duration.ofSeconds(5))) {
-                            "Ink tile rendering failed."
-                        }
-                    }
-                    val gpu = requireNotNull(Bitmap.wrapHardwareBuffer(buffer, colorSpace))
-                    val pixels = try { requireNotNull(gpu.copy(Bitmap.Config.ARGB_8888, false)) } finally { gpu.recycle() }
-                    try { canvas.drawBitmap(pixels, left, top, null) } finally { pixels.recycle() }
-                }
+            val tiles = buildList {
+                for (y in Math.floorDiv(clip.top, 256)..Math.floorDiv(clip.bottom - 1, 256))
+                    for (x in Math.floorDiv(clip.left, 256)..Math.floorDiv(clip.right - 1, 256))
+                        add(dev.tipstroke.core.geometry.TileCoordinate(x, y))
+            }
+            atlas.rasterize(tiles, draw = { renderer.draw(it, stroke, Matrix()) }) { tile, pixels, source ->
+                canvas.drawBitmap(pixels, source, Rect(tile.x * 256, tile.y * 256, (tile.x + 1) * 256, (tile.y + 1) * 256), null)
             }
         }
-
-        override fun close() { hardware.close(); node.discardDisplayList(); buffer.close() }
+        override fun close() = atlas.close()
     }
 }

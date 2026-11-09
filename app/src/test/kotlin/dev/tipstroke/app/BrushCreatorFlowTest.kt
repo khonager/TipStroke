@@ -95,6 +95,30 @@ class BrushCreatorFlowTest {
         compose.onNodeWithContentDescription("Select Pencil").assertDoesNotExist()
     }
 
+    @Config(sdk = [35], qualifiers = "w800dp-h360dp-land-mdpi")
+    @Test fun inkStudioUsesSideBySideControlsInPhoneLandscape() {
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { InkBrushCreatorDialog(LibraryBrush(BrushPreset.BlankInk), false, null, {}, {}) }
+        }
+        compose.onNodeWithText("Tip").performClick()
+        compose.onNodeWithText("Soft").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Save and use").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Cancel").assertIsDisplayed()
+        val controls = compose.onNodeWithText("Texture").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle {
+            val root = org.robolectric.shadows.ShadowDialog.getLatestDialog().window!!.decorView as android.view.ViewGroup
+            val pad = root.descendants.filterIsInstance<dev.tipstroke.drawing.android.InkBrushDrawingPad>().single()
+            assertTrue("Landscape pad must stay drawable", pad.width > 180 && pad.height > 150)
+            assertTrue("Settings must use the right side", controls.left > 250)
+            val image = android.graphics.Bitmap.createBitmap(root.width, root.height, android.graphics.Bitmap.Config.ARGB_8888)
+            root.draw(android.graphics.Canvas(image))
+            java.io.File("build/qa/ink-studio-landscape.png").also { it.parentFile?.mkdirs() }.outputStream().use {
+                image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            image.recycle()
+        }
+    }
+
     @Test fun openingInkStudioFromABundledTipSavesANewIdentity() {
         val library = BrushLibrary(RuntimeEnvironment.getApplication())
         library.save(emptyList())

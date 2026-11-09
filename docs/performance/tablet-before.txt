@@ -1,0 +1,19 @@
+Xiaomi Pad 6 (23043RP34G), API 34. Baseline, before GPU stamp/Ink changes.
+250 Hz scheduled input, 320 ms crossings; 180 physical-screen-pixel tip.
+Extracted 5632-square cases from the initial log. The original handoff percentile label was incorrect for two samples; use max for that metric.
+Tablet disconnected before the last Pencil case completed. No eraser case in this early run.
+
+Ink canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=3.00 ms; dispatch p50=0.70 p95=1.58 max=2.71 ms; Ink n/a; frames p50=16.66 p95=16.75 max=550.09 ms; handoff p50=572.00 p95=548.00 max=572.00 ms
+Dense custom canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=1299.00 p95=2278.00 max=2497.00 ms; dispatch p50=32.55 p95=42.77 max=86.88 ms; Ink n/a; frames p50=16.74 p95=1983.25 max=2284.07 ms; handoff p50=86.00 p95=84.00 max=86.00 ms
+Jetpack Round canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=3.00 ms; dispatch p50=0.83 p95=1.44 max=2.46 ms; Ink n/a; frames p50=16.67 p95=16.77 max=2399.93 ms; handoff p50=2407.00 p95=2062.00 max=2407.00 ms
+Jetpack Stamp canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=1.00 ms; dispatch p50=0.39 p95=0.92 max=1.67 ms; Ink n/a; frames p50=16.67 p95=16.83 max=2034.05 ms; handoff p50=2070.00 p95=1880.00 max=2070.00 ms
+Jetpack Graphite canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=2.00 ms; dispatch p50=0.46 p95=0.85 max=2.04 ms; Ink n/a; frames p50=16.67 p95=16.93 max=2917.21 ms; handoff p50=2924.00 p95=2872.00 max=2924.00 ms
+Jetpack Soft canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=0.00 p95=1.00 max=2.00 ms; dispatch p50=0.43 p95=0.68 max=2.19 ms; Ink n/a; frames p50=16.66 p95=16.82 max=2183.66 ms; handoff p50=2187.00 p95=1965.00 max=2187.00 ms
+Airbrush canvas=5632x5632 view=2880x1700 zoom=0.25053266 size=718.46924 refresh=60.000004
+queue p50=19.00 p95=30.00 max=38.00 ms; dispatch p50=0.18 p95=0.34 max=2206.34 ms; Ink n/a; frames p50=16.67 p95=33.34 max=2217.29 ms; handoff p50=2206.00 p95=2093.00 max=2206.00 ms
