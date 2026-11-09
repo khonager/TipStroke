@@ -40,6 +40,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     }
     var selectionRegion: SelectionRegion? = null
         set(value) { field = value; invalidate() }
+    var previousSelectionOutline: SelectionRegion? = null
+        set(value) { field = value; invalidate() }
     var selectionDraftVertices = false
     var selectionDraftPoints: List<Point> = emptyList()
         set(value) { field = value; invalidate() }
@@ -397,6 +399,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         selectionPaint.pathEffect = DashPathEffect(
             floatArrayOf(10f / transform.scale.coerceAtLeast(.08f), 7f / transform.scale.coerceAtLeast(.08f)), 0f,
         )
+        previousSelectionOutline?.let { canvas.drawPath(it.toAndroidPath(), selectionPaint) }
         selectionRegion?.let {
             val path = it.toAndroidPath(selectionPreviewOffset.x, selectionPreviewOffset.y)
             selectionPreviewMatrix?.let(path::transform)

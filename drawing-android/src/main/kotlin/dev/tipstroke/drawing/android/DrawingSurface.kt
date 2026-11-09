@@ -1030,6 +1030,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         transformSelectionOriginal = null; pendingSelectionTransform = null
         selectionPointerId = null
         previousSelection = null
+        rasterView.previousSelectionOutline = null
         clearMovePreview()
         selectionRegion = null
         selectionPoints.clear()
@@ -2241,6 +2242,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             MotionEvent.ACTION_DOWN -> {
                 val point = rasterView.screenToDocument(event.getX(index), event.getY(index))
                 previousSelection = selectionRegion
+                rasterView.previousSelectionOutline = previousSelection.takeIf { selectionOperation != dev.tipstroke.core.geometry.SelectionOperation.REPLACE }
                 selectionPoints.clear()
                 selectionPoints += Point(point.x, point.y)
                 selectionRegion = null
@@ -2277,6 +2279,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 selectionRegion = selectionRegion?.let { draft -> previousSelection?.combined(draft, selectionOperation) ?: draft } ?: previousSelection
                 selectionPointerId = null
                 previousSelection = null
+                rasterView.previousSelectionOutline = null
                 rasterView.selectionDraftPoints = emptyList()
                 rasterView.selectionRegion = selectionRegion
                 selectionPoints.clear()
@@ -2286,6 +2289,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 selectionRegion = previousSelection
                 selectionPointerId = null
                 previousSelection = null
+                rasterView.previousSelectionOutline = null
                 selectionPoints.clear()
                 rasterView.selectionDraftPoints = emptyList()
                 rasterView.selectionRegion = selectionRegion

@@ -331,3 +331,7 @@ Polygon selection places one connected corner per tap. After at least three
 corners, tap the larger first dot to close and apply the current selection
 operation. Switching tools or leaving selection mode cancels an unfinished
 polygon. Vertices and lines remain in the native canvas overlay.
+
+Add/subtract/intersect selection gestures retain the existing selection outline
+while the new region is drafted. Commit replaces both outlines with the combined
+result; cancellation restores the prior selection.
