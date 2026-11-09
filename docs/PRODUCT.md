@@ -45,3 +45,8 @@ paint and imported images feeds the current color, which can then be saved.
 Gallery Reorder mode exposes Move earlier / Move later controls on both drawing
 and stack cards. Inside a stack the controls reorder its drawings. Changes use
 the same persisted gallery ordering as drag/drop, without requiring a long press.
+
+Select drawings is a gallery mode: tap the existing thumbnail cards to toggle
+checkmarks, enter stacks without losing selected drawings, then export the
+selection. Select visible selects the current gallery/stack. The export dialog
+only chooses format/options and no longer duplicates the gallery as a name list.

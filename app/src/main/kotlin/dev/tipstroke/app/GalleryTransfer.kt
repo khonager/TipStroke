@@ -71,13 +71,6 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
                 if (initialIds == null) {
                     Text("Open a .tipstroke file to add editable drawings, layers, and animation to this gallery. Existing drawings are kept.")
                 } else {
-                    TextButton(onClick = { selected = drawings.map { it.id }.toSet() }, enabled = !busy) { Text("Select whole gallery") }
-                    drawings.forEach { drawing ->
-                        Row {
-                            Checkbox(drawing.id in selected, { checked -> selected = if (checked) selected + drawing.id else selected - drawing.id }, enabled = !busy)
-                            TextButton(onClick = { selected = if (drawing.id in selected) selected - drawing.id else selected + drawing.id }, enabled = !busy) { Text(drawing.name) }
-                        }
-                    }
                     Text("${selected.size} selected • Format")
                     (listOf("TipStroke") + ExportFormat.entries.map { it.name } + AnimationExportFormat.entries.map { it.name }).forEach { option ->
                         Row {

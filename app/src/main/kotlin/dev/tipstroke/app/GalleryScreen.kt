@@ -83,6 +83,8 @@ fun GalleryScreen(
     var openStackId by remember { mutableStateOf<String?>(null) }
     var transferOpen by remember { mutableStateOf(false) }
     var transferIds by remember { mutableStateOf<List<String>?>(null) }
+    var selecting by remember { mutableStateOf(false) }
+    var selectedDrawings by remember { mutableStateOf<Set<String>>(emptySet()) }
     var reordering by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
     var deleteCandidate by remember { mutableStateOf<DrawingSummary?>(null) }
@@ -246,10 +248,12 @@ fun GalleryScreen(
                                 TextButton(onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) }, enabled = !importingMedia) { Text("Image / GIF / video") }
                                 TextButton(onClick = { reordering = !reordering }) { Text(if (reordering) "Done reordering" else "Reorder") }
                                 TextButton(onClick = { transferIds = null; transferOpen = true }) { Text("Import project") }
-                                TextButton(onClick = {
-                                    transferIds = items.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }
-                                    transferOpen = true
-                                }) { Text("Export / select drawings") }
+                                TextButton(onClick = { selecting = true; reordering = false }) { Text("Select drawings") }
+                                if (selecting) {
+                                    TextButton(onClick = { selectedDrawings = visibleItems.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }.toSet() }) { Text("Select visible") }
+                                    TextButton(onClick = { transferIds = selectedDrawings.toList(); transferOpen = true }, enabled = selectedDrawings.isNotEmpty()) { Text("Export ${selectedDrawings.size}") }
+                                    TextButton(onClick = { selecting = false; selectedDrawings = emptySet() }) { Text("Cancel selection") }
+                                }
                             }
                         }
                         Text(if (openStack == null) "Hold to reorder · drop in the center to group"
@@ -265,13 +269,17 @@ fun GalleryScreen(
                     }
                     when (item) {
                         is GalleryDrawing -> DrawingCard(
-                            item.drawing, { onOpen(item.drawing) }, { duplicateDrawing(item.drawing) },
-                            { deleteCandidate = item.drawing }, dragModifier(item),
+                            item.drawing, {
+                                if (selecting) selectedDrawings = if (item.drawing.id in selectedDrawings) selectedDrawings - item.drawing.id else selectedDrawings + item.drawing.id
+                                else onOpen(item.drawing)
+                            }, { duplicateDrawing(item.drawing) },
+                            { deleteCandidate = item.drawing }, if (selecting) Modifier else dragModifier(item),
                             onExport = { transferIds = listOf(item.drawing.id); transferOpen = true },
                             onMoveOut = openStack?.let { stack -> { library.moveOutOfStack(stack.id, item.drawing.id); refreshGallery() } },
                             thumbnailHeight = thumbnailHeight,
+                            selected = if (selecting) item.drawing.id in selectedDrawings else null,
                         )
-                        is GalleryStack -> StackCard(item, { openStackId = item.id }, dragModifier(item), thumbnailHeight)
+                        is GalleryStack -> StackCard(item, { openStackId = item.id }, if (selecting) Modifier else dragModifier(item), thumbnailHeight)
                     }
                     }
                 }
@@ -364,6 +372,7 @@ private fun DrawingCard(
     onExport: () -> Unit,
     onMoveOut: (() -> Unit)? = null,
     thumbnailHeight: Dp = 180.dp,
+    selected: Boolean? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().clickable(onClick = onOpen).padding(2.dp)) {
@@ -372,6 +381,7 @@ private fun DrawingCard(
         }
         Box(Modifier.fillMaxWidth().height(thumbnailHeight).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)), contentAlignment = Alignment.Center) {
             image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+            if (selected != null) Checkbox(selected, onCheckedChange = { onOpen() }, modifier = Modifier.align(Alignment.TopEnd).background(Color(0xDD202125)))
         }
         Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
@@ -381,7 +391,7 @@ private fun DrawingCard(
                     color = Color(0xFF9EA0A6), fontSize = 11.sp,
                 )
             }
-            Box {
+            if (selected == null) Box {
                 TextButton(onClick = { menuOpen = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(38.dp)) { Text("⋮", fontSize = 24.sp) }
                 DropdownMenu(menuOpen, { menuOpen = false }) {
                     onMoveOut?.let { moveOut -> DropdownMenuItem(text = { Text("Move out of stack") }, onClick = { menuOpen = false; moveOut() }) }
