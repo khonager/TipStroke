@@ -99,7 +99,7 @@ internal class BrushPreferences(context: Context) {
     }
 
     private fun load(prefix: String, fallback: BrushTuning) = BrushTuning(
-        preferences.getFloat(prefix + "size", fallback.sizePx).coerceIn(2f, 180f),
+        preferences.getFloat(prefix + "size", fallback.sizePx).coerceIn(2f, 65536f),
         preferences.getFloat(prefix + "opacity", fallback.opacity).coerceIn(.05f, 1f),
         preferences.getFloat(prefix + "hardness", fallback.hardness).coerceIn(0f, 1f),
         preferences.getBoolean(prefix + "pressure_size", fallback.pressureSize),

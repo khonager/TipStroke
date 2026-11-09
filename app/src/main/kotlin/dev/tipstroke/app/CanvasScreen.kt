@@ -621,7 +621,7 @@ fun CanvasScreen(
 
             if (!selectToolActive) TipControls(
                 size = size, opacity = opacity, color = color, frequentColors = if (colorShelf.recent) colorHistory else drawingPalette,
-                sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
+                sizeRange = if (pixelTool != null) 1f..32f else 1f..maxOf(4096f, kotlin.math.hypot(editorWidthPx.toFloat(), editorHeightPx.toFloat()) * 2f).coerceAtMost(65536f),
                 sizeUnit = if (pixelTool != null || smudging) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
                 onSizeUnit = if (pixelTool != null || smudging) null else { unit ->
                     brushSizeUnit = unit
@@ -685,7 +685,7 @@ fun CanvasScreen(
         if (!resizeOpen && compactPhone && phoneChromeVisible && phoneAdjustmentsOpen && !selectToolActive) {
             TipControls(
                 size = size,
-                sizeRange = if (pixelTool != null) 1f..32f else 1f..180f,
+                sizeRange = if (pixelTool != null) 1f..32f else 1f..maxOf(4096f, kotlin.math.hypot(editorWidthPx.toFloat(), editorHeightPx.toFloat()) * 2f).coerceAtMost(65536f),
                 sizeUnit = if (pixelTool != null || smudging) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
                 onSizeUnit = if (pixelTool != null || smudging) null else { unit ->
                     brushSizeUnit = unit
@@ -988,7 +988,7 @@ fun CanvasScreen(
         onFavorites = { favoriteIds = it; shelfPreferences.save(it) },
         onLibraryChanged = { libraryBrushes = it },
         current = brush.copy(
-            baseSizePx = size.coerceIn(2f, 180f), opacity = opacity.coerceIn(.05f, 1f), hardness = brushHardness,
+            baseSizePx = size.coerceIn(2f, 65536f), opacity = opacity.coerceIn(.05f, 1f), hardness = brushHardness,
             pressureToSize = if (pressureSize) PressureCurve(pressureSizeStart, 1f, pressureSizeExponent) else PressureCurve(1f, 1f, 1f),
             pressureToOpacity = if (pressureOpacity) PressureCurve(pressureOpacityStart, 1f, pressureOpacityExponent) else PressureCurve(1f, 1f, 1f),
             speedTaper = if (speedTaper) speedTaperAmount else 0f,

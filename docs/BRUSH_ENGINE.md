@@ -169,3 +169,10 @@ Soft Airbrush commits share blur halos across 4 × 4 tile regions and record
 exact replay patches. These changes preserve sparse permanent raster storage;
 large pen-up commits are still synchronous. See `PERFORMANCE.md` for physical
 measurements and their limits.
+
+Canvas brush size controls now reach twice the canvas diagonal (at least 4096,
+at most 65536 document units), allowing broad tips to cover the canvas with one
+centered dab at full pressure. Pixel tools retain their 1–32 range. Large size
+sliders use exponential travel; +/- still change by one unit. Preset persistence
+and import accept the expanded sizes. Stamp-tip caches remain capped at 1024 px;
+large dabs use the existing sparse tile renderer, without full-layer copies.

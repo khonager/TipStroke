@@ -68,7 +68,7 @@ internal fun InkBrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message
                             OutlinedTextField(draft.author, { draft = draft.copy(author = it.take(80)) }, label = { Text("Creator name (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             OutlinedTextField(draft.description, { draft = draft.copy(description = it.take(1000)) }, label = { Text("Description / sharing terms") }, modifier = Modifier.fillMaxWidth())
                             Text("Create a Jetpack Ink tip alongside your existing custom tips. Try it on the canvas to compare feel and appearance.")
-                            Tune("Size (px)", p.baseSizePx, 2f..180f) { p.copy(baseSizePx = it) }
+                            Tune("Size (px)", p.baseSizePx, 2f..65536f) { p.copy(baseSizePx = it) }
                             Tune("Opacity", p.opacity, .05f..1f) { p.copy(opacity = it) }
                         }
                         "Tip" -> {

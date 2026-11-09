@@ -115,7 +115,7 @@ internal object BrushPackage {
             schemaVersion = o.getInt("schemaVersion"),
             id = BrushId(string("id", 100, true)), displayName = string("name", 60, true),
             engine = BrushEngine.valueOf(o.getString("engine")),
-            baseSizePx = number("size", 2f, 180f), opacity = number("opacity", .05f, 1f),
+            baseSizePx = number("size", 2f, 65536f), opacity = number("opacity", .05f, 1f),
             hardness = number("hardness", 0f, 1f), spacing = number("spacing", .001f, 2f),
             stabilization = number("stabilization", 0f, 1f),
             pressureToSize = curve("pressureSize"), pressureToOpacity = curve("pressureOpacity"),

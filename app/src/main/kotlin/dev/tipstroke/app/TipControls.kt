@@ -190,10 +190,10 @@ private fun PrecisionSlider(
             if (valueContent != null) valueContent() else Text(valueLabel, color = Color(0xFFED6A5A), fontSize = 12.sp)
         }
         Slider(
-            value = value,
-            onValueChange = { onAdjustmentStart(); onValue(it) },
+            value = sliderFraction(value, range),
+            onValueChange = { onAdjustmentStart(); onValue(sliderValue(it, range)) },
             onValueChangeFinished = onAdjustmentEnd,
-            valueRange = range,
+            valueRange = 0f..1f,
             modifier = Modifier.fillMaxWidth().height(44.dp),
         )
         StepButtons(value, range, step, onValue, onAdjustmentStart, onAdjustmentEnd)
@@ -239,7 +239,7 @@ private fun VerticalDragTrack(
 ) {
     fun valueAt(y: Float, height: Float): Float {
         val fraction = (1f - ((y - 14f) / (height - 28f))).coerceIn(0f, 1f)
-        return range.start + fraction * (range.endInclusive - range.start)
+        return sliderValue(fraction, range)
     }
     Canvas(
         Modifier.width(48.dp).height(height)
@@ -256,7 +256,7 @@ private fun VerticalDragTrack(
         val x = size.width / 2f
         val top = minOf(14.dp.toPx(), size.height * .14f)
         val bottom = size.height - top
-        val fraction = ((value - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
+        val fraction = sliderFraction(value, range)
         val thumbY = bottom - fraction * (bottom - top)
         drawLine(Color(0xFF4A4758), Offset(x, top), Offset(x, bottom), 8.dp.toPx(), StrokeCap.Round)
         drawLine(Color(0xFFED6A5A), Offset(x, thumbY), Offset(x, bottom), 8.dp.toPx(), StrokeCap.Round)

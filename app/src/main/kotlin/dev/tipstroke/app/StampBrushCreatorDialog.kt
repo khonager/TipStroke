@@ -104,7 +104,7 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
                                     OutlinedTextField(draft.author, { draft = draft.copy(author = it.take(80)) }, label = { Text("Creator name (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                                     OutlinedTextField(draft.description, { draft = draft.copy(description = it.take(1000)) }, label = { Text("Description / sharing terms") }, modifier = Modifier.fillMaxWidth())
                                     Text("Start with a shape, add grain, then tune how the marks travel along your stroke. Draw your own sources or import images. Hover or hold an icon for its name. Slider ends preview the minimum and maximum; all other settings stay the same.", style = MaterialTheme.typography.bodyMedium)
-                                    PresetSlider("Size (px)", p.baseSizePx, 2f..180f, actualSize = true) { p.copy(baseSizePx = it) }
+                                    PresetSlider("Size (px)", p.baseSizePx, 2f..65536f, actualSize = true) { p.copy(baseSizePx = it) }
                                     PresetSlider("Opacity", p.opacity, .05f..1f) { p.copy(opacity = it) }
                                 }
                                 "Shape" -> {

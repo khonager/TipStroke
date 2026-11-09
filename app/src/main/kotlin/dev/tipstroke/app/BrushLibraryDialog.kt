@@ -294,7 +294,7 @@ internal fun LegacyBrushCreatorDialog(initial: LibraryBrush, busy: Boolean, mess
                             FilterChip(p.engine == engine, { update(p.copy(engine = engine)) }, label = { Text(engine.name.lowercase().replaceFirstChar { it.uppercase() }) })
                         }
                     }
-                    CreatorSlider("Size (px)", p.baseSizePx, 2f..180f, actualSize = true) { p.copy(baseSizePx = it) }
+                    CreatorSlider("Size (px)", p.baseSizePx, 2f..65536f, actualSize = true) { p.copy(baseSizePx = it) }
                     CreatorSlider("Opacity", p.opacity, .05f..1f) { p.copy(opacity = it) }
                     if (p.engine == BrushEngine.AIRBRUSH) CreatorSlider("Edge hardness", p.hardness, 0f..1f) { p.copy(hardness = it) }
                     Text("Pressure → size", style = MaterialTheme.typography.titleSmall)
