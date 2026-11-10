@@ -1709,7 +1709,6 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             rasterView.adjustmentPreviewStroke = null
             rasterView.stylusHoverPreview = null
         }
-        predictor?.record(event)
         if (eventHasStylus(event)) updateStylusButtons(event.buttonState)
         val actionIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         if (toolSmudgePointer != null) return handleSmudgeTool(event)
@@ -1721,6 +1720,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             event.getToolType(actionIndex) != MotionEvent.TOOL_TYPE_ERASER && isDrawingPointer(event, actionIndex)) {
             return handleSmudgeTool(event)
         }
+        // Raster smudge consumes its own stream and must not enter native Ink prediction.
+        if (!settings.smudging) predictor?.record(event)
 
         // The emulator maps a host click to a finger. If a simulated second finger is
         // added for pinch, cancel the provisional mark and hand the full event to the
@@ -1787,7 +1788,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             return
         }
         val style = currentStyle(event, index)
-        val pencilTip = if (style.blend == BlendBehavior.PAINT && style.brush.engine == BrushEngine.PENCIL) {
+        val pencilTip = if (!settings.smudging && style.blend == BlendBehavior.PAINT && style.brush.engine == BrushEngine.PENCIL) {
             StrokeCanvasPainter.pencilTipDynamics(CompletedStroke(listOf(hoverSample), style), hoverSample)
         } else null
         rasterView.stylusHoverPreview = StylusHoverPreview(
@@ -1888,7 +1889,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     if (gpuStampPreview != null || customPreviewStyle != null || rasterPreviewStyle != null) {
                         Unit
                     } else {
-                        val prediction = predictor?.predict()
+                        val prediction = if (settings.smudging) null else predictor?.predict()
                         try { liveView.addToStroke(event, pointerId, prediction) } finally { prediction?.recycle() }
                     }
                 }
@@ -2085,7 +2086,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val point = rasterView.screenToDocument(x, y)
                 if (point != toolSmudgeLast && settings.opacity > 0f) {
                     smudgeTarget?.tiles?.smudge(toolSmudgeLast.x, toolSmudgeLast.y, point.x, point.y,
-                        settings.sizePx * .7f, settings.gestures.smudgeStrength * settings.opacity)
+                        smudgeRadius(), settings.gestures.smudgeStrength * settings.opacity)
                 }
                 toolSmudgeLast = point
             }
@@ -2148,7 +2149,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     FingerAction.SMUDGE -> if (gestureMoved) {
                         smudgeTarget?.tiles?.smudge(
                             singleLastDocument.x, singleLastDocument.y, document.x, document.y,
-                            settings.sizePx * .7f, settings.gestures.smudgeStrength,
+                            smudgeRadius(), settings.gestures.smudgeStrength,
                         )
                         rasterView.invalidate()
                     }
@@ -2779,7 +2780,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         chromeOcclusionListener?.invoke(occluded)
     }
 
-    private fun resolvedBrushSize() = if (settings.smudging) settings.sizePx else settings.sizeUnit.documentPixels(
+    private fun smudgeRadius() = (resolvedBrushSize() * .5f).coerceIn(1f, 96f)
+
+    private fun resolvedBrushSize() = if (settings.smudging) settings.sizePx.coerceIn(2f, 192f) else settings.sizeUnit.documentPixels(
         settings.sizePx, rasterView.transform.scale, resources.displayMetrics.density, settings.pixelTool,
     )
 

@@ -85,6 +85,7 @@ fun CanvasScreen(
     var resizeChanged by remember { mutableStateOf(false) }
     var brush by remember { mutableStateOf(BrushPreset.Ink) }
     var erasing by remember { mutableStateOf(false) }
+    var smudgeSize by remember { mutableFloatStateOf(40f) }
     var smudging by remember { mutableStateOf(false) }
     val smallCanvas = editorWidthPx <= 128 && editorHeightPx <= 128
     var pixelTool by remember { mutableStateOf<PixelTool?>(if (smallCanvas) PixelTool.PENCIL else null) }
@@ -308,6 +309,7 @@ fun CanvasScreen(
         selectToolActive = false; selectionMode = false; movingSelection = false
         imageTransforming = false
         erasing = false; smudging = true; pixelTool = null
+        size = smudgeSize
         surface?.setReferenceStrokes(null)
         sync()
     }
@@ -631,7 +633,7 @@ fun CanvasScreen(
 
             if (!selectToolActive) TipControls(
                 size = size, opacity = opacity, color = color, frequentColors = if (colorShelf.recent) colorHistory else drawingPalette,
-                sizeRange = if (pixelTool != null) 1f..32f else 1f..maxOf(4096f, kotlin.math.hypot(editorWidthPx.toFloat(), editorHeightPx.toFloat()) * 2f).coerceAtMost(65536f),
+                sizeRange = if (smudging) 2f..192f else if (pixelTool != null) 1f..32f else 1f..maxOf(4096f, kotlin.math.hypot(editorWidthPx.toFloat(), editorHeightPx.toFloat()) * 2f).coerceAtMost(65536f),
                 sizeUnit = if (pixelTool != null || smudging) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
                 onSizeUnit = if (pixelTool != null || smudging) null else { unit ->
                     brushSizeUnit = unit
@@ -641,6 +643,7 @@ fun CanvasScreen(
                 },
                 onSize = {
                     size = it
+                    if (smudging) smudgeSize = it
                     if (pixelTool != null) pixelSize = it
                     surface?.settings?.sizePx = it
                     surface?.showBrushAdjustmentPreview()
@@ -695,7 +698,7 @@ fun CanvasScreen(
         if (!resizeOpen && compactPhone && phoneChromeVisible && phoneAdjustmentsOpen && !selectToolActive) {
             TipControls(
                 size = size,
-                sizeRange = if (pixelTool != null) 1f..32f else 1f..maxOf(4096f, kotlin.math.hypot(editorWidthPx.toFloat(), editorHeightPx.toFloat()) * 2f).coerceAtMost(65536f),
+                sizeRange = if (smudging) 2f..192f else if (pixelTool != null) 1f..32f else 1f..maxOf(4096f, kotlin.math.hypot(editorWidthPx.toFloat(), editorHeightPx.toFloat()) * 2f).coerceAtMost(65536f),
                 sizeUnit = if (pixelTool != null || smudging) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
                 onSizeUnit = if (pixelTool != null || smudging) null else { unit ->
                     brushSizeUnit = unit
@@ -708,6 +711,7 @@ fun CanvasScreen(
                 frequentColors = if (colorShelf.recent) colorHistory else drawingPalette,
                 onSize = {
                     size = it
+                    if (smudging) smudgeSize = it
                     if (pixelTool != null) pixelSize = it
                     surface?.settings?.sizePx = it
                     surface?.showBrushAdjustmentPreview()

@@ -341,3 +341,12 @@ cel on the drawing-FPS grid and routes the initiating touch into that cel. This
 preserves the displayed media cursor and avoids another decoder seek. Scrubbing,
 panning, selection, erasing and smudging do not create blank cels. Manual Add
 remains available for deliberate empty drawings.
+
+Selected Smudge consumes its native finger/pen stream before Ink motion prediction;
+its raster-only input does not feed the predictor. Smudge size is a diameter in
+document pixels, consistently used by finger, pen, and hover outlines. Its separate
+2–192 px control reflects the existing bounded patch engine (96 px maximum radius)
+and no longer advertises the much larger painting-tip range or silently expands
+the radius by 0.7 times the displayed diameter.
+Automatic cel creation uses the drawing-grid interval containing the current
+video cursor, rather than rounding ahead to a cel that has not started yet.

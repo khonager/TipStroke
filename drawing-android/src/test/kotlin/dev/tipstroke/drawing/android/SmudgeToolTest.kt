@@ -18,6 +18,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SmudgeToolTest {
     @Test fun selectedSmudgeWorksForFingerAndStylusAndUndoesAsOneGesture() {
+        var fingerResult: IntArray? = null
         for (tool in listOf(MotionEvent.TOOL_TYPE_FINGER, MotionEvent.TOOL_TYPE_STYLUS)) {
             val surface = DrawingSurface(RuntimeEnvironment.getApplication())
             surface.layout(0, 0, 512, 512)
@@ -50,6 +51,7 @@ class SmudgeToolTest {
             event(MotionEvent.ACTION_MOVE, 140f, 16)
             event(MotionEvent.ACTION_UP, 160f, 32)
             val after = pixels()
+            if (tool == MotionEvent.TOOL_TYPE_FINGER) fingerResult = after else assertArrayEquals("Pen and finger use identical smudge footprints", fingerResult, after)
             assertFalse("Selected smudge must change paint for tool $tool", before.contentEquals(after))
             surface.undo()
             assertArrayEquals(before, pixels())

@@ -46,6 +46,21 @@ class DrawingSurfaceHoverPreviewTest {
         assertNull(raster.stylusHoverPreview)
     }
 
+    @Test fun smudgeHoverUsesItsCircularDiameterInsteadOfPencilTilt() {
+        val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
+            layout(0, 0, 600, 600)
+            settings.brush = BrushPreset.Pencil
+            settings.smudging = true
+            settings.sizePx = 100f
+        }
+        val event = stylusHoverEvent(SystemClock.uptimeMillis(), MotionEvent.ACTION_HOVER_MOVE, .8f)
+        try { surface.handleStylusHoverEvent(event) } finally { event.recycle() }
+        val preview = (surface.getChildAt(0) as RasterCanvasView).stylusHoverPreview!!
+        assertEquals(100f, preview.width, .001f)
+        assertEquals(100f, preview.height, .001f)
+        assertEquals(0f, preview.rotationRadians, .001f)
+    }
+
     @Test fun stylusHoverPreviewCanBeDisabled() {
         val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {
             layout(0, 0, 600, 600)
