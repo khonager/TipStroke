@@ -30,6 +30,21 @@ class MediaTimelinePanelTest {
             TipStrokeTheme { content() }
         }
     }
+    @Test fun nextUndrawnWaitsForCoverageAndSeeksPastPaintedHold() {
+        val frame = AnimationFrame(FrameId("paint"), sourceTimeUs = 0, durationUs = 500_000)
+        var state by mutableStateOf(AnimationUiState(listOf(frame), 0, 12, PlaybackMode.ONCE,
+            false, 0, 0, 0f, emptySet(), hasMedia = true, mediaDurationUs = 2_000_000,
+            paintedFrameIds = setOf(frame.id), coveragePending = true))
+        var sought = -1L
+        content { MediaTimelinePanel(state, { sought = it }, {}, {}, {}, {}, {}, {}, {}) }
+        compose.onNodeWithText("Next undrawn").assertIsNotEnabled()
+        compose.runOnIdle { state = state.copy(coveragePending = false) }
+        compose.onNodeWithText("Next undrawn").performClick()
+        assertEquals(500_000L, sought)
+        compose.runOnIdle { state = state.copy(mediaDurationUs = 500_000) }
+        compose.onNodeWithText("All drawn").assertIsNotEnabled()
+    }
+
     @Test fun changingOnlyDrawingFpsDoesNotRewriteTheHold() {
         var fps = 12
         var holdChanges = 0
