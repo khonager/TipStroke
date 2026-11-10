@@ -110,12 +110,12 @@ internal object AnimationExporter {
             setFloat(MediaFormat.KEY_FRAME_RATE, fps.toFloat())
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
-        val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-        val muxer = MediaMuxer(file, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        val codec = try { configuredAvcEncoder(format) } catch (error: Throwable) { first.recycle(); throw error }
+        val muxer = try { MediaMuxer(file, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4) }
+            catch (error: Throwable) { codec.release(); first.recycle(); throw error }
         var muxerStarted = false
         var track = -1
         try {
-            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             codec.start()
             val info = MediaCodec.BufferInfo()
             fun drain(waitForEnd: Boolean) {
@@ -191,6 +191,26 @@ internal object AnimationExporter {
             if (muxerStarted) runCatching { muxer.stop() }
             muxer.release()
         }
+    }
+
+    private fun configuredAvcEncoder(format: MediaFormat): MediaCodec {
+        val failure = IllegalStateException("No available MP4 encoder supports this size and frame rate. Try a smaller export size or drawing FPS.")
+        val encoders = android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos
+            .filter { it.isEncoder && it.supportedTypes.any { type -> type.equals(MediaFormat.MIMETYPE_VIDEO_AVC, true) } }
+        for (info in encoders) {
+            val supported = runCatching { info.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).isFormatSupported(format) }.getOrDefault(false)
+            if (!supported) continue
+            var codec: MediaCodec? = null
+            try {
+                codec = MediaCodec.createByCodecName(info.name)
+                codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                return codec
+            } catch (error: Exception) {
+                failure.addSuppressed(error)
+                runCatching { codec?.release() }
+            }
+        }
+        throw failure
     }
 
     private fun writeYuv(bitmap: Bitmap, image: android.media.Image, width: Int, height: Int) {

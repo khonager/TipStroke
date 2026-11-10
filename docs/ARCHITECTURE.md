@@ -383,3 +383,9 @@ player replacement, and local diagnostics record failures/recovery attempts.
 Opening a project reports manifest/layer/cel/history stages; the canvas reports
 elapsed loading time while waiting for the video frame and cel. Local codecs do
 not provide a reliable percentage, so these stages use an indeterminate spinner.
+
+MP4 export selects AVC encoders that advertise support for the requested output
+format, trying the next compatible encoder if configuration fails. This supports
+small exports that the default hardware encoder rejects, while retaining hardware
+encoding for supported sizes. Unsupported size/rate combinations report actionable
+export errors rather than a blank vendor CodecException.

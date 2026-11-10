@@ -68,6 +68,10 @@ class MediaPlaybackInstrumentedTest {
             }
             waitUntil("Native source prepared: ${failure.get()}") { state.get()?.let { it.hasMedia && !it.loading } == true || failure.get() != null }
             assertNull(failure.get())
+            // A newly prepared player has never entered Started: seeking must not pause it.
+            scenario.onActivity { surface.seekMedia(100_000) }
+            waitUntil("Seek before first playback") { state.get()?.let { !it.loading && it.mediaPositionUs == 100_000L } == true || failure.get() != null }
+            assertNull(failure.get())
             scenario.onActivity { surface.toggleAnimationPlayback(); surface.setAnimationFps(6) }
             val started = SystemClock.uptimeMillis()
             waitUntil("Source clock advanced") { (state.get()?.mediaPositionUs ?: 0) >= 1_200_000 || failure.get() != null }
@@ -139,6 +143,15 @@ class MediaPlaybackInstrumentedTest {
                     assertEquals(1_000_000L, samples[if (mode == MediaExportTiming.SMOOTH_VIDEO) 60 else 12])
                 } finally { extractor.release() }
             }
+            ProjectTransfer.exportMedia(context, library, listOf(imported.id), Uri.fromFile(output), null, AnimationExportFormat.MP4)
+            val gallery = MediaExtractor()
+            try {
+                gallery.setDataSource(output.path)
+                val format = gallery.getTrackFormat(0)
+                assertEquals(32, format.getInteger(MediaFormat.KEY_WIDTH))
+                assertEquals(24, format.getInteger(MediaFormat.KEY_HEIGHT))
+                assertEquals(2_000_000L, format.getLong(MediaFormat.KEY_DURATION))
+            } finally { gallery.release() }
         } finally { snapshot.recycle(); input.delete(); output.delete(); library.delete(imported.id) }
     }
     private fun assertColor(actual: Int, expected: Int) {
