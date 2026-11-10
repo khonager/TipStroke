@@ -460,3 +460,11 @@ and should be profiled or made optional before removing them.
 Video coverage callbacks publish UI state without syncing the process recorder.
 Content scans hold one COW cel lease at a time and release ownership on the surface
 thread; encoded cels are decoded one tile at a time on the coverage worker.
+
+Pen-smudge ANR diagnostics showed a 10,001 ms input-dispatch timeout on MOVE.
+Selected Smudge now coalesces historical/current move samples to the latest
+position and performs at most one bounded patch exchange per display frame.
+Pointer-up/cancel flushes at most one pending exchange before closing the existing
+single undo transaction. Smudge no longer requests unbuffered dispatch. This
+bounds queued work independently of the digitizer's sample rate; it intentionally
+uses display-frame sampling rather than replaying every historical pen sample.

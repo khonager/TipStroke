@@ -224,6 +224,22 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var smudgeTarget: RasterLayerRuntime? = null
     private var toolSmudgePointer: Int? = null
     private var toolSmudgeLast = android.graphics.PointF()
+    private var pendingSmudgePoint: android.graphics.PointF? = null
+    private var smudgeFrameScheduled = false
+    private val smudgeFrame = Runnable {
+        smudgeFrameScheduled = false
+        applyPendingSmudge()
+    }
+    private fun applyPendingSmudge() {
+        val point = pendingSmudgePoint ?: return
+        pendingSmudgePoint = null
+        if (point != toolSmudgeLast && settings.opacity > 0f) {
+            smudgeTarget?.tiles?.smudge(toolSmudgeLast.x, toolSmudgeLast.y, point.x, point.y,
+                smudgeRadius(), settings.gestures.smudgeStrength * settings.opacity)
+        }
+        toolSmudgeLast = point
+        rasterView.invalidate()
+    }
     private var lastSampleAt = 0L
     private var frameCount = 0
     private var fpsWindowAt = SystemClock.elapsedRealtimeNanos()
@@ -2065,7 +2081,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             if (referenceLayerId != null) return true
             val target = layerStack.selectedRaster() ?: return true
             cancelHold(); cancelColorPick()
-            requestUnbufferedDispatch(event)
+            pendingSmudgePoint = null
             toolSmudgePointer = event.getPointerId(event.actionIndex)
             activeDrawingPointerId = toolSmudgePointer
             toolSmudgeLast = rasterView.screenToDocument(event.getX(event.actionIndex), event.getY(event.actionIndex))
@@ -2085,16 +2101,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val ending = event.actionMasked in intArrayOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP) &&
             event.getPointerId(event.actionIndex) == pointer
         if (index >= 0 && (event.actionMasked == MotionEvent.ACTION_MOVE || ending)) {
-            fun applyPoint(x: Float, y: Float) {
-                val point = rasterView.screenToDocument(x, y)
-                if (point != toolSmudgeLast && settings.opacity > 0f) {
-                    smudgeTarget?.tiles?.smudge(toolSmudgeLast.x, toolSmudgeLast.y, point.x, point.y,
-                        smudgeRadius(), settings.gestures.smudgeStrength * settings.opacity)
-                }
-                toolSmudgeLast = point
+            // Pen batches can contain dozens of historical samples. Keep one latest
+            // position and perform at most one bounded patch exchange per display frame.
+            pendingSmudgePoint = rasterView.screenToDocument(event.getX(index), event.getY(index))
+            if (!ending && !smudgeFrameScheduled) {
+                smudgeFrameScheduled = true
+                postOnAnimation(smudgeFrame)
             }
-            repeat(event.historySize) { applyPoint(event.getHistoricalX(index, it), event.getHistoricalY(index, it)) }
-            applyPoint(event.getX(index), event.getY(index))
             updateChromeOcclusion(event, index)
             rasterView.invalidate()
         }
@@ -2103,6 +2116,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private fun finishSmudgeTool() {
+        removeCallbacks(smudgeFrame)
+        smudgeFrameScheduled = false
+        applyPendingSmudge()
         smudgeTarget?.tiles?.finishSmudge()
         smudgeTarget = null
         toolSmudgePointer = null

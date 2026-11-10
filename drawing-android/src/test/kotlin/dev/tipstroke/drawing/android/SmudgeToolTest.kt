@@ -44,12 +44,20 @@ class SmudgeToolTest {
                 MotionEvent.obtain(0, time, action, 1, arrayOf(properties), arrayOf(coordinates),
                     0, 0, 1f, 1f, 0, 0,
                     if (tool == MotionEvent.TOOL_TYPE_STYLUS) InputDevice.SOURCE_STYLUS else InputDevice.SOURCE_TOUCHSCREEN, 0).also {
+                    if (tool == MotionEvent.TOOL_TYPE_STYLUS && action == MotionEvent.ACTION_MOVE) {
+                        repeat(128) { sample ->
+                            val historical = MotionEvent.PointerCoords().apply { this.x = x - 10f + 10f * (sample + 1) / 128f; y = 80f; pressure = 1f }
+                            it.addBatch(time + sample + 1, arrayOf(historical), 0)
+                        }
+                    }
                     surface.dispatchTouchEvent(it); it.recycle()
                 }
             }
             event(MotionEvent.ACTION_DOWN, 100f, 0)
+            val revision = store.revision
             event(MotionEvent.ACTION_MOVE, 140f, 16)
-            event(MotionEvent.ACTION_UP, 160f, 32)
+            assertEquals("Move dispatch must only queue work, including a large pen batch", revision, store.revision)
+            event(MotionEvent.ACTION_UP, 160f, 320)
             val after = pixels()
             if (tool == MotionEvent.TOOL_TYPE_FINGER) fingerResult = after else assertArrayEquals("Pen and finger use identical smudge footprints", fingerResult, after)
             assertFalse("Selected smudge must change paint for tool $tool", before.contentEquals(after))
