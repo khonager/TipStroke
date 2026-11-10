@@ -92,10 +92,10 @@ class MediaTimelineTest {
         val runtime = AnimationRuntime(stack, false, listOf(frame), 12)
         runtime.restore(SavedAnimationSnapshot(listOf(frame), 0, 12, PlaybackMode.LOOP, 0, 0, 0f,
             emptySet(), emptyMap(), emptyMap(), media = MediaSource(File("test.mp4"), "video", 64, 48, 2_000_000)))
-        runtime.showMediaTime(510_000)
+        runtime.showMediaTime(560_000)
         runtime.ensureMediaDrawingAtCursor()
         assertTrue(runtime.mediaDrawingActive)
-        assertEquals(510_000L, runtime.mediaPositionUs)
+        assertEquals(560_000L, runtime.mediaPositionUs)
         assertEquals(500_000L, runtime.currentFrame.sourceTimeUs)
         runtime.ensureMediaDrawingAtCursor()
         assertEquals(2, runtime.frames.size)

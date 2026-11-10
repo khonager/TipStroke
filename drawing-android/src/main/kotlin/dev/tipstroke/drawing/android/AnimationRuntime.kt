@@ -204,6 +204,7 @@ internal class AnimationRuntime(
     fun ensureMediaDrawingAtCursor() {
         if (media == null || mediaDrawingActive) return
         val position = mediaPositionUs
+        mediaPositionUs = (position * fps / 1_000_000L) * 1_000_000L / fps
         addMediaDrawing()
         showMediaTime(position)
     }
