@@ -1513,12 +1513,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()
     }
     private fun publishAnimation() {
-        val coverageAnimation = animation
-        if (!animationPlaying) coverageAnimation?.refreshCoverage { if (animation === coverageAnimation) publishAnimation() }
         updateAnimationStoragePins()
         if (!animationPlaying || strokeRecording != null) {
             processRecorder?.sync(layerStack, animation != null, animation = animation)
         }
+        publishAnimationUi()
+    }
+    private fun publishAnimationUi() {
+        val coverageAnimation = animation
+        if (!animationPlaying) coverageAnimation?.refreshCoverage { if (animation === coverageAnimation) publishAnimationUi() }
         animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = importingClip || pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null))
     }
     fun publishDiagnostics() {

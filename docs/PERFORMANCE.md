@@ -456,3 +456,7 @@ parameter endpoint previews in the brush studio; visible-canvas palette
 aggregation after drawing; onion-skin compositing; animation thumbnail refreshes;
 periodic save attempts when idle. These provide distinct editing/recovery value
 and should be profiled or made optional before removing them.
+
+Video coverage callbacks publish UI state without syncing the process recorder.
+Content scans hold one COW cel lease at a time and release ownership on the surface
+thread; encoded cels are decoded one tile at a time on the coverage worker.
