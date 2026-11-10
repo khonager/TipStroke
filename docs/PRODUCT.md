@@ -59,3 +59,8 @@ excluded. Content checks run on a worker, one cel lease at a time, and cache by
 cel revision. Navigation waits for those checks rather than treating unchecked
 cels as confirmed gaps. Drawing chips use painted/empty labels; timestamps remain
 in accessibility descriptions and the source-time readout.
+
+Animations open with their timeline visible by default, including hand-drawn
+animations. Opening/closing the animation panel is remembered per drawing on the
+device, so reopening respects the user's last manual choice. This editor preference
+does not change artwork, animation timing, or the portable project format.

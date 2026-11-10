@@ -69,6 +69,7 @@ fun CanvasScreen(
     val favoriteBrushes = favoriteIds.mapNotNull { id ->
         (BrushPreset.libraryBuiltIns + libraryBrushes.map { it.preset }).firstOrNull { it.id.value == id }
     }
+    val drawingUiPreferences = remember { DrawingUiPreferences(context) }
     val colorShelf = remember { ColorShelf(context) }
     val colorHistoryPreferences = remember { ColorHistoryPreferences(context) }
     val initialBrushTuning = remember { brushPreferences.load(BrushPreset.Ink) }
@@ -113,7 +114,7 @@ fun CanvasScreen(
     var selectedLayerId by remember { mutableStateOf<LayerId?>(null) }
     var selectedLayerIds by remember { mutableStateOf<Set<LayerId>>(emptySet()) }
     var layersOpen by remember { mutableStateOf(initialLayersOpen) }
-    var animationOpen by remember { mutableStateOf(false) }
+    var animationOpen by remember(documentId) { mutableStateOf(false) }
     var animationActivationOpen by remember { mutableStateOf(false) }
     var animationState by remember { mutableStateOf<AnimationUiState?>(null) }
     var memoryPressure by remember { mutableStateOf(MemoryPressure.NORMAL) }
@@ -123,6 +124,9 @@ fun CanvasScreen(
     var ready by remember { mutableStateOf(library == null) }
     var savesInFlight by remember { mutableIntStateOf(0) }
     val saving = savesInFlight > 0
+    LaunchedEffect(documentId, ready, animationState != null, animationOpen) {
+        if (ready && animationState != null) drawingUiPreferences.saveAnimationOpen(documentId, animationOpen)
+    }
     LaunchedEffect(ready, animationState?.loading) {
         loadingSeconds = 0
         while (!ready || animationState?.loading == true) {
@@ -481,7 +485,7 @@ fun CanvasScreen(
                 }
                 view.loadingProgressListener = { loadingStage = it }
                 view.animationListener = { updated ->
-                    if (animationState == null && updated?.hasMedia == true) animationOpen = true
+                    if (animationState == null && updated != null) animationOpen = drawingUiPreferences.animationOpen(documentId)
                     animationState = updated
                 }
                 view.memoryPressureListener = { pressure ->
