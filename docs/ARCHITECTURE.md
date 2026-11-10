@@ -375,3 +375,11 @@ progress. Editor exports capture their raster snapshot before queuing work.
 Completion/failure is shown in-app and in a notification (subject to Android's
 notification permission). Leaving the activity does not cancel an export.
 Exports are not automatically resumed after process death or force-stop.
+
+Hardware video sessions only pause a player that is actually playing; Prepared
+is not a legal MediaPlayer pause state. Prepare/seek operations have a 30-second
+timeout and one fresh-player recovery attempt. Stale callbacks are ignored after
+player replacement, and local diagnostics record failures/recovery attempts.
+Opening a project reports manifest/layer/cel/history stages; the canvas reports
+elapsed loading time while waiting for the video frame and cel. Local codecs do
+not provide a reliable percentage, so these stages use an indeterminate spinner.

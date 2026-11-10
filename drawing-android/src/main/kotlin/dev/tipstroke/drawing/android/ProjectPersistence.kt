@@ -565,7 +565,8 @@ internal object ProjectPersistence {
         }
     }
 
-    fun load(directory: File, lazyAnimation: Boolean = false): Result<LoadedProject> = runCatching {
+    fun load(directory: File, lazyAnimation: Boolean = false, onProgress: (String) -> Unit = {}): Result<LoadedProject> = runCatching {
+        onProgress("Reading drawing manifest…")
         recoverInterruptedSave(directory)
         val json = JSONObject(File(directory, DrawingLibrary.MANIFEST).readText())
         val schemaVersion = json.getInt("schemaVersion")
@@ -575,6 +576,7 @@ internal object ProjectPersistence {
         val layersJson = json.getJSONArray("layers")
         val layers = buildList {
             for (index in 0 until layersJson.length()) {
+                onProgress("Loading layer ${index + 1} of ${layersJson.length()}…")
                 val layer = layersJson.getJSONObject(index)
                 val id = LayerId(layer.getString("id"))
                 val name = layer.getString("name")
@@ -623,6 +625,7 @@ internal object ProjectPersistence {
         val selected = LayerId(json.optString("selectedLayerId", layers.last().id.value)).let { wanted ->
             if (layers.any { it.id == wanted }) wanted else layers.last().id
         }
+        onProgress("Loading animation cels and video references…")
         val animation = json.optJSONObject("animation")?.let { saved ->
             val framesJson = saved.getJSONArray("frames")
             val frames = (0 until framesJson.length()).map { index ->
@@ -698,6 +701,7 @@ internal object ProjectPersistence {
                 } }
             }
         }
+        onProgress("Reading drawing history…")
         val process = runCatching { ProcessRecording.read(File(directory, "process.tsr")) }
         LoadedProject(width, height, selected, layers, json.optInt("galleryRotationQuarterTurns", 0).mod(4), animation,
             json.optInt("backgroundColor", Color.WHITE), json.optDouble("backgroundOpacity", 1.0).toFloat().coerceIn(0f, 1f),

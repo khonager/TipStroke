@@ -117,9 +117,18 @@ fun CanvasScreen(
     var animationState by remember { mutableStateOf<AnimationUiState?>(null) }
     var memoryPressure by remember { mutableStateOf(MemoryPressure.NORMAL) }
     var message by remember { mutableStateOf<String?>(null) }
+    var loadingStage by remember { mutableStateOf("Opening drawing…") }
+    var loadingSeconds by remember { mutableIntStateOf(0) }
     var ready by remember { mutableStateOf(library == null) }
     var savesInFlight by remember { mutableIntStateOf(0) }
     val saving = savesInFlight > 0
+    LaunchedEffect(ready, animationState?.loading) {
+        loadingSeconds = 0
+        while (!ready || animationState?.loading == true) {
+            kotlinx.coroutines.delay(1000)
+            loadingSeconds++
+        }
+    }
     var exporting by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }
     var projectExportOpen by remember { mutableStateOf(false) }
@@ -468,6 +477,7 @@ fun CanvasScreen(
                     backgroundColor = paperColor
                     backgroundOpacity = paperOpacity
                 }
+                view.loadingProgressListener = { loadingStage = it }
                 view.animationListener = { updated ->
                     if (animationState == null && updated?.hasMedia == true) animationOpen = true
                     animationState = updated
@@ -951,11 +961,11 @@ fun CanvasScreen(
             ) { Text(visibleMessage) }
         }
 
-        if (!ready || saving || exporting) {
+        if (!ready || saving || exporting || animationState?.loading == true) {
             Surface(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 72.dp), color = Color(0xD9202125), shape = RoundedCornerShape(12.dp)) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text(if (!ready) "Opening drawing…" else if (exporting) "Exporting…" else "Saving…", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 9.dp))
+                    Text(if (!ready) "$loadingStage (${loadingSeconds}s)" else if (animationState?.loading == true) "Preparing video frame / drawing… (${loadingSeconds}s)" else if (exporting) "Exporting…" else "Saving…", color = Color.White, fontSize = 12.sp, modifier = Modifier.padding(start = 9.dp))
                 }
             }
         }

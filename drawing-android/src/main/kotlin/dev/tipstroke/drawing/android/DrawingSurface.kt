@@ -1558,6 +1558,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.pixelToolActive = tool != null
     }
 
+    var loadingProgressListener: ((String) -> Unit)? = null
+
     fun loadProject(library: DrawingLibrary, id: String, onComplete: (Result<Unit>) -> Unit) {
         cancelFill()
         openProject(library, id, createIfMissing = false, onComplete = onComplete)
@@ -1571,6 +1573,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         onComplete: (Result<Unit>) -> Unit,
     ) {
         isEnabled = false
+        loadingProgressListener?.invoke("Waiting for local project operations…")
         LocalDiagnostics.record("project open requested id=$id createIfMissing=$createIfMissing")
         ProjectPersistence.executor.execute {
             val loaded = runCatching {
@@ -1583,7 +1586,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         listOf(SavedRasterSnapshot(layerId, "Paint 1", true, 1f, emptyMap())))
                     ProjectPersistence.save(context.contentResolver, library, id, name, blank).getOrThrow()
                 }
-                ProjectPersistence.load(directory, lazyAnimation = true).getOrThrow()
+                ProjectPersistence.load(directory, lazyAnimation = true) { stage ->
+                    ProjectPersistence.mainHandler.post { loadingProgressListener?.invoke(stage) }
+                }.getOrThrow()
             }
             ProjectPersistence.mainHandler.post {
                 val result = loaded.mapCatching { project ->
