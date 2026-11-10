@@ -1,5 +1,10 @@
 package dev.tipstroke.app
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.clipRect
+import dev.tipstroke.core.model.DrawingCoverage
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -51,6 +56,12 @@ internal fun MediaTimelinePanel(
     val ticks = (MediaTimeline.durationUs(frame, state.fps) * state.fps / 1_000_000.0).roundToInt().coerceAtLeast(1)
     var hold by remember(frame.id, frame.durationUs, state.fps) { mutableStateOf(ticks.toString()) }
     val time = dragTime ?: state.mediaPositionUs
+    val coverage = remember(state.frames, state.paintedFrameIds, state.fps, state.mediaDurationUs) {
+        DrawingCoverage.spans(state.frames, state.paintedFrameIds, state.fps, state.mediaDurationUs)
+    }
+    val nextGap = remember(coverage, time, state.fps, state.mediaDurationUs) {
+        DrawingCoverage.nextUndrawn(coverage, time, state.fps, state.mediaDurationUs)
+    }
     fun seconds(timeUs: Long) = String.format(Locale.ROOT, "%.2fs", timeUs / 1_000_000.0)
     Surface(modifier, color = Color(0xFF202125)) {
         Column(Modifier.padding(horizontal = 12.dp)) {
@@ -75,6 +86,30 @@ internal fun MediaTimelinePanel(
             }, onValueChangeFinished = { dragTime?.let(onSeek); dragTime = null },
                 valueRange = 0f..(state.mediaDurationUs - 1).coerceAtLeast(1).toFloat(),
                 modifier = Modifier.fillMaxWidth().height(32.dp).semantics { contentDescription = "Scrub video" })
+            Canvas(Modifier.fillMaxWidth().height(22.dp).semantics { contentDescription = "Drawing coverage: colored spans are painted, hatched spans are undrawn" }) {
+                drawRect(Color(0xFF36383E))
+                clipRect {
+                    var x = -size.height
+                    while (x < size.width) {
+                        drawLine(Color(0xFF777A82), Offset(x, size.height), Offset(x + size.height, 0f), 1.dp.toPx())
+                        x += 10.dp.toPx()
+                    }
+                    val duration = state.mediaDurationUs.coerceAtLeast(1).toDouble()
+                    coverage.forEach { span ->
+                        val left = (span.startUs / duration * size.width).toFloat()
+                        val right = (span.endUs / duration * size.width).toFloat()
+                        drawRect(Color(0xFF59B89B), Offset(left, 0f), Size((right - left).coerceAtLeast(1f), size.height))
+                    }
+                    val cursor = (time / duration * size.width).toFloat()
+                    drawLine(Color.White, Offset(cursor, 0f), Offset(cursor, size.height), 2.dp.toPx())
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (state.coveragePending) "Checking drawings…" else "Color: painted · Hatch: undrawn", color = Color.LightGray, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { nextGap?.let(onSeek) }, enabled = nextGap != null && !state.coveragePending && !state.loading && !state.playing) {
+                    Text(if (nextGap == null && !state.coveragePending) "All drawn" else "Next undrawn")
+                }
+            }
             if (state.videoEdit == null || drawingTools) {
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 TipAction("Add drawing here", Icons.Outlined.Add, enabled = !state.loading && !state.playing, onClick = onAdd)
@@ -91,7 +126,7 @@ internal fun MediaTimelinePanel(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 6.dp)) {
                 itemsIndexed(state.frames, key = { _, drawing -> drawing.id.value }) { index, drawing ->
                     FilterChip(selected = state.mediaDrawingActive && index == state.selectedIndex,
-                        onClick = { onSelect(index) }, label = { Text("${index + 1} · ${seconds(drawing.sourceTimeUs ?: 0)}", fontSize = 11.sp) })
+                        onClick = { onSelect(index) }, modifier = Modifier.semantics { contentDescription = "Drawing ${index + 1} at ${seconds(drawing.sourceTimeUs ?: 0)}" }, label = { Text(if (drawing.id in state.paintedFrameIds) "● Painted" else "○ Empty", fontSize = 11.sp) })
                 }
             }
             }

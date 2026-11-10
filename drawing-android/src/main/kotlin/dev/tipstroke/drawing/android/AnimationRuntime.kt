@@ -38,6 +38,8 @@ data class AnimationUiState(
     val clipSourceDurationsUs: Map<String, Long> = emptyMap(),
     val canUndoVideoEdit: Boolean = false,
     val canRedoVideoEdit: Boolean = false,
+    val paintedFrameIds: Set<FrameId> = emptySet(),
+    val coveragePending: Boolean = false,
 )
 
 enum class AnimationRecordingKind { IMAGE_MOTION, LIVE_DRAWING }
@@ -434,9 +436,54 @@ internal class AnimationRuntime(
         return prefix
     }
 
+    private val coverageCache = java.util.WeakHashMap<TileStore, Pair<Long, Boolean>>()
+    private var coverageScanning = false
+    private fun coverageStores() = rasterCels.filterKeys { !isBackground(it) }.values.flatMap { it.values }.distinct()
+
+    /** Scan one immutable cel lease at a time off the input thread; no full-canvas copy. */
+    fun refreshCoverage(onReady: () -> Unit) {
+        if (media == null || coverageScanning) return
+        val store = coverageStores().firstOrNull { coverageCache[it]?.first != it.revision } ?: return
+        val revision = store.revision
+        val lease = store.duplicate()
+        coverageScanning = true
+        coverageExecutor.execute {
+            val result = runCatching {
+                fun painted(bitmap: Bitmap): Boolean {
+                    val row = IntArray(bitmap.width)
+                    for (y in 0 until bitmap.height) {
+                        bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
+                        if (row.any { it ushr 24 != 0 }) return true
+                    }
+                    return false
+                }
+                if (lease.isResident) lease.residentBitmaps().any(::painted)
+                else lease.encodedBacking.orEmpty().values.any { tile ->
+                    val bitmap = tile.decode()
+                    try { painted(bitmap) } finally { bitmap.recycle() }
+                }
+            }
+            ProjectPersistence.mainHandler.post {
+                lease.discard()
+                coverageScanning = false
+                // A corrupt cel stays unpainted and normal loading still reports its error.
+                if (store.revision == revision) coverageCache[store] = revision to result.getOrDefault(false)
+                onReady()
+            }
+        }
+    }
+    private fun paintedFrames(): Set<FrameId> = buildSet {
+        rasterCels.filterKeys { !isBackground(it) }.values.forEach { cels ->
+            cels.forEach { (id, store) -> if (coverageCache[store] == (store.revision to true)) add(id) }
+        }
+        imageCels.filterKeys { !isBackground(it) }.values.forEach { addAll(it.keys) }
+    }
+
     fun state(playing: Boolean, recording: AnimationRecordingKind? = null, thumbnailRevision: Int = 0) = AnimationUiState(
         frames.toList(), selectedIndex, fps, playbackMode, playing,
         onionBefore, onionAfter, onionOpacity, backgroundLayerIds.toSet(), recording, thumbnailRevision,
+        paintedFrameIds = if (media != null) paintedFrames() else emptySet(),
+        coveragePending = media != null && coverageStores().any { coverageCache[it]?.first != it.revision },
         hasMedia = media != null, mediaPositionUs = mediaPositionUs, mediaDurationUs = media?.durationUs ?: 0, mediaDrawingActive = mediaDrawingActive,
         clipSourceDurationsUs = media?.assets.orEmpty().mapValues { it.value.durationUs },
         videoEdit = media?.edit, photoAssetIds = media?.assets.orEmpty().filterValues { it.kind == "image" }.keys, canUndoVideoEdit = editUndo.isNotEmpty(), canRedoVideoEdit = editRedo.isNotEmpty(),
@@ -614,3 +661,5 @@ internal object AnimationStorage {
         Thread(task, "TipStroke-animation-storage").apply { isDaemon = true }
     }
 }
+
+private val coverageExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "TipStroke-coverage").apply { isDaemon = true } }

@@ -50,3 +50,12 @@ Select drawings is a gallery mode: tap the existing thumbnail cards to toggle
 checkmarks, enter stacks without losing selected drawings, then export the
 selection. Select visible selects the current gallery/stack. The export dialog
 only chooses format/options and no longer duplicates the gallery as a name list.
+
+Imported-video timelines show a coverage strip: colored intervals contain drawing
+content and hatched intervals are undrawn. Next undrawn skips forward by at least
+one drawing-grid step, skips painted holds, and wraps to the first gap. Empty
+new cels and fully erased cels do not count as painted; shared backgrounds are
+excluded. Content checks run on a worker, one cel lease at a time, and cache by
+cel revision. Navigation waits for those checks rather than treating unchecked
+cels as confirmed gaps. Drawing chips use painted/empty labels; timestamps remain
+in accessibility descriptions and the source-time readout.
