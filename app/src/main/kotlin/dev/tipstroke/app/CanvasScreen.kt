@@ -432,7 +432,6 @@ fun CanvasScreen(
     fun openCanvasResize() {
         if (!ready) return
         layersOpen = false
-        animationOpen = false
         colorPickerOpen = false
         phoneMenuOpen = false
         resizeOpen = true
@@ -865,7 +864,7 @@ fun CanvasScreen(
             )
         }
 
-        if (animationOpen) animationState?.let { state ->
+        if (animationOpen && !resizeOpen) animationState?.let { state ->
             AnimationPanel(
                 state = state,
                 layers = layers,
