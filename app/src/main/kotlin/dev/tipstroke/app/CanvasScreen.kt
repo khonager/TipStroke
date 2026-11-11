@@ -437,7 +437,7 @@ fun CanvasScreen(
         resizeOpen = true
     }
 
-    CompositionLocalProvider(LocalTipPreviewColor provides RgbaColor(.22f, .3f, .72f), LocalColorShelf provides colorShelf) {
+    CompositionLocalProvider(LocalTipPreviewColor provides RgbaColor(1f, 1f, 1f), LocalColorShelf provides colorShelf) {
     CompositionLocalProvider(LocalColorDrop provides { position, droppedColor, released ->
         colorDropPosition = if (released) null else position
         if (released && position != null) surface?.dropColor(position.x, position.y, droppedColor)

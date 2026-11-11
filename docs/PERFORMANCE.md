@@ -447,8 +447,8 @@ image: the tested cases now report NORMAL painting pressure. This does not bound
 all transient render/recording allocations or guarantee every incompressible edit
 fits the budget.
 
-Brush-library, favorite-tip and studio parameter thumbnails use a fixed blue ink
-sample. Color-wheel changes must not recolor/rasterize those preview collections.
+Brush-library, favorite-tip and studio parameter thumbnails use a fixed white ink
+sample on a dark background. Color-wheel changes must not recolor/rasterize those preview collections.
 The active paint color still applies to actual canvas strokes.
 
 Optional costs to review with the user (not removed automatically): native

@@ -80,10 +80,9 @@ internal fun TipAction(label: String, icon: ImageVector, enabled: Boolean = true
     }
 }
 
-internal val LocalTipPreviewColor = compositionLocalOf { RgbaColor(.22f, .3f, .72f) }
+internal val LocalTipPreviewColor = compositionLocalOf { RgbaColor(1f, 1f, 1f) }
 
-internal fun tipPreviewBackground(color: RgbaColor): Color =
-    if (.2126f * color.red + .7152f * color.green + .0722f * color.blue > .6f) Color(0xFF303238) else Color(0xFFFAFAFA)
+internal fun tipPreviewBackground(@Suppress("UNUSED_PARAMETER") color: RgbaColor): Color = Color(0xFF303238)
 
 /** Every thumbnail uses the same native raster painter, including imported shape/grain masks. */
 @Composable
@@ -112,7 +111,7 @@ internal fun TipPreviewSlider(label: String, value: Float, range: ClosedFloating
 @Composable
 private fun EndpointPreview(label: String, preset: BrushPreset, actualSize: Boolean, erasing: Boolean) {
     TipHint(label) { showHint ->
-        Box(Modifier.size(56.dp, 36.dp).clip(MaterialTheme.shapes.small).background(Color(0xFFFAFAFA))
+        Box(Modifier.size(56.dp, 36.dp).clip(MaterialTheme.shapes.small).background(Color(0xFF303238))
             .combinedClickable(onClick = showHint, onLongClick = showHint).semantics { contentDescription = label }) {
             TipStrokeThumbnail(preset, Modifier.fillMaxSize(), actualSize, erasing = erasing)
         }

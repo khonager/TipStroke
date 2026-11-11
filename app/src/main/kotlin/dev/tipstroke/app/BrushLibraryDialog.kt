@@ -172,7 +172,7 @@ internal fun BrushLibraryDialog(
                                         onFavorites(if (favorite) favoriteIds - item.preset.id.value else favoriteIds + item.preset.id.value)
                                     })
                                 }
-                                TipStrokeThumbnail(item.preset, Modifier.fillMaxWidth().height(80.dp).background(Color(0xFFFAFAFA))
+                                TipStrokeThumbnail(item.preset, Modifier.fillMaxWidth().height(80.dp).background(Color(0xFF303238))
                                     .clickable(enabled = !busy && usable, onClickLabel = "Use tip") { onUse(item.preset); onDismiss() }
                                     .semantics { contentDescription = "Select ${item.preset.displayName}" })
                                 Row {

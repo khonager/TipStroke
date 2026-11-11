@@ -191,3 +191,5 @@ and a “Try wider spacing” action (.12 tip widths), which deliberately change
 the preview so the user can judge the appearance. Existing saved tip values are
 preserved. Full-canvas tablet benchmarks still show unacceptable latency for
 some tips; the creator does not certify them as fluid.
+
+Tip previews use fixed white strokes on a dark background, independent of the painting color. Color-wheel changes do not invalidate tip thumbnails.
