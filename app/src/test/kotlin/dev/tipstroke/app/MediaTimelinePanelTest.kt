@@ -37,7 +37,7 @@ class MediaTimelinePanelTest {
             paintedFrameIds = setOf(frame.id), coveragePending = true))
         var sought = -1L
         content { MediaTimelinePanel(state, { sought = it }, {}, {}, {}, {}, {}, {}, {}) }
-        compose.onNodeWithText("Next undrawn").assertIsNotEnabled()
+        compose.onNodeWithText("Checking…").assertIsNotEnabled()
         compose.runOnIdle { state = state.copy(coveragePending = false) }
         compose.onNodeWithText("Next undrawn").performClick()
         assertEquals(500_000L, sought)
@@ -77,6 +77,7 @@ class MediaTimelinePanelTest {
                 onVideoEdit = { edit, time -> state = state.copy(videoEdit = edit, mediaDurationUs = edit.durationUs,
                     mediaPositionUs = time ?: state.mediaPositionUs) })
         }
+        compose.onNodeWithContentDescription("Expand timeline").performClick()
         compose.onNodeWithContentDescription("Split here").performClick()
         assertEquals(2, state.videoEdit!!.clips.size)
         assertEquals(1_000_000L, state.videoEdit!!.clips[1].sourceInUs)

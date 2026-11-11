@@ -66,14 +66,18 @@ internal fun MediaTimelinePanel(
     Surface(modifier, color = Color(0xFF202125)) {
         Column(Modifier.padding(horizontal = 12.dp)) {
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            VideoEditControls(state, onImportMedia, onEnableVideoEdit, onVideoEdit, onSeek, onUndoVideoEdit)
+            if (drawingTools) VideoEditControls(state, onImportMedia, onEnableVideoEdit, onVideoEdit, onSeek, onUndoVideoEdit)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TipAction(if (state.playing) "Pause video" else "Play video",
                     if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
                     enabled = state.playing || !state.loading, onClick = onPlayPause)
                 Text("${seconds(time)} / ${seconds(state.mediaDurationUs)}", color = Color.White, fontSize = 11.sp,
                     modifier = Modifier.weight(1f))
-                if (state.videoEdit != null) TipAction(if (drawingTools) "Hide drawings" else "Show drawings", Icons.Outlined.Brush, onClick = { drawingTools = !drawingTools })
+                TextButton(onClick = { nextGap?.let(onSeek) }, enabled = nextGap != null && !state.coveragePending && !state.loading && !state.playing,
+                    contentPadding = PaddingValues(horizontal = 4.dp)) {
+                    Text(if (state.coveragePending) "Checking…" else if (nextGap == null) "All drawn" else "Next undrawn", fontSize = 11.sp)
+                }
+                TipAction(if (drawingTools) "Collapse timeline" else "Expand timeline", if (drawingTools) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess, onClick = { drawingTools = !drawingTools })
                 TipAction("Drawing timing · ${state.fps} FPS", Icons.Outlined.Tune, onClick = { if (state.playing) onPlayPause(); settings = true })
                 TipAction("Close media timeline", Icons.Outlined.Close, onClick = onClose)
             }
@@ -86,7 +90,7 @@ internal fun MediaTimelinePanel(
             }, onValueChangeFinished = { dragTime?.let(onSeek); dragTime = null },
                 valueRange = 0f..(state.mediaDurationUs - 1).coerceAtLeast(1).toFloat(),
                 modifier = Modifier.fillMaxWidth().height(32.dp).semantics { contentDescription = "Scrub video" })
-            Canvas(Modifier.fillMaxWidth().height(22.dp).semantics { contentDescription = "Drawing coverage: colored spans are painted, hatched spans are undrawn" }) {
+            Canvas(Modifier.fillMaxWidth().height(12.dp).semantics { contentDescription = "Drawing coverage: colored spans are painted, hatched spans are undrawn" }) {
                 drawRect(Color(0xFF36383E))
                 clipRect {
                     var x = -size.height
@@ -104,13 +108,8 @@ internal fun MediaTimelinePanel(
                     drawLine(Color.White, Offset(cursor, 0f), Offset(cursor, size.height), 2.dp.toPx())
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (state.coveragePending) "Checking drawings…" else "Color: painted · Hatch: undrawn", color = Color.LightGray, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                TextButton(onClick = { nextGap?.let(onSeek) }, enabled = nextGap != null && !state.coveragePending && !state.loading && !state.playing) {
-                    Text(if (nextGap == null && !state.coveragePending) "All drawn" else "Next undrawn")
-                }
-            }
-            if (state.videoEdit == null || drawingTools) {
+            if (drawingTools) {
+            Text("Color: painted · Hatch: undrawn", color = Color.LightGray, fontSize = 11.sp)
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 TipAction("Add drawing here", Icons.Outlined.Add, enabled = !state.loading && !state.playing, onClick = onAdd)
                 TipAction("Previous drawing step", Icons.Outlined.SkipPrevious, onClick = { onSeek((state.mediaPositionUs - 1_000_000L / state.fps).coerceAtLeast(0)) },

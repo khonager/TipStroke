@@ -85,6 +85,7 @@ internal fun AnimationPanel(
         return
     }
     val selectedLayer = layers.firstOrNull { it.id == selectedLayerId }
+    var expanded by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf<String?>(null) }
     var recordingMenu by remember { mutableStateOf(false) }
     var timing by remember { mutableStateOf(RecordingTiming.FIT_RANGE) }
@@ -114,7 +115,6 @@ internal fun AnimationPanel(
     ) {
         Box(Modifier.onGloballyPositioned { panelOrigin = it.boundsInRoot().topLeft }) {
         Column {
-        TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, enabled = !state.loading && !state.playing, onClick = onImportMedia)
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Row(Modifier.height(58.dp).padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onPlayPause, modifier = Modifier.width(48.dp).semantics {
@@ -229,6 +229,8 @@ internal fun AnimationPanel(
                 DropdownMenu(expanded = menu != null, onDismissRequest = { menu = null }) {
                     when (menu) {
                         "main" -> {
+                            DropdownMenuItem(text = { Text(if (expanded) "Hide scrubber" else "Show scrubber") }, onClick = { expanded = !expanded; menu = null })
+                            DropdownMenuItem(text = { Text("Add photo / video") }, onClick = { menu = null; onImportMedia() }, enabled = !state.loading && !state.playing)
                             DropdownMenuItem(text = { Text("Frame actions") }, onClick = { menu = "frame" })
                             DropdownMenuItem(text = { Text("Selected layer") }, onClick = { menu = "layer" }, enabled = selectedLayer != null)
                             DropdownMenuItem(text = { Text("Playback") }, onClick = {
@@ -306,7 +308,7 @@ internal fun AnimationPanel(
                 contentDescription = "Close animation timeline"
             }, contentPadding = PaddingValues(0.dp)) { Text("×", fontSize = 21.sp) }
         }
-        if (timeline.totalTicks > 1) {
+        if (expanded && timeline.totalTicks > 1) {
             Slider(value = if (scrubbing) scrubTick else selectedTick.toFloat(), onValueChange = { tick ->
                 scrubbing = true
                 scrubTick = tick
