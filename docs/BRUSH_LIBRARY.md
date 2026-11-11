@@ -193,3 +193,9 @@ preserved. Full-canvas tablet benchmarks still show unacceptable latency for
 some tips; the creator does not certify them as fluid.
 
 Tip previews use fixed white strokes on a dark background, independent of the painting color. Color-wheel changes do not invalidate tip thumbnails.
+
+### Custom categories and packs
+
+The library's **Categories** control creates, renames, removes, and orders named categories. A tip's **More → Categories** control adds it to any number of groups, including built-in tips. Select a category and use each tip's Earlier/Later actions to arrange the pack. Removing a category leaves its tips intact; deleting a custom tip removes its memberships.
+
+**Export [category] pack** writes an ordered `.tipbrushpack` JSON file (`tipstroke-brush-pack`, version 1), including each tip's settings, attribution, and embedded shape/grain textures. Import accepts both packs and existing `.tipbrush` files. Packs are fully validated before saving; imported tips receive new IDs and a new category, preserving existing tips. Limits: 64 categories, 200 tips per category/pack and in the custom library, 32 MiB per pack, and the existing individual-tip bounds. Category order and membership are local preferences, separate from drawing data. Pack reads/writes and library persistence run off the input thread.

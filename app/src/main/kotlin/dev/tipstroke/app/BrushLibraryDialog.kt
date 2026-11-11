@@ -56,6 +56,13 @@ internal fun BrushLibraryDialog(
     var pendingExport by remember { mutableStateOf<LibraryBrush?>(null) }
     var query by remember { mutableStateOf("") }
     var section by remember { mutableStateOf("All tips") }
+    val categoryStore = remember { BrushCategories(context) }
+    var categories by remember { mutableStateOf(categoryStore.load()) }
+    var managingCategories by remember { mutableStateOf(false) }
+    var categorizing by remember { mutableStateOf<LibraryBrush?>(null) }
+    var pendingPack by remember { mutableStateOf<ImportedBrushPack?>(null) }
+    fun updateCategories(next: List<BrushCategory>) { categoryStore.save(next); categories = next }
+    val selectedCategory = categories.firstOrNull { it.id == section }
     LaunchedEffect(library) {
         val result = withContext(Dispatchers.IO) { runCatching { library.load() } }
         result.onSuccess {
@@ -81,13 +88,19 @@ internal fun BrushLibraryDialog(
             busy = true
             scope.launch {
                 val result = withContext(Dispatchers.IO) { runCatching {
-                    val imported = BrushLibrary.copyOf(BrushPackage.read(requireNotNull(context.contentResolver.openInputStream(uri))))
+                    val pack = BrushPack.read(requireNotNull(context.contentResolver.openInputStream(uri)))
+                    require(pack.name == null || categories.size < 64) { "Remove a category before importing another pack." }
+                    val imported = pack.brushes.map { BrushLibrary.copyOf(it) }
                     val next = brushes + imported
                     library.save(next)
-                    next
+                    Pair(next, pack.name?.let { BrushCategory(name = it, brushIds = imported.map { brush -> brush.preset.id.value }) })
                 } }
                 busy = false
-                result.onSuccess { brushes = it; onLibraryChanged(it); message = "Tip imported as a new copy." }
+                result.onSuccess { (next, category) ->
+                    brushes = next; onLibraryChanged(next)
+                    category?.let { updateCategories(categories + it); section = it.id }
+                    message = if (category == null) "Tip imported as a new copy." else "Pack imported into ${category.name}."
+                }
                     .onFailure { message = "Import failed: ${it.message ?: "Invalid tip file."}" }
             }
         }
@@ -109,6 +122,22 @@ internal fun BrushLibraryDialog(
             }
         }
     }
+    val packExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        val pack = pendingPack; pendingPack = null
+        if (uri != null && pack != null) {
+            busy = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) { runCatching {
+                    val bytes = BrushPack.encode(requireNotNull(pack.name), pack.brushes).toByteArray(Charsets.UTF_8)
+                    requireNotNull(context.contentResolver.openOutputStream(uri, "w")).use { it.write(bytes) }
+                } }
+                busy = false
+                message = result.fold({ "Tip pack exported." }, { "Export failed: ${it.message}" })
+            }
+        }
+    }
+    if (managingCategories) BrushCategoryManager(categories, ::updateCategories) { managingCategories = false }
+    categorizing?.let { BrushCategoryMembership(it, categories, ::updateCategories) { categorizing = null } }
     Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 1040.dp).fillMaxWidth().fillMaxHeight(.98f), shape = MaterialTheme.shapes.large) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -128,7 +157,7 @@ internal fun BrushLibraryDialog(
                     "Jetpack Ink" -> all.filter { it.preset.ink != null }
                     "My tips" -> brushes
                     "Favorites" -> favoriteIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } }
-                    else -> all
+                    else -> selectedCategory?.brushIds?.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } } ?: all
                 }).filter { it.preset.displayName.contains(query, true) || it.author.contains(query, true) }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(280.dp), state = gridState, modifier = Modifier.weight(1f),
@@ -140,9 +169,19 @@ internal fun BrushLibraryDialog(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TipAction("Import", Icons.Outlined.FileOpen, enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) })
+                                TextButton(enabled = ready && !busy, onClick = { managingCategories = true }) { Text("Categories") }
                                 listOf("All tips", "Jetpack Ink", "My tips", "Favorites").forEach { name ->
                                     FilterChip(section == name, { section = name }, label = { Text(name) })
                                 }
+                            }
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                categories.forEach { category -> FilterChip(section == category.id, { section = category.id }, label = { Text(category.name) }) }
+                            }
+                            selectedCategory?.let { category ->
+                                TextButton(enabled = !busy && ready && category.brushIds.any { id -> all.any { it.preset.id.value == id } }, onClick = {
+                                    pendingPack = ImportedBrushPack(category.name, category.brushIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } })
+                                    packExporter.launch("${category.name.replace(Regex("[^a-zA-Z0-9 _-]"), "_")}.tipbrushpack")
+                                }) { Text("Export ${category.name} pack") }
                             }
                             if (searchOpen) OutlinedTextField(query, { query = it }, label = { Text("Search tips") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             if (section == "Jetpack Ink") Text(
@@ -182,6 +221,15 @@ internal fun BrushLibraryDialog(
                                     TipAction("More actions for ${item.preset.displayName}", Icons.Outlined.MoreHoriz, onClick = { moreOpen = !moreOpen })
                                 }
                                 if (moreOpen) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(enabled = !busy, onClick = { categorizing = item }) { Text("Categories") }
+                                    selectedCategory?.let { category ->
+                                        val index = category.brushIds.indexOf(item.preset.id.value)
+                                        fun move(to: Int) = updateCategories(categories.map { if (it.id == category.id) it.copy(brushIds = it.brushIds.toMutableList().apply { add(to, removeAt(index)) }) else it })
+                                        Row {
+                                            TextButton(enabled = !busy && index > 0, onClick = { move(index - 1) }) { Text("Earlier") }
+                                            TextButton(enabled = !busy && index >= 0 && index < category.brushIds.lastIndex, onClick = { move(index + 1) }) { Text("Later") }
+                                        }
+                                    }
                                     if (item.description.isNotBlank()) Text(item.description, style = MaterialTheme.typography.bodySmall)
                                     if (favorite && section == "Favorites") TipAction("Move to front", Icons.Outlined.VerticalAlignTop, onClick = {
                                         onFavorites(listOf(item.preset.id.value) + favoriteIds.filterNot { it == item.preset.id.value })
@@ -260,7 +308,7 @@ internal fun BrushLibraryDialog(
     deleting?.let { item ->
         AlertDialog(onDismissRequest = { if (!busy) deleting = null }, title = { Text("Delete ${item.preset.displayName}?") },
             text = { Text("This removes the tip from your library. Existing drawings keep their painted strokes.") },
-            confirmButton = { TipAction("Delete", Icons.Outlined.DeleteOutline, enabled = !busy, onClick = { save(brushes.filterNot { it.preset.id == item.preset.id }) { deleting = null; onFavorites(favoriteIds - item.preset.id.value) } }) },
+            confirmButton = { TipAction("Delete", Icons.Outlined.DeleteOutline, enabled = !busy, onClick = { save(brushes.filterNot { it.preset.id == item.preset.id }) { deleting = null; onFavorites(favoriteIds - item.preset.id.value); updateCategories(categories.map { it.copy(brushIds = it.brushIds - item.preset.id.value) }) } }) },
             dismissButton = { TipAction("Cancel", Icons.Outlined.Close, enabled = !busy, onClick = { deleting = null }) })
     }
 }

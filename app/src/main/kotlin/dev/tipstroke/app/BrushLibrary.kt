@@ -170,7 +170,7 @@ internal class BrushLibrary(context: Context) {
     }
 }
 
-private fun InputStream.readBounded(limit: Int): ByteArray {
+internal fun InputStream.readBounded(limit: Int): ByteArray {
     val output = java.io.ByteArrayOutputStream()
     val buffer = ByteArray(4096)
     while (output.size() <= limit) {
