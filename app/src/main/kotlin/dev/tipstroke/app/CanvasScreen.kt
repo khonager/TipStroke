@@ -120,6 +120,13 @@ fun CanvasScreen(
     var animationState by remember { mutableStateOf<AnimationUiState?>(null) }
     var memoryPressure by remember { mutableStateOf(MemoryPressure.NORMAL) }
     var message by remember { mutableStateOf<String?>(null) }
+    val accessibility = androidx.compose.ui.platform.LocalAccessibilityManager.current
+    LaunchedEffect(message) {
+        if (message != null) {
+            delay(accessibility?.calculateRecommendedTimeoutMillis(6_000L, containsText = true) ?: 6_000L)
+            message = null
+        }
+    }
     var loadingStage by remember { mutableStateOf("Opening drawing…") }
     var loadingSeconds by remember { mutableIntStateOf(0) }
     var ready by remember { mutableStateOf(library == null) }
@@ -221,19 +228,19 @@ fun CanvasScreen(
             exporting = true
             surface?.exportProcess(uri, processFormat) { outcome ->
                 exporting = false
-                message = outcome.fold({ "Drawing progress saved." }, { it.message ?: "Progress export failed." })
+                message = outcome.fold({ null }, { it.message ?: "Progress export failed." })
             }
         } else if (result.resultCode == Activity.RESULT_OK && animationRequest != null && uri != null) {
             exporting = true
             surface?.exportAnimation(uri, animationRequest.format, animationRequest.scale, animationRequest.timing) { outcome ->
                 exporting = false
-                message = outcome.fold({ "Animation saved." }, { it.message ?: "Animation export failed." })
+                message = outcome.fold({ null }, { it.message ?: "Animation export failed." })
             }
         } else if (result.resultCode == Activity.RESULT_OK && request != null && uri != null) {
             exporting = true
             surface?.exportDrawing(uri, request.format, request.quality, request.scale, request.transparent) { outcome ->
                 exporting = false
-                message = outcome.fold({ "Export saved." }, { it.message ?: "Export failed." })
+                message = outcome.fold({ null }, { it.message ?: "Export failed." })
             }
         }
         pendingExport = null
@@ -975,13 +982,15 @@ fun CanvasScreen(
         }
 
         message?.let { visibleMessage ->
-            Snackbar(
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp),
-                action = { TextButton(onClick = { message = null }) { Text("Dismiss") } },
-            ) { Text(visibleMessage) }
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 68.dp, start = 12.dp, end = 12.dp)
+                    .widthIn(max = 340.dp).clickable { message = null },
+                color = Color(0xF2202125), contentColor = Color(0xFFE7E7E5),
+                shape = RoundedCornerShape(14.dp), shadowElevation = 4.dp,
+            ) { Text(visibleMessage, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) }
         }
 
-        if (!ready || saving || exporting || animationState?.loading == true) {
+        if (!ready || saving || animationState?.loading == true) {
             Surface(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 72.dp), color = Color(0xD9202125), shape = RoundedCornerShape(12.dp)) {
                 Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)

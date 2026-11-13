@@ -354,3 +354,5 @@ video cursor, rather than rounding ahead to a cel that has not started yet.
 The media timeline playback row includes previous/next drawing steps, add drawing, add photo/video and clip editing. These actions remain available with the details collapsed; the row scrolls horizontally on narrow screens.
 
 In portrait tablet layouts the timeline sits above the measured height of the bottom tip, color, favorite and selection controls. Expanding the timeline cannot cover the color shelf. On phones, open adjustment/selection panels reserve the measured timeline height above the bottom toolbar.
+
+Export progress and completion share one compact, rounded top notice. Successful exports clear after 1.8 seconds; other notices allow six seconds to read, respecting Android accessibility timeout preferences. Tap a completed notice to dismiss it.
