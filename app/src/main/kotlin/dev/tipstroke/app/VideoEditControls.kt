@@ -29,6 +29,7 @@ private fun parseSeconds(text: String): Long? = text.toDoubleOrNull()?.takeIf { 
 internal fun VideoEditControls(
     state: AnimationUiState, onImport: () -> Unit, onEnable: () -> Unit,
     onEdit: (VideoEdit, Long?) -> Unit, onSeek: (Long) -> Unit, onUndo: (Boolean) -> Unit,
+    showEntryActions: Boolean = true,
 ) {
     val edit = state.videoEdit
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -41,7 +42,7 @@ internal fun VideoEditControls(
     val enabled = !state.loading && !state.playing
     if (edit == null) {
         Row(Modifier.horizontalScroll(rememberScrollState())) {
-            TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, onClick = onImport, enabled = enabled)
+            if (showEntryActions) TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, onClick = onImport, enabled = enabled)
             if (state.hasMedia) TipAction("Edit clips & keyframes", Icons.Outlined.VideoSettings, onClick = onEnable, enabled = enabled)
         }
         return
@@ -59,7 +60,7 @@ internal fun VideoEditControls(
         }
     }
     Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-        TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, onClick = onImport, enabled = enabled)
+        if (showEntryActions) TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, onClick = onImport, enabled = enabled)
         TipAction("Split here", Icons.Outlined.ContentCut, onClick = { editSafely {
             val id = UUID.randomUUID().toString()
             selectedId = id

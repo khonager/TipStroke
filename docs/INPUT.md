@@ -350,3 +350,5 @@ and no longer advertises the much larger painting-tip range or silently expands
 the radius by 0.7 times the displayed diameter.
 Automatic cel creation uses the drawing-grid interval containing the current
 video cursor, rather than rounding ahead to a cel that has not started yet.
+
+The media timeline playback row includes previous/next drawing steps, add drawing, add photo/video and clip editing. These actions remain available with the details collapsed; the row scrolls horizontally on narrow screens.

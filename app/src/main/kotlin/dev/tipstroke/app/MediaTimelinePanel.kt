@@ -66,13 +66,24 @@ internal fun MediaTimelinePanel(
     Surface(modifier, color = Color(0xFF202125)) {
         Column(Modifier.padding(horizontal = 12.dp)) {
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (drawingTools) VideoEditControls(state, onImportMedia, onEnableVideoEdit, onVideoEdit, onSeek, onUndoVideoEdit)
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (drawingTools && state.videoEdit != null) VideoEditControls(state, onImportMedia, onEnableVideoEdit, onVideoEdit, onSeek, onUndoVideoEdit, showEntryActions = false)
+            Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 TipAction(if (state.playing) "Pause video" else "Play video",
                     if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
                     enabled = state.playing || !state.loading, onClick = onPlayPause)
                 Text("${seconds(time)} / ${seconds(state.mediaDurationUs)}", color = Color.White, fontSize = 11.sp,
-                    modifier = Modifier.weight(1f))
+                    modifier = Modifier.padding(end = 8.dp))
+                TipAction("Add drawing here", Icons.Outlined.Add, enabled = !state.loading && !state.playing, onClick = onAdd)
+                TipAction("Previous drawing step", Icons.Outlined.SkipPrevious, onClick = { onSeek((state.mediaPositionUs - 1_000_000L / state.fps).coerceAtLeast(0)) },
+                    enabled = !state.playing && !state.loading)
+                TipAction("Next drawing step", Icons.Outlined.SkipNext, onClick = { onSeek((state.mediaPositionUs + 1_000_000L / state.fps).coerceAtMost(state.mediaDurationUs - 1)) },
+                    enabled = !state.playing && !state.loading)
+                TipAction("Add photo / video", Icons.Outlined.AddPhotoAlternate, onClick = onImportMedia,
+                    enabled = !state.loading && !state.playing)
+                TipAction("Edit clips & keyframes", Icons.Outlined.VideoSettings, onClick = {
+                    if (state.videoEdit == null) onEnableVideoEdit()
+                    drawingTools = !drawingTools || state.videoEdit == null
+                }, enabled = !state.loading && !state.playing)
                 TextButton(onClick = { nextGap?.let(onSeek) }, enabled = nextGap != null && !state.coveragePending && !state.loading && !state.playing,
                     contentPadding = PaddingValues(horizontal = 4.dp)) {
                     Text(if (state.coveragePending) "Checking…" else if (nextGap == null) "All drawn" else "Next undrawn", fontSize = 11.sp)
@@ -111,11 +122,6 @@ internal fun MediaTimelinePanel(
             if (drawingTools) {
             Text("Color: painted · Hatch: undrawn", color = Color.LightGray, fontSize = 11.sp)
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                TipAction("Add drawing here", Icons.Outlined.Add, enabled = !state.loading && !state.playing, onClick = onAdd)
-                TipAction("Previous drawing step", Icons.Outlined.SkipPrevious, onClick = { onSeek((state.mediaPositionUs - 1_000_000L / state.fps).coerceAtLeast(0)) },
-                    enabled = !state.playing && !state.loading)
-                TipAction("Next drawing step", Icons.Outlined.SkipNext, onClick = { onSeek((state.mediaPositionUs + 1_000_000L / state.fps).coerceAtMost(state.mediaDurationUs - 1)) },
-                    enabled = !state.playing && !state.loading)
                 if (state.mediaDrawingActive) {
                     TipAction("Shorten drawing hold", Icons.Outlined.Remove, enabled = !state.playing, onClick = { onHold((ticks - 1).coerceAtLeast(1)) })
                     Text("Hold $ticks · ${seconds(MediaTimeline.durationUs(frame, state.fps))}", color = Color.White, fontSize = 12.sp)
