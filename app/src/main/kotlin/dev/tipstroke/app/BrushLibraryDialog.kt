@@ -8,6 +8,14 @@ import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.semantics.contentDescription
@@ -42,6 +50,13 @@ internal fun BrushLibraryDialog(
     onFavorites: (List<String>) -> Unit = {}, onLibraryChanged: (List<LibraryBrush>) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val orderPreferences = remember { context.getSharedPreferences("tip-library-order", android.content.Context.MODE_PRIVATE) }
+    var libraryOrder by remember { mutableStateOf(runCatching {
+        val array = org.json.JSONArray(orderPreferences.getString("ids", "[]"))
+        List(array.length()) { array.getString(it) }
+    }.getOrDefault(emptyList())) }
+    var draggedId by remember { mutableStateOf<String?>(null) }
+    var dragPoint by remember { mutableStateOf(Offset.Zero) }
     var searchOpen by remember { mutableStateOf(false) }
     val library = remember { BrushLibrary(context) }
     val scope = rememberCoroutineScope()
@@ -152,15 +167,81 @@ internal fun BrushLibraryDialog(
                     })
                     TipAction("Back to canvas", Icons.Outlined.Close, enabled = !busy, onClick = onDismiss)
                 }
-                val all = BrushPreset.libraryBuiltIns.map { LibraryBrush(it, "TipStroke") } + brushes
+                val all = (BrushPreset.libraryBuiltIns.map { LibraryBrush(it, "TipStroke") } + brushes)
+                    .sortedBy { libraryOrder.indexOf(it.preset.id.value).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
                 val shown = (when (section) {
                     "Jetpack Ink" -> all.filter { it.preset.ink != null }
-                    "My tips" -> brushes
+                    "My tips" -> all.filter { entry -> brushes.any { it.preset.id == entry.preset.id } }
                     "Favorites" -> favoriteIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } }
                     else -> selectedCategory?.brushIds?.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } } ?: all
                 }).filter { it.preset.displayName.contains(query, true) || it.author.contains(query, true) }
+                val dragTarget = if (draggedId == null) null else gridState.layoutInfo.visibleItemsInfo.filter { info -> shown.any { it.preset.id.value == info.key } }
+                    .minByOrNull { info ->
+                        val center = Offset(info.offset.x + info.size.width / 2f, info.offset.y + info.size.height / 2f)
+                        (center - dragPoint).getDistanceSquared()
+                    }?.key as? String
+                val currentShown by rememberUpdatedState(shown)
+                val currentAll by rememberUpdatedState(all)
+                val commitMove by rememberUpdatedState(newValue = { source: String, target: String ->
+                    val ids = when {
+                        section == "Favorites" -> favoriteIds
+                        selectedCategory != null -> selectedCategory.brushIds
+                        else -> currentAll.map { it.preset.id.value }
+                    }.toMutableList()
+                    val from = ids.indexOf(source)
+                    val to = ids.indexOf(target)
+                    if (from >= 0 && to >= 0 && from != to) {
+                        ids.add(to, ids.removeAt(from))
+                        when {
+                            section == "Favorites" -> onFavorites(ids)
+                            selectedCategory != null -> updateCategories(categories.map { if (it.id == selectedCategory.id) it.copy(brushIds = ids) else it })
+                            else -> {
+                                libraryOrder = ids
+                                orderPreferences.edit().putString("ids", org.json.JSONArray(ids).toString()).apply()
+                            }
+                        }
+                    }
+                })
+                LaunchedEffect(draggedId) {
+                    while (draggedId != null) {
+                        val layout = gridState.layoutInfo
+                        val edge = 80f
+                        val scroll = when {
+                            dragPoint.y < layout.viewportStartOffset + edge -> -18f
+                            dragPoint.y > layout.viewportEndOffset - edge -> 18f
+                            else -> 0f
+                        }
+                        if (scroll != 0f) gridState.scrollBy(scroll)
+                        delay(16)
+                    }
+                }
+                Box(Modifier.weight(1f).pointerInput(section, query, busy) {
+                    if (!busy) detectDragGesturesAfterLongPress(
+                        onDragStart = { point ->
+                            gridState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
+                                point.x >= info.offset.x && point.x < info.offset.x + info.size.width &&
+                                    point.y >= info.offset.y && point.y < info.offset.y + info.size.height &&
+                                    currentShown.any { it.preset.id.value == info.key }
+                            }?.let { draggedId = it.key as String; dragPoint = point }
+                        },
+                        onDrag = { change, amount -> if (draggedId != null) { dragPoint += amount; change.consume() } },
+                        onDragEnd = {
+                            draggedId?.let { source ->
+                                // Resolve from the final pointer, even if release precedes the next composition.
+                                val target = gridState.layoutInfo.visibleItemsInfo
+                                    .filter { info -> currentShown.any { it.preset.id.value == info.key } }
+                                    .minByOrNull { info ->
+                                        (Offset(info.offset.x + info.size.width / 2f, info.offset.y + info.size.height / 2f) - dragPoint).getDistanceSquared()
+                                    }?.key as? String
+                                target?.let { commitMove(source, it) }
+                            }
+                            draggedId = null
+                        },
+                        onDragCancel = { draggedId = null },
+                    )
+                }) {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(280.dp), state = gridState, modifier = Modifier.weight(1f),
+                    columns = GridCells.Adaptive(280.dp), state = gridState, modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -199,7 +280,16 @@ internal fun BrushLibraryDialog(
                         val favorite = item.preset.id.value in favoriteIds
                         val usable = item.preset.ink == null || android.os.Build.VERSION.SDK_INT >= 34
                         var moreOpen by remember { mutableStateOf(false) }
-                        OutlinedCard(Modifier.fillMaxWidth()) {
+                        OutlinedCard(Modifier.fillMaxWidth().animateItem()
+                            .graphicsLayer { alpha = if (draggedId == item.preset.id.value) .3f else 1f }
+                            .drawWithContent {
+                                drawContent()
+                                if (draggedId != null && dragTarget == item.preset.id.value && draggedId != dragTarget) {
+                                    val after = shown.indexOfFirst { it.preset.id.value == draggedId } < shown.indexOf(item)
+                                    val x = if (after) size.width - 2.dp.toPx() else 2.dp.toPx()
+                                    drawLine(Color(0xFFED6A5A), Offset(x, 0f), Offset(x, size.height), 4.dp.toPx())
+                                }
+                            }.semantics { contentDescription = "${item.preset.displayName}. Hold to reorder" }) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
@@ -275,6 +365,16 @@ internal fun BrushLibraryDialog(
                             }
                         }
                     }
+                }
+                currentShown.firstOrNull { it.preset.id.value == draggedId }?.let { dragged ->
+                    Surface(Modifier.offset { IntOffset((dragPoint.x - 90.dp.toPx()).roundToInt(), (dragPoint.y - 40.dp.toPx()).roundToInt()) }
+                        .width(180.dp), shape = MaterialTheme.shapes.medium, shadowElevation = 8.dp) {
+                        Column(Modifier.padding(8.dp)) {
+                            Text(dragged.preset.displayName, style = MaterialTheme.typography.labelMedium)
+                            TipStrokeThumbnail(dragged.preset, Modifier.fillMaxWidth().height(64.dp))
+                        }
+                    }
+                }
                 }
             }
         }

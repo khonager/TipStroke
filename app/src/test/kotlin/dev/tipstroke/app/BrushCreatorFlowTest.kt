@@ -83,6 +83,29 @@ class BrushCreatorFlowTest {
         }
     }
 
+    @Config(sdk = [35], qualifiers = "w1280dp-h800dp-land-mdpi")
+    @Test fun draggingBundledTipPersistsItsNewPosition() {
+        val preferences = RuntimeEnvironment.getApplication().getSharedPreferences("tip-library-order", android.content.Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { BrushLibraryDialog(BrushPreset.Pencil, {}, {}) }
+        }
+        compose.waitUntil(30_000) { compose.onAllNodes(hasContentDescription("Create tip") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        val source = compose.onNodeWithContentDescription("Select Pencil").fetchSemanticsNode().boundsInRoot
+        val target = compose.onNodeWithContentDescription("Select Ink").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithContentDescription("Select Pencil").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveTo(target.center - source.topLeft, delayMillis = 100)
+            up()
+        }
+        compose.runOnIdle {
+            val order = org.json.JSONArray(preferences.getString("ids", "[]"))
+            assertEquals(BrushPreset.Ink.id.value, order.getString(0))
+            assertEquals(BrushPreset.Pencil.id.value, order.getString(1))
+        }
+    }
+
     @Test fun searchReturnsToControlsAfterScrolling() {
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             TipStrokeTheme { BrushLibraryDialog(BrushPreset.Pencil, {}, {}) }
