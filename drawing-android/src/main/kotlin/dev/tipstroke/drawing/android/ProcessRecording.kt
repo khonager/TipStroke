@@ -41,7 +41,7 @@ class ProcessRecording internal constructor(
             if (!file.exists()) return null
             require(file.length() <= MAX_BYTES + 200_000) { "Recording exceeds storage limit" }
             return DataInputStream(file.inputStream().buffered()).use { input ->
-                require(input.readUTF() in setOf("TipStroke-process-1", "TipStroke-process-2")) { "Unsupported process recording version" }
+                require(input.readUTF() in setOf("TipStroke-process-1", "TipStroke-process-2", "TipStroke-process-3")) { "Unsupported process recording version" }
                 val width = input.readInt(); val height = input.readInt()
                 require(width in 16..8192 && height in 16..8192)
                 val reason = input.readUTF().ifEmpty { null }
@@ -58,7 +58,7 @@ class ProcessRecording internal constructor(
         }
     }
     internal fun write(file: File) = DataOutputStream(file.outputStream().buffered()).use { out ->
-        out.writeUTF("TipStroke-process-2"); out.writeInt(width); out.writeInt(height)
+        out.writeUTF("TipStroke-process-3"); out.writeInt(width); out.writeInt(height)
         out.writeUTF(stoppedReason.orEmpty()); out.writeInt(actions.size)
         actions.forEach { out.writeInt(it.size); out.write(it) }
     }

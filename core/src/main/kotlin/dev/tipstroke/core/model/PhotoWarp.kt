@@ -3,7 +3,7 @@ package dev.tipstroke.core.model
 import dev.tipstroke.core.geometry.Point
 import kotlin.math.*
 
-enum class PhotoEditTool { MOVE, STRETCH, PUSH, BULGE, PINCH }
+enum class PhotoEditTool { MOVE, STRETCH, DISTORT, WARP, PUSH, BULGE, PINCH }
 
 /** Fixed-size normalized mesh; independent of source resolution and Android. */
 data class PhotoWarp(val points: List<Point>) {
@@ -61,6 +61,45 @@ data class PhotoWarp(val points: List<Point>) {
         })
         // Refuse foldovers so inverse mapping, erasing and compositing stay unambiguous.
         return if (candidate.valid()) candidate else this
+    }
+
+    /** Move a control point on a coarse lattice while retaining the fixed rendering mesh. */
+    fun moveControl(column: Int, row: Int, divisions: Int, delta: Point): PhotoWarp {
+        require(divisions in listOf(1, 2, 4, 8) && column in 0..divisions && row in 0..divisions)
+        val candidate = PhotoWarp(points.mapIndexed { index, p ->
+            val u = (index % (CELLS + 1)).toFloat() / CELLS * divisions
+            val v = (index / (CELLS + 1)).toFloat() / CELLS * divisions
+            val weight = (1f - abs(u - column)).coerceAtLeast(0f) * (1f - abs(v - row)).coerceAtLeast(0f)
+            Point(p.x + delta.x * weight, p.y + delta.y * weight)
+        })
+        return if (candidate.valid()) candidate else this
+    }
+
+    /** Perspective corner edit, retaining any existing local deformation. */
+    fun distortCorner(column: Int, row: Int, delta: Point): PhotoWarp {
+        require(column in 0..1 && row in 0..1)
+        val corners=listOf(map(0f,0f),map(1f,0f),map(1f,1f),map(0f,1f))
+        val index=if(row==0) column else 3-column
+        val changed=corners.mapIndexed { i,p -> if(i==index) Point(p.x+delta.x,p.y+delta.y) else p }
+        fun project(quad: List<Point>, u: Float, v: Float): Point? {
+            val (a,b,c,d)=quad
+            val dx1=b.x-c.x; val dx2=d.x-c.x; val sx=a.x-b.x+c.x-d.x
+            val dy1=b.y-c.y; val dy2=d.y-c.y; val sy=a.y-b.y+c.y-d.y
+            val det=dx1*dy2-dx2*dy1
+            if(abs(det)<1e-8f) return null
+            val g=(sx*dy2-dx2*sy)/det; val h=(dx1*sy-sx*dy1)/det
+            val denominator=g*u+h*v+1f
+            if(denominator<=1e-6f) return null
+            return Point(((b.x-a.x+g*b.x)*u+(d.x-a.x+h*d.x)*v+a.x)/denominator,
+                ((b.y-a.y+g*b.y)*u+(d.y-a.y+h*d.y)*v+a.y)/denominator)
+        }
+        val candidate=PhotoWarp(points.mapIndexed { i,p ->
+            val u=(i%(CELLS+1)).toFloat()/CELLS; val v=(i/(CELLS+1)).toFloat()/CELLS
+            val before=project(corners,u,v) ?: return this
+            val after=project(changed,u,v) ?: return this
+            Point(p.x+after.x-before.x,p.y+after.y-before.y)
+        })
+        return if(candidate.valid()) candidate else this
     }
 
     private fun valid(): Boolean {

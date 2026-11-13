@@ -38,8 +38,9 @@ data class ImageTransform(
     val stretchX: Float = 1f,
     val stretchY: Float = 1f,
     val warp: PhotoWarp? = null,
+    val filtered: Boolean = true,
 ) {
-    init { require(scale.isFinite() && scale > 0f && stretchX.isFinite() && stretchX > 0f && stretchY.isFinite() && stretchY > 0f) }
+    init { require(scale.isFinite() && scale > 0f && stretchX.isFinite() && kotlin.math.abs(stretchX) > 0f && stretchY.isFinite() && kotlin.math.abs(stretchY) > 0f) }
 
     fun changedBy(deltaX: Float, deltaY: Float, scaleFactor: Float = 1f, rotationDeltaDegrees: Float = 0f) = copy(
         centerX = centerX + deltaX,

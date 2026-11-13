@@ -794,15 +794,17 @@ fun CanvasScreen(
                 .padding(start=8.dp,end=8.dp,bottom=if (compactPhone && !portrait) 4.dp else 88.dp).widthIn(max=520.dp),
             color = Color(0xEE202125), shape = RoundedCornerShape(18.dp),
         ) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.heightIn(max=viewportHeight*.65f).verticalScroll(rememberScrollState()).padding(12.dp)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                     PhotoEditTool.entries.forEach { tool ->
-                        FilterChip(selected=photoTool==tool,onClick={ photoTool=tool },label={ Text(tool.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                        FilterChip(selected=photoTool==tool,onClick={ photoTool=tool },label={ Text(tool.transformLabel()) })
                     }
                 }
                 Text(when(photoTool) {
-                    PhotoEditTool.MOVE -> "Drag to move · pinch to resize · twist to rotate"
+                    PhotoEditTool.MOVE -> "Drag to move · drag corners or pinch to resize · twist to rotate"
                     PhotoEditTool.STRETCH -> "Drag horizontally or vertically to stretch the photo"
+                    PhotoEditTool.DISTORT -> "Drag a corner to distort the photo"
+                    PhotoEditTool.WARP -> "Drag a mesh point to reshape the photo"
                     PhotoEditTool.PUSH -> "Drag over a feature to reshape it"
                     PhotoEditTool.BULGE -> "Drag over a feature to enlarge it or create a spherical bulge"
                     PhotoEditTool.PINCH -> "Drag over a feature to shrink it"
@@ -810,6 +812,16 @@ fun CanvasScreen(
                 if(photoTool in listOf(PhotoEditTool.PUSH,PhotoEditTool.BULGE,PhotoEditTool.PINCH)) {
                     Text("Area size ${(photoRadius*100).roundToInt()}%",color=Color.White,fontSize=12.sp)
                     Slider(photoRadius,{ photoRadius=it },valueRange=.08f..1f)
+                }
+                var meshDivisions by remember { mutableIntStateOf(4) }
+                TransformMeshOptions(photoTool, meshDivisions) { meshDivisions=it; surface?.transformMeshDivisions=it }
+                var bilinear by remember { mutableStateOf(surface?.photoBilinear() ?: true) }
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    TextButton(onClick={ surface?.photoTransformAction("flipX") }) { Text("Flip horizontal") }
+                    TextButton(onClick={ surface?.photoTransformAction("flipY") }) { Text("Flip vertical") }
+                    TextButton(onClick={ surface?.photoTransformAction("rotate") }) { Text("Rotate 45°") }
+                    TextButton(onClick={ surface?.photoTransformAction("fit") }) { Text("Fit to canvas") }
+                    FilterChip(bilinear,{ surface?.photoTransformAction("filter"); bilinear=surface?.photoBilinear() ?: true },label={ Text(if(bilinear) "Bilinear" else "Nearest neighbor") })
                 }
                 Row(verticalAlignment=Alignment.CenterVertically) {
                     Checkbox(photoSnapping,{
@@ -819,7 +831,7 @@ fun CanvasScreen(
                     Text("Snap",color=Color.White)
                     TextButton(onClick = { snapOptionsOpen = true }) { Text("Options") }
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick={ surface?.resetPhotoShape() }) { Text("Reset shape") }
+                    TextButton(onClick={ surface?.photoTransformAction("reset"); bilinear=surface?.photoBilinear() ?: true }) { Text("Reset") }
                     TextButton(onClick={ imageTransforming=false }) { Text("Done") }
                 }
             }
@@ -935,12 +947,16 @@ fun CanvasScreen(
             }
             BackHandler { cancelTransform() }
             DisposableEffect(surface) { onDispose { surface?.cancelSelectionTransform() } }
-            Box(Modifier.fillMaxSize().clickable(
-                interactionSource = remember { MutableInteractionSource() }, indication = null,
-            ) {})
             SelectionTransformPanel(
                 initialFiltered = pixelTool == null && !smallCanvas,
-                onPreview = { x, y, angle, filtered -> surface?.previewSelectionTransform(x, y, angle, filtered) },
+                onTool = { surface?.selectionEditTool = it },
+                onMesh = { surface?.transformMeshDivisions = it },
+                onFilter = { surface?.setSelectionTransformFilter(it) },
+                onReadScale = { surface?.selectionTransformScale() ?: (1f to 1f) },
+                onScale = { x,y -> surface?.setSelectionTransformScale(x,y) },
+                onRotation = { surface?.setSelectionTransformRotation(it) },
+                onRadius = { surface?.photoWarpRadius = it },
+                onAction = { surface?.selectionTransformAction(it) },
                 onApply = {
                     if (surface?.applySelectionTransform() == true) {
                         selectionTransformOpen = false; selectionMode = true

@@ -63,4 +63,33 @@ class SelectionToolControlsTest {
         compose.onNodeWithContentDescription("Select").performTouchInput { longClick() }
         compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
     }
+    @Test fun transformPanelExposesMeshAndSharedActions() {
+        var tool=dev.tipstroke.core.model.PhotoEditTool.MOVE
+        var mesh=0
+        var action=""
+        var filtered=true
+        var scale=1f to 1f
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity=it }.setup().get().setContent {
+            MaterialTheme {
+                SelectionTransformPanel(initialFiltered=true,onTool={ tool=it },onMesh={ mesh=it },
+                    onFilter={ filtered=it },onRadius={},onReadScale={ scale },onScale={ x,y -> scale=x to y },
+                    onRotation={},onAction={ action=it },onApply={},onCancel={})
+            }
+        }
+        compose.onNodeWithText("Warp").performClick()
+        compose.onNodeWithText("8 × 8").performClick()
+        org.junit.Assert.assertEquals(dev.tipstroke.core.model.PhotoEditTool.WARP,tool)
+        org.junit.Assert.assertEquals(8,mesh)
+        compose.onNodeWithText("Fit to canvas").performScrollTo().performClick()
+        org.junit.Assert.assertEquals("fit",action)
+        compose.onNodeWithText("Reset").performScrollTo().performClick()
+        org.junit.Assert.assertEquals("reset",action)
+        compose.onNode(isToggleable()).performScrollTo().performClick()
+        org.junit.Assert.assertFalse(filtered)
+        compose.onNodeWithText("Uniform").performScrollTo().performClick()
+        compose.onNodeWithText("Exact size").performScrollTo().performClick()
+        compose.onNodeWithText("Width %").performScrollTo().performTextReplacement("150")
+        org.junit.Assert.assertEquals(1.5f,scale.first,.001f)
+        org.junit.Assert.assertEquals(1.5f,scale.second,.001f)
+    }
 }

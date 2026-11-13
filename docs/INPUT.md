@@ -164,8 +164,7 @@ of Clear selection. Deleting the source releases it as well.
 Reference strokes is transient editing state, not a saved mask or a permanent
 layer relationship. Sources and destinations are paint layers; image erasing,
 Color Drop and finger smudging require Reference strokes to be off. Color Drop
-shows an explanation instead of filling outside the reference. Feather/expand,
-selection rotation and scaling are not included in this selection toolset.
+shows an explanation instead of filling outside the reference. Feathering and selection expansion are not included in this selection toolset.
 
 ### Select tool controls and layer clipping
 
@@ -238,9 +237,9 @@ the mark for navigation. An extra finger never ends an active stylus stroke.
 
 The Layers **＋ Layer** button immediately creates a paint layer; **Import** is a separate action. Imported photos open in photo editing mode, also reachable through an image layer's **Edit photo on canvas** action. **Done** returns the pen to drawing/erasing.
 
-Photo edits use the native touch/stylus surface. Move supports one-pointer translation and two-pointer scale/rotation. Stretch uses horizontal/vertical drags for independent image-axis scaling. Push moves a local area; Bulge enlarges features and creates spherical bulges; Pinch shrinks features. Adjust **Area size** to control the affected radius (relative to image height); the circle appears while dragging. Two fingers always move/scale/rotate the image regardless of the selected photo tool.
+Photo edits use the native touch/stylus surface. Uniform supports one-pointer translation, corner-drag proportional scaling, and two-pointer scale/rotation. Freeform uses horizontal/vertical drags for independent image-axis scaling. Distort moves a corner with perspective; Warp moves control points on a selectable 2×2, 4×4, or 8×8 cell grid. Push moves a local area; Bulge enlarges features and creates spherical bulges; Pinch shrinks features. Adjust **Area size** to control the affected radius (relative to image height); the circle appears while dragging. Two fingers always move/scale/rotate the image regardless of the selected photo tool.
 
-Optional **Snap** aligns image bounds to canvas/visible photo edges and centers within 10 screen dp, and rotation to 15-degree increments or another visible photo's angle within 3 degrees. Unsnapped gesture coordinates are retained so magnets release smoothly. Snapping applies in Move and two-finger navigation. Each completed gesture is one bounded undo entry; canceled gestures restore their initial transform. Reset shape clears stretching/warping with undo, preserving placement and rotation.
+Optional **Snap** aligns image bounds to canvas/visible photo edges and centers within 10 screen dp, and rotation to 15-degree increments or another visible photo's angle within 3 degrees. Unsnapped gesture coordinates are retained so magnets release smoothly. Snapping applies in Uniform and two-finger navigation. Each completed gesture is one bounded undo entry; canceled gestures restore their initial transform. Reset restores the image transform and interpolation setting from the start of the editing session, with undo. Flip horizontal, Flip vertical, Rotate 45°, and Fit to canvas are undoable actions. Fit preserves the current proportions, rotation and deformation and centers the resulting bounds within the canvas. Bilinear switches to Nearest neighbor when disabled; it is saved with each image transform.
 
 For composites, import the source photos as separate layers, lower opacity to align landmarks, reshape with Push/Bulge/Pinch, finish editing, and erase unwanted image regions. Draw the reference on a paint layer above. This is manual compositing; it does not generate missing anatomy or blend two subjects automatically.
 
@@ -265,13 +264,15 @@ stay within the safe area; layer and tip controls open as system sheets.
 
 While drawing, the status bar is hidden; swiping from the edge reveals system bars temporarily. The navigation-bar preference remains independent. Leaving the editor restores system bars. Phone landscape places the timeline at the bottom edge and the main controls close to the top, retaining cutout insets.
 
-Image Move → Snap → Options saves angle spacing (5°, 15°, 30°, 45°, or 90°) and snap strength. Edges, centers, and corners align with the canvas and visible images. Strength controls the capture distance in screen space and the angular tolerance; movement accumulates against the unsnapped transform so dragging away releases the snap without a sticky offset. Snapping remains optional.
+Image Uniform → Snap → Options saves angle spacing (5°, 15°, 30°, 45°, or 90°) and snap strength. Edges, centers, and corners align with the canvas and visible images. Strength controls the capture distance in screen space and the angular tolerance; movement accumulates against the unsnapped transform so dragging away releases the snap without a sticky offset. Snapping remains optional.
 
 Smudge is selectable alongside tips and the eraser. It works with a stylus, primary mouse button, or a finger when touch drawing is enabled, independently of the finger-smudge gesture setting. It edits the selected raster layer, uses tool size/opacity and Settings → Smudge strength, and creates one undo step per gesture. A second finger hands touch smudging to navigation; extra fingers do not take over a pen stroke. Interrupted gestures finalize their existing changes as one undoable action.
 
 ## Selected-pixel transforms
 
-Select pixels with Lasso, Rectangle, or Ellipse, then open the selection tool menu → **Rotate, resize or flip**. The panel offers width/height percentages (1–800%), linked proportions, rotation, horizontal/vertical flips, and optional smoothing. The transform pivots around the selection bounds. The native canvas previews the matrix against the original pixels; **Apply** resamples once, while **Cancel**, Back, or closing the panel leaves artwork unchanged. Pixels outside the canvas are cropped on Apply and restored by undo. Selected raster layers transform together as one undo step; image layers continue to use their own non-destructive photo controls. Boolean selection holes remain excluded.
+Select raster pixels, then open the selection tool menu → **Transform selected pixels**. Uniform and Freeform resize using corner handles; dragging away from a handle moves the selection. Distort edits perspective corners. Warp exposes 2×2, 4×4, and 8×8 control grids; Push/Bulge/Pinch provide local deformation with an area-size slider. All handles use native MotionEvent input. Two-pointer interruption cancels the current selection drag. The grid presets do not discard existing deformation; foldover-producing moves are rejected.
+
+Flip horizontal, Flip vertical, Rotate 45°, a rotation slider, Fit to canvas, Reset, and Bilinear/Nearest neighbor apply to selected raster layers together. Exact size expands width/height percentage fields (1–800%, linked in Uniform mode); opening it reads the current preview size. Fit preserves proportions and centers the transformed bounds (within the existing 800% selection scale limit). Reset restores the session's original geometry. **Apply** resamples once from the original sparse selection snapshots; **Cancel**, Back, or closing leaves artwork unchanged. Pixels outside the canvas are cropped on Apply and restored by undo. The edit and transformed selection boundary share one grouped undo step. Boolean selection holes remain excluded. Image-layer selections still constrain the erase mask; whole images use their non-destructive image transforms.
 
 ## Tip selection and favorites
 

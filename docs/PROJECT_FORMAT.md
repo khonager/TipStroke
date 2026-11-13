@@ -174,3 +174,20 @@ without rendering them until the timeline extends again. Frame-based animations
 receive equivalent microsecond start/duration values when media is first added.
 Versions 1–8 continue to load; older apps reject version 9 rather than silently
 losing edits. Transfer uses the existing package size limits.
+
+## Version 10: reflected images and interpolation
+
+Readers accept versions 1–10. Image transforms (including animation cels) now
+allow finite, nonzero signed `stretchX`/`stretchY`; a negative sign reflects that
+source axis. Optional `filtered` defaults to true and selects bilinear sampling;
+false selects nearest neighbor. Both fields are retained by save/export and
+process replay. Old readers reject version 10 instead of misreading reflections.
+The existing 17×17 rendering mesh is unchanged: 2×2/4×4/8×8 control grids and
+perspective corner edits write into that mesh, so no control-grid state is saved.
+Animation interpolation blends scale magnitudes and switches reflection signs
+and filtering discretely at the midpoint, avoiding singular zero scales.
+
+Process sidecars now write `TipStroke-process-3` and read versions 1–3. The new
+header protects reflection/filter semantics from older replay readers; action
+encoding is unchanged. Raster selection edits remain ordinary sparse tile
+changes; their interactive meshes and original preview snapshots are transient.

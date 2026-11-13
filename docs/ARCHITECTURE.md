@@ -389,3 +389,17 @@ format, trying the next compatible encoder if configuration fails. This supports
 small exports that the default hardware encoder rejects, while retaining hardware
 encoding for supported sizes. Unsupported size/rate combinations report actionable
 export errors rather than a blank vendor CodecException.
+
+### Shared image and selection deformation
+
+Core `PhotoWarp` supplies local deformation, perspective corners, and coarse
+control grids backed by the fixed 16×16 triangle mesh. Android routes handles
+through native MotionEvent input. Image edits retain original assets and masks;
+selection sessions capture only selected sparse raster tiles once, preview from
+those originals, and commit affected tiles as a grouped undo transaction.
+Selection mesh triangles are clipped to source tile boundaries before drawing,
+so tile edges use the same mapping in preview and commit. Conservative per-tile
+mesh footprints cull invisible sources and bound destination allocation; no
+full-canvas bitmap or per-pointer-sample tile copies are used. Closing a session
+releases its preview snapshots. Mesh foldovers are rejected to preserve inverse
+mapping for image masks. iOS transform parity remains roadmap work.

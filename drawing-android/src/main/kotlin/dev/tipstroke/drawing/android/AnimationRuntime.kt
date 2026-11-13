@@ -374,12 +374,13 @@ internal class AnimationRuntime(
             lerp(a.second.centerY, b.second.centerY),
             lerp(a.second.scale, b.second.scale),
             lerp(a.second.rotationDegrees, b.second.rotationDegrees),
-            lerp(a.second.stretchX, b.second.stretchX),
-            lerp(a.second.stretchY, b.second.stretchY),
+            interpolateSignedScale(a.second.stretchX, b.second.stretchX, fraction),
+            interpolateSignedScale(a.second.stretchY, b.second.stretchY, fraction),
             if (a.second.warp == null && b.second.warp == null) null else dev.tipstroke.core.model.PhotoWarp(
                 (a.second.warp ?: dev.tipstroke.core.model.PhotoWarp.identity()).points.zip(
                     (b.second.warp ?: dev.tipstroke.core.model.PhotoWarp.identity()).points) { p,q ->
                     dev.tipstroke.core.geometry.Point(lerp(p.x,q.x),lerp(p.y,q.y)) }),
+            if (fraction < .5f) a.second.filtered else b.second.filtered,
         )
     }
 
@@ -664,3 +665,9 @@ internal object AnimationStorage {
 }
 
 private val coverageExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "TipStroke-coverage").apply { isDaemon = true } }
+
+/** Reflections switch discretely instead of interpolating through a singular zero scale. */
+internal fun interpolateSignedScale(a: Float, b: Float, fraction: Float): Float {
+    val magnitude = kotlin.math.abs(a) + (kotlin.math.abs(b) - kotlin.math.abs(a)) * fraction
+    return magnitude * kotlin.math.sign(if (fraction < .5f) a else b)
+}

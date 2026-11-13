@@ -924,6 +924,47 @@ class TileStore(
         return dirty
     }
 
+    internal fun drawTransformed(canvas: Canvas, transform: dev.tipstroke.core.geometry.SelectionTransform, paint: Paint,
+        footprints: Map<TileCoordinate, RectF>? = null) {
+        val clip = RectF(canvas.clipBounds)
+        tiles.forEach { (coordinate, bitmap) ->
+            val footprint = footprints?.get(coordinate) ?: transform.tileBounds(coordinate, tileSize)
+            if (!RectF.intersects(clip, footprint)) return@forEach
+            canvas.drawSelectionTile(bitmap, coordinate.x * tileSize.toFloat(), coordinate.y * tileSize.toFloat(), transform, paint)
+        }
+    }
+
+    private fun transformMeshSelection(selection: SelectionRegion,
+        transform: dev.tipstroke.core.geometry.SelectionTransform, filtered: Boolean): Set<TileCoordinate> {
+        val selected = duplicate(selection)
+        try {
+            if (selected.tiles.isEmpty()) return emptySet()
+            val footprints = selected.tiles.keys.associateWith { transform.tileBounds(it,tileSize) }
+            val destination = footprints.values.flatMapTo(mutableSetOf()) { bounds ->
+                TileGrid.intersecting(dev.tipstroke.core.geometry.Rect(bounds.left,bounds.top,bounds.right,bounds.bottom),
+                    canvasWidth,canvasHeight,tileSize)
+            }
+            val dirty = selected.tiles.keys + destination
+            val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+            val path = selection.toAndroidPath()
+            val clear = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
+            selected.tiles.keys.forEach { coordinate -> Canvas(writableTile(coordinate)).apply {
+                translate(-coordinate.x * tileSize.toFloat(), -coordinate.y * tileSize.toFloat())
+                drawPath(path, clear)
+            } }
+            val paint = Paint().apply { isFilterBitmap = filtered }
+            destination.forEach { coordinate -> Canvas(writableTile(coordinate)).apply {
+                translate(-coordinate.x * tileSize.toFloat(), -coordinate.y * tileSize.toFloat())
+                selected.drawTransformed(this, transform, paint, footprints)
+            } }
+            dirty.forEach { coordinate -> if (tiles[coordinate]?.isFullyTransparent() == true) removeTile(coordinate) }
+            val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+            history.push(TileSnapshotTransaction(this, before, after))
+            lastDirtyTiles = dirty
+            return dirty
+        } finally { selected.discard() }
+    }
+
     /** One sparse edit; preview uses a matrix and never resamples the source tiles. */
     internal fun transformSelection(
         selection: SelectionRegion,
@@ -931,6 +972,7 @@ class TileStore(
         filtered: Boolean = true,
     ): Set<TileCoordinate> {
         if (transform.isIdentity) return emptySet()
+        if (transform.warp != null) return transformMeshSelection(selection, transform, filtered)
         check(isResident)
         val matrix = transform.toAndroidMatrix()
         val inverse = Matrix().also { check(matrix.invert(it)) }

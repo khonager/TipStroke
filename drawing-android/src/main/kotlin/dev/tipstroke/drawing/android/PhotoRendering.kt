@@ -31,6 +31,7 @@ internal fun ImageTransform.photoBounds(width: Int,height: Int): RectF {
 internal fun Canvas.drawPhoto(bitmap: Bitmap,width: Int,height: Int,transform: ImageTransform,paint: Paint,
     masks: Map<TileCoordinate,Bitmap> = emptyMap(),
     visitMasks: (((TileCoordinate,Bitmap) -> Unit) -> Unit)? = null) {
+    val paint = Paint(paint).apply { isFilterBitmap = transform.filtered }
     fun drawPart(source: Bitmap,left: Float,top: Float,w: Float,h: Float,partPaint: Paint) {
         val cells=if(transform.warp==null) 1 else PhotoWarp.CELLS
         val vertices=FloatArray((cells+1)*(cells+1)*2)
@@ -107,7 +108,7 @@ private fun Canvas.drawWarpedMask(tile: Bitmap, left: Float, top: Float, width: 
 }
 
 internal fun JSONObject.putPhotoTransform(t: ImageTransform): JSONObject = apply {
-    put("stretchX",t.stretchX); put("stretchY",t.stretchY)
+    put("filtered",t.filtered); put("stretchX",t.stretchX); put("stretchY",t.stretchY)
     t.warp?.let { mesh -> put("warp",JSONArray().apply { mesh.points.forEach { put(it.x);put(it.y) } }) }
 }
 internal fun JSONObject.readPhotoTransform(base: ImageTransform): ImageTransform {
@@ -116,5 +117,5 @@ internal fun JSONObject.readPhotoTransform(base: ImageTransform): ImageTransform
         require(it.length()==(PhotoWarp.CELLS+1)*(PhotoWarp.CELLS+1)*2) { "Invalid photo mesh" }
         PhotoWarp(List(it.length()/2) { i -> Point(it.getDouble(i*2).toFloat(),it.getDouble(i*2+1).toFloat()) })
     }
-    return base.copy(stretchX=optDouble("stretchX",1.0).toFloat(),stretchY=optDouble("stretchY",1.0).toFloat(),warp=mesh)
+    return base.copy(filtered=optBoolean("filtered",true),stretchX=optDouble("stretchX",1.0).toFloat(),stretchY=optDouble("stretchY",1.0).toFloat(),warp=mesh)
 }

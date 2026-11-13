@@ -7,6 +7,7 @@ import dev.tipstroke.core.drawing.CompletedStroke
 import dev.tipstroke.core.geometry.CanvasTransform
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.geometry.TileGrid
+import dev.tipstroke.core.geometry.transformed
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.SelectionRegion
 import dev.tipstroke.core.model.LayerId
@@ -47,6 +48,10 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         set(value) { field = value; invalidate() }
     var movingLayerIds: Set<LayerId> = emptySet()
     var movingSelectionPath: Path? = null
+    var selectionMeshTransform: dev.tipstroke.core.geometry.SelectionTransform? = null
+    val selectionSources = mutableMapOf<LayerId, TileStore>()
+    var transformMeshDivisions = 4
+    var transformHandles = false
     var selectionPreviewMatrix: Matrix? = null
         set(value) { field = value; invalidate() }
     var selectionPreviewFiltered = true
@@ -294,6 +299,9 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             photoBrushArea?.let { (center,radius) -> canvas.drawCircle(center.x,center.y,radius,transformBorderPaint) }
         }
         drawSelection(canvas)
+        if (transformHandles) selectionMeshTransform?.let { edit -> edit.sourceBounds?.let { bounds ->
+            drawTransformGrid(canvas) { u, v -> edit.map(Point(bounds.left+(bounds.right-bounds.left)*u, bounds.top+(bounds.bottom-bounds.top)*v)) }
+        } }
         bitmapPaint.alpha = 255
         canvas.drawRect(0f, 0f, layerStack.canvasWidth.toFloat(), layerStack.canvasHeight.toFloat(), borderPaint)
         canvas.restore()
@@ -328,12 +336,18 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         layer.tiles.draw(canvas, bitmapPaint)
         canvas.restoreToCount(stationary)
         val moving = canvas.save()
+        val mesh = selectionMeshTransform
+        if (mesh != null) {
+            val paint = Paint(bitmapPaint).apply { isFilterBitmap = selectionPreviewFiltered }
+            selectionSources[layer.id]?.drawTransformed(canvas, mesh, paint)
+        } else {
         selectionPreviewMatrix?.let(canvas::concat) ?: canvas.translate(selectionPreviewOffset.x, selectionPreviewOffset.y)
         canvas.clipPath(path)
         val previousFilter = bitmapPaint.isFilterBitmap
         bitmapPaint.isFilterBitmap = selectionPreviewFiltered
         layer.tiles.draw(canvas, bitmapPaint)
         bitmapPaint.isFilterBitmap = previousFilter
+        }
         canvas.restoreToCount(moving)
         canvas.restoreToCount(group)
     }
@@ -401,7 +415,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         )
         previousSelectionOutline?.let { canvas.drawPath(it.toAndroidPath(), selectionPaint) }
         selectionRegion?.let {
-            val path = it.toAndroidPath(selectionPreviewOffset.x, selectionPreviewOffset.y)
+            val region = selectionMeshTransform?.let { transform -> it.transformed(transform) } ?: it
+            val path = region.toAndroidPath(selectionPreviewOffset.x, selectionPreviewOffset.y)
             selectionPreviewMatrix?.let(path::transform)
             canvas.drawPath(path, selectionPaint)
         }
@@ -420,26 +435,31 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         }
     }
 
+    private fun drawTransformGrid(canvas: Canvas, point: (Float, Float) -> Point) {
+        val divisions = transformMeshDivisions
+        transformBorderPaint.strokeWidth = 1f / transform.scale.coerceAtLeast(.08f)
+        for (row in 0..divisions) {
+            val horizontal = Path(); val vertical = Path()
+            for (i in 0..16) {
+                val h = point(i/16f, row.toFloat()/divisions)
+                val v = point(row.toFloat()/divisions, i/16f)
+                if (i == 0) { horizontal.moveTo(h.x,h.y); vertical.moveTo(v.x,v.y) }
+                else { horizontal.lineTo(h.x,h.y); vertical.lineTo(v.x,v.y) }
+            }
+            canvas.drawPath(horizontal, transformBorderPaint); canvas.drawPath(vertical, transformBorderPaint)
+            for (col in 0..divisions) {
+                val p = point(col.toFloat()/divisions,row.toFloat()/divisions)
+                canvas.drawCircle(p.x,p.y,5f/transform.scale.coerceAtLeast(.08f),transformBorderPaint)
+            }
+        }
+    }
+
     private fun drawSelectedImageBounds(canvas: Canvas) {
         val image = layerStack.selectedImage() ?: return
         val lineWidth = 1f / transform.scale.coerceAtLeast(.08f)
-        val handleRadius = 5f / transform.scale.coerceAtLeast(.08f)
         transformBorderPaint.strokeWidth = lineWidth
         fun point(u: Float,v: Float) = image.transform.documentPoint(u,v,image.source.width,image.source.height)
-        for (row in 0..4) {
-            val horizontal = android.graphics.Path()
-            val vertical = android.graphics.Path()
-            for (i in 0..16) {
-                val h=point(i/16f,row/4f); val v=point(row/4f,i/16f)
-                if(i==0) { horizontal.moveTo(h.x,h.y);vertical.moveTo(v.x,v.y) }
-                else { horizontal.lineTo(h.x,h.y);vertical.lineTo(v.x,v.y) }
-            }
-            canvas.drawPath(horizontal,transformBorderPaint);canvas.drawPath(vertical,transformBorderPaint)
-        }
-        listOf(0f to 0f,1f to 0f,1f to 1f,0f to 1f).forEach { (u,v) ->
-            val p=point(u,v)
-            canvas.drawCircle(p.x,p.y,handleRadius,transformHandlePaint)
-            canvas.drawCircle(p.x,p.y,handleRadius,transformBorderPaint)
-        }
+        drawTransformGrid(canvas, ::point)
+
     }
 }

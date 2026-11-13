@@ -32,4 +32,24 @@ class PhotoWarpTest {
         val mesh=PhotoWarp.identity()
         assertEquals(mesh,mesh.deform(PhotoEditTool.PUSH,Point(.5f,.5f),Point(10f,0f),.2f,1f))
     }
+    @Test fun advancedControlsMoveOnlyTheirNeighborhoodAndRejectFoldovers() {
+        for (divisions in listOf(2,4,8)) {
+            val mesh=PhotoWarp.identity()
+            val edited=mesh.moveControl(divisions/2,divisions/2,divisions,Point(.02f,.01f))
+            assertEquals(.52f,edited.map(.5f,.5f).x,.00001f)
+            assertEquals(.51f,edited.map(.5f,.5f).y,.00001f)
+            assertEquals(Point(0f,0f),edited.map(0f,0f))
+            val inverse=assertNotNull(edited.inverse(.52f,.51f))
+            assertEquals(.5f,inverse.x,.00001f)
+            assertEquals(mesh,mesh.moveControl(divisions/2,divisions/2,divisions,Point(10f,0f)))
+        }
+    }
+    @Test fun perspectiveCornerKeepsOtherCornersAndStraightLines() {
+        val mesh=PhotoWarp.identity().distortCorner(0,0,Point(.15f,.1f))
+        assertEquals(.15f,mesh.map(0f,0f).x,.00001f)
+        assertEquals(Point(1f,1f),mesh.map(1f,1f))
+        val a=mesh.map(.25f,0f); val b=mesh.map(.25f,1f); val middle=mesh.map(.25f,.5f)
+        assertEquals(0f,(middle.x-a.x)*(b.y-a.y)-(middle.y-a.y)*(b.x-a.x),.00001f)
+        assertEquals(PhotoWarp.identity(),PhotoWarp.identity().distortCorner(0,0,Point(2f,2f)))
+    }
 }

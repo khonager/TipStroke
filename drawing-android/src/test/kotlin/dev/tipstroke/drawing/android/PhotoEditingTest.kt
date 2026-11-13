@@ -22,7 +22,7 @@ import java.io.File
 class PhotoEditingTest {
     @Test fun photoMetadataRoundTripsAndLegacyDefaultsWork() {
         val base=ImageTransform(50f,40f,2f,30f)
-        val transformed=base.copy(stretchX=2f,stretchY=.7f,warp=PhotoWarp.identity().deform(PhotoEditTool.BULGE,Point(.5f,.5f),Point(.03f,0f),.6f,1f))
+        val transformed=base.copy(stretchX=-2f,stretchY=.7f,filtered=false,warp=PhotoWarp.identity().deform(PhotoEditTool.BULGE,Point(.5f,.5f),Point(.03f,0f),.6f,1f))
         assertEquals(transformed,JSONObject(JSONObject().putPhotoTransform(transformed).toString()).readPhotoTransform(base))
         assertEquals(base,JSONObject().readPhotoTransform(base))
         val p=transformed.documentPoint(.35f,.6f,100,80)
@@ -37,8 +37,8 @@ class PhotoEditingTest {
         val output=File(context.cacheDir,"warped-export.png")
         val bitmap=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         source.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) };bitmap.recycle()
-        val t=ImageTransform(64f,64f,1f,20f,1.4f,.7f,
-            PhotoWarp.identity().deform(PhotoEditTool.BULGE,Point(.5f,.5f),Point(.04f,0f),.6f,1f))
+        val t=ImageTransform(64f,64f,1f,20f,-1.4f,.7f,
+            PhotoWarp.identity().deform(PhotoEditTool.BULGE,Point(.5f,.5f),Point(.04f,0f),.6f,1f), filtered=false)
         val snapshot=DrawingSnapshot(128,128,layerId,listOf(SavedImageSnapshot(layerId,"Photo",true,1f,Uri.fromFile(source),64,64,t)))
         try {
             ProjectPersistence.save(context.contentResolver,library,id,"Warped",snapshot).getOrThrow()
@@ -91,6 +91,34 @@ class PhotoEditingTest {
             surface.redo();assertEquals(edited,image.transform)
             event(MotionEvent.ACTION_DOWN,300f);event(MotionEvent.ACTION_MOVE,330f);event(MotionEvent.ACTION_CANCEL,330f)
             assertEquals(edited,image.transform)
+            surface.photoTransformAction("flipX")
+            assertEquals(-edited.stretchX,image.transform.stretchX,.0001f)
+            surface.photoTransformAction("rotate")
+            assertEquals(edited.rotationDegrees+45f,image.transform.rotationDegrees,.0001f)
+            surface.photoTransformAction("filter");assertFalse(image.transform.filtered)
+            surface.photoTransformAction("fit")
+            val fitted=image.transform.photoBounds(64,64)
+            assertEquals(64f,fitted.centerX(),.001f);assertEquals(64f,fitted.centerY(),.001f)
+            assertTrue(fitted.width()<=128.01f && fitted.height()<=128.01f)
+            surface.photoTransformAction("reset");assertEquals(before,image.transform)
+            surface.undo();assertFalse(image.transform.filtered)
+            assertEquals(-1f,interpolateSignedScale(1f,-1f,.5f),.0001f)
+            surface.photoTransformAction("reset")
+            surface.photoEditTool=PhotoEditTool.WARP
+            surface.transformMeshDivisions=8
+            event(MotionEvent.ACTION_DOWN,300f);event(MotionEvent.ACTION_MOVE,310f);event(MotionEvent.ACTION_UP,310f)
+            assertNotNull(image.transform.warp)
+            surface.undo(); assertEquals(before,image.transform)
+            surface.photoEditTool=PhotoEditTool.DISTORT
+            val view=surface.getChildAt(0) as RasterCanvasView
+            val corner=image.transform.documentPoint(0f,0f,64,64)
+            val screen=floatArrayOf(corner.x,corner.y);view.transformMatrix.mapPoints(screen)
+            fun cornerEvent(action: Int,delta: Float) {
+                MotionEvent.obtain(0,20,action,screen[0]+delta,screen[1]+delta,0).also { surface.dispatchTouchEvent(it);it.recycle() }
+            }
+            cornerEvent(MotionEvent.ACTION_DOWN,0f);cornerEvent(MotionEvent.ACTION_MOVE,20f);cornerEvent(MotionEvent.ACTION_UP,20f)
+            assertNotNull(image.transform.warp)
+            surface.undo();assertEquals(before,image.transform)
             val snap=DrawingSurface::class.java.getDeclaredMethod("snapPhoto",ImageLayerRuntime::class.java,ImageTransform::class.java).apply { isAccessible=true }
             val snapped=snap.invoke(surface,image,ImageTransform(32.5f,32.5f,1f,1f)) as ImageTransform
             assertEquals(32f,snapped.centerX,.001f);assertEquals(32f,snapped.centerY,.001f)

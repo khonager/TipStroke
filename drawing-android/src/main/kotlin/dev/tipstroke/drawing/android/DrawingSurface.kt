@@ -272,15 +272,137 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var pressedStylusButtons = 0
     private var imageTransformMode = false
     var photoEditTool = PhotoEditTool.MOVE
+        set(value) { field = value; updateTransformGrid() }
     var photoSnapping = false
     /** Brush radius as a fraction of image height. */
     var photoWarpRadius = .25f
+    var transformMeshDivisions = 4
+        set(value) { require(value in listOf(2,4,8)); field = value; updateTransformGrid() }
+    var selectionEditTool = PhotoEditTool.MOVE
+        set(value) { field = value; updateTransformGrid() }
+    private var photoSessionOriginal: Pair<LayerId, ImageTransform>? = null
+    private var meshControl: Pair<Int, Int>? = null
+    private var selectionDragPoint: Point? = null
+    private var selectionDragBefore: SelectionTransform? = null
+
+    private fun updateTransformGrid() {
+        val tool = if (transformSelectionOriginal != null) selectionEditTool else photoEditTool
+        rasterView.transformMeshDivisions = if (tool == PhotoEditTool.WARP) transformMeshDivisions else 1
+        rasterView.transformHandles = transformSelectionOriginal != null
+        rasterView.invalidate()
+    }
+    private fun nearestControl(point: Point, divisions: Int, map: (Float, Float) -> Point): Pair<Int, Int>? {
+        val nearest = (0..divisions).flatMap { row -> (0..divisions).map { col -> col to row } }
+            .minBy { (col,row) -> val p=map(col.toFloat()/divisions,row.toFloat()/divisions); hypot(p.x-point.x,p.y-point.y) }
+        val p=map(nearest.first.toFloat()/divisions,nearest.second.toFloat()/divisions)
+        return nearest.takeIf { hypot(p.x-point.x,p.y-point.y)*rasterView.transform.scale < 36f*resources.displayMetrics.density }
+    }
+
+    fun photoTransformAction(action: String) {
+        finishPhotoEdit(); beginPhotoEdit()
+        val image = layerStack.selectedImage() ?: return
+        val t=image.transform
+        image.transform = when(action) {
+            "flipX" -> t.copy(stretchX=-t.stretchX)
+            "flipY" -> t.copy(stretchY=-t.stretchY)
+            "rotate" -> t.copy(rotationDegrees=t.rotationDegrees+45f)
+            "filter" -> t.copy(filtered=!t.filtered)
+            "reset" -> photoSessionOriginal?.takeIf { it.first == image.id }?.second ?: t
+            "fit" -> {
+                val bounds=t.photoBounds(image.source.width,image.source.height)
+                val factor=minOf(canvasWidthPx/bounds.width(),canvasHeightPx/bounds.height())
+                t.copy(scale=t.scale*factor,centerX=canvasWidthPx/2f+(t.centerX-bounds.centerX())*factor,
+                    centerY=canvasHeightPx/2f+(t.centerY-bounds.centerY())*factor)
+            }
+            else -> t
+        }
+        finishPhotoEdit()
+    }
+    fun photoBilinear() = layerStack.selectedImage()?.transform?.filtered ?: true
+
+    fun selectionTransformAction(action: String) {
+        val t=pendingSelectionTransform ?: return
+        val bounds=requireNotNull(t.sourceBounds)
+        val next = when(action) {
+            "reset" -> SelectionTransform(t.pivot, sourceBounds=bounds)
+            "fit" -> {
+                val points=List(17*17) { i -> t.map(Point(bounds.left+(bounds.right-bounds.left)*(i%17)/16f,
+                    bounds.top+(bounds.bottom-bounds.top)*(i/17)/16f)) }
+                val left=points.minOf { it.x }; val right=points.maxOf { it.x }
+                val top=points.minOf { it.y }; val bottom=points.maxOf { it.y }
+                val factor=minOf(canvasWidthPx/(right-left),canvasHeightPx/(bottom-top),8f/abs(t.scaleX),8f/abs(t.scaleY))
+                t.copy(scaleX=t.scaleX*factor,scaleY=t.scaleY*factor,
+                    translation=Point(canvasWidthPx/2f-t.pivot.x+(t.pivot.x+t.translation.x-(left+right)/2f)*factor,
+                        canvasHeightPx/2f-t.pivot.y+(t.pivot.y+t.translation.y-(top+bottom)/2f)*factor))
+            }
+            "flipX" -> t.copy(scaleX=-t.scaleX)
+            "flipY" -> t.copy(scaleY=-t.scaleY)
+            "rotate" -> t.copy(rotationDegrees=t.rotationDegrees+45f)
+            else -> t
+        }
+        showSelectionTransform(next)
+    }
+    private fun showSelectionTransform(transform: SelectionTransform) {
+        pendingSelectionTransform=transform
+        rasterView.selectionMeshTransform=transform
+        rasterView.selectionPreviewMatrix=null
+        updateTransformGrid()
+    }
+    private fun handleSelectionTransform(event: MotionEvent): Boolean {
+        val t=pendingSelectionTransform ?: return true
+        val bounds=requireNotNull(t.sourceBounds)
+        val p=rasterView.screenToDocument(event.x,event.y).let { Point(it.x,it.y) }
+        val divisions=if(selectionEditTool==PhotoEditTool.WARP) transformMeshDivisions else 1
+        when(event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                selectionDragBefore=t; selectionDragPoint=p
+                meshControl=nearestControl(p,divisions) { u,v -> t.map(Point(bounds.left+(bounds.right-bounds.left)*u,bounds.top+(bounds.bottom-bounds.top)*v)) }
+            }
+            MotionEvent.ACTION_MOVE -> selectionDragPoint?.let { previous ->
+                if(event.pointerCount != 1) return true
+                val dx=p.x-previous.x; val dy=p.y-previous.y
+                val radians=Math.toRadians(-t.rotationDegrees.toDouble())
+                val local=Point((dx*cos(radians)-dy*sin(radians)).toFloat()/((bounds.right-bounds.left)*t.scaleX),
+                    (dx*sin(radians)+dy*cos(radians)).toFloat()/((bounds.bottom-bounds.top)*t.scaleY))
+                val control=meshControl
+                val next=when(selectionEditTool) {
+                    PhotoEditTool.MOVE, PhotoEditTool.STRETCH -> if(control==null) t.copy(translation=Point(t.translation.x+dx,t.translation.y+dy)) else {
+                        val x=exp(local.x*(if(control.first==0) -2f else 2f))
+                        val y=exp(local.y*(if(control.second==0) -2f else 2f))
+                        val uniform=if(abs(local.x)>abs(local.y)) x else y
+                        fun scaled(value: Float,factor: Float)= kotlin.math.sign(value)*(abs(value)*factor).coerceIn(.01f,8f)
+                        t.copy(scaleX=scaled(t.scaleX,if(selectionEditTool==PhotoEditTool.MOVE) uniform else x),
+                            scaleY=scaled(t.scaleY,if(selectionEditTool==PhotoEditTool.MOVE) uniform else y))
+                    }
+                    PhotoEditTool.WARP, PhotoEditTool.DISTORT -> if(control==null) t else t.copy(warp=if(selectionEditTool==PhotoEditTool.DISTORT) (t.warp ?: PhotoWarp.identity()).distortCorner(control.first,control.second,local)
+                        else (t.warp ?: PhotoWarp.identity()).moveControl(control.first,control.second,divisions,local))
+                    else -> {
+                        val inverse=t.copy(warp=null).toAndroidMatrix(); val inv=android.graphics.Matrix(); inverse.invert(inv)
+                        val xy=floatArrayOf(previous.x,previous.y); inv.mapPoints(xy)
+                        val center=Point((xy[0]-bounds.left)/(bounds.right-bounds.left),(xy[1]-bounds.top)/(bounds.bottom-bounds.top))
+                        t.copy(warp=(t.warp ?: PhotoWarp.identity()).deform(selectionEditTool,center,local,photoWarpRadius,
+                            abs((bounds.right-bounds.left)*t.scaleX/((bounds.bottom-bounds.top)*t.scaleY))))
+                    }
+                }
+                showSelectionTransform(next); selectionDragPoint=p
+            }
+            MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
+                selectionDragBefore?.let(::showSelectionTransform); selectionDragPoint=null
+            }
+            MotionEvent.ACTION_UP -> { selectionDragPoint=null; selectionDragBefore=null }
+        }
+        return true
+    }
+
     private var photoBefore: Pair<ImageLayerRuntime, ImageTransform>? = null
     private var photoUnsnapped: ImageTransform? = null
     private var photoCenter = Point(.5f,.5f)
 
     private fun beginPhotoEdit() {
         val image = layerStack.selectedImage() ?: return
+        updateTransformGrid()
+        meshControl=nearestControl(Point(singleLastDocument.x,singleLastDocument.y),
+            if(photoEditTool==PhotoEditTool.WARP) transformMeshDivisions else 1) { u,v -> image.transform.documentPoint(u,v,image.source.width,image.source.height) }
         photoBefore = image to image.transform
         photoUnsnapped = image.transform
         photoCenter = image.transform.copy(warp=null).sourcePoint(
@@ -316,22 +438,30 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val localY = (dx*sin(radians)+dy*cos(radians)).toFloat()/(image.source.height*old.scale*old.stretchY)
         val tool = if(navigation) PhotoEditTool.MOVE else photoEditTool
         val next = when(tool) {
-            PhotoEditTool.MOVE -> old.changedBy(dx,dy,scale,angle)
+            PhotoEditTool.MOVE -> if (!navigation && meshControl != null) {
+                val (col,row)=meshControl!!
+                val factor=exp(if(abs(localX)>abs(localY)) localX*(if(col==0) -2f else 2f) else localY*(if(row==0) -2f else 2f))
+                old.changedBy(0f,0f,factor)
+            } else old.changedBy(dx,dy,scale,angle)
             PhotoEditTool.STRETCH -> old.copy(
-                stretchX=(old.stretchX*exp(localX*(if(photoCenter.x<.5f) -2f else 2f))).coerceIn(.02f,50f),
-                stretchY=(old.stretchY*exp(localY*(if(photoCenter.y<.5f) -2f else 2f))).coerceIn(.02f,50f))
+                stretchX=kotlin.math.sign(old.stretchX)*(abs(old.stretchX)*exp(localX*(if(photoCenter.x<.5f) -2f else 2f))).coerceIn(.02f,50f),
+                stretchY=kotlin.math.sign(old.stretchY)*(abs(old.stretchY)*exp(localY*(if(photoCenter.y<.5f) -2f else 2f))).coerceIn(.02f,50f))
+            PhotoEditTool.WARP, PhotoEditTool.DISTORT -> meshControl?.let { (col,row) ->
+                old.copy(warp=if(tool==PhotoEditTool.DISTORT) (old.warp ?: PhotoWarp.identity()).distortCorner(col,row,Point(localX,localY))
+                    else (old.warp ?: PhotoWarp.identity()).moveControl(col,row,transformMeshDivisions,Point(localX,localY)))
+            } ?: old
             else -> {
                 val center = if(tool == PhotoEditTool.PUSH) {
                     old.copy(warp=null).sourcePoint(singleLastDocument.x,singleLastDocument.y,image.source.width,image.source.height)!!
                 } else photoCenter
                 old.copy(warp=(old.warp ?: PhotoWarp.identity()).deform(tool,center,Point(localX,localY),photoWarpRadius,
-                    image.source.width*old.stretchX/(image.source.height*old.stretchY)))
+                    abs(image.source.width*old.stretchX/(image.source.height*old.stretchY))))
             }
         }
         rasterView.photoBrushArea = if(tool in listOf(PhotoEditTool.PUSH,PhotoEditTool.BULGE,PhotoEditTool.PINCH)) {
             val center = if(tool == PhotoEditTool.PUSH) Point(singleLastDocument.x,singleLastDocument.y)
                 else old.copy(warp=null).documentPoint(photoCenter.x,photoCenter.y,image.source.width,image.source.height)
-            center to (photoWarpRadius*image.source.height*old.scale*old.stretchY)
+            center to (photoWarpRadius*image.source.height*old.scale*abs(old.stretchY))
         } else null
         photoUnsnapped = next
         image.transform = if(photoSnapping && tool==PhotoEditTool.MOVE) snapPhoto(image,next) else next
@@ -941,6 +1071,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun setSelectedImageScale(value: Float) { layerStack.setImageScale(value); notifyLayers() }
     fun setImageTransformMode(enabled: Boolean) {
         if (!enabled) finishPhotoEdit()
+        if (enabled && !imageTransformMode) layerStack.selectedImage()?.let { photoSessionOriginal=it.id to it.transform }
         imageTransformMode = enabled && layerStack.selectedImage() != null
         if (imageTransformMode) { selectionMode = false; selectionMoveMode = false; clearMovePreview() }
         rasterView.showImageTransformBounds = imageTransformMode
@@ -977,6 +1108,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionMoveMode = false
         selectionMode = false
         transformSelectionOriginal = selection
+        targets.filterIsInstance<RasterLayerRuntime>().forEach { rasterView.selectionSources[it.id]=it.tiles.duplicate(selection) }
         rasterView.movingLayerIds = ids
         rasterView.movingSelectionPath = selection.toAndroidPath()
         previewSelectionTransform(1f, 1f, 0f, true)
@@ -986,11 +1118,24 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val selection = transformSelectionOriginal ?: return
         val bounds = selection.bounds
         val transform = SelectionTransform(Point((bounds.left + bounds.right) / 2f, (bounds.top + bounds.bottom) / 2f),
-            scaleX, scaleY, rotation)
-        pendingSelectionTransform = transform
+            scaleX, scaleY, rotation, pendingSelectionTransform?.translation ?: Point(0f,0f),
+            pendingSelectionTransform?.warp, bounds)
+        showSelectionTransform(transform)
         selectionTransformFiltered = filtered
         rasterView.selectionPreviewFiltered = filtered
-        rasterView.selectionPreviewMatrix = transform.toAndroidMatrix()
+        rasterView.invalidate()
+    }
+    fun selectionTransformScale(): Pair<Float, Float> = pendingSelectionTransform?.let { abs(it.scaleX) to abs(it.scaleY) } ?: (1f to 1f)
+    fun setSelectionTransformScale(x: Float, y: Float) {
+        pendingSelectionTransform?.let { showSelectionTransform(it.copy(scaleX=kotlin.math.sign(it.scaleX)*x,scaleY=kotlin.math.sign(it.scaleY)*y)) }
+    }
+    fun setSelectionTransformRotation(degrees: Float) {
+        pendingSelectionTransform?.let { showSelectionTransform(it.copy(rotationDegrees=degrees)) }
+    }
+    fun setSelectionTransformFilter(filtered: Boolean) {
+        selectionTransformFiltered=filtered
+        rasterView.selectionPreviewFiltered=filtered
+        rasterView.invalidate()
     }
     fun cancelSelectionTransform() {
         transformSelectionOriginal = null
@@ -1705,9 +1850,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (!isEnabled || importingClip || pendingAnimationFrame != null || transformSelectionOriginal != null) return true
+        if (!isEnabled || importingClip || pendingAnimationFrame != null) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !mediaSeeking && mediaCelLoading == null &&
-            !selectionMode && !selectionMoveMode && !isTransformingImage() && !settings.erasing && !settings.smudging &&
+            !selectionMode && !selectionMoveMode && transformSelectionOriginal == null && !isTransformingImage() && !settings.erasing && !settings.smudging &&
             event.pointerCount == 1 && isDrawingPointer(event, event.actionIndex) && animation?.mediaDrawingActive == false) {
             stopAnimationPlayback()
             val result = runCatching { animation?.ensureMediaDrawingAtCursor() }
@@ -1732,6 +1877,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val actionIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         if (toolSmudgePointer != null) return handleSmudgeTool(event)
         if (handleMousePan(event, actionIndex)) return true
+        if (transformSelectionOriginal != null) return handleSelectionTransform(event)
         if (selectionMoveMode) return handleSelectionMove(event)
         if (selectionMode) return handleSelection(event)
         if (isTransformingImage()) return handleTouchGesture(event)
@@ -2334,6 +2480,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun clearMovePreview() {
         selectionMoveStart = null
+        rasterView.selectionSources.values.forEach { it.discard() }
+        rasterView.selectionSources.clear()
+        rasterView.selectionMeshTransform=null
+        rasterView.transformHandles=false
         rasterView.movingLayerIds = emptySet()
         rasterView.movingSelectionPath = null
         rasterView.selectionPreviewOffset = Point(0f, 0f)
