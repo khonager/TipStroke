@@ -106,8 +106,15 @@ class PhotoEditingTest {
             surface.photoTransformAction("reset")
             surface.photoEditTool=PhotoEditTool.WARP
             surface.transformMeshDivisions=8
-            event(MotionEvent.ACTION_DOWN,300f);event(MotionEvent.ACTION_MOVE,310f);event(MotionEvent.ACTION_UP,310f)
-            assertNotNull(image.transform.warp)
+            // Cross the configured drag threshold instead of relying on a fixed pixel distance.
+            val touchSlop=android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+            val dragEnd=300f+touchSlop+1f
+            event(MotionEvent.ACTION_DOWN,300f)
+            event(MotionEvent.ACTION_MOVE,300f+touchSlop/2f)
+            assertNull(image.transform.warp)
+            event(MotionEvent.ACTION_MOVE,dragEnd);event(MotionEvent.ACTION_UP,dragEnd)
+            val warped= requireNotNull(image.transform.warp)
+            assertTrue(warped.map(.5f,.5f).x > .5f)
             surface.undo(); assertEquals(before,image.transform)
             surface.photoEditTool=PhotoEditTool.DISTORT
             val view=surface.getChildAt(0) as RasterCanvasView
