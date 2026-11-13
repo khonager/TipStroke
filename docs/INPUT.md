@@ -356,3 +356,5 @@ The media timeline playback row includes previous/next drawing steps, add drawin
 In portrait tablet layouts the timeline sits above the measured height of the bottom tip, color, favorite and selection controls. Expanding the timeline cannot cover the color shelf. On phones, open adjustment/selection panels reserve the measured timeline height above the bottom toolbar.
 
 Export progress and completion share one compact, rounded top notice. Successful exports clear after 1.8 seconds; other notices allow six seconds to read, respecting Android accessibility timeout preferences. Tap a completed notice to dismiss it.
+
+Colors embedded in the top toolbar share its surface, without a second pill or border. The standalone portrait color shelf retains its own background.

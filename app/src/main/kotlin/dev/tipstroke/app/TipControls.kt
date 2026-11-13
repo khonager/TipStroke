@@ -121,6 +121,7 @@ internal fun ColorSwitcher(
     onColor: (RgbaColor) -> Unit,
     onOpenColorPicker: () -> Unit,
     compact: Boolean = false,
+    embedded: Boolean = false,
 ) {
     val defaults = listOf(
         RgbaColor(.05f, .05f, .06f), RgbaColor(.93f, .42f, .35f),
@@ -131,8 +132,9 @@ internal fun ColorSwitcher(
     val choices = (frequentColors + if (shelf?.recent == true) emptyList() else defaults).distinctBy(::colorKey).filter { colorKey(it) != colorKey(color) }.take(slots)
     Row(
         Modifier.width((if (compact) 70 else 86).dp + ((slots + 1) / 2 * if (compact) 20 else 26).dp).height(if (compact) 46.dp else 58.dp)
-            .background(Color(0xD9202125), RoundedCornerShape(if (compact) 16.dp else 20.dp))
-            .border(1.dp, Color(0xB345474D), RoundedCornerShape(if (compact) 16.dp else 20.dp))
+            .then(if (embedded) Modifier else Modifier
+                .background(Color(0xD9202125), RoundedCornerShape(if (compact) 16.dp else 20.dp))
+                .border(1.dp, Color(0xB345474D), RoundedCornerShape(if (compact) 16.dp else 20.dp)))
             .padding(if (compact) 4.dp else 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (compact) 5.dp else 6.dp),

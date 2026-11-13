@@ -1299,7 +1299,7 @@ private fun EditorChrome(
         ChromeGroup(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
             IconButton(onClick = onLayers, modifier = Modifier.semantics { contentDescription = "Layers" }) { LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White) }
             if (showTopColorSwitcher) {
-                ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker, compact = true)
+                ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker, compact = true, embedded = true)
             }
             CompositionLocalProvider(LocalContentColor provides Color.White) { TipAction("Export", Icons.Outlined.FileDownload, onClick = onExport) }
             CompositionLocalProvider(LocalContentColor provides Color.White) { TipAction("Resize", Icons.Outlined.Crop, onClick = onResize) }
