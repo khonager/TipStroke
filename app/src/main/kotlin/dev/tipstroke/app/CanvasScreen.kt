@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.draw.clip
@@ -447,7 +448,15 @@ fun CanvasScreen(
     BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { canvasWindowOrigin = it.positionInWindow() }
         .background(MaterialTheme.colorScheme.background)) {
         val density = LocalDensity.current
+        var tipControlsHeight by remember { mutableIntStateOf(0) }
+        var favoritesHeight by remember { mutableIntStateOf(0) }
+        var selectionControlsHeight by remember { mutableIntStateOf(0) }
+        var timelineHeight by remember { mutableIntStateOf(0) }
         val portrait = maxHeight > maxWidth
+        val bottomControlsHeight = with(density) {
+            maxOf(favoritesHeight, if (selectToolActive) selectionControlsHeight else tipControlsHeight).toDp()
+        }
+        val timelineClearance = if (animationOpen && animationState != null) with(density) { timelineHeight.toDp() } else 0.dp
         val viewportWidth = maxWidth
         val viewportHeight = maxHeight
         val compactPhone = minOf(maxWidth, maxHeight) < 600.dp
@@ -629,6 +638,7 @@ fun CanvasScreen(
                 onStudio = { brushStudioOpen = true }, onTune = { brushStudioOpen = true },
                 tuneDescription = "Adjust tip", horizontal = portrait,
                 modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
+                    .onSizeChanged { favoritesHeight = it.height }
                     .then(if (portrait) Modifier.padding(12.dp) else Modifier.padding(start = 20.dp))
                     .then(if (portrait) Modifier.width((viewportWidth - 430.dp).coerceIn(170.dp, 440.dp))
                         else Modifier.heightIn(max = (viewportHeight - 110.dp).coerceAtLeast(150.dp))),
@@ -672,6 +682,7 @@ fun CanvasScreen(
                 },
                 showColorSwitcher = portrait,
                 modifier = Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
+                    .onSizeChanged { tipControlsHeight = it.height }
                     .then(if (portrait) Modifier.padding(12.dp) else Modifier.padding(end = 20.dp)),
             )
         } else if (!resizeOpen && phoneChromeVisible) {
@@ -732,7 +743,7 @@ fun CanvasScreen(
                 showColorSwitcher = false,
                 horizontalWidthFraction = 1f,
                 modifier = Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
-                    .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
+                    .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp + timelineClearance)
                     .widthIn(max = 390.dp).fillMaxWidth(),
             )
         }
@@ -764,10 +775,11 @@ fun CanvasScreen(
             },
             onClear = { movingSelection = false; selectionMode = true; surface?.clearSelection() },
             modifier = if (compactPhone) Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
-                .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp)
+                .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp + timelineClearance)
                 .widthIn(max = 390.dp).fillMaxWidth()
             else Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
-                .safeDrawingPadding().padding(if (portrait) 12.dp else 20.dp).width(if (portrait) 360.dp else 208.dp),
+                .safeDrawingPadding().onSizeChanged { selectionControlsHeight = it.height }
+                .padding(if (portrait) 12.dp else 20.dp).width(if (portrait) 360.dp else 208.dp),
         )
 
         if (imageTransforming && !layersOpen && !resizeOpen) Surface(
@@ -904,7 +916,8 @@ fun CanvasScreen(
                 onCancelRecording = { surface?.cancelAnimationRecording() },
                 onClose = { animationOpen = false },
                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                    .padding(bottom = if (compactPhone && !portrait) 4.dp else if (compactPhone) 75.dp else if (portrait) 95.dp else 12.dp),
+                    .padding(bottom = if (compactPhone && !portrait) 4.dp else if (compactPhone) 75.dp else if (portrait) bottomControlsHeight + 8.dp else 12.dp)
+                    .onSizeChanged { timelineHeight = it.height },
             )
         }
 
