@@ -241,7 +241,7 @@ internal fun BrushLibraryDialog(
                     )
                 }) {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(280.dp), state = gridState, modifier = Modifier.fillMaxSize(),
+                    columns = GridCells.Adaptive(320.dp), state = gridState, modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -279,7 +279,6 @@ internal fun BrushLibraryDialog(
                         val featured = item.preset.id in BrushPreset.libraryBuiltIns.map { it.id }
                         val favorite = item.preset.id.value in favoriteIds
                         val usable = item.preset.ink == null || android.os.Build.VERSION.SDK_INT >= 34
-                        var moreOpen by remember { mutableStateOf(false) }
                         OutlinedCard(Modifier.fillMaxWidth().animateItem()
                             .graphicsLayer { alpha = if (draggedId == item.preset.id.value) .3f else 1f }
                             .drawWithContent {
@@ -304,27 +303,9 @@ internal fun BrushLibraryDialog(
                                 TipStrokeThumbnail(item.preset, Modifier.fillMaxWidth().height(80.dp).background(Color(0xFF303238))
                                     .clickable(enabled = !busy && usable, onClickLabel = "Use tip") { onUse(item.preset); onDismiss() }
                                     .semantics { contentDescription = "Select ${item.preset.displayName}" })
-                                Row {
-                                    TipAction("Use", Icons.Outlined.Check, enabled = !busy && usable, onClick = { onUse(item.preset); onDismiss() })
+                                FlowRow {
                                     TipAction(if (featured) "Customize" else "Edit", Icons.Outlined.Edit, enabled = ready && !busy, onClick = { editing = if (featured) BrushLibrary.copyOf(item) else item })
-                                    Spacer(Modifier.weight(1f))
-                                    TipAction("More actions for ${item.preset.displayName}", Icons.Outlined.MoreHoriz, onClick = { moreOpen = !moreOpen })
-                                }
-                                if (moreOpen) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(enabled = !busy, onClick = { categorizing = item }) { Text("Categories") }
-                                    selectedCategory?.let { category ->
-                                        val index = category.brushIds.indexOf(item.preset.id.value)
-                                        fun move(to: Int) = updateCategories(categories.map { if (it.id == category.id) it.copy(brushIds = it.brushIds.toMutableList().apply { add(to, removeAt(index)) }) else it })
-                                        Row {
-                                            TextButton(enabled = !busy && index > 0, onClick = { move(index - 1) }) { Text("Earlier") }
-                                            TextButton(enabled = !busy && index >= 0 && index < category.brushIds.lastIndex, onClick = { move(index + 1) }) { Text("Later") }
-                                        }
-                                    }
-                                    if (item.description.isNotBlank()) Text(item.description, style = MaterialTheme.typography.bodySmall)
-                                    if (favorite && section == "Favorites") TipAction("Move to front", Icons.Outlined.VerticalAlignTop, onClick = {
-                                        onFavorites(listOf(item.preset.id.value) + favoriteIds.filterNot { it == item.preset.id.value })
-                                    })
-                                    Row {
+                                    TipAction("Categories", Icons.Outlined.Folder, enabled = !busy, onClick = { categorizing = item })
                                         TipAction("Export", Icons.Outlined.FileDownload, enabled = !busy, onClick = {
                                             pendingExport = item
                                             exporter.launch("${item.preset.displayName.replace(Regex("[^a-zA-Z0-9 _-]"), "_")}.tipbrush")
@@ -354,8 +335,7 @@ internal fun BrushLibraryDialog(
                                                 }.onFailure { message = "Could not prepare tip for sharing." }
                                             }
                                         })
-                                    }
-                                    if (!featured) Row {
+                                    if (!featured) {
                                         TipAction("Duplicate", Icons.Outlined.ContentCopy, enabled = ready && !busy, onClick = {
                                             editing = BrushLibrary.copyOf(item).let { it.copy(preset = it.preset.copy(displayName = "${it.preset.displayName} copy".take(60))) }
                                         })

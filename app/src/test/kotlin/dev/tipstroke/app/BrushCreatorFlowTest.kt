@@ -68,10 +68,10 @@ class BrushCreatorFlowTest {
         }
         compose.waitUntil(30_000) { compose.onAllNodes(hasContentDescription("Create tip") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Select Pencil").assertIsDisplayed()
-        compose.onAllNodesWithContentDescription("Use")[0].assertIsDisplayed()
+        compose.onAllNodesWithContentDescription("Customize")[0].assertIsDisplayed()
         val preview = compose.onNodeWithContentDescription("Select Pencil").fetchSemanticsNode().boundsInRoot
         assertTrue("Preview must retain its full height", preview.height >= 80f)
-        val use = compose.onAllNodesWithContentDescription("Use")[0].fetchSemanticsNode().boundsInRoot
+        val use = compose.onAllNodesWithContentDescription("Customize")[0].fetchSemanticsNode().boundsInRoot
         assertTrue("Action must retain its full touch target", use.height >= 48f)
         compose.runOnIdle {
             val root = org.robolectric.shadows.ShadowDialog.getLatestDialog().window!!.decorView
@@ -253,7 +253,7 @@ class BrushCreatorFlowTest {
         compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithText("Soft graphite").assertIsDisplayed()
         assertEquals("Soft graphite", library.load().single().preset.displayName)
-        compose.onNodeWithContentDescription("More actions for Soft graphite").performClick()
+        compose.onNodeWithContentDescription("More actions for Soft graphite").assertDoesNotExist()
         compose.onNodeWithContentDescription("Delete").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Cancel").performClick()
         assertEquals(1, library.load().size)
