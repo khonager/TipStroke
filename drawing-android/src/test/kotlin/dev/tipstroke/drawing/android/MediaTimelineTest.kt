@@ -17,6 +17,44 @@ import java.io.File
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MediaTimelineTest {
+    @Test fun loadingAndEvictingPaintedCelsPreservesCoverageUntilActualEdit() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 256, 256) {}
+        val runtime = AnimationRuntime(stack, false)
+        runtime.replaceMedia(MediaSource(File("test.mp4"), "video", 256, 256, 2_000_000))
+        val store = stack.selectedRaster()!!.tiles
+        val bytes = java.io.ByteArrayOutputStream()
+        Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).also {
+            it.eraseColor(Color.RED)
+            it.compress(Bitmap.CompressFormat.PNG, 100, bytes)
+            it.recycle()
+        }
+        val encoded = mapOf(TileCoordinate(0, 0) to EncodedTile.inMemory(bytes.toByteArray()))
+        store.deferTiles(encoded)
+        var scanned = false
+        runtime.refreshCoverage { scanned = true }
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10)
+        while (!scanned && System.nanoTime() < deadline) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            Thread.sleep(5)
+        }
+        assertTrue(scanned)
+        val expected = setOf(runtime.currentFrame.id)
+        assertEquals(expected, runtime.state(true).paintedFrameIds)
+        val revision = store.revision
+        repeat(3) {
+            store.installDecoded(encoded, TileStore.decodeTiles(encoded))
+            assertEquals(revision, store.revision)
+            assertEquals(expected, runtime.state(true).paintedFrameIds)
+            assertFalse(runtime.state(true).coveragePending)
+            store.unloadIfClean()
+            assertEquals(expected, runtime.state(false).paintedFrameIds)
+        }
+        store.installDecoded(encoded, TileStore.decodeTiles(encoded))
+        store.replaceTiles(emptyMap())
+        assertTrue(runtime.state(false).coveragePending)
+        assertTrue(runtime.state(false).paintedFrameIds.isEmpty())
+    }
+
     @Test fun scrubbingThousandsOfSourceFramesKeepsOnlyPaintedCels() {
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 64, 48) {}
         val frames = List(10_000) { AnimationFrame(FrameId("frame-$it"), sourceTimeUs = it * 1_000_000L / 60) }

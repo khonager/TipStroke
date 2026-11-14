@@ -65,7 +65,10 @@ internal fun MediaTimelinePanel(
     fun seconds(timeUs: Long) = String.format(Locale.ROOT, "%.2fs", timeUs / 1_000_000.0)
     Surface(modifier, color = Color(0xFF202125)) {
         Column(Modifier.padding(horizontal = 12.dp)) {
-            if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            // Keep the scrub target stationary while asynchronous seeks/loaders finish.
+            Box(Modifier.fillMaxWidth().height(4.dp)) {
+                if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
             if (drawingTools && state.videoEdit != null) VideoEditControls(state, onImportMedia, onEnableVideoEdit, onVideoEdit, onSeek, onUndoVideoEdit, showEntryActions = false)
             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                 TipAction(if (state.playing) "Pause video" else "Play video",

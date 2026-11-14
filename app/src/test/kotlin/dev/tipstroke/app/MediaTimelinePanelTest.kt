@@ -30,6 +30,19 @@ class MediaTimelinePanelTest {
             TipStrokeTheme { content() }
         }
     }
+    @Test fun loadingDoesNotMoveScrubberOrCoverageTrack() {
+        var state by mutableStateOf(AnimationUiState(listOf(AnimationFrame(FrameId("paint"))),
+            0, 12, PlaybackMode.ONCE, false, 0, 0, 0f, emptySet(),
+            hasMedia = true, mediaDurationUs = 2_000_000))
+        content { MediaTimelinePanel(state, {}, {}, {}, {}, {}, {}, {}, {}) }
+        val scrubber = compose.onNodeWithContentDescription("Scrub video")
+        val before = scrubber.fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { state = state.copy(loading = true) }
+        assertEquals(before, scrubber.fetchSemanticsNode().boundsInRoot)
+        compose.runOnIdle { state = state.copy(loading = false, mediaPositionUs = 500_000) }
+        assertEquals(before, scrubber.fetchSemanticsNode().boundsInRoot)
+    }
+
     @Test fun nextUndrawnWaitsForCoverageAndSeeksPastPaintedHold() {
         val frame = AnimationFrame(FrameId("paint"), sourceTimeUs = 0, durationUs = 500_000)
         var state by mutableStateOf(AnimationUiState(listOf(frame), 0, 12, PlaybackMode.ONCE,

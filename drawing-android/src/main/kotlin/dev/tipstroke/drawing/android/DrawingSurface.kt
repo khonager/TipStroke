@@ -80,6 +80,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var resumeAfterMediaSeek = false
     private var mediaSeeking = false
     private var mediaCelLoading: FrameId? = null
+    private var requestedVideoTimeUs: Long? = null
     private var lastMediaUiAt = 0L
     private var mediaPlaybackOffsetUs = 0L
     private var animationPlaying = false
@@ -255,7 +256,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     var historyListener: ((Boolean, Boolean) -> Unit)? = null
     var layersListener: ((List<LayerSummary>, LayerId, Set<LayerId>, Map<LayerId, android.graphics.Bitmap>, Int, Float) -> Unit)? = null
     var animationListener: ((AnimationUiState?) -> Unit)? = null
-        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = importingClip || pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null)) }
+        set(value) { field = value; value?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(mediaPositionUs = requestedVideoTimeUs ?: animation?.mediaPositionUs ?: 0L, loading = importingClip || pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null)) }
     var colorPickedListener: ((RgbaColor) -> Unit)? = null
     var visiblePaletteListener: ((List<RgbaColor>) -> Unit)? = null
     var drawnColorListener: ((RgbaColor) -> Unit)? = null
@@ -1307,18 +1308,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun configureMediaPlayback() {
         videoView?.let { it.release(); removeView(it) }; videoView = null
         rasterView.hardwareVideo = false
-        mediaSeeking = false; mediaCelLoading = null; resumeAfterMediaSeek = false
+        mediaSeeking = false; requestedVideoTimeUs = null; mediaCelLoading = null; resumeAfterMediaSeek = false
         val active = animation ?: return
         val source = active.media ?: return
         if (source.kind == "video" && isAttachedToWindow) {
             videoView = MediaVideoView(context, source, { time, playing, seeking ->
                 if (animation === active) {
                     mediaSeeking = seeking
-                    if (!seeking) { presentMediaTime(time, playing); resumeMediaIfRequested() }
+                    if (!seeking) { requestedVideoTimeUs = null; presentMediaTime(time, playing); resumeMediaIfRequested() }
                     else publishAnimation()
                 }
             }, { error ->
-                mediaSeeking = false; stopAnimationPlayback(); animationErrorListener?.invoke(error); publishAnimation()
+                mediaSeeking = false; requestedVideoTimeUs = null; stopAnimationPlayback(); animationErrorListener?.invoke(error); publishAnimation()
             }).also {
                 addView(it, 0, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
                 it.updateTransform(rasterView.transformMatrix, canvasWidthPx, canvasHeightPx)
@@ -1337,10 +1338,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         stopAnimationPlayback(); cancelFill(); clearSelection()
         val time = timeUs.coerceIn(0, source.durationUs - 1)
         mediaSeeking = true
-        presentMediaTime(time, false)
         val video = videoView
-        if (video != null) video.seek(time)
-        else active.mediaPreview?.prepare(time) { result ->
+        if (video != null) {
+            // Keep the current overlay until the player acknowledges the latest seek.
+            requestedVideoTimeUs = time
+            video.seek(time)
+            return
+        }
+        presentMediaTime(time, false)
+        active.mediaPreview?.prepare(time) { result ->
             if (animation === active && active.mediaPositionUs == time) {
                 mediaSeeking = false
                 result.onFailure { animationErrorListener?.invoke(it.message ?: "Cannot seek media") }
@@ -1685,7 +1691,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun publishAnimationUi() {
         val coverageAnimation = animation
         if (!animationPlaying) coverageAnimation?.refreshCoverage { if (animation === coverageAnimation) publishAnimationUi() }
-        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(loading = importingClip || pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null))
+        animationListener?.invoke(animation?.state(animationPlaying, recordingKind(), thumbnailRevision)?.copy(mediaPositionUs = requestedVideoTimeUs ?: animation?.mediaPositionUs ?: 0L, loading = importingClip || pendingAnimationFrame != null || mediaSeeking || mediaCelLoading != null, hasMedia = animation?.media != null))
     }
     fun publishDiagnostics() {
         updateAnimationStoragePins()
@@ -1701,7 +1707,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun configureBlank(widthPx: Int, heightPx: Int) {
         stopAnimationPlayback(); animation?.mediaPreview?.clear(); cancelColorPick()
         videoView?.let { it.release(); removeView(it) }; videoView = null
-        rasterView.hardwareVideo = false; mediaSeeking = false; mediaCelLoading = null
+        rasterView.hardwareVideo = false; mediaSeeking = false; requestedVideoTimeUs = null; mediaCelLoading = null
         cancelFill()
         require(widthPx in 16..8192 && heightPx in 16..8192)
         opacityAdjustmentInProgress = false

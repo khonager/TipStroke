@@ -32,7 +32,10 @@ class TileStore(
     }
     internal fun installDecoded(encoded: Map<TileCoordinate, EncodedTile>, decoded: Map<TileCoordinate, Bitmap>) {
         if (encodedBacking !== encoded || isResident) { decoded.values.forEach(Bitmap::recycle); return }
+        // Decoding changes residency, not artwork. Preserve content-cache revisions.
+        val contentRevision = revision
         replaceTiles(decoded)
+        revision = contentRevision
         encodedBacking = encoded
         isResident = true
     }

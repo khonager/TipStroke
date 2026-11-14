@@ -370,3 +370,9 @@ an explicit Nearest neighbor/Bilinear menu. Warp reveals the existing mesh-size
 choices. Image Snapping opens settings with an enable switch, angle spacing,
 and strength. Check finishes/applies; the selection's close icon cancels. Exact
 size and arbitrary selection rotation are expandable so the canvas stays visible.
+
+Media timeline playback keeps drawing coverage cached across raster cel decoding and
+eviction: only artwork edits change the content revision. Hardware-video scrubbing
+keeps the requested cursor position in the controls while retaining the current
+raster overlay until the latest video seek completes. Loading feedback reserves a
+fixed-height slot so repeated seeks cannot move the scrubber under the finger.
