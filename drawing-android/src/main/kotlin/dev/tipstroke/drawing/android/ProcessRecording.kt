@@ -129,7 +129,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
         val json = JSONObject().put("background", stack.backgroundColor).put("opacity", stack.backgroundOpacity)
         val layers = org.json.JSONArray()
         stack.layers.forEach { layer ->
-            val item = JSONObject().put("id", layer.id.value).put("visible", layer.visible && layer.activeAtFrame).put("opacity", layer.opacity)
+            val item = JSONObject().put("id", layer.id.value).put("visible", layer.visible && layer.activeAtFrame).put("opacity", layer.opacity).put("blendMode", layer.blendMode.name)
             currentStores[layer.id]?.let { item.put("store", it) }
             layer.clipSourceId?.let { item.put("clipSourceId", it.value) }
             if (layer is ImageLayerRuntime) {
@@ -358,7 +358,7 @@ class ProcessReplay internal constructor(
             val id = layer.getString("id")
             if (id in ancestors || (!coverage && !layer.getBoolean("visible"))) return
             val source = ordered.firstOrNull { it.getString("id") == layer.optString("clipSourceId") }
-            drawWithLayerClip(canvas, source?.let { { drawLayer(it, true, ancestors + id) } }) {
+            drawWithLayerClip(canvas, source?.let { { drawLayer(it, true, ancestors + id) } }, if (coverage) LayerBlendMode.NORMAL else LayerBlendMode.fromStorage(layer.optString("blendMode"))) {
                 val paint=Paint().apply { alpha=if (coverage) 255 else (layer.getDouble("opacity")*255).roundToInt() }
                 if (layer.optBoolean("image")) {
                     val encoded = images[id] ?: return@drawWithLayerClip // metadata precedes the initial image asset

@@ -64,6 +64,7 @@ internal fun LayersPanel(
     onSelect: (LayerId) -> Unit,
     onToggleSelection: (LayerId) -> Unit,
     onToggleVisibility: (LayerId) -> Unit,
+    onBlendMode: (dev.tipstroke.core.model.LayerBlendMode) -> Unit = {},
     onOpacity: (Float) -> Unit,
     onOpacityFinished: () -> Unit,
     onRename: (String) -> Unit,
@@ -281,6 +282,7 @@ internal fun LayersPanel(
                                     layer = layer,
                                     imageTransforming = imageTransforming,
                                     onRename = { renameLayer = layer; renameText = layer.name },
+                                    onBlendMode = onBlendMode,
                                     onOpacity = onOpacity,
                                     onOpacityFinished = onOpacityFinished,
                                     onImageScale = onImageScale,
@@ -432,6 +434,7 @@ private fun LayerControls(
     layer: LayerSummary,
     imageTransforming: Boolean,
     onRename: () -> Unit,
+    onBlendMode: (dev.tipstroke.core.model.LayerBlendMode) -> Unit,
     onOpacity: (Float) -> Unit,
     onOpacityFinished: () -> Unit,
     onImageScale: (Float) -> Unit,
@@ -445,6 +448,16 @@ private fun LayerControls(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(layer.name, color = Color(0xFFE7E7E5), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             LayerAction("Rename layer", Icons.Outlined.Edit, onClick = onRename)
+        }
+        var blendMenu by remember(layer.id) { mutableStateOf(false) }
+        Box {
+            TextButton(onClick = { blendMenu = true }) { Text("Blend · ${layer.blendMode.label}") }
+            DropdownMenu(expanded = blendMenu, onDismissRequest = { blendMenu = false }) {
+                dev.tipstroke.core.model.LayerBlendMode.entries.forEach { mode ->
+                    DropdownMenuItem(text = { Text("${if (mode == layer.blendMode) "✓ " else ""}${mode.label}") },
+                        onClick = { onOpacityFinished(); onBlendMode(mode); blendMenu = false })
+                }
+            }
         }
         ValueHeader("Layer opacity", "${(layer.opacity * 100).roundToInt()}%")
         Slider(layer.opacity, onOpacity, onValueChangeFinished = onOpacityFinished,

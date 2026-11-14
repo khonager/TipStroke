@@ -65,6 +65,7 @@ internal enum class ColorPickerMode(val label: String) {
     HSV_WHEEL("Wheel"),
     HSV_SLIDERS("Sliders"),
     VALUES("Values"),
+    HARMONY("Harmony"),
 }
 
 @Composable
@@ -157,6 +158,10 @@ internal fun ColorPickerPanel(
                         saturation = newSaturation
                         value = newValue
                     },
+                )
+                ColorPickerMode.HARMONY -> HarmonyPicker(
+                    hue, saturation, value, compact,
+                    onColor = ::choose,
                 )
                 ColorPickerMode.VALUES -> ValuesPicker(
                     hue, saturation, value,
@@ -744,3 +749,42 @@ private fun hsvColor(hue: Float, saturation: Float, value: Float): RgbaColor {
 }
 
 private fun RgbaColor.toCompose() = Color(red, green, blue, alpha)
+
+@Composable
+private fun HarmonyPicker(hue: Float, saturation: Float, value: Float, compact: Boolean, onColor: (RgbaColor) -> Unit) {
+    var schemeName by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(dev.tipstroke.core.model.ColorHarmony.COMPLEMENTARY.name) }
+    val scheme = dev.tipstroke.core.model.ColorHarmony.valueOf(schemeName)
+    var menu by remember { mutableStateOf(false) }
+    // Keep the anchor while selecting a suggestion; tapping one must not rotate the scheme.
+    var anchorHue by remember { mutableFloatStateOf(hue) }
+    var anchorSaturation by remember { mutableFloatStateOf(saturation) }
+    var anchorValue by remember { mutableFloatStateOf(value) }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box {
+            androidx.compose.material3.TextButton(onClick = { menu = true }) { Text(scheme.label) }
+            androidx.compose.material3.DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                dev.tipstroke.core.model.ColorHarmony.entries.forEach { option ->
+                    androidx.compose.material3.DropdownMenuItem(text = { Text(option.label) }, onClick = {
+                        schemeName = option.name; menu = false
+                    })
+                }
+            }
+        }
+        DiscPicker(anchorHue, anchorSaturation, anchorValue, if (compact) 190.dp else 242.dp,
+            onChange = { h, s, v ->
+                anchorHue = h; anchorSaturation = s; anchorValue = v
+                onColor(hsvColor(h, s, v))
+            })
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            scheme.hues(anchorHue).forEachIndexed { index, h ->
+                val color = hsvColor(h, anchorSaturation, anchorValue)
+                Box(Modifier.clickable { onColor(color) }) {
+                    ColorSwatch(color, 40.dp, "${scheme.label} color ${index + 1}: ${colorToHex(color)}")
+                }
+            }
+        }
+        Text("Tap a suggested color to paint or save it below", color = Color(0xFFB8B9BE), fontSize = 12.sp,
+            modifier = Modifier.padding(top = 10.dp))
+    }
+}

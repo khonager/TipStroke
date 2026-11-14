@@ -320,6 +320,7 @@ internal sealed interface SavedLayerSnapshot {
     val opacity: Float
     val groupId: String?
     val clipSourceId: LayerId?
+    val blendMode: LayerBlendMode
 }
 
 internal data class SavedRasterSnapshot(
@@ -331,6 +332,7 @@ internal data class SavedRasterSnapshot(
     val colorUsage: Map<Int, Long> = emptyMap(),
     override val groupId: String? = null,
     override val clipSourceId: LayerId? = null,
+    override val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
 ) : SavedLayerSnapshot
 
 internal data class SavedImageSnapshot(
@@ -345,6 +347,7 @@ internal data class SavedImageSnapshot(
     val maskTiles: Map<TileCoordinate, Bitmap> = emptyMap(),
     override val groupId: String? = null,
     override val clipSourceId: LayerId? = null,
+    override val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
 ) : SavedLayerSnapshot
 
 internal data class DrawingSnapshot(
@@ -403,6 +406,7 @@ internal sealed interface LoadedLayer {
     val opacity: Float
     val groupId: String?
     val clipSourceId: LayerId?
+    val blendMode: LayerBlendMode
 }
 
 internal data class LoadedRaster(
@@ -410,6 +414,7 @@ internal data class LoadedRaster(
     val tiles: Map<TileCoordinate, Bitmap>, val colorUsage: Map<Int, Long> = emptyMap(),
     override val groupId: String? = null,
     override val clipSourceId: LayerId? = null,
+    override val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
 ) : LoadedLayer
 
 internal data class LoadedImage(
@@ -418,10 +423,11 @@ internal data class LoadedImage(
     val maskTiles: Map<TileCoordinate, Bitmap> = emptyMap(),
     override val groupId: String? = null,
     override val clipSourceId: LayerId? = null,
+    override val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    internal const val SCHEMA_VERSION = 10
+    internal const val SCHEMA_VERSION = 11
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -436,7 +442,7 @@ internal object ProjectPersistence {
             snapshot.layers.forEach { layer ->
                 val json = JSONObject()
                     .put("id", layer.id.value).put("name", layer.name)
-                    .put("visible", layer.visible).put("opacity", layer.opacity)
+                    .put("visible", layer.visible).put("opacity", layer.opacity).put("blendMode", layer.blendMode.name)
                 layer.groupId?.let { json.put("groupId", it) }
                 layer.clipSourceId?.let { json.put("clipSourceId", it.value) }
                 when (layer) {
@@ -582,6 +588,7 @@ internal object ProjectPersistence {
                 val name = layer.getString("name")
                 val visible = layer.optBoolean("visible", true)
                 val opacity = layer.optDouble("opacity", 1.0).toFloat()
+                val blendMode = LayerBlendMode.fromStorage(layer.optString("blendMode"))
                 val groupId = layer.optString("groupId").takeIf { it.isNotBlank() }
                 val clipSourceId = layer.optString("clipSourceId").takeIf { it.isNotBlank() }?.let(::LayerId)
                 if (layer.getString("kind") == "raster") {
@@ -604,7 +611,7 @@ internal object ProjectPersistence {
                             }
                         }
                     } else inferColorUsage(tiles.values)
-                    add(LoadedRaster(id, name, visible, opacity, tiles, usage, groupId, clipSourceId))
+                    add(LoadedRaster(id, name, visible, opacity, tiles, usage, groupId, clipSourceId, blendMode))
                 } else {
                     val originalWidth = layer.getInt("originalWidthPx")
                     val originalHeight = layer.getInt("originalHeightPx")
@@ -616,7 +623,7 @@ internal object ProjectPersistence {
                             layer.getDouble("centerX").toFloat(), layer.getDouble("centerY").toFloat(),
                             layer.getDouble("scale").toFloat(), layer.optDouble("rotationDegrees", 0.0).toFloat(),
                         )),
-                        originalWidth, originalHeight, maskTiles, groupId, clipSourceId,
+                        originalWidth, originalHeight, maskTiles, groupId, clipSourceId, blendMode,
                     ))
                 }
             }
@@ -784,7 +791,7 @@ internal object ProjectPersistence {
             if (layer.id in ancestors) return
             if (!coverage && (!layer.visible || layer.opacity <= 0f)) return
             val source = layer.clipSourceId?.let { id -> snapshot.layers.firstOrNull { it.id == id } }
-            drawWithLayerClip(canvas, source?.let { { drawLayer(it, true, ancestors + layer.id) } }) {
+            drawWithLayerClip(canvas, source?.let { { drawLayer(it, true, ancestors + layer.id) } }, if (coverage) LayerBlendMode.NORMAL else layer.blendMode) {
                 val shared = animation == null || layer.id in animation.backgroundLayerIds
                 paint.alpha = (if (coverage) 255f else layer.opacity * 255).roundToInt().coerceIn(0, 255)
                 when (layer) {

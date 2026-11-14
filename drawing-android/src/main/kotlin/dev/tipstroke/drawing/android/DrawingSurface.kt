@@ -1054,6 +1054,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun setSelectedLayerClip(sourceId: LayerId?) {
         if (layerStack.setClipSource(sourceId)) { notifyLayers(); notifyVisiblePalette(); notifyHistory() }
     }
+    fun setSelectedLayerBlendMode(mode: LayerBlendMode) { layerStack.setBlendMode(mode); notifyLayers(); notifyVisiblePalette(); notifyHistory() }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
     fun setCanvasBackgroundColor(color: Int) { layerStack.setBackground(color = color); notifyLayers() }
     fun setCanvasBackgroundOpacity(opacity: Float) { layerStack.setBackground(opacity = opacity); notifyLayers() }
@@ -2017,8 +2018,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         rasterView.gpuStampPreview = it; rasterView.gpuStampLayerId = layerStack.selectedId
                         rasterView.invalidateTiles(it.append(pendingSamples.getValue(pointerId)))
                     }
-                } else if (style.brush.ink != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
-                    (style.referenceStrokes != null || layerStack.selected().clipSourceId != null)) {
+                } else if ((style.brush.ink != null || style.brush.engine == BrushEngine.INK) && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
+                    (style.referenceStrokes != null || layerStack.selected().clipSourceId != null || layerStack.selected().blendMode != LayerBlendMode.NORMAL)) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
                 } else if ((style.brush.stamp != null && style.pixelTool == null) || target.image != null || style.blend == BlendBehavior.ERASE ||

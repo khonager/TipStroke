@@ -177,8 +177,8 @@ object ProjectTransfer {
             val loaded = ProjectPersistence.load(library.projectDirectory(id), lazyAnimation = true).getOrThrow()
             val snapshot = DrawingSnapshot(loaded.widthPx, loaded.heightPx, loaded.selectedId, loaded.layers.map { layer ->
                 when (layer) {
-                    is LoadedRaster -> SavedRasterSnapshot(layer.id, layer.name, layer.visible, layer.opacity, layer.tiles, layer.colorUsage, layer.groupId, layer.clipSourceId)
-                    is LoadedImage -> SavedImageSnapshot(layer.id, layer.name, layer.visible, layer.opacity, Uri.fromFile(layer.assetFile), layer.originalWidthPx, layer.originalHeightPx, layer.transform, layer.maskTiles, layer.groupId, layer.clipSourceId)
+                    is LoadedRaster -> SavedRasterSnapshot(layer.id, layer.name, layer.visible, layer.opacity, layer.tiles, layer.colorUsage, layer.groupId, layer.clipSourceId, layer.blendMode)
+                    is LoadedImage -> SavedImageSnapshot(layer.id, layer.name, layer.visible, layer.opacity, Uri.fromFile(layer.assetFile), layer.originalWidthPx, layer.originalHeightPx, layer.transform, layer.maskTiles, layer.groupId, layer.clipSourceId, layer.blendMode)
                 }
             }, loaded.galleryRotationQuarterTurns, loaded.animation, loaded.backgroundColor, loaded.backgroundOpacity)
             try {

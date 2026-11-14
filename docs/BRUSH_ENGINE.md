@@ -194,3 +194,14 @@ centered dab at full pressure. Pixel tools retain their 1–32 range. Large size
 sliders use exponential travel; +/- still change by one unit. Preset persistence
 and import accept the expanded sizes. Stamp-tip caches remain capped at 1024 px;
 large dabs use the existing sparse tile renderer, without full-layer copies.
+
+## Layer color blending and harmony
+
+Android layer controls offer 17 native blend modes independently of a brush's
+paint/erase behavior. Clipped layer output is blended with its backdrop once;
+coverage masks ignore blend mode. For non-normal ink layers, the existing native
+raster wet-preview path composites the stroke inside its layer; pointer samples
+remain native and no Compose state is updated per sample. Sparse painted tiles
+remain the permanent source. Color Harmony suggests five HSV hue relationships
+without changing brush rendering. See [COLOR_FEATURES.md](COLOR_FEATURES.md) for
+usage, Procreate sources, and the explicitly unimplemented color tools.

@@ -27,6 +27,7 @@ internal sealed class CanvasLayerRuntime {
     abstract var name: String
     abstract var visible: Boolean
     abstract var opacity: Float
+    var blendMode: LayerBlendMode = LayerBlendMode.NORMAL
     var activeAtFrame: Boolean = true
     var groupId: String? = null
     var clipSourceId: LayerId? = null
@@ -40,7 +41,7 @@ internal class RasterLayerRuntime(
     override var opacity: Float = 1f,
     var tiles: TileStore,
 ) : CanvasLayerRuntime() {
-    override fun summary() = LayerSummary(id, name, LayerKind.RASTER, visible, opacity, groupId = groupId, clipSourceId = clipSourceId)
+    override fun summary() = LayerSummary(id, name, LayerKind.RASTER, visible, opacity, groupId = groupId, clipSourceId = clipSourceId, blendMode = blendMode)
 }
 
 internal class ImageLayerRuntime(
@@ -55,7 +56,7 @@ internal class ImageLayerRuntime(
 ) : CanvasLayerRuntime() {
     override fun summary() = LayerSummary(
         id, name, LayerKind.IMAGE, visible, opacity,
-        source.width, source.height, transform.scale, groupId, clipSourceId,
+        source.width, source.height, transform.scale, groupId, clipSourceId, blendMode,
     )
 }
 
@@ -118,7 +119,7 @@ internal class LayerStack(
         fun drawFrameLayer(layer: CanvasLayerRuntime, coverage: Boolean = false, ancestors: Set<LayerId> = emptySet()) {
             if (layer.id in ancestors || (!coverage && (!layer.visible || layer.opacity <= 0f))) return
             val clipSource = layer.clipSourceId?.let { id -> layers.firstOrNull { it.id == id } }
-            drawWithLayerClip(canvas, clipSource?.let { { drawFrameLayer(it, true, ancestors + layer.id) } }) {
+            drawWithLayerClip(canvas, clipSource?.let { { drawFrameLayer(it, true, ancestors + layer.id) } }, if (coverage) LayerBlendMode.NORMAL else layer.blendMode) {
                 val shared = animation.isBackground(layer.id)
                 paint.alpha = (if (coverage) 255f else layer.opacity * 255).roundToInt().coerceIn(0, 255)
                 when (layer) {
@@ -254,7 +255,7 @@ internal class LayerStack(
         val originals = selectedRasters()
         val duplicates = originals.mapNotNull { original ->
             original.tiles.duplicate(selection).takeIf { it.allocatedTileCount > 0 }?.let { tiles ->
-                RasterLayerRuntime(newId(), "${original.name} selection", original.visible, original.opacity, tiles)
+                RasterLayerRuntime(newId(), "${original.name} selection", original.visible, original.opacity, tiles).also { it.blendMode = original.blendMode }
             }
         }
         if (duplicates.isEmpty()) return emptyList()
@@ -294,6 +295,19 @@ internal class LayerStack(
         } else {
             selectedIds += id
         }
+        invalidate()
+    }
+
+    fun setBlendMode(mode: LayerBlendMode) {
+        val layer = selected()
+        val previous = layer.blendMode
+        if (previous == mode) return
+        layer.blendMode = mode
+        selectedStore()?.history?.push(object : dev.tipstroke.core.drawing.UndoTransaction {
+            override val estimatedBytes = 32L
+            override fun undo() { layer.blendMode = previous; invalidate() }
+            override fun redo() { layer.blendMode = mode; invalidate() }
+        })
         invalidate()
     }
 
@@ -433,11 +447,11 @@ internal class LayerStack(
                 is RasterLayerRuntime -> SavedRasterSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity,
                     if (animation == null || animation.isBackground(layer.id)) layer.tiles.snapshotTiles() else emptyMap(),
-                    layer.tiles.snapshotColorUsage(), layer.groupId, layer.clipSourceId,
+                    layer.tiles.snapshotColorUsage(), layer.groupId, layer.clipSourceId, layer.blendMode,
                 )
                 is ImageLayerRuntime -> SavedImageSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity, layer.source.uri,
-                    layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(), layer.groupId, layer.clipSourceId,
+                    layer.source.width, layer.source.height, layer.transform, layer.mask.snapshotTiles(), layer.groupId, layer.clipSourceId, layer.blendMode,
                 )
             }
         }, galleryRotationQuarterTurns.mod(4), animation?.snapshot(), backgroundColor, backgroundOpacity,
@@ -461,7 +475,7 @@ internal class LayerStack(
                     OriginalImageSource(resolver, Uri.fromFile(layer.assetFile), invalidate), layer.transform,
                     mask = TileStore(layer.originalWidthPx, layer.originalHeightPx).apply { replaceTiles(layer.maskTiles) },
                 )
-            }).also { it.groupId = layer.groupId; it.clipSourceId = layer.clipSourceId }
+            }).also { it.groupId = layer.groupId; it.clipSourceId = layer.clipSourceId; it.blendMode = layer.blendMode }
         }
         layers.forEach { layer ->
             layer.clipSourceId?.let { if (!canClipTo(layer.id, it)) layer.clipSourceId = null }
@@ -505,6 +519,8 @@ internal class LayerStack(
         return (source and 0x00ffffff) or (clippedAlpha shl 24)
     }
 
+    private val blendSampler = ColorBlendSampler()
+
     private fun compositedColorAt(x: Float, y: Float, transparentBackground: Boolean, originalImageColors: Boolean = false): Int {
         var result = if (transparentBackground) android.graphics.Color.TRANSPARENT else
             (backgroundColor and 0x00ffffff) or ((backgroundOpacity * 255).roundToInt() shl 24)
@@ -513,7 +529,9 @@ internal class LayerStack(
             if (!layer.visible || !layer.activeAtFrame ||
                 (layer.opacity <= 0f && !(originalImageColors && layer is ImageLayerRuntime))) return@forEach
             val source = layerColorAt(layer, x, y)
-            result = sourceOver(source, result, if (originalImageColors && layer is ImageLayerRuntime) 1f else layer.opacity)
+            val opacity = if (originalImageColors && layer is ImageLayerRuntime) 1f else layer.opacity
+            result = if (layer.blendMode == LayerBlendMode.NORMAL) sourceOver(source, result, opacity)
+                else blendSampler.composite(source, result, opacity, layer.blendMode)
         }
         return result
     }
@@ -595,7 +613,7 @@ internal class LayerStack(
             OriginalImageSource(resolver, layer.source.uri, invalidate), layer.transform,
             layer.mask.duplicate(),
         )
-    }).also { it.clipSourceId = layer.clipSourceId }
+    }).also { it.clipSourceId = layer.clipSourceId; it.blendMode = layer.blendMode }
 
     private fun renderPreview(layer: CanvasLayerRuntime, sizePx: Int): Bitmap {
         val preview = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
@@ -644,9 +662,9 @@ internal class LayerStack(
         return true
     }
 
-    fun withClip(canvas: Canvas, layer: CanvasLayerRuntime, content: () -> Unit) {
+    fun withClip(canvas: Canvas, layer: CanvasLayerRuntime, blend: Boolean = false, content: () -> Unit) {
         val source = layer.clipSourceId?.let { id -> layers.firstOrNull { it.id == id } }
-        drawWithLayerClip(canvas, source?.let { { drawLayerContent(canvas, it) } }, content)
+        drawWithLayerClip(canvas, source?.let { { drawLayerContent(canvas, it) } }, if (blend) layer.blendMode else LayerBlendMode.NORMAL, content)
     }
 
     /** Raw painted coverage ignores layer visibility/opacity but follows nested clipping. */

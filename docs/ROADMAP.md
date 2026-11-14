@@ -89,3 +89,10 @@ iOS/desktop parity remain future work.
 Keep timestamps as secondary details instead of the primary frame labels. The
 coverage implementation handles erasing a cel back to empty and
 shared backgrounds without marking an entire video as drawn.
+
+### Color tooling inventory
+
+Android now has native layer blend controls (17 modes) and five color-harmony
+schemes. The sourced [color feature checklist](COLOR_FEATURES.md) tracks remaining
+blend modes, palette management, layer color adjustments and color profiles;
+these are not implied to be implemented by the picker or existing raster engine.

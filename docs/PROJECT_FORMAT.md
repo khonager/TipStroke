@@ -191,3 +191,12 @@ Process sidecars now write `TipStroke-process-3` and read versions 1–3. The ne
 header protects reflection/filter semantics from older replay readers; action
 encoding is unchanged. Raster selection edits remain ordinary sparse tile
 changes; their interactive meshes and original preview snapshots are transient.
+
+## Version 11: layer blend modes
+
+Raster and image layer records store an optional `blendMode` string using the stable
+`LayerBlendMode` enum names (for example `NORMAL`, `MULTIPLY`, `COLOR_BURN`). Versions
+1–10 and records without a mode load as `NORMAL`; unknown names fall back to `NORMAL`.
+Older readers reject schema 11. Snapshot duplication, portable media export and
+process-recording metadata preserve the mode. Raster tile pixels remain unmodified.
+See [COLOR_FEATURES.md](COLOR_FEATURES.md) for supported modes and limitations.

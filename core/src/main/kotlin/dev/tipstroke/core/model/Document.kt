@@ -80,6 +80,7 @@ data class LayerSummary(
     val imageScale: Float? = null,
     val groupId: String? = null,
     val clipSourceId: LayerId? = null,
+    val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
 )
 
 data class Document(

@@ -245,15 +245,16 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         layerStack.layers.forEach { layer ->
             drawOnionForLayer(canvas, layer)
             if (!layer.visible || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
-            layerStack.withClip(canvas, layer) {
+            layerStack.withClip(canvas, layer, blend = true) {
                 when (layer) {
                     is RasterLayerRuntime -> {
                         val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
+                        val strokePreview = previewStroke?.takeIf { layer.id == layerStack.selectedId }
                         val gpu = gpuStampPreview?.takeIf { layer.id == gpuStampLayerId }
                         val movingPath = movingSelectionPath.takeIf { layer.id in movingLayerIds }
                         if (movingPath != null) {
                             drawMovingRaster(canvas, layer, movingPath)
-                        } else if (preview == null && gpu == null) {
+                        } else if (preview == null && gpu == null && strokePreview == null) {
                             bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
                             layer.tiles.draw(canvas, bitmapPaint)
                         } else if (layer.opacity >= .999f) {
@@ -261,6 +262,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                             layer.tiles.draw(canvas, bitmapPaint)
                             preview?.draw(canvas, bitmapPaint)
                             gpu?.drawPreview(canvas, transform.scale)
+                            strokePreview?.let { drawStrokePreview(canvas, it) }
                         } else {
                             layerOpacityPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
                             val visible = canvas.clipBounds
@@ -273,6 +275,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                             layer.tiles.draw(canvas, bitmapPaint)
                             preview?.draw(canvas, bitmapPaint)
                             gpu?.drawPreview(canvas, transform.scale)
+                            strokePreview?.let { drawStrokePreview(canvas, it) }
                             canvas.restoreToCount(group)
                         }
                     }
@@ -288,11 +291,6 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             }
         }
         drawFillFeedback(canvas)
-        previewStroke?.let { stroke -> layerStack.withClip(canvas, layerStack.selected()) {
-            if (stroke.style.pixelTool == null && stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH) {
-                airbrushPreview.draw(canvas, stroke, transform.scale)
-            } else StrokeCanvasPainter.draw(canvas, stroke)
-        } }
         stylusHoverPreview?.let { preview -> drawStylusHoverPreview(canvas, preview) }
         if (showImageTransformBounds) {
             drawSelectedImageBounds(canvas)
@@ -320,6 +318,12 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             canvas.drawCircle(sample.position.x, sample.position.y, radius, previewOutlinePaint)
             canvas.restore()
         }
+    }
+
+    private fun drawStrokePreview(canvas: Canvas, stroke: CompletedStroke) {
+        if (stroke.style.pixelTool == null && stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH) {
+            airbrushPreview.draw(canvas, stroke, transform.scale)
+        } else StrokeCanvasPainter.draw(canvas, stroke)
     }
 
     /** Reuses sparse source tiles; pointer moves only update a translation and invalidate. */

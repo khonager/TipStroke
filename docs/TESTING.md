@@ -479,3 +479,14 @@ size/pressure/input-spacing cases rendered; maximum measured interior alpha
 range was 4/255. The initial strict 2/255 assertion failed. The regression budget
 is now explicitly 4/255; that revised assertion has not been rerun on device.
 This is a limited straight-stroke measurement, not visual/performance sign-off.
+
+## Layer blends and color harmony
+
+`ColorHarmonyTest` checks all five hue relationships, wraparound and invalid input.
+`LayerBlendingTest` runs with native Robolectric graphics and checks all 17 modes
+against composite sampling at partial opacity on both sides of a tile boundary,
+known Multiply values, metadata undo/redo, duplication, save/load, PNG export and
+process replay. For device QA, draw overlapping strokes on a non-normal layer,
+change opacity, clip to a partially transparent layer, then compare an exported PNG
+with the canvas. Check the Harmony tab on a narrow phone and a tablet, including
+selecting a suggestion and saving it in the existing color shelf.
