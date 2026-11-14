@@ -356,7 +356,9 @@ fun CanvasScreen(
     }
     LaunchedEffect(imageTransforming, surface) { surface?.setImageTransformMode(imageTransforming) }
     LaunchedEffect(selectionMode, surface) { surface?.setSelectionMode(selectionMode) }
-    LaunchedEffect(movingSelection, surface) { surface?.setSelectionMoveMode(movingSelection) }
+    LaunchedEffect(movingSelection, selectionTransformOpen, surface) {
+        if (!selectionTransformOpen) surface?.setSelectionMoveMode(movingSelection)
+    }
     LaunchedEffect(brush.id, erasing, smudging, pixelTool, size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians) {
         val tuning = BrushTuning(
             size, opacity, brushHardness, pressureSize, pressureOpacity, speedTaper,
@@ -755,7 +757,7 @@ fun CanvasScreen(
             )
         }
 
-        if (!resizeOpen && selectToolActive && (!compactPhone || phoneChromeVisible)) SelectionControls(
+        if (!resizeOpen && !selectionTransformOpen && selectToolActive && (!compactPhone || phoneChromeVisible)) SelectionControls(
             referenceName = layers.firstOrNull { it.id == referenceLayerId }?.name,
             referenceLayers = layers.filter { it.kind == LayerKind.RASTER }.map { it.id to it.name },
             onReference = { surface?.setReferenceStrokes(it); selectRegularBrush() },
@@ -770,7 +772,11 @@ fun CanvasScreen(
             canMove = selectedLayerIds.isNotEmpty(),
             canDuplicate = selectedLayerIds.any { selectedId -> layers.any { it.id == selectedId && it.kind == LayerKind.RASTER } },
             onTool = { tool -> selectionTool = tool; movingSelection = false; selectionMode = true; surface?.setSelectionTool(tool) },
-            onMove = { movingSelection = !movingSelection; selectionMode = false },
+            onMove = {
+                if (surface?.beginSelectionTransform() == true) {
+                    movingSelection=false;selectionMode=false;selectionTransformOpen=true
+                } else { movingSelection = !movingSelection; selectionMode = false }
+            },
             onSelectAll = { surface?.selectAll() },
             onReselect = { selectSelectionTool(); surface?.restoreSelection() },
             onDuplicate = { surface?.duplicateSelection() },
@@ -791,48 +797,25 @@ fun CanvasScreen(
 
         if (imageTransforming && !layersOpen && !resizeOpen) Surface(
             modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding()
-                .padding(start=8.dp,end=8.dp,bottom=if (compactPhone && !portrait) 4.dp else 88.dp).widthIn(max=520.dp),
+                .padding(start=8.dp,end=8.dp,bottom=if (compactPhone && !portrait) 4.dp else 88.dp).widthIn(max=640.dp),
             color = Color(0xEE202125), shape = RoundedCornerShape(18.dp),
         ) {
-            Column(Modifier.heightIn(max=viewportHeight*.65f).verticalScroll(rememberScrollState()).padding(12.dp)) {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                    PhotoEditTool.entries.forEach { tool ->
-                        FilterChip(selected=photoTool==tool,onClick={ photoTool=tool },label={ Text(tool.transformLabel()) })
-                    }
-                }
-                Text(when(photoTool) {
-                    PhotoEditTool.MOVE -> "Drag to move · drag corners or pinch to resize · twist to rotate"
-                    PhotoEditTool.STRETCH -> "Drag horizontally or vertically to stretch the photo"
-                    PhotoEditTool.DISTORT -> "Drag a corner to distort the photo"
-                    PhotoEditTool.WARP -> "Drag a mesh point to reshape the photo"
-                    PhotoEditTool.PUSH -> "Drag over a feature to reshape it"
-                    PhotoEditTool.BULGE -> "Drag over a feature to enlarge it or create a spherical bulge"
-                    PhotoEditTool.PINCH -> "Drag over a feature to shrink it"
-                },color=Color.White,fontSize=12.sp)
-                if(photoTool in listOf(PhotoEditTool.PUSH,PhotoEditTool.BULGE,PhotoEditTool.PINCH)) {
-                    Text("Area size ${(photoRadius*100).roundToInt()}%",color=Color.White,fontSize=12.sp)
-                    Slider(photoRadius,{ photoRadius=it },valueRange=.08f..1f)
-                }
+            Column(Modifier.heightIn(max=viewportHeight*.65f).verticalScroll(rememberScrollState()).padding(8.dp)) {
                 var meshDivisions by remember { mutableIntStateOf(4) }
-                TransformMeshOptions(photoTool, meshDivisions) { meshDivisions=it; surface?.transformMeshDivisions=it }
                 var bilinear by remember { mutableStateOf(surface?.photoBilinear() ?: true) }
-                Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    TextButton(onClick={ surface?.photoTransformAction("flipX") }) { Text("Flip horizontal") }
-                    TextButton(onClick={ surface?.photoTransformAction("flipY") }) { Text("Flip vertical") }
-                    TextButton(onClick={ surface?.photoTransformAction("rotate") }) { Text("Rotate 45°") }
-                    TextButton(onClick={ surface?.photoTransformAction("fit") }) { Text("Fit to canvas") }
-                    FilterChip(bilinear,{ surface?.photoTransformAction("filter"); bilinear=surface?.photoBilinear() ?: true },label={ Text(if(bilinear) "Bilinear" else "Nearest neighbor") })
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("Transform image",Modifier.weight(1f),color=Color.White,style=MaterialTheme.typography.titleSmall)
+                    IconButton(onClick={ imageTransforming=false }) { Icon(Icons.Outlined.Check,"Finish image transform",tint=Color.White) }
                 }
-                Row(verticalAlignment=Alignment.CenterVertically) {
-                    Checkbox(photoSnapping,{
-                        photoSnapping=it
-                        onGestureSettingsChange?.invoke(gestureSettings.copy(imageSnapping = it))
-                    },Modifier.semantics { contentDescription = "Snap photo edges and angles" })
-                    Text("Snap",color=Color.White)
-                    TextButton(onClick = { snapOptionsOpen = true }) { Text("Options") }
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick={ surface?.photoTransformAction("reset"); bilinear=surface?.photoBilinear() ?: true }) { Text("Reset") }
-                    TextButton(onClick={ imageTransforming=false }) { Text("Done") }
+                TransformToolbar(photoTool,{ photoTool=it },bilinear,{ value ->
+                    if(surface?.photoBilinear()!=value) surface?.photoTransformAction("filter")
+                    bilinear=surface?.photoBilinear() ?: value
+                },onAction={ action -> surface?.photoTransformAction(action);bilinear=surface?.photoBilinear() ?: true },
+                    snapping=photoSnapping,onSnapping={ snapOptionsOpen=true })
+                TransformMeshOptions(photoTool,meshDivisions) { meshDivisions=it;surface?.transformMeshDivisions=it }
+                if(photoTool in listOf(PhotoEditTool.PUSH,PhotoEditTool.BULGE,PhotoEditTool.PINCH)) {
+                    Text("${photoTool.transformLabel()} · Area size ${(photoRadius*100).roundToInt()}%",color=Color.White,fontSize=12.sp)
+                    Slider(photoRadius,{ photoRadius=it },valueRange=.08f..1f)
                 }
             }
         }
@@ -964,7 +947,7 @@ fun CanvasScreen(
                 },
                 onCancel = ::cancelTransform,
                 modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(8.dp)
-                    .widthIn(max = 500.dp).fillMaxWidth().heightIn(max = (viewportHeight * .55f).coerceAtMost(360.dp)),
+                    .widthIn(max = 640.dp).fillMaxWidth().heightIn(max = (viewportHeight * .55f).coerceAtMost(360.dp)),
             )
         }
 
@@ -1200,6 +1183,13 @@ fun CanvasScreen(
         title = { Text("Image snapping") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    Switch(photoSnapping,{ enabled ->
+                        photoSnapping=enabled
+                        onGestureSettingsChange?.invoke(gestureSettings.copy(imageSnapping=enabled))
+                    },Modifier.semantics { contentDescription="Enable image snapping" })
+                    Text("Snapping")
+                }
                 Text("Align edges, corners and centers with the canvas or other images. Drag away to release.")
                 Spacer(Modifier.height(12.dp))
                 Text("Angle spacing")

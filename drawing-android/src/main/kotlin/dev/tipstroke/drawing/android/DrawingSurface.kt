@@ -1091,6 +1091,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(true, selectionRegion != null)
     }
     fun setSelectionMoveMode(enabled: Boolean) {
+        // Compose can deliver the previous move toggle after a transform session starts.
+        if (transformSelectionOriginal != null) return
         if (enabled && selectionRegion == null) selectAll()
         if (!enabled) clearMovePreview()
         selectionMoveMode = enabled && selectionRegion != null &&
