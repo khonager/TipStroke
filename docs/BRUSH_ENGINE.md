@@ -142,8 +142,9 @@ is 10% at that floor. Quarter flow approximately preserves buildup with four
 times as many particles; it does not make this accumulating spray identical to
 Airbrush's single blurred silhouette. Existing custom/saved definitions retain
 their chosen spacing and flow. Existing raster artwork and recorded patches do
-not change. Physical-device visual and sustained-stroke performance validation
-is required before treating this preset adjustment as verified on hardware.
+not change. A focused Android 14 device check measured at most 4/255 interior alpha
+variation across 16 straight-stroke cases. Subjective wet/final visual and
+sustained-stroke performance validation remain required.
 
 Keep the original Airbrush as the default soft painting tool. Specialized native
 renderers share the document, tile storage and history; a single brush algorithm

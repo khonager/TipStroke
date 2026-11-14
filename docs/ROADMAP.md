@@ -6,8 +6,8 @@ Validate gallery creation/reopening, drag ordering and stacks, crash-resistant a
 
 Default-brush quality gate: no unintended stamp bands in smooth brushes, including
 light pressure and enlarged views. Jetpack Soft spacing/flow has been adjusted;
-GPU regression, wet/final visual comparison and sustained-stroke device profiling
-remain pending. Keep Airbrush as the default soft brush and evaluate renderer
+a focused device check measured at most 4/255 residual alpha variation.
+Wet/final visual comparison and sustained-stroke device profiling remain pending. Keep Airbrush as the default soft brush and evaluate renderer
 consolidation only after visual and latency parity; see [Brush engine](BRUSH_ENGINE.md).
 
 ## NEXT
