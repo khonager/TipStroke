@@ -134,6 +134,23 @@ curve, with denser sampling at light pressure. Accumulating tips always use
 particles: the pinned engine retains the initial contact size with continuous
 ACCUMULATE geometry, so particle geometry is needed for changing pressure/tilt.
 
+The supplied Jetpack Soft preset uses 0.02 base-size particle spacing and 0.03
+flow (previously 0.08 and 0.12). Ink measures spacing against the selected size,
+not the pressure-reduced tip: the old spacing reached 40% of the tip diameter
+at the default 20% size floor, exposing periodic stamp bands. The new spacing
+is 10% at that floor. Quarter flow approximately preserves buildup with four
+times as many particles; it does not make this accumulating spray identical to
+Airbrush's single blurred silhouette. Existing custom/saved definitions retain
+their chosen spacing and flow. Existing raster artwork and recorded patches do
+not change. Physical-device visual and sustained-stroke performance validation
+is required before treating this preset adjustment as verified on hardware.
+
+Keep the original Airbrush as the default soft painting tool. Specialized native
+renderers share the document, tile storage and history; a single brush algorithm
+is not a quality requirement. Consolidation should follow measured parity in
+stroke appearance, wet/final handoff and latency, rather than replacing the
+smooth Airbrush with accumulating Ink particles just for implementation uniformity.
+
 Ordinary freehand input goes directly from MotionEvent to InProgressStrokesView.
 Completion renders the finished native mesh through HardwareBufferRenderer into
 a reusable 256 × 256 target, then composites its pixels into reached raster tiles.

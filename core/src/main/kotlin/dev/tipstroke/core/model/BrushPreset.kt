@@ -99,8 +99,11 @@ data class BrushPreset(
                 baseSizePx = 24f, opacity = .8f, pressureToOpacity = PressureCurve(.15f, 1f, 1f),
                 ink = InkBrush(texture = InkTexture.GRAPHITE, aspectRatio = .5f, particles = true, flow = .15f, tiltSize = 1.5f)),
             BlankInk.copy(id = BrushId("jetpack-soft-v1"), displayName = "Jetpack Soft",
-                baseSizePx = 96f, spacing = .08f,
-                ink = InkBrush(texture = InkTexture.SOFT, particles = true, accumulate = true, flow = .12f)),
+                // Ink spaces particles in base-size units, even when pressure shrinks
+                // the tip to 20%. Keep overlap dense at that smallest default width.
+                // Quarter flow compensates for the fourfold particle density.
+                baseSizePx = 96f, spacing = .02f,
+                ink = InkBrush(texture = InkTexture.SOFT, particles = true, accumulate = true, flow = .03f)),
         )
         val libraryBuiltIns = builtIns + jetpackInk
     }

@@ -17,6 +17,42 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalInkCustomBrushApi::class)
 class JetpackInkInstrumentedTest {
+    @Test fun defaultSoftTipHasNoPeriodicBandsAtLightPressure() {
+        assumeTrue(Build.VERSION.SDK_INT >= 34)
+        val preset = BrushPreset.jetpackInk.single { it.id.value == "jetpack-soft-v1" }
+        // Large tips expose individual particles. Include zero pressure because the
+        // default size curve still leaves a visible 20%-width mark at contact.
+        for (size in listOf(64f, 192f)) for (pressure in listOf(0f, .1f, .5f, 1f)) {
+            for (step in listOf(4, 32)) {
+                val stroke = CompletedStroke(
+                    (0..(640 / step)).map { i ->
+                        StrokeSample(0, Point(64f + i * step, 128f), pressure,
+                            0f, 0f, i * 8_000_000L, 0, PointerKind.STYLUS)
+                    },
+                    StrokeStyle(preset, size, .61f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT),
+                )
+                val bitmap = Bitmap.createBitmap(768, 256, Bitmap.Config.ARGB_8888)
+                try {
+                    JetpackInkRendering.draw(Canvas(bitmap), stroke)
+                    val radius = size * preset.pressureToSize.map(pressure) / 2f
+                    // Inspect both center and shoulder, away from starting/ending caps.
+                    for (offset in listOf(0f, radius * .4f)) {
+                        val y = (128f + offset).toInt()
+                        val coverage = (256..512).map { x -> Color.alpha(bitmap.getPixel(x, y)) }
+                        val range = coverage.max() - coverage.min()
+                        assertTrue("Soft tip disappeared: size=$size pressure=$pressure step=$step", coverage.min() > 2)
+                        assertTrue("Soft bands: size=$size pressure=$pressure step=$step y=$y range=$range", range <= 2)
+                    }
+                    TestStorage().openOutputFile("jetpack-ink/soft-$size-$pressure-$step.png").use {
+                        assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                    }
+                } finally {
+                    bitmap.recycle()
+                }
+            }
+        }
+    }
+
     private fun completed(preset: BrushPreset): CompletedStroke = CompletedStroke(
         (0..40).map { i -> StrokeSample(0, Point(80f + i * 9f, 128f), .2f + .8f * i / 40,
             i / 40f, 0f, i * 8_000_000L, 0, PointerKind.STYLUS) },

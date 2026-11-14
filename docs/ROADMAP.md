@@ -4,6 +4,12 @@
 
 Validate gallery creation/reopening, drag ordering and stacks, crash-resistant autosave, image export, configurable finger and stylus-button actions, low-latency stylus authoring, the experimental textured Pencil and pigment Airbrush, transparent erasing, sparse per-layer tile commits, bounded undo/redo, non-destructive image layers, and reference-device diagnostics.
 
+Default-brush quality gate: no unintended stamp bands in smooth brushes, including
+light pressure and enlarged views. Jetpack Soft spacing/flow has been adjusted;
+GPU regression, wet/final visual comparison and sustained-stroke device profiling
+remain pending. Keep Airbrush as the default soft brush and evaluate renderer
+consolidation only after visual and latency parity; see [Brush engine](BRUSH_ENGINE.md).
+
 ## NEXT
 
 1. Recovery journaling/fsync, rename/duplicate gallery actions, and transferable project import/export.

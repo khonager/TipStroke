@@ -56,6 +56,16 @@ Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable 
 
 Before subjective pen testing, run `./tipstroke brushes` with a device attached. It renders the exact production Pencil and Airbrush paths, fails on empty/near-invisible output, and writes review PNGs under `drawing-android/build/outputs/connected_android_test_additional_output/`. Inspect those images whenever a brush renderer or Ink version changes; ordinary JVM tests cannot load Ink's native implementation.
 
+`JetpackInkInstrumentedTest.defaultSoftTipHasNoPeriodicBandsAtLightPressure`
+checks the actual GPU-rendered Jetpack Soft center and shoulder at 61% opacity,
+64/192 px sizes, four constant pressures and two input spacings. It exports
+review images under `jetpack-ink/soft-*.png` and allows at most two alpha levels
+of variation along the interior of each straight stroke. Run it on Android 14+
+with `./gradlew :drawing-android:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.tipstroke.drawing.android.JetpackInkInstrumentedTest`.
+Also compare Airbrush and Jetpack Soft on the tablet at 100%, 362%, and 1200%
+zoom, including curves, changing pressure, crossings, and pen-up. Recheck broad
+sustained strokes: the denser Soft preset emits four times as many particles.
+
 ## Pen
 
 1. Relaunch, immediately draw the first Ink stroke, and check that it starts under the nib without a warm-up hitch.
