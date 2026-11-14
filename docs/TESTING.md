@@ -490,3 +490,7 @@ process replay. For device QA, draw overlapping strokes on a non-normal layer,
 change opacity, clip to a partially transparent layer, then compare an exported PNG
 with the canvas. Check the Harmony tab on a narrow phone and a tablet, including
 selecting a suggestion and saving it in the existing color shelf.
+
+`BlendModeScrollerTest` verifies drag-to-preview without tapping, initial selection,
+first/last modes, and one finish callback on dismissal. `LayerBlendingTest` also
+checks a comparison's single undo step, selection changes and no-op comparisons.

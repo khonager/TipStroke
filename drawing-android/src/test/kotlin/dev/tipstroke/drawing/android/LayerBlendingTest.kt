@@ -66,6 +66,39 @@ class LayerBlendingTest {
         assertEquals(LayerBlendMode.MULTIPLY, stack.selected().blendMode)
         bitmap.recycle()
     }
+    @Test fun scrollingModesCommitsOneUndoStepOnTheOriginalLayer() {
+        val stack = fixture()
+        val layer = stack.selected()
+        val history = stack.selectedStore()!!.history
+        stack.beginBlendAdjustment()
+        stack.setBlendMode(LayerBlendMode.MULTIPLY)
+        stack.setBlendMode(LayerBlendMode.SCREEN)
+        stack.setBlendMode(LayerBlendMode.COLOR)
+        assertFalse(history.undo())
+        // Finishing after a selection change still belongs to the previewed layer.
+        stack.select(stack.layers.first().id)
+        stack.setBlendMode(LayerBlendMode.DIFFERENCE)
+        assertEquals(LayerBlendMode.NORMAL, stack.selected().blendMode)
+        stack.finishBlendAdjustment()
+        assertTrue(history.undo())
+        assertEquals(LayerBlendMode.NORMAL, layer.blendMode)
+        assertFalse(history.undo())
+        assertTrue(history.redo())
+        assertEquals(LayerBlendMode.COLOR, layer.blendMode)
+        stack.finishBlendAdjustment()
+        assertTrue(history.undo())
+        assertFalse(history.undo())
+    }
+
+    @Test fun scrollingBackToOriginalModeDoesNotCreateHistory() {
+        val stack = fixture()
+        stack.beginBlendAdjustment()
+        stack.setBlendMode(LayerBlendMode.MULTIPLY)
+        stack.setBlendMode(LayerBlendMode.NORMAL)
+        stack.finishBlendAdjustment()
+        assertFalse(stack.selectedStore()!!.history.undo())
+    }
+
     @Test fun modesSurviveSaveLoadExportAndRecording() {
         val stack = fixture()
         stack.setBlendMode(LayerBlendMode.SCREEN)

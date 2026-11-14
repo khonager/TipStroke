@@ -1054,7 +1054,17 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     fun setSelectedLayerClip(sourceId: LayerId?) {
         if (layerStack.setClipSource(sourceId)) { notifyLayers(); notifyVisiblePalette(); notifyHistory() }
     }
-    fun setSelectedLayerBlendMode(mode: LayerBlendMode) { layerStack.setBlendMode(mode); notifyLayers(); notifyVisiblePalette(); notifyHistory() }
+    fun beginBlendModeAdjustment() { layerStack.beginBlendAdjustment() }
+    fun finishBlendModeAdjustment() {
+        if (!layerStack.isBlendAdjustmentInProgress) return
+        layerStack.finishBlendAdjustment()
+        notifyLayers(); notifyVisiblePalette(); notifyHistory()
+    }
+    fun setSelectedLayerBlendMode(mode: LayerBlendMode) {
+        layerStack.setBlendMode(mode)
+        notifyLayers()
+        if (!layerStack.isBlendAdjustmentInProgress) { notifyVisiblePalette(); notifyHistory() }
+    }
     fun setSelectedLayerOpacity(value: Float) { layerStack.setOpacity(value); notifyLayers() }
     fun setCanvasBackgroundColor(color: Int) { layerStack.setBackground(color = color); notifyLayers() }
     fun setCanvasBackgroundOpacity(opacity: Float) { layerStack.setBackground(opacity = opacity); notifyLayers() }
@@ -3093,7 +3103,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             referenceLayerId = null
             referenceStrokesListener?.invoke(null)
         }
-        if (!imageGestureInProgress && !opacityAdjustmentInProgress && (!animationPlaying || strokeRecording != null)) processRecorder?.sync(layerStack, animation != null, animation = animation)
+        if (!imageGestureInProgress && !opacityAdjustmentInProgress && !layerStack.isBlendAdjustmentInProgress && (!animationPlaying || strokeRecording != null)) processRecorder?.sync(layerStack, animation != null, animation = animation)
         layersListener?.invoke(
             layerStack.summariesFrontToBack(),
             layerStack.selectedId,

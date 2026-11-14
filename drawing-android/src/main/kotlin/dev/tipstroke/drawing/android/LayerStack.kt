@@ -298,16 +298,42 @@ internal class LayerStack(
         invalidate()
     }
 
-    fun setBlendMode(mode: LayerBlendMode) {
-        val layer = selected()
-        val previous = layer.blendMode
+    private var blendAdjustment: Pair<CanvasLayerRuntime, LayerBlendMode>? = null
+    val isBlendAdjustmentInProgress: Boolean get() = blendAdjustment != null
+
+    fun beginBlendAdjustment() {
+        if (blendAdjustment?.first === selected()) return
+        finishBlendAdjustment()
+        blendAdjustment = selected() to selected().blendMode
+    }
+
+    fun finishBlendAdjustment() {
+        val (layer, previous) = blendAdjustment ?: return
+        blendAdjustment = null
+        if (layer in layers) recordBlendChange(layer, previous, layer.blendMode)
+    }
+
+    private fun recordBlendChange(layer: CanvasLayerRuntime, previous: LayerBlendMode, mode: LayerBlendMode) {
         if (previous == mode) return
-        layer.blendMode = mode
-        selectedStore()?.history?.push(object : dev.tipstroke.core.drawing.UndoTransaction {
+        val store = when (layer) {
+            is RasterLayerRuntime -> layer.tiles
+            is ImageLayerRuntime -> layer.mask
+        }
+        store.history.push(object : dev.tipstroke.core.drawing.UndoTransaction {
             override val estimatedBytes = 32L
             override fun undo() { layer.blendMode = previous; invalidate() }
             override fun redo() { layer.blendMode = mode; invalidate() }
         })
+    }
+
+    fun setBlendMode(mode: LayerBlendMode) {
+        val layer = selected()
+        // A queued scroll callback must not edit a newly selected layer before disposal.
+        if (blendAdjustment != null && blendAdjustment?.first !== layer) return
+        val previous = layer.blendMode
+        if (previous == mode) return
+        layer.blendMode = mode
+        if (blendAdjustment?.first !== layer) recordBlendChange(layer, previous, mode)
         invalidate()
     }
 

@@ -376,3 +376,12 @@ eviction: only artwork edits change the content revision. Hardware-video scrubbi
 keeps the requested cursor position in the controls while retaining the current
 raster overlay until the latest video seek completes. Loading feedback reserves a
 fixed-height slot so repeated seeks cannot move the scrubber under the finger.
+
+## Blend-mode comparisons
+
+The layer Blend control expands a five-row scroll picker. Scrolling previews the
+centered mode live and flings snap to row centers; tapping a row scrolls it to the
+center. Done or closing the layer controls retains the current mode. Preview
+changes form one bounded undo transaction, attached to the original layer even
+if selection changes before the picker closes. Process recording and palette
+refresh wait until comparison ends rather than capturing every intermediate mode.

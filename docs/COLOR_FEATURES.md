@@ -15,7 +15,7 @@ The handbook lists Normal plus these families. Its current version distinguishes
 | Difference | Difference, Exclusion | Subtract, Divide |
 | Color | Hue, Saturation, Color, Luminosity | — |
 
-Open a layer's controls and select **Blend** above opacity. Modes apply to raster and image layers, persist through save/load and duplication, and participate in undo/redo, image/animation exports, frame thumbnails, process replay, and composite color sampling. Layer thumbnails show the layer's own content without a backdrop. Opacity retains its existing control.
+Open a layer's controls and select **Blend** above opacity. Scroll the inline list to preview each centered mode immediately on the canvas; it snaps to a row when released. Tap a row to center it, then tap **Done** (or close the layer controls) to keep the result. A comparison session creates one undo step, and returning to the original mode creates none. Modes apply to raster and image layers, persist through save/load and duplication, and participate in undo/redo, image/animation exports, frame thumbnails, process replay, and composite color sampling. Layer thumbnails show the layer's own content without a backdrop. Opacity retains its existing control.
 
 The 17 implemented modes use Android's native compositor (API 29+). The remaining modes need a dedicated compositor with bounded tile caching and matching export behavior. In particular, Shade is not silently mapped to Darken. No bitmap scans or canvas-sized painting copies are added to pointer handling. Non-normal ink previews use the existing native raster preview path so they are composited with their layer.
 

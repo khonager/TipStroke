@@ -65,6 +65,8 @@ internal fun LayersPanel(
     onToggleSelection: (LayerId) -> Unit,
     onToggleVisibility: (LayerId) -> Unit,
     onBlendMode: (dev.tipstroke.core.model.LayerBlendMode) -> Unit = {},
+    onBlendModeAdjustmentStart: () -> Unit = {},
+    onBlendModeAdjustmentEnd: () -> Unit = {},
     onOpacity: (Float) -> Unit,
     onOpacityFinished: () -> Unit,
     onRename: (String) -> Unit,
@@ -283,6 +285,8 @@ internal fun LayersPanel(
                                     imageTransforming = imageTransforming,
                                     onRename = { renameLayer = layer; renameText = layer.name },
                                     onBlendMode = onBlendMode,
+                                    onBlendModeAdjustmentStart = onBlendModeAdjustmentStart,
+                                    onBlendModeAdjustmentEnd = onBlendModeAdjustmentEnd,
                                     onOpacity = onOpacity,
                                     onOpacityFinished = onOpacityFinished,
                                     onImageScale = onImageScale,
@@ -435,6 +439,8 @@ private fun LayerControls(
     imageTransforming: Boolean,
     onRename: () -> Unit,
     onBlendMode: (dev.tipstroke.core.model.LayerBlendMode) -> Unit,
+    onBlendModeAdjustmentStart: () -> Unit,
+    onBlendModeAdjustmentEnd: () -> Unit,
     onOpacity: (Float) -> Unit,
     onOpacityFinished: () -> Unit,
     onImageScale: (Float) -> Unit,
@@ -450,14 +456,15 @@ private fun LayerControls(
             LayerAction("Rename layer", Icons.Outlined.Edit, onClick = onRename)
         }
         var blendMenu by remember(layer.id) { mutableStateOf(false) }
-        Box {
-            TextButton(onClick = { blendMenu = true }) { Text("Blend · ${layer.blendMode.label}") }
-            DropdownMenu(expanded = blendMenu, onDismissRequest = { blendMenu = false }) {
-                dev.tipstroke.core.model.LayerBlendMode.entries.forEach { mode ->
-                    DropdownMenuItem(text = { Text("${if (mode == layer.blendMode) "✓ " else ""}${mode.label}") },
-                        onClick = { onOpacityFinished(); onBlendMode(mode); blendMenu = false })
-                }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { onOpacityFinished(); blendMenu = !blendMenu }, modifier = Modifier.weight(1f)) {
+                Text("Blend · ${layer.blendMode.label}")
             }
+            if (blendMenu) TextButton(onClick = { blendMenu = false }) { Text("Done") }
+        }
+        if (blendMenu) {
+            BlendModeScroller(layer.id, layer.blendMode, onBlendMode,
+                onBlendModeAdjustmentStart, onBlendModeAdjustmentEnd)
         }
         ValueHeader("Layer opacity", "${(layer.opacity * 100).roundToInt()}%")
         Slider(layer.opacity, onOpacity, onValueChangeFinished = onOpacityFinished,

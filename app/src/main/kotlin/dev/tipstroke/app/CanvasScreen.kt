@@ -852,6 +852,8 @@ fun CanvasScreen(
                 onToggleSelection = { surface?.toggleLayerSelection(it) },
                 onToggleVisibility = { surface?.toggleLayerVisibility(it) },
                 onBlendMode = { surface?.setSelectedLayerBlendMode(it) },
+                onBlendModeAdjustmentStart = { surface?.beginBlendModeAdjustment() },
+                onBlendModeAdjustmentEnd = { surface?.finishBlendModeAdjustment() },
                 onOpacity = { surface?.apply { beginOpacityAdjustment(); setSelectedLayerOpacity(it) } },
                 onOpacityFinished = { surface?.finishOpacityAdjustment() },
                 onRename = { surface?.renameSelectedLayer(it) },
