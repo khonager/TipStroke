@@ -43,3 +43,11 @@ tasks.test {
     useJUnitPlatform()
     systemProperty("java.awt.headless", "true")
 }
+
+// AWT must know that XWayland does not reparent windows; otherwise the outer
+// window can resize while its Compose/Swing content stays at the launch size.
+tasks.withType<JavaExec>().configureEach {
+    if (!System.getenv("WAYLAND_DISPLAY").isNullOrBlank()) {
+        environment("_JAVA_AWT_WM_NONREPARENTING", "1")
+    }
+}
