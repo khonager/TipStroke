@@ -171,7 +171,7 @@ class CanvasScreenshotTest {
                 onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {}, onOpacityFinished = {},
                 onBackgroundOpacityFinished = {}, onRename = {}, onImageScale = {},
                 onFitImage = {}, onOriginalImageSize = {}, onImageTransforming = {},
-                onAddPaint = {}, onImportImage = {}, onMoveForward = {}, onMoveBackward = {}, onDuplicate = {}, onDelete = {},
+                onAddPaint = {}, onImportImage = {}, onDuplicate = {}, onDelete = {},
             )
         }
     }

@@ -13,6 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -70,8 +73,6 @@ internal fun LayersPanel(
     onImageTransforming: (Boolean) -> Unit,
     onAddPaint: () -> Unit,
     onImportImage: () -> Unit,
-    onMoveForward: () -> Unit,
-    onMoveBackward: () -> Unit,
     onReorder: (LayerId, LayerId, Boolean) -> Unit = { _, _, _ -> },
     onGroup: (LayerId, LayerId) -> Unit = { _, _ -> },
     onUngroup: (String) -> Unit = {},
@@ -256,16 +257,75 @@ internal fun LayersPanel(
                             preview = previews[layer.id],
                             primary = layer.id == selectedId,
                             selected = layer.id in selectedIds,
-                            onSelect = { onSelect(layer.id) },
+                            onSelect = { onOpacityFinished(); settingsLayerId = null; onSelect(layer.id) },
                             onToggleSelection = { onToggleSelection(layer.id) },
                             onVisibility = { onToggleVisibility(layer.id) },
-                            onSettings = { onSelect(layer.id); settingsLayerId = layer.id },
+                            expanded = settingsLayerId == layer.id && selectedId == layer.id,
+                            onSettings = {
+                                onOpacityFinished()
+                                if (settingsLayerId == layer.id) settingsLayerId = null
+                                else { onSelect(layer.id); settingsLayerId = layer.id }
+                            },
                             modifier = Modifier.graphicsLayer {
                                 alpha = if (draggedId == layer.id) .35f else 1f
                             },
                             onPreviewBounds = { previewCoordinates[layer.id] = it },
                             groupTarget = targetId == layer.id && groupDrop,
                         )
+                        }
+                        if (settingsLayerId == layer.id && selectedId == layer.id) {
+                            Column(Modifier.fillMaxWidth().padding(start = if (layer.groupId != null) 12.dp else 0.dp)
+                                .background(Color(0xFF292A2E), RoundedCornerShape(15.dp)).padding(8.dp)) {
+                                DisposableEffect(layer.id) { onDispose { latestOpacityFinished() } }
+                                LayerControls(
+                                    layer = layer,
+                                    imageTransforming = imageTransforming,
+                                    onRename = { renameLayer = layer; renameText = layer.name },
+                                    onOpacity = onOpacity,
+                                    onOpacityFinished = onOpacityFinished,
+                                    onImageScale = onImageScale,
+                                    onFitImage = onFitImage,
+                                    onOriginalImageSize = onOriginalImageSize,
+                                    onImageTransforming = {
+                                        onImageTransforming(it)
+                                        if (it) settingsLayerId = null
+                                    },
+                                )
+                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                                    LayerAction("Duplicate layer", Icons.Outlined.ContentCopy, enabled = layers.size < maximumLayers) {
+                                        onDuplicate(); settingsLayerId = null
+                                    }
+                                    var clipMenuOpen by remember(layer.id) { mutableStateOf(false) }
+                                    Box {
+                                        LayerAction("Clip to layer", Icons.Outlined.Link, active = layer.clipSourceId != null) { clipMenuOpen = true }
+                                        DropdownMenu(clipMenuOpen, { clipMenuOpen = false }) {
+                                            DropdownMenuItem(text = { Text("None — show all pixels") }, onClick = { onClipLayer(null); clipMenuOpen = false })
+                                            layers.filter { candidate ->
+                                                val visited = mutableSetOf(layer.id)
+                                                var cursor: LayerSummary? = candidate
+                                                var allowed = true
+                                                while (cursor != null) {
+                                                    if (!visited.add(cursor.id)) { allowed = false; break }
+                                                    val parent = cursor.clipSourceId
+                                                    cursor = layers.firstOrNull { it.id == parent }
+                                                }
+                                                allowed
+                                            }.forEach { source ->
+                                                DropdownMenuItem(text = { Text(source.name) }, onClick = { onClipLayer(source.id); clipMenuOpen = false })
+                                            }
+                                        }
+                                    }
+                                    if (layer.kind == LayerKind.RASTER) {
+                                        LayerAction(if (referenceLayerId == layer.id) "Turn off Reference strokes" else "Use as Reference strokes",
+                                            Icons.Outlined.Gesture, active = referenceLayerId == layer.id) {
+                                            onReferenceStrokes(if (referenceLayerId == layer.id) null else layer.id)
+                                            settingsLayerId = null
+                                        }
+                                    }
+                                    LayerAction("Delete layer", Icons.Outlined.Delete, enabled = layers.size > 1) { onDelete(); settingsLayerId = null }
+                                }
+
+                            }
                         }
                     }
                 }
@@ -300,68 +360,6 @@ internal fun LayersPanel(
             }
 
         }
-    }
-    layers.firstOrNull { it.id == settingsLayerId }?.let { layer ->
-        AlertDialog(
-            onDismissRequest = { onOpacityFinished(); settingsLayerId = null },
-            title = { Text("Layer settings") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    LayerControls(
-                        layer = layer,
-                        imageTransforming = imageTransforming,
-                        onRename = { renameLayer = layer; renameText = layer.name },
-                        onOpacity = onOpacity,
-                        onOpacityFinished = onOpacityFinished,
-                        onImageScale = onImageScale,
-                        onFitImage = onFitImage,
-                        onOriginalImageSize = onOriginalImageSize,
-                        onImageTransforming = {
-                            onImageTransforming(it)
-                            if (it) settingsLayerId = null
-                        },
-                    )
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PanelButton("Back", onMoveBackward)
-                        PanelButton("Front", onMoveForward)
-                        PanelButton("Duplicate", { onDuplicate(); settingsLayerId = null })
-                    }
-                    var clipMenuOpen by remember(layer.id) { mutableStateOf(false) }
-                    Box {
-                        TextButton(onClick = { clipMenuOpen = true }) {
-                            Text(layer.clipSourceId?.let { id -> "Clipped to ${layers.firstOrNull { it.id == id }?.name ?: "layer"} ▾" } ?: "Clip to layer ▾")
-                        }
-                        DropdownMenu(clipMenuOpen, { clipMenuOpen = false }) {
-                            DropdownMenuItem(text = { Text("None — show all pixels") }, onClick = { onClipLayer(null); clipMenuOpen = false })
-                            layers.filter { candidate ->
-                                val visited = mutableSetOf(layer.id)
-                                var cursor: LayerSummary? = candidate
-                                var allowed = true
-                                while (cursor != null) {
-                                    if (!visited.add(cursor.id)) { allowed = false; break }
-                                    val parent = cursor.clipSourceId
-                                    cursor = layers.firstOrNull { it.id == parent }
-                                }
-                                allowed
-                            }.forEach { source ->
-                                DropdownMenuItem(text = { Text(source.name) }, onClick = { onClipLayer(source.id); clipMenuOpen = false })
-                            }
-                        }
-                    }
-                    if (layer.kind == LayerKind.RASTER) {
-                        TextButton(onClick = {
-                            onReferenceStrokes(if (referenceLayerId == layer.id) null else layer.id)
-                            settingsLayerId = null
-                        }) { Text(if (referenceLayerId == layer.id) "Turn off Reference strokes" else "Use as Reference strokes") }
-                    }
-                    TextButton(onClick = { onDelete(); settingsLayerId = null }, enabled = layers.size > 1) { Text("Delete layer") }
-
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { onOpacityFinished(); settingsLayerId = null }) { Text("Done") }
-            },
-        )
     }
     renameLayer?.let {
         AlertDialog(
@@ -446,20 +444,14 @@ private fun LayerControls(
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(layer.name, color = Color(0xFFE7E7E5), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            TextButton(onClick = onRename, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(32.dp)) { Text("Rename", fontSize = 11.sp) }
+            LayerAction("Rename layer", Icons.Outlined.Edit, onClick = onRename)
         }
         ValueHeader("Layer opacity", "${(layer.opacity * 100).roundToInt()}%")
         Slider(layer.opacity, onOpacity, onValueChangeFinished = onOpacityFinished,
             valueRange = 0f..1f, modifier = Modifier.fillMaxWidth().height(40.dp))
         if (layer.kind == LayerKind.IMAGE) {
-            FilledTonalButton(
-                onClick = { onImageTransforming(!imageTransforming) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = if (imageTransforming) Color(0xFFED6A5A) else Color(0xFF34363B),
-                    contentColor = Color.White,
-                ),
-            ) { Text(if (imageTransforming) "Finish transforming" else "Edit photo on canvas") }
+            LayerAction(if (imageTransforming) "Finish transforming" else "Edit photo on canvas",
+                Icons.Outlined.OpenWith, active = imageTransforming) { onImageTransforming(!imageTransforming) }
             Text(
                 "Drag to move · pinch to resize · twist to rotate",
                 color = Color(0xFFAAAEB4), fontSize = 11.sp,
@@ -476,8 +468,8 @@ private fun LayerControls(
                 onValueChangeFinished = { if (imageScale >= scaleRange * .95f) scaleRange = (scaleRange * 2f).takeIf { it.isFinite() } ?: scaleRange },
                 modifier = Modifier.fillMaxWidth().height(40.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onImageScale(imageScale / 2f) }) { Text("Half size") }
-                OutlinedButton(onClick = { onImageScale(imageScale * 2f) }) { Text("Double size") }
+                LayerAction("Half size", Icons.Outlined.ZoomOut) { onImageScale(imageScale / 2f) }
+                LayerAction("Double size", Icons.Outlined.ZoomIn) { onImageScale(imageScale * 2f) }
             }
             Text(
                 "Original ${layer.originalWidthPx} × ${layer.originalHeightPx} px · source preserved",
@@ -488,8 +480,8 @@ private fun LayerControls(
                 color = Color(0xFFAAAEB4), fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp),
             )
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onFitImage, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Fit canvas") }
-                FilledTonalButton(onOriginalImageSize, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Text("100%") }
+                LayerAction("Fit canvas", Icons.Outlined.FitScreen, onClick = onFitImage)
+                LayerAction("Original image size", Icons.Outlined.PhotoSizeSelectActual, onClick = onOriginalImageSize)
             }
         }
     }
@@ -504,6 +496,7 @@ private fun LayerRow(
     onSelect: () -> Unit,
     onToggleSelection: () -> Unit,
     onVisibility: () -> Unit,
+    expanded: Boolean = false,
     onSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
     onPreviewBounds: (LayoutCoordinates) -> Unit = {},
@@ -549,8 +542,8 @@ private fun LayerRow(
                 color = Color(0xFF9EA0A6), fontSize = 10.sp,
             )
         }
-        IconButton(onSettings, Modifier.size(36.dp).semantics { contentDescription = "Settings for ${layer.name}" }) {
-            Text("⋮", color = Color(0xFFB9BBC0), fontSize = 22.sp)
+        IconButton(onSettings, Modifier.size(36.dp).semantics { contentDescription = "${if (expanded) "Collapse" else "Expand"} settings for ${layer.name}" }) {
+            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, tint = Color(0xFFB9BBC0))
         }
         IconButton(onVisibility, Modifier.size(40.dp).semantics { contentDescription = if (layer.visible) "Hide ${layer.name}" else "Show ${layer.name}" }) {
             EyeIcon(layer.visible)
@@ -609,8 +602,12 @@ private fun ValueHeader(label: String, value: String) {
 }
 
 @Composable
-private fun PanelButton(label: String, onClick: () -> Unit) {
-    OutlinedButton(onClick, contentPadding = PaddingValues(horizontal = 11.dp), modifier = Modifier.height(40.dp)) { Text(label, fontSize = 12.sp) }
+private fun LayerAction(label: String, icon: ImageVector, active: Boolean = false,
+    enabled: Boolean = true, onClick: () -> Unit) {
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(icon, contentDescription = label,
+            tint = if (!enabled) Color(0xFF777A81) else if (active) Color(0xFF75A7FF) else Color.White)
+    }
 }
 
 internal data class LayerDropTarget(

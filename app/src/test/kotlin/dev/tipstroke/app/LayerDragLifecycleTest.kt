@@ -51,7 +51,7 @@ class LayerDragLifecycleTest {
                     onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {},
                     onOpacityFinished = {}, onRename = {}, onImageScale = {}, onFitImage = {},
                     onOriginalImageSize = {}, onImageTransforming = {}, onAddPaint = {}, onImportImage = {},
-                    onMoveForward = {}, onMoveBackward = {}, onDuplicate = {}, onDelete = {},
+                    onDuplicate = {}, onDelete = {},
                     // Identical direction conversion to CanvasScreen, through the real native stack.
                     onReorder = { source, target, towardFront ->
                         reorderCount++
@@ -62,6 +62,21 @@ class LayerDragLifecycleTest {
         }
         compose.waitForIdle()
         return currentLayers.toList()
+    }
+
+    @Test fun layerActionsExpandInlineAndCollapse() {
+        val layer = showNativeLayers(2).first()
+        compose.onNodeWithContentDescription("Duplicate layer").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Expand settings for ${layer.name}").performClick()
+        compose.onNodeWithContentDescription("Duplicate layer").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Rename layer").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Delete layer").assertIsDisplayed()
+        compose.onNodeWithText("Layer settings").assertDoesNotExist()
+        compose.onNodeWithText("Back").assertDoesNotExist()
+        compose.onNodeWithText("Front").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Collapse settings for ${layer.name}").performClick()
+        compose.onNodeWithContentDescription("Duplicate layer").assertDoesNotExist()
+        row(layer).assertIsDisplayed()
     }
 
     private fun row(layer: LayerSummary) = compose.onNodeWithContentDescription("Layer row: ${layer.name}")
@@ -300,7 +315,7 @@ class LayerDragLifecycleTest {
                     onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {},
                     onOpacityFinished = {}, onRename = {}, onImageScale = {}, onFitImage = {},
                     onOriginalImageSize = {}, onImageTransforming = {}, onAddPaint = {}, onImportImage = {},
-                    onMoveForward = {}, onMoveBackward = {}, onDuplicate = {}, onDelete = {})
+                    onDuplicate = {}, onDelete = {})
             }
         }
         compose.onNodeWithText("Canvas background").performClick()

@@ -190,7 +190,7 @@ Export regressions: `AnimationExporterTest` decodes all GIF pixels with the host
 
 ## Layer interaction regression checks
 
-- Select a layer: its settings stay closed. Open ⋮, close with Done or outside dismissal, and confirm the same layer remains selected.
+- Select a layer: its settings stay closed. Expand its chevron and verify icon actions appear beneath that row. Collapse it again and confirm the same layer remains selected. Selecting another layer closes the expanded controls. Verify rename, duplicate, clipping, reference, delete, and image actions; Back/Front buttons must be absent.
 - Long-press a row and move in both axes, including edge scrolling. Rows must stay still while a compact label follows the pointer. On the name side, verify the blue line and above/below label; on the preview side, verify a thumbnail highlight and grouping label. Passing through gaps between thumbnails must never show an insertion line. Release to commit the indicated action, or cancel to keep the original order.
 - Select a group by its heading; add/remove individual layers with right swipes. Erase across selected paint and image layers, then cancel or undo/redo. Unselected layers and original image assets must remain unchanged.
 - Move a marquee across several selected layers. Artwork must follow before release. Cancel must leave pixels untouched; release and undo/redo must affect all targets together. Move with no marquee selects the full canvas.
