@@ -1,0 +1,73 @@
+name: Linux package channels
+
+on:
+  push:
+    branches: [stable, unstable]
+    paths-ignore: ['docs/**', '**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Keep channel pointers ordered; never cancel publication halfway through.
+concurrency:
+  group: linux-package-channels
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [stable, unstable]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep publishing helper
+        run: cp tools/publish-linux-channel.sh "$RUNNER_TEMP/publish-linux-channel.sh"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.channel }}
+      - name: Identify immutable build
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ matrix.channel }}
+        run: |
+          revision=$(git rev-parse HEAD)
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          if gh release view "linux-$CHANNEL-$revision" >/dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v4
+        if: steps.source.outputs.exists != 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.source.outputs.exists != 'true'
+      - name: Build signed channel APK
+        if: steps.source.outputs.exists != 'true'
+        env:
+          TIPSTROKE_SIGNING_KEY: ${{ secrets.TIPSTROKE_SIGNING_KEY }}
+          TIPSTROKE_KEYSTORE_PASSWORD: ${{ secrets.TIPSTROKE_KEYSTORE_PASSWORD }}
+          TIPSTROKE_KEY_ALIAS: ${{ secrets.TIPSTROKE_KEY_ALIAS }}
+          TIPSTROKE_KEY_PASSWORD: ${{ secrets.TIPSTROKE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$TIPSTROKE_SIGNING_KEY"
+          umask 077
+          export TIPSTROKE_KEYSTORE_FILE="$RUNNER_TEMP/linux-channel.jks"
+          trap 'rm -f "$TIPSTROKE_KEYSTORE_FILE"' EXIT
+          printf '%s' "$TIPSTROKE_SIGNING_KEY" | base64 --decode > "$TIPSTROKE_KEYSTORE_FILE"
+          export TIPSTROKE_VERSION_CODE=$(( $(date -u +%s) - 1577836800 ))
+          ./gradlew test lint assembleRelease
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          "$apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+      - name: Publish immutable APK and channel pointer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ matrix.channel }}
+          REVISION: ${{ steps.source.outputs.revision }}
+          BUILD_EXISTS: ${{ steps.source.outputs.exists }}
+        run: bash "$RUNNER_TEMP/publish-linux-channel.sh"
