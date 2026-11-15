@@ -12,8 +12,7 @@ reuses existing immutable builds, and publishes signed APKs under
 releases contain only `tipstroke.json` manifests pointing to those immutable APKs
 with SHA-256 hashes. All Linux releases are prereleases so they do not replace
 numbered Android releases. Do not delete immutable Linux releases referenced by
-Nix lock files. The workflow must also reach the stable branch to publish on
-stable-only pushes; unstable pushes currently refresh both channels.
+Nix lock files. The workflow is present on both branches; pushes refresh both channels.
 
 Pantheon locks the manifests as file inputs. Updating the unstable input with
 `nix flake update --refresh pantheon/tipstroke-unstable` obtains the latest
