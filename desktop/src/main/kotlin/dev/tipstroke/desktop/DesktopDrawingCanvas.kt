@@ -62,7 +62,7 @@ internal class DesktopDrawingCanvas : JComponent() {
     private var panX = 0.0
     private var panY = 0.0
     private var zoom = 1.0
-    private var fittedOnce = false
+    private var fitOnResize = true
     private var spaceDown = false
     private var drawing = false
     private var panning = false
@@ -79,8 +79,7 @@ internal class DesktopDrawingCanvas : JComponent() {
 
         addComponentListener(object : ComponentAdapter() {
             override fun componentResized(event: ComponentEvent) {
-                if (!fittedOnce && width > 0 && height > 0) {
-                    fittedOnce = true
+                if (fitOnResize && width > 0 && height > 0) {
                     fitToView()
                 }
             }
@@ -112,6 +111,7 @@ internal class DesktopDrawingCanvas : JComponent() {
             override fun mousePressed(event: MouseEvent) {
                 requestFocusInWindow()
                 if (event.button == MouseEvent.BUTTON2 || event.button == MouseEvent.BUTTON3 || spaceDown) {
+                    fitOnResize = false
                     panning = true
                     previousScreenPoint = event.point
                     cursor = Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
@@ -191,6 +191,7 @@ internal class DesktopDrawingCanvas : JComponent() {
     }
 
     fun fitToView() {
+        fitOnResize = true
         if (width <= 0 || height <= 0) return
         val margin = 48.0
         zoom = min(
@@ -487,6 +488,7 @@ internal class DesktopDrawingCanvas : JComponent() {
     }
 
     private fun handleWheel(event: MouseWheelEvent) {
+        fitOnResize = false
         if (event.isControlDown || event.isMetaDown) {
             val before = screenToDocument(event.point)
             val factor = Math.pow(1.12, -event.preciseWheelRotation)

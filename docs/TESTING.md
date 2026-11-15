@@ -48,11 +48,17 @@ Before distributing, test on an actual iPhone and an iPad with compatible Pencil
 
 ## Linux laptop loop
 
-Run `./tipstroke laptop` after changes. It opens TipStroke as a regular Linux desktop application; it does not start Android or require an SDK. Primary-drag with a mouse, trackpad, or pen tablet to paint; secondary/middle/Space-drag to pan; scroll to pan; and Ctrl/Meta+scroll to zoom. Check all four tools, undo/redo, fit, PNG open/export, canvas-edge clipping, and drawing across 256 px tile boundaries.
+The supported laptop trial is `./tipstroke laptop`, which runs the current Android app in the emulator.
+
+For legacy preview regression checks only, run `./tipstroke desktop-preview`. It opens TipStroke as a regular Linux desktop application; it does not start Android or require an SDK. Primary-drag with a mouse, trackpad, or pen tablet to paint; secondary/middle/Space-drag to pan; scroll to pan; and Ctrl/Meta+scroll to zoom. Check all four tools, undo/redo, fit, PNG open/export, canvas-edge clipping, and drawing across 256 px tile boundaries.
 
 On Wayland, Gradle desktop launches set `_JAVA_AWT_WM_NONREPARENTING=1` for the app JVM before AWT starts. This lets the Compose/Swing content follow XWayland window resizes on compositors such as Hyprland instead of leaving black areas to the right and bottom. Check enlarging, shrinking, and maximizing the window: the toolbar and status bar must span the window and the brush panel must stay against its right edge. For a standalone packaged app launched outside Gradle, set the same environment variable in its launch environment.
 
 The desktop renderer is intentionally smaller than Android: it uses constant-pressure JVM pointer input and does not currently load TipStroke project packages, layers, selections, or Jetpack Ink. Run `./tipstroke emulator-setup` once and `./tipstroke emulator` when a test needs the complete Android UI without a physical device. Always return to the physical-device checklist below for pressure/tilt response, hover/buttons, palm rejection, stroke latency, and wet/final handoff.
+
+For laptop feature/performance trials, `./tipstroke emulator` builds and installs the current Android debug app while preserving the AVD's drawings. It requests host GPU rendering by default. Check `.gradle/tipstroke-emulator.log` for the actual graphics adapter: SwiftShader/llvmpipe are software renderers and are not representative of host-GPU performance. If host graphics fail, close the emulator and run `TIPSTROKE_EMULATOR_GPU=auto ./tipstroke emulator` (or `swiftshader` for an explicit software fallback). GPU overrides apply only when starting the AVD, not when reusing an already-running one. Test continuous strokes, large brushes, layers/blending, undo, zoom/pan, and saving/reopening; a successful launch alone is not a latency measurement.
+
+On Wayland, emulator launches use Qt's XCB backend with Qt high-DPI scaling disabled, leaving the compositor to scale the whole window. This avoids independently scaling its Qt controls and framebuffer. Restart the emulator after changing this setting; `TIPSTROKE_EMULATOR_QT_HIDPI=1` preserves the inherited Qt configuration for comparison. The Android guest resolution/density and project pixels are not modified. Check framebuffer edges, pointer alignment, and controls after resizing and moving between monitors. Mixed-DPI and NVIDIA hardware validation remain required; see [Multiplatform migration](MULTIPLATFORM.md).
 
 Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable the debug overlay, and test in both landscape and portrait.
 

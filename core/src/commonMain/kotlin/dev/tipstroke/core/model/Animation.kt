@@ -1,10 +1,11 @@
 package dev.tipstroke.core.model
 
-import java.util.UUID
+import kotlin.jvm.JvmInline
+import kotlin.uuid.Uuid
 import kotlin.math.floor
 
 @JvmInline value class FrameId(val value: String) {
-    companion object { fun new() = FrameId(UUID.randomUUID().toString()) }
+    companion object { fun new() = FrameId(Uuid.random().toString()) }
 }
 
 /** A frame is a time slot. Artwork belongs to layers and is addressed by frame ID. */

@@ -25,6 +25,11 @@
 
 ## Linux desktop
 
+Fit mode follows window resizes, including the initial size assigned by a tiling
+window manager. Manual panning or zooming leaves fit mode; pressing Fit restores
+it. Native drawing-pad pressure/tilt input remains a desktop integration task;
+the current AWT surface receives compatibility mouse events.
+
 - Primary mouse or tablet-pointer drag draws. The desktop JVM receives these as pointer events and currently uses constant pressure.
 - Middle drag, secondary drag, or Space + primary drag pans.
 - Wheel and two-finger trackpad scroll pan. Shift + wheel pans horizontally. Ctrl/Meta + wheel zooms around the pointer.

@@ -18,6 +18,7 @@ java {
 }
 
 dependencies {
+    implementation(project(":shared-ui"))
     implementation(project(":core"))
     implementation(compose.desktop.currentOs)
     implementation("org.jetbrains.compose.material3:material3-desktop:1.9.0")

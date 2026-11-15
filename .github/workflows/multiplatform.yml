@@ -1,0 +1,36 @@
+name: Shared Kotlin checks
+
+on:
+  push:
+    branches: [stable, unstable]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multiplatform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apple-shared-code:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install Android compile SDK for shared UI configuration
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Check common code and Apple framework
+        run: |
+          if [ "$(uname -m)" = arm64 ]; then
+            simulator_test=iosSimulatorArm64Test
+          else
+            simulator_test=iosX64Test
+          fi
+          ./gradlew ":core:$simulator_test" ":shared-ui:$simulator_test" \
+            :core:linkReleaseFrameworkIosArm64

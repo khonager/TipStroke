@@ -10,6 +10,10 @@ a focused device check measured at most 4/255 residual alpha variation.
 Wet/final visual comparison and sustained-stroke device profiling remain pending. Keep Airbrush as the default soft brush and evaluate renderer
 consolidation only after visual and latency parity; see [Brush engine](BRUSH_ENGINE.md).
 
+## Multiplatform migration
+
+Use Kotlin Multiplatform for shared models, editing logic, and Compose controls while preserving native drawing surfaces. The initial migration moves core code/tests to common source sets and shares precision sliders and the blend-mode picker. Android/desktop consume shared sliders; iOS target compilation is configured but the Swift app remains independent. Next: shared editor state, project serialization and compatibility fixtures, library/gallery UI, then replace the legacy desktop preview with the shared editor. Desktop delivery is KMP or emulated Android, not a separately implemented desktop companion. NVIDIA desktop and mixed-DPI testing are required alongside AMD/Intel; see [migration status](MULTIPLATFORM.md).
+
 ## NEXT
 
 1. Recovery journaling/fsync, rename/duplicate gallery actions, and transferable project import/export.

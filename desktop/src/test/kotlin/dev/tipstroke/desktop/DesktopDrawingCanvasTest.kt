@@ -11,6 +11,28 @@ import kotlin.test.assertTrue
 
 class DesktopDrawingCanvasTest {
     @Test
+    fun fittedCanvasRemainsInsideViewportAfterWindowResize() {
+        SwingUtilities.invokeAndWait {
+            val canvas = DesktopDrawingCanvas().apply {
+                setSize(900, 700)
+                fitToView()
+                setSize(400, 300)
+            }
+            canvas.componentListeners.forEach {
+                it.componentResized(java.awt.event.ComponentEvent(canvas, java.awt.event.ComponentEvent.COMPONENT_RESIZED))
+            }
+            val preview = java.awt.image.BufferedImage(400, 300, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            val graphics = preview.createGraphics()
+            try { canvas.paint(graphics) } finally { graphics.dispose() }
+            assertEquals(java.awt.Color.WHITE.rgb, preview.getRGB(200, 150))
+            val workspace = java.awt.Color(22, 23, 26).rgb
+            assertEquals(workspace, preview.getRGB(390, 150), "right margin must remain visible")
+            assertEquals(workspace, preview.getRGB(200, 290), "bottom margin must remain visible")
+            assertEquals(workspace, preview.getRGB(200, 10), "top margin must remain visible")
+        }
+    }
+
+    @Test
     fun strokeExportsAndUndoRemovesItsPixels() {
         val output = File.createTempFile("tipstroke-desktop", ".png")
         val undone = File.createTempFile("tipstroke-desktop-undone", ".png")

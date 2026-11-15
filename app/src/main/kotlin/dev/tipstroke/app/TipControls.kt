@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.*
 import dev.tipstroke.core.drawing.BrushSizeUnit
 import dev.tipstroke.core.model.RgbaColor
 import kotlin.math.roundToInt
+import dev.tipstroke.ui.PrecisionSlider
+import dev.tipstroke.ui.VerticalPrecisionSlider
 
 @Composable
 internal fun TipControls(
@@ -172,130 +174,5 @@ internal fun ColorSwitcher(
 private fun colorKey(color: RgbaColor): Int =
     ((color.alpha * 255).roundToInt() shl 24) or ((color.red * 255).roundToInt() shl 16) or
         ((color.green * 255).roundToInt() shl 8) or (color.blue * 255).roundToInt()
-
-@Composable
-private fun PrecisionSlider(
-    label: String,
-    valueLabel: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    step: Float,
-    onValue: (Float) -> Unit,
-    onAdjustmentStart: () -> Unit,
-    onAdjustmentEnd: () -> Unit,
-    modifier: Modifier = Modifier,
-    valueContent: (@Composable () -> Unit)? = null,
-) {
-    Column(modifier) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, color = Color(0xFFE7E7E5), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            if (valueContent != null) valueContent() else Text(valueLabel, color = Color(0xFFED6A5A), fontSize = 12.sp)
-        }
-        Slider(
-            value = sliderFraction(value, range),
-            onValueChange = { onAdjustmentStart(); onValue(sliderValue(it, range)) },
-            onValueChangeFinished = onAdjustmentEnd,
-            valueRange = 0f..1f,
-            modifier = Modifier.fillMaxWidth().height(44.dp),
-        )
-        StepButtons(value, range, step, onValue, onAdjustmentStart, onAdjustmentEnd)
-    }
-}
-
-@Composable
-private fun VerticalPrecisionSlider(
-    label: String,
-    valueLabel: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    step: Float,
-    onValue: (Float) -> Unit,
-    onAdjustmentStart: () -> Unit,
-    onAdjustmentEnd: () -> Unit,
-    trackHeight: Dp,
-    compact: Boolean,
-    valueContent: (@Composable () -> Unit)? = null,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, color = Color(0xFFE7E7E5), fontSize = if (compact) 10.sp else 12.sp, fontWeight = FontWeight.Medium)
-        if (valueContent != null) valueContent() else Text(valueLabel, color = Color(0xFFED6A5A), fontSize = if (compact) 10.sp else 12.sp)
-        Spacer(Modifier.height(if (compact) 3.dp else 6.dp))
-        SmallStepButton("+", compact) {
-            onAdjustmentStart(); onValue((value + step).coerceIn(range)); onAdjustmentEnd()
-        }
-        VerticalDragTrack(value, range, trackHeight, onValue, onAdjustmentStart, onAdjustmentEnd)
-        SmallStepButton("−", compact) {
-            onAdjustmentStart(); onValue((value - step).coerceIn(range)); onAdjustmentEnd()
-        }
-    }
-}
-
-@Composable
-private fun VerticalDragTrack(
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    height: Dp,
-    onValue: (Float) -> Unit,
-    onAdjustmentStart: () -> Unit,
-    onAdjustmentEnd: () -> Unit,
-) {
-    fun valueAt(y: Float, height: Float): Float {
-        val fraction = (1f - ((y - 14f) / (height - 28f))).coerceIn(0f, 1f)
-        return sliderValue(fraction, range)
-    }
-    Canvas(
-        Modifier.width(48.dp).height(height)
-            .semantics { contentDescription = "Vertical adjustment" }
-            .pointerInput(range) {
-                detectDragGestures(
-                    onDragStart = { onAdjustmentStart(); onValue(valueAt(it.y, size.height.toFloat())) },
-                    onDragEnd = onAdjustmentEnd,
-                    onDragCancel = onAdjustmentEnd,
-                    onDrag = { change, _ -> onValue(valueAt(change.position.y, size.height.toFloat())); change.consume() },
-                )
-            },
-    ) {
-        val x = size.width / 2f
-        val top = minOf(14.dp.toPx(), size.height * .14f)
-        val bottom = size.height - top
-        val fraction = sliderFraction(value, range)
-        val thumbY = bottom - fraction * (bottom - top)
-        drawLine(Color(0xFF4A4758), Offset(x, top), Offset(x, bottom), 8.dp.toPx(), StrokeCap.Round)
-        drawLine(Color(0xFFED6A5A), Offset(x, thumbY), Offset(x, bottom), 8.dp.toPx(), StrokeCap.Round)
-        drawCircle(Color(0xFFF8F8F5), 10.dp.toPx(), Offset(x, thumbY))
-        drawCircle(Color(0xFFED6A5A), 3.dp.toPx(), Offset(x, thumbY))
-    }
-}
-
-@Composable
-private fun StepButtons(
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    step: Float,
-    onValue: (Float) -> Unit,
-    onAdjustmentStart: () -> Unit,
-    onAdjustmentEnd: () -> Unit,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SmallStepButton("−") {
-            onAdjustmentStart(); onValue((value - step).coerceIn(range)); onAdjustmentEnd()
-        }
-        SmallStepButton("+") {
-            onAdjustmentStart(); onValue((value + step).coerceIn(range)); onAdjustmentEnd()
-        }
-    }
-}
-
-@Composable
-private fun SmallStepButton(label: String, compact: Boolean = false, onClick: () -> Unit) {
-    FilledTonalButton(
-        onClick,
-        modifier = Modifier.size(if (compact) 26.dp else 36.dp),
-        contentPadding = PaddingValues(0.dp),
-        shape = RoundedCornerShape(if (compact) 9.dp else 11.dp),
-    ) {
-        Text(label, fontSize = if (compact) 15.sp else 18.sp)
-    }
-}
 
 private fun RgbaColor.toCompose() = Color(red, green, blue, alpha)

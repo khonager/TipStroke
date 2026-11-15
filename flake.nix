@@ -18,7 +18,10 @@
             alsa-lib dbus glib gtk3 nss nspr zlib
           ])}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           export QT_XKB_CONFIG_ROOT="${pkgs.xkeyboard_config}/share/X11/xkb"
-          echo "TipStroke shell ready. Run ./tipstroke laptop or ./tipstroke build."
+          # Use the host's installed ICDs (including proprietary NVIDIA), not an
+          # AMD/Intel-specific driver or the emulator's software Vulkan driver.
+          export XDG_DATA_DIRS="/run/opengl-driver/share:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+          echo "TipStroke shell ready. Run ./tipstroke laptop (Android emulator) or ./tipstroke build."
         '';
       };
     };

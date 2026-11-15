@@ -3,6 +3,8 @@ package dev.tipstroke.desktop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -43,6 +44,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.ui.PrecisionSlider
 import java.awt.FileDialog
 import java.io.File
 import javax.swing.JOptionPane
@@ -247,14 +249,14 @@ private fun BrushPanel(
         Color(0xFF54A8FF), Color(0xFF956DFF), Color(0xFFE75BA8),
     )
     Column(
-        modifier = Modifier.width(208.dp).fillMaxHeight().background(Panel).padding(16.dp),
+        modifier = Modifier.width(208.dp).fillMaxHeight().background(Panel).verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(if (erasing) "ERASER" else "BRUSH", color = MutedText, fontSize = 11.sp)
-        LabelValue("Size", "${size.roundToInt()} px")
-        Slider(value = size, onValueChange = onSizeChanged, valueRange = 1f..256f)
-        LabelValue("Opacity", "${(opacity * 100).roundToInt()}%")
-        Slider(value = opacity, onValueChange = onOpacityChanged, valueRange = .01f..1f)
+        PrecisionSlider("Size", "${size.roundToInt()} px", size, 1f..256f, 1f,
+            onSizeChanged, {}, {})
+        PrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .01f..1f, .01f,
+            onOpacityChanged, {}, {})
 
         Text("COLOR", color = if (erasing) MutedText.copy(alpha = .45f) else MutedText, fontSize = 11.sp)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -284,14 +286,6 @@ private fun BrushPanel(
             fontSize = 11.sp,
             lineHeight = 16.sp,
         )
-    }
-}
-
-@Composable
-private fun LabelValue(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color.White, fontSize = 13.sp)
-        Text(value, color = Accent, fontSize = 13.sp)
     }
 }
 

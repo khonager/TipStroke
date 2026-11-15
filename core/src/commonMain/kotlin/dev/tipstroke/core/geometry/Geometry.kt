@@ -82,14 +82,14 @@ object TileGrid {
 data class CanvasTransform(val panX: Float, val panY: Float, val scale: Float, val rotationDegrees: Float) {
     init { require(scale > 0f) }
     fun documentToScreen(point: Point): Point {
-        val radians = Math.toRadians(rotationDegrees.toDouble())
+        val radians = (rotationDegrees.toDouble() * kotlin.math.PI / 180.0)
         val sx = point.x * scale
         val sy = point.y * scale
         return Point((sx * cos(radians) - sy * sin(radians)).toFloat() + panX,
             (sx * sin(radians) + sy * cos(radians)).toFloat() + panY)
     }
     fun screenToDocument(point: Point): Point {
-        val radians = Math.toRadians((-rotationDegrees).toDouble())
+        val radians = (-rotationDegrees.toDouble() * kotlin.math.PI / 180.0)
         val x = point.x - panX
         val y = point.y - panY
         return Point(((x * cos(radians) - y * sin(radians)) / scale).toFloat(),

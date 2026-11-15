@@ -1,7 +1,9 @@
 package dev.tipstroke.core.model
 
-import java.time.Instant
-import java.util.UUID
+import kotlin.jvm.JvmInline
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 @JvmInline value class DocumentId(val value: String)
 @JvmInline value class LayerId(val value: String)
@@ -98,11 +100,11 @@ data class Document(
 
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1
-        fun testCanvas(now: Instant = Instant.now()) = Document(
-            id = DocumentId(UUID.randomUUID().toString()),
+        fun testCanvas(now: Instant = Clock.System.now()) = Document(
+            id = DocumentId(Uuid.random().toString()),
             schemaVersion = CURRENT_SCHEMA_VERSION,
             canvas = CanvasSpec(2048, 2048),
-            layers = listOf(RasterLayer(LayerId(UUID.randomUUID().toString()), "Paint")),
+            layers = listOf(RasterLayer(LayerId(Uuid.random().toString()), "Paint")),
             createdAt = now,
             modifiedAt = now,
         )

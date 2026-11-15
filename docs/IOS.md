@@ -6,7 +6,11 @@ The app uses UIKit and Core Graphics with no third-party packages, account,
 network service, or cross-platform drawing surface.
 
 This is the first iOS drawing implementation, not Android feature parity. The
-Android app and its Gradle modules remain independent.
+native app has not yet adopted the shared Kotlin modules. `:core` and `:shared-ui`
+now declare iOS device/simulator targets; the shared core produces
+`TipStrokeCore.framework`, and a macOS CI job checks portable code on the
+simulator. Wiring shared state and controls into this native app is the next
+integration step; see [Multiplatform migration](MULTIPLATFORM.md).
 
 ## Included
 

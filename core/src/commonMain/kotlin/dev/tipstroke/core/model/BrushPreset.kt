@@ -1,5 +1,7 @@
 package dev.tipstroke.core.model
 
+import kotlin.jvm.JvmInline
+import kotlin.math.pow
 @JvmInline value class BrushId(val value: String)
 
 enum class BrushEngine { PENCIL, INK, AIRBRUSH }
@@ -11,9 +13,7 @@ data class RgbaColor(val red: Float, val green: Float, val blue: Float, val alph
 }
 
 data class PressureCurve(val start: Float = 0.18f, val end: Float = 1f, val exponent: Float = 0.72f) {
-    fun map(pressure: Float): Float = start + (end - start) * Math.pow(
-        pressure.coerceIn(0f, 1f).toDouble(), exponent.toDouble()
-    ).toFloat()
+    fun map(pressure: Float): Float = start + (end - start) * pressure.coerceIn(0f, 1f).toDouble().pow(exponent.toDouble()).toFloat()
 }
 
 data class BrushPreset(

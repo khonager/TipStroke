@@ -22,7 +22,7 @@ data class SelectionTransform(
         require(translation.x.isFinite() && translation.y.isFinite())
         require(warp == null || (sourceBounds != null && sourceBounds.right > sourceBounds.left && sourceBounds.bottom > sourceBounds.top))
     }
-    private val radians = Math.toRadians(rotationDegrees.toDouble())
+    private val radians = (rotationDegrees.toDouble() * kotlin.math.PI / 180.0)
     val a: Float = (cos(radians) * scaleX).toFloat()
     val b: Float = (-sin(radians) * scaleY).toFloat()
     val c: Float = (sin(radians) * scaleX).toFloat()

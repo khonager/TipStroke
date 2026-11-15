@@ -14,7 +14,8 @@ TipStroke is an Android-first, local-first drawing app. Optimize for “open can
 
 ## Modules
 
-- `:core`: document/layer/brush models, transforms, tile math, drawing contracts, undo concepts.
+- `:core`: Kotlin Multiplatform document/layer/brush models, transforms, tile math, drawing contracts, undo concepts (`commonMain` / `commonTest`; JVM and iOS targets).
+- `:shared-ui`: Compose Multiplatform controls using core contracts; no native drawing implementation or per-sample pointer state.
 - `:drawing-android`: stylus routing, Jetpack Ink authoring, sparse Android bitmap tiles, compositing, gestures.
 - `:app`: lifecycle and minimal Compose controls around the native surface.
 - `ios/`: independent native iPhone/iPad app, sparse raster engine, local persistence and Xcode tests. See `docs/IOS.md`; builds run in Codemagic or macOS/Xcode.

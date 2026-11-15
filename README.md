@@ -34,9 +34,10 @@ The short commands are intentionally similar to Flutter/npm workflows:
 ```sh
 ./tipstroke build    # APK → app/build/outputs/apk/debug/app-debug.apk
 ./tipstroke install  # connected Android phone or running emulator
-./tipstroke laptop   # real Linux desktop app (no emulator)
-./tipstroke desktop-package # self-contained desktop distribution
-./tipstroke emulator-setup  # optional Android tablet AVD, one time
+./tipstroke laptop   # full Android app in the tablet emulator
+./tipstroke desktop-preview # legacy preview (limited features)
+./tipstroke desktop-package # package that legacy preview
+./tipstroke emulator-setup  # Android tablet AVD, one time
 ./tipstroke emulator # production Android app in that AVD
 ./tipstroke test
 ./tipstroke check
@@ -47,11 +48,15 @@ Android Studio is optional. To install manually, enable USB debugging on your ph
 
 Debug builds install as **TipStroke Debug** (`dev.tipstroke.app.debug`) alongside the signed release app. This avoids version-code and signing-key conflicts with releases and preserves their drawings. Each app has its own local library; export/import projects to transfer drawings between them.
 
-`./tipstroke laptop` starts a normal JVM desktop process in its own Linux window using Compose Multiplatform. Its canvas is a direct AWT drawing component backed by sparse 256 px raster tiles, so samples do not flow through Compose state and a stroke does not copy the whole canvas. It supports Pencil, Ink, Airbrush, Eraser, bounded undo/redo, PNG open/export, mouse drawing, tablet-pointer drawing, middle/right/Space drag panning, trackpad or wheel panning, and Ctrl/Meta+scroll zooming. The desktop defaults come from the same `:core` tip models as Android.
+`./tipstroke laptop` (also `desktop` or `emulator`) builds and runs the current Android app in a tablet emulator, preserving its local drawings. Run `./tipstroke emulator-setup` once first. This is the laptop path with the complete Android feature set while the shared Kotlin editor is being migrated. Host GPU rendering is the default; emulator input may reduce a drawing pad to constant-pressure mouse input, so this does not establish professional tablet support.
 
-This is intentionally a useful compatibility renderer rather than a claim that Java2D reproduces Jetpack Ink. Standard JVM pointer events do not expose Linux tablet pressure, tilt, eraser ends, or pad buttons consistently, so tablets currently draw at constant pressure on desktop. Use the desktop target for quick tool/UI/workflow checks and a physical Android tablet for final tip shape, pressure/tilt, palm rejection, and input-to-photon checks. The optional `./tipstroke emulator` path remains available when a test specifically needs the complete Android UI or project format.
+The target is shared Kotlin Multiplatform product logic and controls with platform drawing surfaces. Android tablets remain the priority. See [the migration status](docs/MULTIPLATFORM.md) for what is shared and what remains unfinished.
 
-`./tipstroke desktop-package` creates a self-contained app under `desktop/build/compose/binaries/main/app/`, including the required runtime. On NixOS, desktop and emulator commands automatically enter `nix develop` for host libraries. The flake remains optional on conventional Linux distributions.
+`./tipstroke desktop-preview` opens the legacy Compose/Java2D preview. It has only basic tools and PNG support, without Android project/layer/brush parity; it is not the desktop product strategy.
+
+`./tipstroke desktop-package` packages the legacy preview under `desktop/build/compose/binaries/main/app/`, including the required runtime. On NixOS, desktop and emulator commands automatically enter `nix develop` for host libraries. The flake remains optional on conventional Linux distributions.
+
+The migration to shared Kotlin logic and Compose controls is underway; see [Multiplatform architecture and status](docs/MULTIPLATFORM.md). This does not yet give the native desktop or iOS apps Android feature parity.
 
 ### GitHub releases
 

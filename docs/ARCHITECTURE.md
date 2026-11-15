@@ -8,6 +8,8 @@
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
+`:core` is now a Kotlin Multiplatform module: Android/desktop consume its JVM variant; iOS device and simulator targets compile the same common models, geometry, brush math, and timeline logic. `:shared-ui` owns portable Compose controls (precision sliders and the blend-mode picker); Android and desktop consume the same slider implementation. See [Multiplatform migration](MULTIPLATFORM.md) for current integration and remaining parity work.
+
 `:desktop` is a deliberately smaller Linux/JVM companion. Compose Multiplatform owns its window and controls, while a direct AWT `JComponent` owns input and rasterization so pointer samples never enter Compose state. It reuses `:core` brush defaults, allocates the same 256×256 sparse tile size, repaints only dirty/visible regions, and bounds tile-local undo snapshots to 128 MiB. It can open and export PNGs, but it does not yet implement Android project packages, layers, selections, or Jetpack Ink. The desktop path never changes or abstracts the production Android hot path.
 
 The optional tablet-sized Android Emulator remains a separate integration-test target. Use it when the complete Android UI, persistence, layers, or selection flows matter. Physical Android hardware remains required for authoritative latency, palm-rejection, pressure/tilt, and OEM stylus validation.
@@ -234,7 +236,7 @@ compatibility needs a lossless migration/import design before it can be enabled.
 
 ## Source directories
 
-Edit Kotlin code under each module’s `src/main/kotlin` and tests under `src/test/kotlin`. The `core/bin/` and `desktop/bin/` directories are IDE-generated copies, ignored by Git and not Gradle source roots.
+Shared core/UI code and portable tests live under `src/commonMain/kotlin` and `src/commonTest/kotlin`. Android and desktop entry points still use `src/main/kotlin` and `src/test/kotlin`. The `core/bin/` and `desktop/bin/` directories are IDE-generated copies, ignored by Git and not Gradle source roots.
 
 ## Media canvases (Android)
 

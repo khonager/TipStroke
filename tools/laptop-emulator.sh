@@ -11,6 +11,9 @@ AVD_NAME=TipStroke_Tablet_API_35
 SYSTEM_IMAGE='system-images;android-35;default;x86_64'
 EMULATOR_PORT=5562
 EMULATOR_SERIAL=emulator-$EMULATOR_PORT
+# Use host graphics for a meaningful laptop performance trial. Override with
+# auto or swiftshader if a particular host driver cannot run the emulator.
+EMULATOR_GPU=${TIPSTROKE_EMULATOR_GPU:-host}
 
 sdk_root() {
   if [ -n "${ANDROID_SDK_ROOT:-}" ]; then
@@ -94,8 +97,15 @@ run_app() {
   SERIAL=$("$ADB" devices | awk -v serial="$EMULATOR_SERIAL" '$1 == serial && $2 == "device" { print $1 }')
   if [ -z "$SERIAL" ]; then
     printf 'Starting %s...\n' "$AVD_NAME"
-    nohup setsid -f "$EMULATOR" -avd "$AVD_NAME" -sysdir "$SYSTEM_IMAGE_DIR" -port "$EMULATOR_PORT" \
-      -no-boot-anim -no-audio -gpu auto \
+    # The bundled Qt/XWayland window can scale its controls independently of the
+    # emulator framebuffer. Let the compositor scale both together on Wayland.
+    # Set TIPSTROKE_EMULATOR_QT_HIDPI=1 to restore Qt's own per-monitor scaling.
+    set --
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && [ "${TIPSTROKE_EMULATOR_QT_HIDPI:-0}" = 0 ]; then
+      set -- env QT_QPA_PLATFORM=xcb QT_ENABLE_HIGHDPI_SCALING=0 QT_SCALE_FACTOR=1 QT_SCREEN_SCALE_FACTORS=
+    fi
+    nohup setsid -f "$@" "$EMULATOR" -avd "$AVD_NAME" -sysdir "$SYSTEM_IMAGE_DIR" -port "$EMULATOR_PORT" \
+      -no-boot-anim -no-audio -gpu "$EMULATOR_GPU" \
       </dev/null >.gradle/tipstroke-emulator.log 2>&1 &
     attempts=0
     while [ "$attempts" -lt 90 ]; do

@@ -29,7 +29,7 @@ class StampPath(private val style: StrokeStyle) {
             val dy = sample.position.y - start.position.y
             val length = hypot(dx, dy)
             if (!length.isFinite() || length < .0001f) { previous = sample; continue }
-            val angle = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
+            val angle = (atan2(dy, dx).toDouble() * 180.0 / kotlin.math.PI).toFloat()
             val speed = length / ((sample.elapsedNanos - start.elapsedNanos).coerceAtLeast(1_000_000L) / 1_000_000_000f)
             val startDistance = distance
             var travelled = untilNext
