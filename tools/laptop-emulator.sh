@@ -139,6 +139,11 @@ run_app() {
   ./gradlew :app:assembleDebug
   "$ADB" -s "$SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
   "$ADB" -s "$SERIAL" shell am start -n dev.tipstroke.app.debug/dev.tipstroke.app.MainActivity >/dev/null
+  # A fixed-aspect Android display cannot fill an arbitrarily tiled Qt window.
+  # Adjust only this AVD, and preserve any existing floating-window placement.
+  if command -v python3 >/dev/null 2>&1 && [ "${TIPSTROKE_EMULATOR_FLOAT:-1}" = 1 ]; then
+    python3 tools/fit-emulator-window.py "$ADB" "$SERIAL"
+  fi
   printf 'TipStroke is running on %s.\n' "$SERIAL"
 }
 

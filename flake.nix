@@ -7,7 +7,7 @@
       devShells.${system}.default = pkgs.mkShell {
         # Android Studio and Gradle are intentionally omitted: the former is
         # unfree in nixpkgs and the repository already carries a Gradle wrapper.
-        packages = with pkgs; [ jdk17 ];
+        packages = with pkgs; [ jdk17 python3 ];
         shellHook = ''
           export JAVA_HOME="${pkgs.jdk17}"
           export TIPSTROKE_NIX_SHELL=1

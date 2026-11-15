@@ -58,7 +58,18 @@ The desktop renderer is intentionally smaller than Android: it uses constant-pre
 
 For laptop feature/performance trials, `./tipstroke emulator` builds and installs the current Android debug app while preserving the AVD's drawings. It requests host GPU rendering by default. Check `.gradle/tipstroke-emulator.log` for the actual graphics adapter: SwiftShader/llvmpipe are software renderers and are not representative of host-GPU performance. If host graphics fail, close the emulator and run `TIPSTROKE_EMULATOR_GPU=auto ./tipstroke emulator` (or `swiftshader` for an explicit software fallback). GPU overrides apply only when starting the AVD, not when reusing an already-running one. Test continuous strokes, large brushes, layers/blending, undo, zoom/pan, and saving/reopening; a successful launch alone is not a latency measurement.
 
-On Wayland, emulator launches use Qt's XCB backend with Qt high-DPI scaling disabled, leaving the compositor to scale the whole window. This avoids independently scaling its Qt controls and framebuffer. Restart the emulator after changing this setting; `TIPSTROKE_EMULATOR_QT_HIDPI=1` preserves the inherited Qt configuration for comparison. The Android guest resolution/density and project pixels are not modified. Check framebuffer edges, pointer alignment, and controls after resizing and moving between monitors. Mixed-DPI and NVIDIA hardware validation remain required; see [Multiplatform migration](MULTIPLATFORM.md).
+On Wayland, emulator launches use Qt's XCB backend with Qt high-DPI scaling disabled, leaving the compositor to scale the whole window. This addresses independent scaling of its Qt controls and framebuffer, but does not fix unused space caused by tiling a fixed-aspect emulator window. Restart the emulator after changing this setting; `TIPSTROKE_EMULATOR_QT_HIDPI=1` preserves the inherited Qt configuration for comparison. The Android guest resolution/density and project pixels are not modified. Check framebuffer edges, pointer alignment, and controls after resizing and moving between monitors. Mixed-DPI and NVIDIA hardware validation remain required; see [Multiplatform migration](MULTIPLATFORM.md).
+
+The laptop launcher floats and fits this AVD's main window on Hyprland when it
+was tiled. The Android framebuffer has a fixed aspect ratio; stretching the
+outer Qt window into a tall tile leaves a light-gray unused area outside Android.
+The helper uses the guest's current orientation and the monitor's logical size,
+preserves already-floating window placement, and does not change compositor
+configuration or Android resolution/density. Set `TIPSTROKE_EMULATOR_FLOAT=0`
+to opt out. Other tiling compositors may need a floating rule for the emulator.
+Verify both portrait and landscape; the guest screenshot and host window should
+show the same screen with no extra blank panel.
+
 
 Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`, enable the debug overlay, and test in both landscape and portrait.
 
