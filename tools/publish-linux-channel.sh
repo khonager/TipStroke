@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 : "${CHANNEL:?}" "${REVISION:?}" "${GITHUB_REPOSITORY:?}"
+export GH_REPO="$GITHUB_REPOSITORY"
 case "$CHANNEL" in stable|unstable) ;; *) exit 2 ;; esac
 release="linux-$CHANNEL-$REVISION"
 mkdir -p "$RUNNER_TEMP/linux-publication"
