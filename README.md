@@ -10,6 +10,20 @@ The current milestone is a local drawing library with editable layered canvases.
 
 Tap **Get it on Obtainium** above on an Android device to add TipStroke from its [GitHub releases](https://github.com/khonager/TipStroke/releases). Obtainium will then install new signed APKs as releases are published. You can also download the latest APK directly from the releases page.
 
+## Linux through Pantheon
+
+Install the full app from [Pantheon](https://github.com/khonager/pantheon):
+
+```sh
+nix run github:khonager/pantheon#tipstroke           # stable branch
+nix run github:khonager/pantheon#tipstroke-unstable  # development branch
+```
+
+The package includes an Android emulator and a resizable scrcpy window, plus an
+application-menu entry when installed. It requires x86_64 Linux and KVM access.
+It does not compile the app at launch. See [Linux packaging](docs/LINUX.md) for
+channel updates, persistent data, and how this differs from the desktop preview.
+
 ## iPhone and iPad
 
 The first native iOS port supports layered drawing, Apple Pencil and finger input,
@@ -70,7 +84,8 @@ To publish a numbered stable release from `stable`:
 
 The release workflow tests and lints the project, verifies the APK signature, and attaches `TipStroke-vX.Y.Z.apk` plus its SHA-256 checksum to a GitHub release. Keep the keystore and its passwords backed up: Android will not install an update signed with a different key over an existing installation.
 
-Obtainium users who want dev builds need to include prereleases. For a rolling release with the same `dev` tag, enable **Use latest asset upload as release date** and **Use release date as version string** so replacing the APK is detected as an update.
+Obtainium users who want dev builds need to include prereleases and filter APK
+asset names to `^TipStroke-dev\.apk$` to exclude Linux packaging artifacts. For a rolling release with the same `dev` tag, enable **Use latest asset upload as release date** and **Use release date as version string** so replacing the APK is detected as an update.
 
 ## Layers and images
 
