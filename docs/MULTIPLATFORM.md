@@ -53,7 +53,9 @@ Core Graphics. The shared desktop app may use platform-specific input/rendering 
 Shared UI receives coarse state and commands, never an update for every pointer
 sample. Shared editor integration, renderer compatibility and cross-platform
 project compatibility remain unfinished work. Until then, use `./tipstroke emulator`
-for the complete Android feature set on a laptop.
+for the complete Android feature set on a laptop. Its scrcpy flexible virtual
+display resizes Android with the desktop window; the fixed-screen Qt emulator
+window remains an explicit `TIPSTROKE_EMULATOR_WINDOW=tablet` fallback.
 
 ## Verification
 

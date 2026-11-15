@@ -56,11 +56,30 @@ On Wayland, Gradle desktop launches set `_JAVA_AWT_WM_NONREPARENTING=1` for the 
 
 The desktop renderer is intentionally smaller than Android: it uses constant-pressure JVM pointer input and does not currently load TipStroke project packages, layers, selections, or Jetpack Ink. Run `./tipstroke emulator-setup` once and `./tipstroke emulator` when a test needs the complete Android UI without a physical device. Always return to the physical-device checklist below for pressure/tilt response, hover/buttons, palm rejection, stroke latency, and wet/final handoff.
 
+The default laptop window uses scrcpy 4.0+ with `--new-display`, `--flex-display`
+and no virtual-display system decorations. The emulator starts headless when
+not already running. Android's viewport follows the window's dimensions; the
+project's pixel dimensions and the physical-tablet UI remain unchanged. The
+virtual display starts at 160 dpi, with the local IME enabled. Closing it moves
+content back to the main Android display for normal lifecycle handling; the
+AVD and saved projects remain available. Existing Qt emulator windows stay open
+until closed/restarted; new launches do not create one in dynamic mode.
+
+Verified live with the editor at 1100×700 and 600×950 window sizes:
+the guest display dimensions follow the window and controls switch layouts.
+Check tiled/floating/maximized windows, pointer alignment, keyboard entry,
+close/reopen, and drawing latency. scrcpy adds encoding/decoding to the path;
+these resize checks are not a pressure/tilt or latency certification. Compare
+with `TIPSTROKE_EMULATOR_WINDOW=tablet ./tipstroke laptop` for direct rendering.
+Restart the emulator when switching between headless and tablet-window modes;
+closing a scrcpy window alone leaves the Android emulator running.
+See [scrcpy virtual displays](https://github.com/Genymobile/scrcpy/blob/master/doc/virtual-display.md).
+
 For laptop feature/performance trials, `./tipstroke emulator` builds and installs the current Android debug app while preserving the AVD's drawings. It requests host GPU rendering by default. Check `.gradle/tipstroke-emulator.log` for the actual graphics adapter: SwiftShader/llvmpipe are software renderers and are not representative of host-GPU performance. If host graphics fail, close the emulator and run `TIPSTROKE_EMULATOR_GPU=auto ./tipstroke emulator` (or `swiftshader` for an explicit software fallback). GPU overrides apply only when starting the AVD, not when reusing an already-running one. Test continuous strokes, large brushes, layers/blending, undo, zoom/pan, and saving/reopening; a successful launch alone is not a latency measurement.
 
-On Wayland, emulator launches use Qt's XCB backend with Qt high-DPI scaling disabled, leaving the compositor to scale the whole window. This addresses independent scaling of its Qt controls and framebuffer, but does not fix unused space caused by tiling a fixed-aspect emulator window. Restart the emulator after changing this setting; `TIPSTROKE_EMULATOR_QT_HIDPI=1` preserves the inherited Qt configuration for comparison. The Android guest resolution/density and project pixels are not modified. Check framebuffer edges, pointer alignment, and controls after resizing and moving between monitors. Mixed-DPI and NVIDIA hardware validation remain required; see [Multiplatform migration](MULTIPLATFORM.md).
+In the optional `TIPSTROKE_EMULATOR_WINDOW=tablet` mode, Wayland emulator launches use Qt's XCB backend with Qt high-DPI scaling disabled, leaving the compositor to scale the whole window. This addresses independent scaling of its Qt controls and framebuffer, but does not fix unused space caused by tiling a fixed-aspect emulator window. Restart the emulator after changing this setting; `TIPSTROKE_EMULATOR_QT_HIDPI=1` preserves the inherited Qt configuration for comparison. The Android guest resolution/density and project pixels are not modified. Check framebuffer edges, pointer alignment, and controls after resizing and moving between monitors. Mixed-DPI and NVIDIA hardware validation remain required; see [Multiplatform migration](MULTIPLATFORM.md).
 
-The laptop launcher floats and fits this AVD's main window on Hyprland when it
+In tablet-window mode, the laptop launcher floats and fits this AVD's main window on Hyprland when it
 was tiled. The Android framebuffer has a fixed aspect ratio; stretching the
 outer Qt window into a tall tile leaves a light-gray unused area outside Android.
 The helper uses the guest's current orientation and the monitor's logical size,

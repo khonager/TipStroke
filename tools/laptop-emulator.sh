@@ -14,6 +14,8 @@ EMULATOR_SERIAL=emulator-$EMULATOR_PORT
 # Use host graphics for a meaningful laptop performance trial. Override with
 # auto or swiftshader if a particular host driver cannot run the emulator.
 EMULATOR_GPU=${TIPSTROKE_EMULATOR_GPU:-host}
+# Flex display resizes Android itself; tablet retains the emulator's fixed screen.
+EMULATOR_WINDOW=${TIPSTROKE_EMULATOR_WINDOW:-dynamic}
 
 sdk_root() {
   if [ -n "${ANDROID_SDK_ROOT:-}" ]; then
@@ -81,6 +83,16 @@ setup_avd() {
 }
 
 run_app() {
+  case "$EMULATOR_WINDOW" in
+    dynamic)
+      if ! command -v scrcpy >/dev/null 2>&1 || ! scrcpy --help | grep -q -- --flex-display; then
+        printf 'Dynamic windows require scrcpy 4.0 or newer. Install it or use TIPSTROKE_EMULATOR_WINDOW=tablet ./tipstroke laptop.\n' >&2
+        exit 1
+      fi
+      ;;
+    tablet) ;;
+    *) printf 'TIPSTROKE_EMULATOR_WINDOW must be dynamic or tablet.\n' >&2; exit 1 ;;
+  esac
   ADB=$(find_sdk_tool adb "$SDK_ROOT") || {
     printf 'adb was not found under %s. Run ./tipstroke emulator-setup first.\n' "$SDK_ROOT" >&2
     exit 1
@@ -104,7 +116,10 @@ run_app() {
     if [ -n "${WAYLAND_DISPLAY:-}" ] && [ "${TIPSTROKE_EMULATOR_QT_HIDPI:-0}" = 0 ]; then
       set -- env QT_QPA_PLATFORM=xcb QT_ENABLE_HIGHDPI_SCALING=0 QT_SCALE_FACTOR=1 QT_SCREEN_SCALE_FACTORS=
     fi
-    nohup setsid -f "$@" "$EMULATOR" -avd "$AVD_NAME" -sysdir "$SYSTEM_IMAGE_DIR" -port "$EMULATOR_PORT" \
+    # No Qt window is needed when scrcpy presents the resizable Android display.
+    emulator_window_arg=
+    [ "$EMULATOR_WINDOW" != dynamic ] || emulator_window_arg=-no-window
+    nohup setsid -f "$@" "$EMULATOR" ${emulator_window_arg:+"$emulator_window_arg"} -avd "$AVD_NAME" -sysdir "$SYSTEM_IMAGE_DIR" -port "$EMULATOR_PORT" \
       -no-boot-anim -no-audio -gpu "$EMULATOR_GPU" \
       </dev/null >.gradle/tipstroke-emulator.log 2>&1 &
     attempts=0
@@ -138,6 +153,16 @@ run_app() {
 
   ./gradlew :app:assembleDebug
   "$ADB" -s "$SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
+  if [ "$EMULATOR_WINDOW" = dynamic ]; then
+    printf 'Opening TipStroke in a dynamically resizable Android window.\n'
+    # Keep app content alive on the main display when the window closes, so the
+    # ordinary Android lifecycle can save it. No project resolution is changed.
+    export ADB
+    exec scrcpy --serial="$SERIAL" --new-display=1200x800/160 --flex-display \
+      --start-app=dev.tipstroke.app.debug --window-title='TipStroke Android' \
+      --no-vd-system-decorations --no-vd-destroy-content --display-ime-policy=local \
+      --no-audio --keep-active --video-bit-rate=16M
+  fi
   "$ADB" -s "$SERIAL" shell am start -n dev.tipstroke.app.debug/dev.tipstroke.app.MainActivity >/dev/null
   # A fixed-aspect Android display cannot fill an arbitrarily tiled Qt window.
   # Adjust only this AVD, and preserve any existing floating-window placement.
