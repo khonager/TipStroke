@@ -25,7 +25,7 @@ internal fun PhotoEditTool.transformLabel() = when (this) {
 @Composable
 internal fun TransformMeshOptions(tool: PhotoEditTool, divisions: Int, onDivisions: (Int) -> Unit) {
     if (tool == PhotoEditTool.WARP) Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-        Text("Mesh")
+        Text("Mesh", color=Color.White, style=MaterialTheme.typography.bodySmall)
         listOf(2, 4, 8).forEach { count ->
             FilterChip(divisions == count, { onDivisions(count) }, label = { Text("$count × $count") }, modifier = Modifier.padding(start = 6.dp),
                 colors=FilterChipDefaults.filterChipColors(labelColor=Color.White,
@@ -66,7 +66,7 @@ internal fun SelectionTransformPanel(
     var radius by remember { mutableFloatStateOf(.25f) }
     LaunchedEffect(Unit) { onFilter(initialFiltered); onTool(tool); onMesh(divisions); onRadius(radius) }
     Surface(modifier, color=Color(0xF0202125), contentColor=Color.White, shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, shadowElevation = 8.dp) {
-        Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
+        Column(Modifier.padding(horizontal=8.dp,vertical=4.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Transform selection", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                 IconButton(onClick = onCancel) { Icon(Icons.Outlined.Close,"Cancel transform") }

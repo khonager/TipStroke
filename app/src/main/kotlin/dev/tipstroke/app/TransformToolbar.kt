@@ -29,11 +29,11 @@ internal fun TransformIcon(label: String, icon: ImageVector, active: Boolean = f
     enabled: Boolean = true, rotation: Float = 0f, onClick: () -> Unit) {
     TipHint(label) { showHint ->
         Surface(color = if (active) Color(0xFF167DDF) else Color.Transparent, shape = RoundedCornerShape(12.dp)) {
-            Column(Modifier.width(72.dp).heightIn(min=56.dp)
+            Column(Modifier.width(64.dp).heightIn(min=48.dp)
                 .combinedClickable(enabled=enabled, role=Role.Button, onClick=onClick, onLongClick=showHint)
                 .semantics { contentDescription=label; selected=active }
-                .padding(horizontal=3.dp,vertical=6.dp),
-                horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                .padding(horizontal=2.dp,vertical=2.dp),
+                horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
                 Icon(icon,null,Modifier.size(24.dp).rotate(rotation),tint=if(enabled) Color.White else Color.Gray)
                 Text(label,color=if(enabled) Color.White else Color.Gray,fontSize=10.sp,lineHeight=12.sp,textAlign=TextAlign.Center)
             }

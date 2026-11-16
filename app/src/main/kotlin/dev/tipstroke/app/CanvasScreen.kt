@@ -797,10 +797,10 @@ fun CanvasScreen(
 
         if (imageTransforming && !layersOpen && !resizeOpen) Surface(
             modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding()
-                .padding(start=8.dp,end=8.dp,bottom=if (compactPhone && !portrait) 4.dp else 88.dp).widthIn(max=640.dp),
+                .padding(start=8.dp,end=8.dp,bottom=(if (portrait) 88.dp else 8.dp) + timelineClearance).widthIn(max=528.dp),
             color = Color(0xEE202125), shape = RoundedCornerShape(18.dp),
         ) {
-            Column(Modifier.heightIn(max=viewportHeight*.65f).verticalScroll(rememberScrollState()).padding(8.dp)) {
+            Column(Modifier.heightIn(max=viewportHeight*.65f).verticalScroll(rememberScrollState()).padding(horizontal=8.dp,vertical=4.dp)) {
                 var meshDivisions by remember { mutableIntStateOf(4) }
                 var bilinear by remember { mutableStateOf(surface?.photoBilinear() ?: true) }
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
@@ -948,7 +948,7 @@ fun CanvasScreen(
                 },
                 onCancel = ::cancelTransform,
                 modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding().padding(8.dp)
-                    .widthIn(max = 640.dp).fillMaxWidth().heightIn(max = (viewportHeight * .55f).coerceAtMost(360.dp)),
+                    .widthIn(max = 528.dp).fillMaxWidth().heightIn(max = (viewportHeight * .55f).coerceAtMost(360.dp)),
             )
         }
 

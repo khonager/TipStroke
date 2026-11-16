@@ -375,6 +375,10 @@ an explicit Nearest neighbor/Bilinear menu. Warp reveals the existing mesh-size
 choices. Image Snapping opens settings with an enable switch, angle spacing,
 and strength. Check finishes/applies; the selection's close icon cancels. Exact
 size and arbitrary selection rotation are expandable so the canvas stays visible.
+Both panels cap their width at 528 dp and use compact 64 dp-wide buttons with
+at least 48 dp touch targets. Landscape image transforms sit 8 dp above the
+bottom safe area (plus any open timeline); portrait retains clearance for the
+bottom drawing controls. Tool rows scroll horizontally on narrower screens.
 
 Media timeline playback keeps drawing coverage cached across raster cel decoding and
 eviction: only artwork edits change the content revision. Hardware-video scrubbing
