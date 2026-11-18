@@ -14,6 +14,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var quickShapes = true
     var elasticLine = false
     var placingMirrorCenter = false
+    var shadowPull = false
+    private var shadowTiles: [TileKey: CGImage] = [:]
     private var elasticShape: NativeShape?
     private var bendAnchor = CGPoint.zero
     var onFill: ((CGPoint) -> Void)?
@@ -30,7 +32,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         previewPending = false
         document.resetStrokePreview()
         do {
-            if let elasticShape {
+            if shadowPull {
+                let p = pointer?.location(in: self) ?? gesturePoints[0]
+                try document.paintShadow(shadowTiles, offset: CGPoint(x: p.x - gesturePoints[0].x, y: p.y - gesturePoints[0].y))
+            } else if let elasticShape {
                 let delta = (pointer?.location(in: self) ?? bendAnchor)
                 let points = elasticShape.bend(x: Float(delta.x - bendAnchor.x), y: Float(delta.y - bendAnchor.y)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
                 try paintFitted(points)
@@ -154,21 +159,25 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
         if mode == .paint && brush.usesStamps && stampRenderer == nil { onError?(DrawingError.message("The brush texture could not be prepared.")); return }
 
-        if (mode.streamsPaint || liveFill) && !document.beginStroke(mirrored: mode != .smudge) { return }
+        if shadowPull {
+            do { shadowTiles = try document.shadowSource(color: brushColor.withAlphaComponent(brushOpacity)) }
+            catch { shadowPull = false; onError?(error); return }
+        }
+        if (mode.streamsPaint || liveFill || shadowPull) && !document.beginStroke(mirrored: mode != .smudge && !shadowPull) { return }
         pointer = touch; previous = nil; previousTimestamp = -1
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
         stampPath = brush.usesStamps ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
         strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
-        if liveFill {
+        if liveFill || shadowPull {
             previewLink = CADisplayLink(target: self, selector: #selector(renderLivePreview))
             previewLink?.add(to: .main, forMode: .common)
         }
-        if mode.streamsPaint { consume(touch, event: event) }
+        if mode.streamsPaint && !shadowPull { consume(touch, event: event) }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let pointer, touches.contains(pointer) else { return }
-        if elasticShape != nil { previewPending = true; return }
+        if shadowPull || elasticShape != nil { previewPending = true; return }
         if mode.streamsPaint { if !fitted { consume(pointer, event: event) }; return }
         let point = pointer.location(in: self)
         if liveFill {
@@ -187,12 +196,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         guard let pointer, touches.contains(pointer) else { return }
         holdWork?.cancel()
         let point = pointer.location(in: self)
-        if liveFill {
+        if liveFill || shadowPull {
             gesturePoints.append(point); previewPending = true; renderLivePreview()
             guard self.pointer != nil else { return }
             document.endStroke(cancelled: false)
         } else if mode.streamsPaint {
-            if elasticShape != nil { previewPending = true; renderLivePreview() }
+            if shadowPull || elasticShape != nil { previewPending = true; renderLivePreview() }
             if !fitted { consume(pointer, event: event) }
             guard self.pointer != nil else { return }
             document.endStroke(cancelled: false)
@@ -222,7 +231,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             } catch { document.endStroke(cancelled: true); onError?(error) }
         }
         previewLink?.invalidate(); previewLink = nil
-        self.pointer = nil; previous = nil
+        self.pointer = nil; previous = nil; shadowPull = false; shadowTiles = [:]
         refresh(); refreshSelection(); onCommit?()
         if mode == .fill { onFill?(point) }
     }
@@ -245,10 +254,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     func cancelFingerStroke() { if pointer?.type != .pencil { cancelStroke() } }
     func cancelStroke() {
-        guard pointer != nil else { return }
+        guard pointer != nil else { shadowPull = false; shadowTiles = [:]; return }
         holdWork?.cancel(); previewLink?.invalidate(); previewLink = nil
         document.endStroke(cancelled: true)
-        pointer = nil; previous = nil
+        pointer = nil; previous = nil; shadowPull = false; shadowTiles = [:]
         refreshSelection()
         refresh()
         onCommit?()

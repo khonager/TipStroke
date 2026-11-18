@@ -226,3 +226,36 @@ extension RasterDocument {
 private extension CGAffineTransform { var determinant: CGFloat { a * d - b * c } }
 
 private extension Int { func clamped(to range: ClosedRange<Int>) -> Int { Swift.min(range.upperBound, Swift.max(range.lowerBound, self)) } }
+
+extension RasterDocument {
+    func shadowSource(color: UIColor) throws -> [TileKey: CGImage] {
+        guard let selection else { throw DrawingError.message("Select an area before using Shadow pull.") }
+        guard record.layers.first(where: { $0.id == activeLayer })?.alphaLocked != true, !paintInside else {
+            throw DrawingError.message("Turn off Paint inside and alpha lock to pull a shadow.")
+        }
+        let keys = (pixels[activeLayer] ?? [:]).keys.filter { selection.inverted || selection.path.boundingBoxOfPath.intersects($0.rect) }
+        guard keys.count <= 64 else { throw DrawingError.message("Select a smaller area for Shadow pull.") }
+        var result: [TileKey: CGImage] = [:]
+        for key in keys {
+            let context = try Self.context(width: 256, height: 256)
+            context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
+            selection.clip(context, bounds: bounds)
+            Self.draw(pixels[activeLayer]![key]!, in: context, rect: key.rect)
+            context.setBlendMode(.sourceIn); context.setFillColor(color.cgColor); context.fill(key.rect)
+            result[key] = context.makeImage()
+        }
+        return result
+    }
+    func paintShadow(_ source: [TileKey: CGImage], offset: CGPoint) throws {
+        let selected = selection; selection = nil
+        defer { selection = selected }
+        let t = CGAffineTransform(translationX: offset.x, y: offset.y)
+        let keys = Set(source.keys.flatMap { TileKey.intersecting($0.rect.applying(t), width: record.width, height: record.height) })
+        try editTiles(keys: Array(keys), erasing: false) { context in
+            context.setBlendMode(.destinationOver)
+            for (key, image) in source where key.rect.applying(t).intersects(context.boundingBoxOfClipPath) {
+                Self.draw(image, in: context, rect: key.rect.applying(t))
+            }
+        }
+    }
+}

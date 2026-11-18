@@ -123,6 +123,10 @@ extension EditorController {
         func centered(_ transform: CGAffineTransform) -> CGAffineTransform {
             CGAffineTransform(translationX: bounds.midX, y: bounds.midY).concatenating(transform).translatedBy(x: -bounds.midX, y: -bounds.midY)
         }
+        action("Shadow pull · drag selected paint") {
+            guard self.document.selection != nil else { throw DrawingError.message("Select an area first.") }
+            self.viewport.canvas.shadowPull = true
+        }
         action("Move") { self.viewport.canvas.mode = .transform }
         action("Copy and offset") { try self.document.transformSelection(CGAffineTransform(translationX: 24, y: 24), copy: true) }
         action("Flip horizontal") { try self.document.transformSelection(centered(CGAffineTransform(scaleX: -1, y: 1))) }

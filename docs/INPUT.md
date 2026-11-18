@@ -580,3 +580,6 @@ selection/reference clips remain in document coordinates. Tools → Brush aids �
 Mirror wheel offers Off/2/4/6/8/12 copies and next-touch center placement.
 iOS Ribbon uses the shared trailing-edge outline and native even-odd fill. Width
 uses brush size; color/opacity are flat. Mirror transforms preserve handedness.
+iOS Selection actions → Shadow pull captures selected sparse pixels once. Drag
+previews a current-color shadow behind pixels on the same layer. Lift commits;
+Cancel/Undo restores the transaction. Opaque paint on that layer hides shadows.
