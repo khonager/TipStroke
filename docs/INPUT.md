@@ -533,3 +533,15 @@ chosen guide stays locked until lift. Guides are transient and never exported.
 Native samples are projected through core geometry and previewed on the native
 canvas; selection, undo, and brush pressure still apply. Rulers take priority over
 Elastic line and do not constrain lasso fill, Ribbon, Color push, or Smudge.
+
+### Blur and bloom
+
+Tools → Blur & bloom adjusts the active paint layer, clipped to the active selection.
+Gaussian uses a normalized separable kernel; Motion uses a directional kernel;
+Perspective spreads along rays from the chosen normalized center; Bloom extracts
+highlights, blurs them, and adds their light. All math is premultiplied-alpha in core.
+Radius is bounded to 32 document pixels. Preview runs on a worker using sparse tiles
+with halos; it does not modify the layer. Apply is one undoable replacement and exact
+recording patch; Cancel releases the preview. Editing is blocked during the modal
+preview, and revision checks reject a result if its source changed. No permanent
+filter layer or document-schema change is introduced.

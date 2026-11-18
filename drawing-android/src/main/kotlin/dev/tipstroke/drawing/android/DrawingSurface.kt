@@ -606,6 +606,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun onDetachedFromWindow() {
+        cancelRasterAdjustment()
         cancelShadowPull()
         flushRasterSamples()
         animation?.storageEnabled = false
@@ -1940,6 +1941,42 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
 
+    private class AdjustmentJob { @Volatile var cancelled=false }
+    private var adjustmentJob: AdjustmentJob? = null
+    fun cancelRasterAdjustment() {
+        adjustmentJob?.cancelled=true; adjustmentJob=null
+        rasterView.adjustmentPreview?.discard(); rasterView.adjustmentPreview=null; rasterView.invalidate()
+    }
+    fun previewRasterAdjustment(settings: dev.tipstroke.core.effects.RasterEffectSettings, onComplete: (Result<Unit>) -> Unit) {
+        cancelRasterAdjustment(); cancelFill()
+        val target=layerStack.selectedRaster()
+        if(target==null || activeDrawingPointerId!=null) { onComplete(Result.failure(IllegalStateException("Select an idle paint layer first."))); return }
+        val store=target.tiles; val revision=store.revision; val coordinates=store.residentCoordinates()
+        val source=store.fillSnapshot(gestureHandler); val selection=selectionRegion
+        val job=AdjustmentJob(); adjustmentJob=job
+        FillPreparation.executor.execute {
+            val result=runCatching { RasterAdjustment.render(source,coordinates,settings,selection) { job.cancelled } }
+            source.discard()
+            gestureHandler.post {
+                if(job.cancelled || adjustmentJob!==job) { result.getOrNull()?.first?.discard() }
+                else if(store.revision!=revision || target !in layerStack.layers) {
+                    result.getOrNull()?.first?.discard(); adjustmentJob=null
+                    onComplete(Result.failure(IllegalStateException("Layer changed; preview again.")))
+                } else {
+                    adjustmentJob=null
+                    result.onSuccess { (output,dirty) -> rasterView.adjustmentPreview=RasterAdjustmentPreview(target,revision,output,dirty); rasterView.invalidate() }
+                    onComplete(result.map { Unit })
+                }
+            }
+        }
+    }
+    fun applyRasterAdjustment(): Boolean {
+        val preview=rasterView.adjustmentPreview ?: return false
+        if(preview.layer.tiles.revision!=preview.revision || preview.layer !in layerStack.layers) { cancelRasterAdjustment(); return false }
+        preview.layer.tiles.commitReplacement(preview.output,preview.dirty)
+        cancelRasterAdjustment(); notifyHistory(); notifyLayers(); notifyVisiblePalette(); return true
+    }
+
     private var rulerStroke: dev.tipstroke.core.geometry.MagneticRuler? = null
     private var placingVanishingPoint: Int? = null
     fun setPerspectiveMode(mode: dev.tipstroke.core.geometry.PerspectiveMode) {
@@ -1963,6 +2000,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (adjustmentJob != null || rasterView.adjustmentPreview != null) return true
         if (!isEnabled || importingClip || pendingAnimationFrame != null) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !mediaSeeking && mediaCelLoading == null &&
             !selectionMode && !selectionMoveMode && transformSelectionOriginal == null && !isTransformingImage() && !settings.erasing && !settings.smudging &&

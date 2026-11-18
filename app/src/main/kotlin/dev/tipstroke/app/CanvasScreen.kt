@@ -93,6 +93,7 @@ fun CanvasScreen(
     var assists by remember { mutableStateOf(dev.tipstroke.core.drawing.BrushAssists()) }
     var ribbon by remember { mutableStateOf(false) }
     var lassoFill by remember { mutableStateOf(false) }
+    var adjustmentsOpen by remember { mutableStateOf(false) }
     var shadowPullActive by remember { mutableStateOf(false) }
     var colorPushing by remember { mutableStateOf(false) }
     var smudging by remember { mutableStateOf(false) }
@@ -689,6 +690,7 @@ fun CanvasScreen(
                 onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                 perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                 onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
+                onAdjustments = { adjustmentsOpen=true },
                 onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
                 assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                     mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
@@ -763,6 +765,7 @@ fun CanvasScreen(
                     onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                     perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                 onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
+                onAdjustments = { adjustmentsOpen=true },
                 onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
                     assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                 mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
@@ -1072,6 +1075,7 @@ fun CanvasScreen(
                 .size(36.dp).background(Color(color.red, color.green, color.blue, color.alpha), CircleShape)
                 .border(2.dp, Color.White, CircleShape))
         }
+        if (adjustmentsOpen) RasterAdjustmentsDialog(surface) { adjustmentsOpen=false }
         if (filling) {
             BackHandler { surface?.cancelFill() }
             Surface(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 72.dp),

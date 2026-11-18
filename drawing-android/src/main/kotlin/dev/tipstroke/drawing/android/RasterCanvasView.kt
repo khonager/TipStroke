@@ -61,6 +61,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
     private val airbrushPreview = AirbrushPreview()
+    internal var adjustmentPreview: RasterAdjustmentPreview? = null
     internal var shadowPreview: ShadowPullPreview? = null
     var perspective: dev.tipstroke.core.geometry.PerspectiveRuler? = null
     var mirrorCenter: dev.tipstroke.core.geometry.Point? = null
@@ -257,7 +258,13 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                         val gpu = gpuStampPreview?.takeIf { layer.id == gpuStampLayerId }
                         val movingPath = movingSelectionPath.takeIf { layer.id in movingLayerIds }
                         val shadow = shadowPreview?.takeIf { it.layer.id == layer.id }
-                        if (shadow != null) {
+                        val adjustment=adjustmentPreview?.takeIf { it.layer.id==layer.id }
+                        if(adjustment!=null) {
+                            layerOpacityPaint.alpha=(layer.opacity*255).toInt().coerceIn(0,255)
+                            val saved=canvas.saveLayer(null,layerOpacityPaint)
+                            bitmapPaint.alpha=255; adjustment.draw(canvas,bitmapPaint)
+                            canvas.restoreToCount(saved)
+                        } else if (shadow != null) {
                             layerOpacityPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0,255)
                             val saved = canvas.saveLayer(null, layerOpacityPaint)
                             shadow.draw(canvas)

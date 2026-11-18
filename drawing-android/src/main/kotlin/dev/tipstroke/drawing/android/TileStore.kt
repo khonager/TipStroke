@@ -500,6 +500,34 @@ class TileStore(
         }
     }
 
+    internal fun residentCoordinates(): Set<TileCoordinate> = tiles.keys.toSet()
+    internal fun putPreparedTile(coordinate: TileCoordinate, bitmap: Bitmap) {
+        removeTile(coordinate); tiles[coordinate]=bitmap; lastDirtyTiles=setOf(coordinate)
+    }
+    internal fun readPatch(left: Int, top: Int, width: Int, height: Int): IntArray {
+        val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888)
+        val canvas=Canvas(bitmap)
+        TileGrid.intersecting(dev.tipstroke.core.geometry.Rect(left.toFloat(),top.toFloat(),(left+width).toFloat(),(top+height).toFloat()),
+            canvasWidth,canvasHeight,tileSize).forEach { coordinate ->
+            // colorAt resolves worker-owned lazy snapshots through the existing tile reader.
+            colorAt(coordinate.x*tileSize,coordinate.y*tileSize)
+            tiles[coordinate]?.let { canvas.drawBitmap(it,(coordinate.x*tileSize-left).toFloat(),(coordinate.y*tileSize-top).toFloat(),null) }
+        }
+        return IntArray(width*height).also { bitmap.getPixels(it,0,width,0,0,width,height); bitmap.recycle() }
+    }
+    internal fun drawExcept(canvas: Canvas, paint: Paint, excluded: Set<TileCoordinate>) {
+        val clip=canvas.clipBounds
+        tiles.forEach { (c,bitmap) -> if(c !in excluded && clip.intersects(c.x*tileSize,c.y*tileSize,(c.x+1)*tileSize,(c.y+1)*tileSize))
+            canvas.drawBitmap(bitmap,c.x*tileSize.toFloat(),c.y*tileSize.toFloat(),paint) }
+    }
+    internal fun commitReplacement(output: TileStore, dirty: Set<TileCoordinate>) {
+        if(dirty.isEmpty()) return
+        val before=dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888,false) }
+        dirty.forEach { c -> removeTile(c); output.tiles[c]?.let { tiles[c]=it.copy(Bitmap.Config.ARGB_8888,true) } }
+        val after=dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888,false) }
+        history.push(TileSnapshotTransaction(this,before,after)); lastDirtyTiles=dirty
+    }
+
     internal fun snapshotTiles(): Map<TileCoordinate, Bitmap> {
         check(isResident) { "Use encoded backing for an unloaded frame" }
         return tiles.mapValues { (_, bitmap) -> bitmap.copy(Bitmap.Config.ARGB_8888, false) }
