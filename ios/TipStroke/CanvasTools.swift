@@ -1,7 +1,7 @@
 import UIKit
 
 enum CanvasMode: String, CaseIterable {
-    case lassoFill = "Lasso fill"
+    case lassoFill = "Lasso fill", ribbon = "Ribbon"
     case paint = "Brush", fill = "Fill", smudge = "Smudge"
     case pixel = "Pixel pencil", pixelLine = "Pixel line", dither = "Dither"
     case line = "Line", rectangle = "Rectangle", ellipse = "Ellipse", triangle = "Triangle", arrow = "Arrow"

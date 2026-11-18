@@ -24,7 +24,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private var fitted = false
     private var previewLink: CADisplayLink?
     private var previewPending = false
-    private var liveFill: Bool { mode == .lassoFill }
+    private var liveFill: Bool { mode == .lassoFill || mode == .ribbon }
     @objc private func renderLivePreview() {
         guard previewPending, pointer != nil else { return }
         previewPending = false
@@ -35,7 +35,14 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 let points = elasticShape.bend(x: Float(delta.x - bendAnchor.x), y: Float(delta.y - bendAnchor.y)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
                 try paintFitted(points)
             } else {
-            try document.paintPath(mode.outline(gesturePoints), color: strokeColor.withAlphaComponent(strokeOpacity), width: 0, filled: true)
+            let path: CGPath
+            if mode == .ribbon {
+                let tracker = NativeShapeTracker()
+                for p in gesturePoints { tracker.append(x: Float(p.x), y: Float(p.y)) }
+                let outline = tracker.ribbon(width: Float(strokeSize)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
+                let ribbon = CGMutablePath(); ribbon.addLines(between: outline); ribbon.closeSubpath(); path = ribbon
+            } else { path = mode.outline(gesturePoints) }
+            try document.paintPath(path, color: strokeColor.withAlphaComponent(strokeOpacity), width: 0, filled: true)
             }
             refresh()
         } catch { cancelStroke(); onError?(error) }
@@ -200,7 +207,14 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 let points = elasticShape.bend(x: Float(delta.x - bendAnchor.x), y: Float(delta.y - bendAnchor.y)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
                 try paintFitted(points)
             } else {
-            try document.paintPath(mode.outline(gesturePoints), color: brushColor.withAlphaComponent(brushOpacity), width: brushSize, filled: filledShapes && [.rectangle, .ellipse, .triangle].contains(mode)) }
+            let path: CGPath
+            if mode == .ribbon {
+                let tracker = NativeShapeTracker()
+                for p in gesturePoints { tracker.append(x: Float(p.x), y: Float(p.y)) }
+                let outline = tracker.ribbon(width: Float(strokeSize)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
+                let ribbon = CGMutablePath(); ribbon.addLines(between: outline); ribbon.closeSubpath(); path = ribbon
+            } else { path = mode.outline(gesturePoints) }
+            try document.paintPath(path, color: brushColor.withAlphaComponent(brushOpacity), width: brushSize, filled: filledShapes && [.rectangle, .ellipse, .triangle].contains(mode)) }
                     document.endStroke(cancelled: false)
                 } else if mode == .transform {
                     try document.transformSelection(CGAffineTransform(translationX: point.x - gesturePoints[0].x, y: point.y - gesturePoints[0].y))

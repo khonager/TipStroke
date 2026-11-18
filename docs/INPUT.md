@@ -578,3 +578,5 @@ bends it with fixed endpoints; native stamp brushes retain their tip/grain.
 iOS Mirror wheel repeats native brush geometry inside one tile transaction, while
 selection/reference clips remain in document coordinates. Tools → Brush aids →
 Mirror wheel offers Off/2/4/6/8/12 copies and next-touch center placement.
+iOS Ribbon uses the shared trailing-edge outline and native even-odd fill. Width
+uses brush size; color/opacity are flat. Mirror transforms preserve handedness.

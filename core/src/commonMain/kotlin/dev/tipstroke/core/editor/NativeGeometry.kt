@@ -13,6 +13,7 @@ class NativeShapeTracker {
         }
         points += Point(x, y)
     }
+    fun ribbon(width: Float): NativeShape = NativeShape("RIBBON", dev.tipstroke.core.geometry.RibbonPath.outline(points, width))
     fun elastic(): NativeShape = NativeShape("CURVE", dev.tipstroke.core.geometry.ElasticLine.fit(points))
     fun fit(): NativeShape? = QuickShape.recognize(points)?.let { NativeShape(it.kind.name, it.points) }
 }
