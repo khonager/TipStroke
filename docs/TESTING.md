@@ -588,3 +588,9 @@ These cover native input cancellation, transient preview, sparse tile boundaries
 selection/alpha constraints, exact recording patches, and one-gesture undo.
 Ribbon edge comparisons allow Skia's clipped antialias coverage rounding (8/255);
 filled interiors retain the requested opacity.
+
+Colorize/effects/ruler regressions: `MangaTipsTest`, `PerspectiveRulerTest`,
+`RasterEffectsTest`, and `ColorizeMaskTest` exercise portable rules. Android adds
+`PerspectiveRulerInputTest`, `RasterAdjustmentTest`, `RasterColorizeTest`, and
+`ColorizePersistenceTest` for native snapping, halos, source preservation,
+worker cancellation/revision checks, undo, saved recipes, and archive exchange.

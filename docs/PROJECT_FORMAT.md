@@ -217,3 +217,15 @@ Raster and image layer records store an optional `blendMode` string using the st
 Older readers reject schema 11. Snapshot duplication, portable media export and
 process-recording metadata preserve the mode. Raster tile pixels remain unmodified.
 See [COLOR_FEATURES.md](COLOR_FEATURES.md) for supported modes and limitations.
+
+### Schema 12: editable colorize generation inputs
+
+Raster layers may carry optional `colorizeMask` version-1 metadata with stable
+`lineArtId` and `hintsId` references, `gap` (0–4 analysis cells), `threshold`
+(0.02–1), and a `transparentColor` ARGB integer. Both input layers remain ordinary
+saved raster layers. The generated output tiles are always the painting source of
+truth; opening a document does not run a solver. Older schema versions load with
+no colorize metadata. Unknown mask versions fail explicitly. Archive exchange
+preserves metadata. Missing referenced layers disable regeneration without deleting
+existing output. Duplicating a whole set remaps references to duplicated input IDs;
+duplicating only output shares its original inputs.

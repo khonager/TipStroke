@@ -545,3 +545,24 @@ with halos; it does not modify the layer. Apply is one undoable replacement and 
 recording patch; Cancel releases the preview. Editing is blocked during the modal
 preview, and revision checks reject a result if its source changed. No permanent
 filter layer or document-schema change is introduced.
+
+### Colorize mask
+
+Tools → Colorize mask → Create mask creates ordinary sparse raster output and hints
+layers linked to the active line-art layer. Draw opaque color scribbles on hints;
+reopen the action to Preview and Apply. Edit hints reopens the same saved hints layer.
+Magenta is reserved as the transparent hint color. Hint editing switches to Ink and
+disables brush aids/selection clipping so an empty hints layer can receive strokes.
+Keep line art transparent or use Multiply to see color beneath paper-white artwork.
+
+The bounded core solver propagates multiple color seeds through ink-separated
+regions, with optional gap closure and an ink threshold. Unseeded disconnected
+regions remain empty. Unlike Krita's complete implementation, analysis is limited
+to 1024 pixels on the longest side; fine linework on larger documents may need more
+hints or reduced gap closure. Output remains native-sized sparse raster tiles.
+Generation runs off-thread, validates all three layer revisions, and never paints
+on line art or hints. Apply replaces generated color as one undoable raster edit
+and hides the hints; Cancel leaves the artwork unchanged. Saved metadata retains
+input layer IDs and settings for later regeneration. Missing input layers report
+an error while retaining the last generated artwork. Generation is currently for
+still drawings only. Imported image line art must first be on a paint layer.

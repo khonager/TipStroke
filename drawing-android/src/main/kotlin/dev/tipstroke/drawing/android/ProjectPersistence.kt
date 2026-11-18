@@ -333,6 +333,7 @@ internal data class SavedRasterSnapshot(
     override val groupId: String? = null,
     override val clipSourceId: LayerId? = null,
     override val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
+    val colorizeMask: dev.tipstroke.core.effects.ColorizeMask? = null,
 ) : SavedLayerSnapshot
 
 internal data class SavedImageSnapshot(
@@ -415,6 +416,7 @@ internal data class LoadedRaster(
     override val groupId: String? = null,
     override val clipSourceId: LayerId? = null,
     override val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
+    val colorizeMask: dev.tipstroke.core.effects.ColorizeMask? = null,
 ) : LoadedLayer
 
 internal data class LoadedImage(
@@ -427,7 +429,7 @@ internal data class LoadedImage(
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    internal const val SCHEMA_VERSION = 11
+    internal const val SCHEMA_VERSION = 12
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -448,6 +450,7 @@ internal object ProjectPersistence {
                 when (layer) {
                     is SavedRasterSnapshot -> {
                         json.put("kind", "raster")
+                        layer.colorizeMask?.let { json.put("colorizeMask",JSONObject(dev.tipstroke.core.effects.ColorizeMaskCodec.encode(it))) }
                         json.put("colorUsage", JSONArray().apply {
                             layer.colorUsage.entries.sortedByDescending { it.value }.forEach { (argb, weight) ->
                                 put(JSONObject().put("argb", argb).put("weight", weight))
@@ -611,7 +614,8 @@ internal object ProjectPersistence {
                             }
                         }
                     } else inferColorUsage(tiles.values)
-                    add(LoadedRaster(id, name, visible, opacity, tiles, usage, groupId, clipSourceId, blendMode))
+                    add(LoadedRaster(id, name, visible, opacity, tiles, usage, groupId, clipSourceId, blendMode,
+                        layer.optJSONObject("colorizeMask")?.let { dev.tipstroke.core.effects.ColorizeMaskCodec.decode(it.toString()) }))
                 } else {
                     val originalWidth = layer.getInt("originalWidthPx")
                     val originalHeight = layer.getInt("originalHeightPx")

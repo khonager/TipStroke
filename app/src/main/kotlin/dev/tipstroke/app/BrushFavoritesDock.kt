@@ -30,7 +30,7 @@ internal fun BrushFavoritesDock(
     pixelToolsAvailable: Boolean, onPixelTool: (PixelTool) -> Unit,
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String = "Tools",
-    onReselect: () -> Unit = {}, onAdjustments: () -> Unit = {},
+    onReselect: () -> Unit = {}, onAdjustments: () -> Unit = {}, onColorizeMask: () -> Unit = {},
     onLassoFill: () -> Unit = {}, onRibbon: () -> Unit = {}, onColorPush: () -> Unit = {},
     assists: dev.tipstroke.core.drawing.BrushAssists = dev.tipstroke.core.drawing.BrushAssists(),
     onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
@@ -90,6 +90,7 @@ internal fun BrushFavoritesDock(
                             if (pixelToolsAvailable) PixelTool.entries.forEach { tool ->
                                 DropdownMenuItem(text = { Text(when (tool) { PixelTool.PENCIL -> "Pixel pencil"; PixelTool.LINE -> "Pixel line"; PixelTool.DITHER -> "Dither" }) }, onClick = { action { onPixelTool(tool) } })
                             }
+                            DropdownMenuItem(text={Text("Colorize mask…")},onClick={action(onColorizeMask)})
                             DropdownMenuItem(text={Text("Blur & bloom…")},onClick={action(onAdjustments)})
                             HorizontalDivider()
                             DropdownMenuItem(text = { Text("Brush aids") }, trailingIcon = { Text(if (aidsActive) "On ›" else "›") },

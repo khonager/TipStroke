@@ -1941,6 +1941,78 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
 
+    private fun colorizeLayer(): RasterLayerRuntime? {
+        val selected=layerStack.selected()
+        if(selected is RasterLayerRuntime && selected.colorizeMask!=null) return selected
+        return layerStack.layers.filterIsInstance<RasterLayerRuntime>().firstOrNull {
+            it.colorizeMask?.let { mask -> mask.lineArtId==selected.id || mask.hintsId==selected.id } == true
+        }
+    }
+    fun colorizeMaskSettings(): dev.tipstroke.core.effects.ColorizeMask? = colorizeLayer()?.colorizeMask
+    fun createColorizeMask(): Boolean {
+        if(animation!=null || activeDrawingPointerId!=null || !canAddLayers(2)) return false
+        val lineArt=layerStack.selectedRaster() ?: return false
+        if(colorizeLayer()!=null) return editColorizeHints()
+        layerStack.addRaster();val output=layerStack.selectedRaster()!!
+        output.name="Colorize mask"
+        val hintsId=layerStack.addRaster();val hints=layerStack.selectedRaster()!!
+        hints.name="Colorize hints"
+        output.colorizeMask=dev.tipstroke.core.effects.ColorizeMask(lineArt.id,hintsId)
+        layerStack.layers.remove(output);layerStack.layers.remove(hints)
+        val index=layerStack.layers.indexOf(lineArt)
+        layerStack.layers.add(index,output);layerStack.layers.add(index+2,hints)
+        layerStack.select(hintsId)
+        notifyLayers();notifyHistory();rasterView.invalidate();return true
+    }
+    fun editColorizeHints(): Boolean {
+        val mask=colorizeLayer()?.colorizeMask ?: return false
+        val hints=layerStack.layers.firstOrNull { it.id==mask.hintsId } ?: return false
+        hints.visible=true;layerStack.select(hints.id);notifyLayers();notifyHistory();rasterView.invalidate();return true
+    }
+    fun previewColorizeMask(mask: dev.tipstroke.core.effects.ColorizeMask, onComplete: (Result<Unit>) -> Unit) {
+        cancelRasterAdjustment();cancelFill()
+        val output=colorizeLayer()
+        val lineArt=layerStack.layers.filterIsInstance<RasterLayerRuntime>().firstOrNull { it.id==mask.lineArtId }
+        val hints=layerStack.layers.filterIsInstance<RasterLayerRuntime>().firstOrNull { it.id==mask.hintsId }
+        if(output==null || lineArt==null || hints==null || activeDrawingPointerId!=null || animation!=null) {
+            onComplete(Result.failure(IllegalStateException("This mask needs its original line-art and hints layers in a still drawing.")));return
+        }
+        val outputRevision=output.tiles.revision;val lineRevision=lineArt.tiles.revision;val hintRevision=hints.tiles.revision
+        val source=lineArt.tiles.fillSnapshot(gestureHandler);val seeds=hints.tiles.fillSnapshot(gestureHandler)
+        val coordinates=lineArt.tiles.residentCoordinates()+hints.tiles.residentCoordinates()
+        val job=AdjustmentJob();adjustmentJob=job
+        val valid={ output in layerStack.layers && lineArt in layerStack.layers && hints in layerStack.layers &&
+            lineArt.tiles.revision==lineRevision && hints.tiles.revision==hintRevision && output.tiles.revision==outputRevision }
+        FillPreparation.executor.execute {
+            val result=runCatching { RasterColorize.render(source,seeds,coordinates,mask) { job.cancelled } }
+            source.discard();seeds.discard()
+            gestureHandler.post {
+                if(job.cancelled || adjustmentJob!==job) result.getOrNull()?.discard()
+                else {
+                    adjustmentJob=null
+                    if(!valid()) { result.getOrNull()?.discard();onComplete(Result.failure(IllegalStateException("Inputs changed; preview again."))) }
+                    else {
+                        result.onSuccess { generated ->
+                            rasterView.adjustmentPreview=RasterAdjustmentPreview(output,outputRevision,generated,
+                                output.tiles.residentCoordinates()+generated.residentCoordinates(),setOf(hints.id),valid) {
+                                val priorMask=output.colorizeMask;val priorHints=hints.visible;val priorOutput=output.visible
+                                val pixels=output.tiles.history.takeLatestUndoTransaction()
+                                output.colorizeMask=mask;hints.visible=false;output.visible=true;layerStack.select(output.id)
+                                if(pixels!=null) output.tiles.history.push(object : UndoTransaction {
+                                    override val estimatedBytes get()=pixels.estimatedBytes+128L
+                                    override fun undo() { pixels.undo();output.colorizeMask=priorMask;hints.visible=priorHints;output.visible=priorOutput }
+                                    override fun redo() { pixels.redo();output.colorizeMask=mask;hints.visible=false;output.visible=true }
+                                })
+                            }
+                            rasterView.invalidate()
+                        }
+                        onComplete(result.map { Unit })
+                    }
+                }
+            }
+        }
+    }
+
     private class AdjustmentJob { @Volatile var cancelled=false }
     private var adjustmentJob: AdjustmentJob? = null
     fun cancelRasterAdjustment() {
@@ -1972,8 +2044,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun applyRasterAdjustment(): Boolean {
         val preview=rasterView.adjustmentPreview ?: return false
-        if(preview.layer.tiles.revision!=preview.revision || preview.layer !in layerStack.layers) { cancelRasterAdjustment(); return false }
+        if(!preview.valid() || preview.layer.tiles.revision!=preview.revision || preview.layer !in layerStack.layers) { cancelRasterAdjustment(); return false }
         preview.layer.tiles.commitReplacement(preview.output,preview.dirty)
+        preview.committed()
         cancelRasterAdjustment(); notifyHistory(); notifyLayers(); notifyVisiblePalette(); return true
     }
 

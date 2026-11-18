@@ -93,6 +93,7 @@ fun CanvasScreen(
     var assists by remember { mutableStateOf(dev.tipstroke.core.drawing.BrushAssists()) }
     var ribbon by remember { mutableStateOf(false) }
     var lassoFill by remember { mutableStateOf(false) }
+    var colorizeOpen by remember { mutableStateOf(false) }
     var adjustmentsOpen by remember { mutableStateOf(false) }
     var shadowPullActive by remember { mutableStateOf(false) }
     var colorPushing by remember { mutableStateOf(false) }
@@ -689,9 +690,9 @@ fun CanvasScreen(
                 onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then hold Select to use it again." },
                 onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                 perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
-                onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
-                onAdjustments = { adjustmentsOpen=true },
-                onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
+                    onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
+                    onAdjustments = { adjustmentsOpen=true }, onColorizeMask = { colorizeOpen=true },
+                    onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
                 assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                     mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
                     onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
@@ -765,11 +766,11 @@ fun CanvasScreen(
                     onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                     perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                 onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
-                onAdjustments = { adjustmentsOpen=true },
+                onAdjustments = { adjustmentsOpen=true }, onColorizeMask = { colorizeOpen=true },
                 onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
                     assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
-                mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
-                onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
+                    mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
+                    onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
                     pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
                     onStudio = { brushStudioOpen = true },
                     onTune = { phoneAdjustmentsOpen = !phoneAdjustmentsOpen },
@@ -1075,6 +1076,17 @@ fun CanvasScreen(
                 .size(36.dp).background(Color(color.red, color.green, color.blue, color.alpha), CircleShape)
                 .border(2.dp, Color.White, CircleShape))
         }
+        if (colorizeOpen) ColorizeMaskDialog(surface, onHints = { transparent ->
+            colorizeOpen=false
+            selectRegularBrush(BrushPreset.Ink)
+            assists=dev.tipstroke.core.drawing.BrushAssists(); mirrorCopies=1
+            perspectiveMode=dev.tipstroke.core.geometry.PerspectiveMode.OFF
+            surface?.setPerspectiveMode(perspectiveMode); surface?.clearSelection()
+            size=16f; opacity=1f
+            if(transparent) color=RgbaColor(1f,0f,1f)
+            sync()
+            message="Draw color hints, then reopen Colorize mask to Preview and Apply. Magenta marks transparency."
+        }, onDismiss={colorizeOpen=false})
         if (adjustmentsOpen) RasterAdjustmentsDialog(surface) { adjustmentsOpen=false }
         if (filling) {
             BackHandler { surface?.cancelFill() }

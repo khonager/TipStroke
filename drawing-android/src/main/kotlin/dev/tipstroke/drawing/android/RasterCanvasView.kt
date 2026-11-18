@@ -249,7 +249,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         } } }
         layerStack.layers.forEach { layer ->
             drawOnionForLayer(canvas, layer)
-            if (!layer.visible || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
+            if (layer.id in adjustmentPreview?.hiddenLayers.orEmpty()) return@forEach
+            if ((!layer.visible && adjustmentPreview?.layer?.id != layer.id) || !layer.activeAtFrame || layer.opacity <= 0f) return@forEach
             layerStack.withClip(canvas, layer, blend = true) {
                 when (layer) {
                     is RasterLayerRuntime -> {

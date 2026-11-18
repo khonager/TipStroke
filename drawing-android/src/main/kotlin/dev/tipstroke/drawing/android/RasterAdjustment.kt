@@ -8,7 +8,9 @@ import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.geometry.TileGrid
 
 internal class RasterAdjustmentPreview(val layer: RasterLayerRuntime, val revision: Long,
-    val output: TileStore, val dirty: Set<TileCoordinate>) {
+    val output: TileStore, val dirty: Set<TileCoordinate>,
+    val hiddenLayers: Set<dev.tipstroke.core.model.LayerId> = emptySet(),
+    val valid: () -> Boolean = { true }, val committed: () -> Unit = {}) {
     fun draw(canvas: Canvas, paint: Paint) { layer.tiles.drawExcept(canvas,paint,dirty); output.draw(canvas,paint) }
     fun discard() = output.discard()
 }

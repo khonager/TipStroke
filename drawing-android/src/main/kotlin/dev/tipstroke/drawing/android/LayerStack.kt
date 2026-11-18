@@ -30,6 +30,7 @@ internal sealed class CanvasLayerRuntime {
     var blendMode: LayerBlendMode = LayerBlendMode.NORMAL
     var activeAtFrame: Boolean = true
     var groupId: String? = null
+    var colorizeMask: dev.tipstroke.core.effects.ColorizeMask? = null
     var clipSourceId: LayerId? = null
     abstract fun summary(): LayerSummary
 }
@@ -241,7 +242,10 @@ internal class LayerStack(
         val insertionIndex = indexAboveGroupAt(originals.maxOf { layers.indexOf(it) })
         val duplicates = originals.map(::duplicateLayer)
         val copiedIds = originals.zip(duplicates).associate { (source, copy) -> source.id to copy.id }
-        duplicates.forEach { copy -> copy.clipSourceId = copiedIds[copy.clipSourceId] ?: copy.clipSourceId }
+        duplicates.forEach { copy ->
+            copy.clipSourceId = copiedIds[copy.clipSourceId] ?: copy.clipSourceId
+            copy.colorizeMask = copy.colorizeMask?.let { it.copy(lineArtId=copiedIds[it.lineArtId] ?: it.lineArtId,hintsId=copiedIds[it.hintsId] ?: it.hintsId) }
+        }
         layers.addAll(insertionIndex, duplicates)
         val primaryIndex = originals.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
         selectedId = duplicates[primaryIndex].id
@@ -473,7 +477,7 @@ internal class LayerStack(
                 is RasterLayerRuntime -> SavedRasterSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity,
                     if (animation == null || animation.isBackground(layer.id)) layer.tiles.snapshotTiles() else emptyMap(),
-                    layer.tiles.snapshotColorUsage(), layer.groupId, layer.clipSourceId, layer.blendMode,
+                    layer.tiles.snapshotColorUsage(), layer.groupId, layer.clipSourceId, layer.blendMode, layer.colorizeMask,
                 )
                 is ImageLayerRuntime -> SavedImageSnapshot(
                     layer.id, layer.name, layer.visible, layer.opacity, layer.source.uri,
@@ -501,7 +505,7 @@ internal class LayerStack(
                     OriginalImageSource(resolver, Uri.fromFile(layer.assetFile), invalidate), layer.transform,
                     mask = TileStore(layer.originalWidthPx, layer.originalHeightPx).apply { replaceTiles(layer.maskTiles) },
                 )
-            }).also { it.groupId = layer.groupId; it.clipSourceId = layer.clipSourceId; it.blendMode = layer.blendMode }
+            }).also { it.groupId = layer.groupId; it.clipSourceId = layer.clipSourceId; it.blendMode = layer.blendMode; it.colorizeMask = (layer as? LoadedRaster)?.colorizeMask }
         }
         layers.forEach { layer ->
             layer.clipSourceId?.let { if (!canClipTo(layer.id, it)) layer.clipSourceId = null }
@@ -639,7 +643,7 @@ internal class LayerStack(
             OriginalImageSource(resolver, layer.source.uri, invalidate), layer.transform,
             layer.mask.duplicate(),
         )
-    }).also { it.clipSourceId = layer.clipSourceId; it.blendMode = layer.blendMode }
+    }).also { it.clipSourceId = layer.clipSourceId; it.blendMode = layer.blendMode; it.colorizeMask = layer.colorizeMask }
 
     private fun renderPreview(layer: CanvasLayerRuntime, sizePx: Int): Bitmap {
         val preview = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
