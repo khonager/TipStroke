@@ -34,11 +34,13 @@ internal fun BrushFavoritesDock(
     onLassoFill: () -> Unit = {}, onRibbon: () -> Unit = {}, onColorPush: () -> Unit = {},
     assists: dev.tipstroke.core.drawing.BrushAssists = dev.tipstroke.core.drawing.BrushAssists(),
     onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
+    perspectiveMode: dev.tipstroke.core.geometry.PerspectiveMode = dev.tipstroke.core.geometry.PerspectiveMode.OFF,
+    onPerspectiveMode: (dev.tipstroke.core.geometry.PerspectiveMode) -> Unit = {}, onVanishingPoint: (Int) -> Unit = {},
     mirrorCopies: Int = 1, onMirrorCopies: (Int) -> Unit = {}, onMirrorCenter: () -> Unit = {},
 ) {
     var toolsOpen by remember { mutableStateOf(false) }
     var aidsOpen by remember { mutableStateOf(false) }
-    val aidsActive = assists.paintInside || assists.elasticLine || mirrorCopies > 1
+    val aidsActive = perspectiveMode != dev.tipstroke.core.geometry.PerspectiveMode.OFF || assists.paintInside || assists.elasticLine || mirrorCopies > 1
     Surface(modifier, color = Color(0xE6202125), shape = MaterialTheme.shapes.large,
         border = BorderStroke(1.dp, Color(0xB345474D))) {
         BoxWithConstraints(Modifier.padding(4.dp)) {
@@ -68,7 +70,8 @@ internal fun BrushFavoritesDock(
                         fun action(callback: () -> Unit) { toolsOpen = false; callback() }
                         if (aidsOpen) {
                             DropdownMenuItem(text = { Text("Back to tools") }, onClick = { aidsOpen = false })
-                            dev.tipstroke.ui.DrawingAssistsMenu(assists, onAssists, mirrorCopies, onMirrorCopies) { action(onMirrorCenter) }
+                            dev.tipstroke.ui.DrawingAssistsMenu(assists, onAssists, mirrorCopies, onMirrorCopies, { action(onMirrorCenter) },
+                                perspectiveMode, onPerspectiveMode, { index -> action { onVanishingPoint(index) } })
                         } else {
                             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
                                 .combinedClickable(role = Role.Button, onClick = { action(onSelect) },

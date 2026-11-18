@@ -84,6 +84,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | Area | Remaining difference |
 | --- | --- |
 | Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation, complete per-tip preferences/favorites/categories |
+| Perspective rulers | Shared magnetic projection and controls; Android native guides/input adapter implemented, Apple adapter pending |
 | Shadow pull | Android selection action with native tinted-offset preview and raster commit; Apple adapter pending |
 | Color push | Android local raster warp; shared inverse-warp math, native Apple adapter pending |
 | Brush assists and Ribbon | Android has Paint inside, Elastic line, movable Mirror wheel, and Ribbon; core geometry/contracts are shared, native Apple adapters are pending |

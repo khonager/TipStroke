@@ -62,6 +62,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         set(value) { field = value; invalidate() }
     private val airbrushPreview = AirbrushPreview()
     internal var shadowPreview: ShadowPullPreview? = null
+    var perspective: dev.tipstroke.core.geometry.PerspectiveRuler? = null
     var mirrorCenter: dev.tipstroke.core.geometry.Point? = null
     var mirrorEnabled = false
     var previewStroke: CompletedStroke? = null
@@ -299,6 +300,19 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                         drawImageLayer(canvas, layer, bitmap, imageTransform)
                     }
                 }
+            }
+        }
+        perspective?.let { ruler ->
+            val guide = Paint(Paint.ANTI_ALIAS_FLAG).apply { color=Color.argb(85,70,145,245); strokeWidth=1f/transform.scale }
+            val extent = kotlin.math.hypot(layerStack.canvasWidth.toFloat(),layerStack.canvasHeight.toFloat())*4f
+            val points = if (ruler.mode == dev.tipstroke.core.geometry.PerspectiveMode.TWO_POINT) listOf(ruler.first,ruler.second) else listOf(ruler.first)
+            points.forEach { vp ->
+                for (i in 0 until 16) {
+                    val a=i*kotlin.math.PI.toFloat()/8
+                    canvas.drawLine(vp.x,vp.y,vp.x+kotlin.math.cos(a)*extent,vp.y+kotlin.math.sin(a)*extent,guide)
+                }
+                guide.style=Paint.Style.STROKE
+                canvas.drawCircle(vp.x,vp.y,6f/transform.scale,guide)
             }
         }
         if (mirrorEnabled) {

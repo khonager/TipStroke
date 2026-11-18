@@ -1940,6 +1940,18 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
 
+    private var rulerStroke: dev.tipstroke.core.geometry.MagneticRuler? = null
+    private var placingVanishingPoint: Int? = null
+    fun setPerspectiveMode(mode: dev.tipstroke.core.geometry.PerspectiveMode) {
+        placingVanishingPoint = null
+        settings.perspective = if (mode == dev.tipstroke.core.geometry.PerspectiveMode.OFF) null else
+            settings.perspective?.copy(mode = mode) ?: dev.tipstroke.core.geometry.PerspectiveRuler(mode,
+                Point(canvasWidthPx*.25f,canvasHeightPx*.35f),Point(canvasWidthPx*.85f,canvasHeightPx*.35f))
+        rasterView.perspective = settings.perspective
+        rasterView.invalidate()
+    }
+    fun placeVanishingPoint(index: Int) { cancelShadowPull(); placingMirrorCenter=false; placingVanishingPoint=index.coerceIn(0,1) }
+
     private var placingMirrorCenter = false
     fun placeMirrorCenter() { cancelShadowPull(); placingMirrorCenter = true }
     fun setMirrorCopies(copies: Int) {
@@ -1968,6 +1980,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             return true
         }
         resizeOverlay?.let { return it.dispatchTouchEvent(event) }
+        if (placingVanishingPoint != null && event.pointerCount == 1 && isDrawingPointer(event,event.actionIndex)) {
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                val point = rasterView.screenToDocument(event.x,event.y)
+                settings.perspective = settings.perspective?.let {
+                    if (placingVanishingPoint == 0) it.copy(first=Point(point.x,point.y)) else it.copy(second=Point(point.x,point.y))
+                }
+                rasterView.perspective=settings.perspective; rasterView.invalidate(); placingVanishingPoint=null
+            } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) placingVanishingPoint=null
+            return true
+        }
         if (shadowPullArmed) return handleShadowPull(event)
         if (placingMirrorCenter && event.pointerCount == 1 && isDrawingPointer(event, event.actionIndex)) {
             if (event.actionMasked == MotionEvent.ACTION_UP) {
@@ -1980,6 +2002,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             return true
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            rulerStroke = null
             stopAnimationPlayback()
             gestureHandler.removeCallbacks(hideBrushPreview)
             rasterView.adjustmentPreviewStroke = null
@@ -2106,6 +2129,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (target.image != null && referenceLayerId != null) return true
                 requestUnbufferedDispatch(event)
                 activeDrawingPointerId = pointerId
+                rulerStroke = settings.perspective?.takeIf { !baseStyle.lassoFill && !baseStyle.ribbon && target.image == null }?.let {
+                    dev.tipstroke.core.geometry.MagneticRuler(it, 4f*resources.displayMetrics.density/rasterView.transform.scale)
+                }
                 rasterSamplesRendered = 0
                 strokeDownAt = event.downTime
                 pendingTargets[pointerId] = target
@@ -2114,8 +2140,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val style = styleForTarget(baseStyle, target)
                 shapeStyle = style
                 shapeSnapped = false
-                elasticStroke = settings.assists.elasticLine && !style.lassoFill && !style.ribbon
-                if (style.lassoFill || style.ribbon || elasticStroke || style.mirrorWheel != null) {
+                elasticStroke = settings.assists.elasticLine && rulerStroke == null && !style.lassoFill && !style.ribbon
+                if (rulerStroke != null || style.lassoFill || style.ribbon || elasticStroke || style.mirrorWheel != null) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
                 } else if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
@@ -2927,7 +2953,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun updateShapeHold(event: MotionEvent, pointerId: Int) {
         val index = event.findPointerIndex(pointerId)
-        if (index < 0 || shapeStyle?.lassoFill == true || shapeStyle?.ribbon == true || shapeStyle?.pixelTool == PixelTool.LINE || (shapeStyle?.brush?.stamp != null && !elasticStroke)) return
+        if (rulerStroke != null || index < 0 || shapeStyle?.lassoFill == true || shapeStyle?.ribbon == true || shapeStyle?.pixelTool == PixelTool.LINE || (shapeStyle?.brush?.stamp != null && !elasticStroke)) return
         val point = Point(event.getX(index), event.getY(index))
         val anchor = shapeAnchor
         val moved = anchor == null || hypot(point.x - anchor.x, point.y - anchor.y) > 8f * resources.displayMetrics.density
@@ -3171,7 +3197,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun sample(event: MotionEvent, index: Int, historyIndex: Int? = null): StrokeSample {
         val x = historyIndex?.let { event.getHistoricalX(index, it) } ?: event.getX(index)
         val y = historyIndex?.let { event.getHistoricalY(index, it) } ?: event.getY(index)
-        val point = rasterView.screenToDocument(x, y)
+        val rawPoint = rasterView.screenToDocument(x, y)
+        val constrained = if (activeDrawingPointerId == event.getPointerId(index)) rulerStroke?.project(Point(rawPoint.x,rawPoint.y)) else null
+        val point = android.graphics.PointF(constrained?.x ?: rawPoint.x,constrained?.y ?: rawPoint.y)
         val kind = pointerKind(event.getToolType(index)).let {
             if (it == PointerKind.FINGER && settings.emulateMouseWithTouch) PointerKind.MOUSE else it
         }

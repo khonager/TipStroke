@@ -522,3 +522,14 @@ on that layer hide the shadow; use a separate paint layer for the subject.
 
 Brush aids share a reusable Compose control in `:shared-ui`. The Tools button
 shows an active state whenever an aid is enabled; aids are not stored in presets.
+
+### Magnetic perspective rulers
+
+Tools → Brush aids offers one- and two-point rulers and vanishing-point placement.
+Pan/zoom out before placing points beyond the document. One-point snapping chooses
+horizontal, vertical, or the ray toward its vanishing point. Two-point snapping
+chooses vertical or either vanishing-point ray. After 4 screen dp of movement the
+chosen guide stays locked until lift. Guides are transient and never exported.
+Native samples are projected through core geometry and previewed on the native
+canvas; selection, undo, and brush pressure still apply. Rulers take priority over
+Elastic line and do not constrain lasso fill, Ribbon, Color push, or Smudge.

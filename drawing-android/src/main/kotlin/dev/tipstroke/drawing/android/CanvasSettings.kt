@@ -5,6 +5,7 @@ import dev.tipstroke.core.model.*
 import dev.tipstroke.core.drawing.PixelTool
 
 class CanvasSettings {
+    @Volatile var perspective: dev.tipstroke.core.geometry.PerspectiveRuler? = null
     @Volatile var mirrorCopies: Int = 1
     @Volatile var mirrorCenter: dev.tipstroke.core.geometry.Point? = null
     @Volatile var assists = dev.tipstroke.core.drawing.BrushAssists()
