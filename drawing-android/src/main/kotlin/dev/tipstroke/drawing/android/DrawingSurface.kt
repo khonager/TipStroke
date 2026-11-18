@@ -236,7 +236,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val point = pendingSmudgePoint ?: return
         pendingSmudgePoint = null
         if (point != toolSmudgeLast && settings.opacity > 0f) {
-            smudgeTarget?.tiles?.smudge(toolSmudgeLast.x, toolSmudgeLast.y, point.x, point.y,
+            if (settings.colorPushing) smudgeTarget?.tiles?.pushColor(toolSmudgeLast.x, toolSmudgeLast.y, point.x, point.y,
+                smudgeRadius(), settings.opacity, selectionRegion)
+            else smudgeTarget?.tiles?.smudge(toolSmudgeLast.x, toolSmudgeLast.y, point.x, point.y,
                 smudgeRadius(), settings.gestures.smudgeStrength * settings.opacity)
         }
         toolSmudgeLast = point
@@ -1922,7 +1924,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (selectionMoveMode) return handleSelectionMove(event)
         if (selectionMode) return handleSelection(event)
         if (isTransformingImage()) return handleTouchGesture(event)
-        if (settings.smudging && !settings.erasing && event.actionMasked == MotionEvent.ACTION_DOWN &&
+        if ((settings.smudging || settings.colorPushing) && !settings.erasing && event.actionMasked == MotionEvent.ACTION_DOWN &&
             event.getToolType(actionIndex) != MotionEvent.TOOL_TYPE_ERASER && isDrawingPointer(event, actionIndex)) {
             return handleSmudgeTool(event)
         }
@@ -2286,7 +2288,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val index = event.findPointerIndex(pointer)
         // An additional finger navigates; a palm alongside a pen cannot take over its stroke.
         if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && index >= 0 && !isStylus(event, index)) {
-            finishSmudgeTool()
+            finishSmudgeTool(cancel = settings.colorPushing)
             return handleTouchGesture(event)
         }
         val ending = event.actionMasked in intArrayOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP) &&
@@ -2302,15 +2304,23 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             updateChromeOcclusion(event, index)
             rasterView.invalidate()
         }
-        if (ending || event.actionMasked == MotionEvent.ACTION_CANCEL || index < 0) finishSmudgeTool()
+        if (ending || event.actionMasked == MotionEvent.ACTION_CANCEL || index < 0) finishSmudgeTool(
+            cancel = settings.colorPushing && (event.actionMasked == MotionEvent.ACTION_CANCEL || index < 0 ||
+                (Build.VERSION.SDK_INT >= 33 && event.flags and MotionEvent.FLAG_CANCELED != 0)))
         return true
     }
 
-    private fun finishSmudgeTool() {
+    private fun finishSmudgeTool(cancel: Boolean = false) {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
-        applyPendingSmudge()
-        smudgeTarget?.tiles?.finishSmudge()
+        if (cancel) {
+            pendingSmudgePoint = null
+            smudgeTarget?.tiles?.cancelSmudge()
+            rasterView.invalidate()
+        } else {
+            applyPendingSmudge()
+            smudgeTarget?.tiles?.finishSmudge()
+        }
         smudgeTarget = null
         toolSmudgePointer = null
         activeDrawingPointerId = null
@@ -3000,7 +3010,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun smudgeRadius() = (resolvedBrushSize() * .5f).coerceIn(1f, 96f)
 
-    private fun resolvedBrushSize() = if (settings.ribbon) settings.sizePx else if (settings.smudging) settings.sizePx.coerceIn(2f, 192f) else settings.sizeUnit.documentPixels(
+    private fun resolvedBrushSize() = if (settings.ribbon) settings.sizePx else if (settings.smudging || settings.colorPushing) settings.sizePx.coerceIn(2f, 192f) else settings.sizeUnit.documentPixels(
         settings.sizePx, rasterView.transform.scale, resources.displayMetrics.density, settings.pixelTool,
     )
 

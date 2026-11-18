@@ -45,6 +45,7 @@ internal fun TipControls(
     sizeUnit: BrushSizeUnit = BrushSizeUnit.CANVAS_PIXELS,
     onSizeUnit: ((BrushSizeUnit) -> Unit)? = null,
     showSize: Boolean = true,
+    opacityLabel: String = "Opacity",
 ) {
     val unitLabel = if (sizeUnit == BrushSizeUnit.SCREEN_DP) "dp" else "px"
     val sizeLabel: @Composable () -> Unit = {
@@ -62,7 +63,7 @@ internal fun TipControls(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 if (showSize) PrecisionSlider("Size", "${size.roundToInt()} $unitLabel", size, sizeRange, 1f, onSize, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f), sizeLabel)
-                PrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
+                PrecisionSlider(opacityLabel, "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
             }
         } else {
             Column(
@@ -84,7 +85,7 @@ internal fun TipControls(
                     color = Color(0xFF3A3C41),
                 )
                 VerticalPrecisionSlider(
-                    "Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity,
+                    opacityLabel, "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity,
                     onAdjustmentStart, onAdjustmentEnd,
                     trackHeight = verticalTrackHeight,
                     compact = compactVertical,

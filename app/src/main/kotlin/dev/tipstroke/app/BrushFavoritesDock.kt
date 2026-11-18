@@ -31,7 +31,7 @@ internal fun BrushFavoritesDock(
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String = "Tools",
     onReselect: () -> Unit = {},
-    onLassoFill: () -> Unit = {}, onRibbon: () -> Unit = {},
+    onLassoFill: () -> Unit = {}, onRibbon: () -> Unit = {}, onColorPush: () -> Unit = {},
     assists: dev.tipstroke.core.drawing.BrushAssists = dev.tipstroke.core.drawing.BrushAssists(),
     onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
     mirrorCopies: Int = 1, onMirrorCopies: (Int) -> Unit = {}, onMirrorCenter: () -> Unit = {},
@@ -53,6 +53,7 @@ internal fun BrushFavoritesDock(
                 Box {
                     DockCell("Drawing tools", !brushActive || toolsOpen, slot, !horizontal, { toolsOpen = true }, icon = when (toolLabel) {
                         "Eraser" -> Icons.Outlined.AutoFixNormal
+                        "Color push" -> Icons.Outlined.OpenWith
                         "Ribbon" -> Icons.Outlined.Gesture
                         "Lasso fill" -> Icons.Outlined.FormatColorFill
                         "Smudge" -> Icons.Outlined.BlurOn
@@ -74,6 +75,7 @@ internal fun BrushFavoritesDock(
                         DropdownMenuItem(text = { Text("Smudge") }, onClick = { action(onSmudge) }, modifier = Modifier.semantics { contentDescription = "Smudge" })
                         DropdownMenuItem(text = { Text("Lasso fill") }, onClick = { action(onLassoFill) })
                         DropdownMenuItem(text = { Text("Ribbon") }, onClick = { action(onRibbon) })
+                        DropdownMenuItem(text = { Text("Color push") }, onClick = { action(onColorPush) })
                         if (pixelToolsAvailable) PixelTool.entries.forEach { tool ->
                             DropdownMenuItem(text = { Text(when (tool) { PixelTool.PENCIL -> "Pixel pencil"; PixelTool.LINE -> "Pixel line"; PixelTool.DITHER -> "Dither" }) }, onClick = { action { onPixelTool(tool) } })
                         }

@@ -840,6 +840,75 @@ class TileStore(
         lastDirtyTiles = dirty
     }
 
+    /** Resamples one bounded patch; no full-layer bitmap and no in-place sampling feedback. */
+    internal fun pushColor(fromX: Float, fromY: Float, toX: Float, toY: Float, radius: Float,
+        strength: Float, selection: SelectionRegion? = null) {
+        val before = smudgeBefore ?: return
+        val r = radius.coerceIn(1f, 96f)
+        val left = floor(toX - r).toInt().coerceAtLeast(0)
+        val top = floor(toY - r).toInt().coerceAtLeast(0)
+        val right = ceil(toX + r).toInt().coerceAtMost(canvasWidth)
+        val bottom = ceil(toY + r).toInt().coerceAtMost(canvasHeight)
+        if (left >= right || top >= bottom || strength <= 0f) return
+        val margin = ceil(r * .5f).toInt() + 2
+        val sourceLeft = left - margin; val sourceTop = top - margin
+        val width = right - left + margin * 2; val height = bottom - top + margin * 2
+        val patch = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val patchCanvas = Canvas(patch)
+        TileGrid.intersecting(dev.tipstroke.core.geometry.Rect(sourceLeft.toFloat(), sourceTop.toFloat(),
+            (sourceLeft+width).toFloat(), (sourceTop+height).toFloat()), canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
+            tiles[coordinate]?.let { patchCanvas.drawBitmap(it, (coordinate.x*tileSize-sourceLeft).toFloat(),
+                (coordinate.y*tileSize-sourceTop).toFloat(), null) }
+        }
+        val source = IntArray(width * height)
+        patch.getPixels(source, 0, width, 0, 0, width, height)
+        patch.recycle()
+        val changes = mutableMapOf<TileCoordinate, IntArray>()
+        fun sample(x: Float, y: Float): Int {
+            val fx = x - sourceLeft; val fy = y - sourceTop
+            val ix = floor(fx).toInt(); val iy = floor(fy).toInt()
+            val tx = fx - ix; val ty = fy - iy
+            var alpha = 0f; var red = 0f; var green = 0f; var blue = 0f
+            for (dy in 0..1) for (dx in 0..1) {
+                val sx = ix + dx; val sy = iy + dy
+                if (sx !in 0 until width || sy !in 0 until height) continue
+                val c = source[sy * width + sx]
+                val weight = (if (dx == 0) 1-tx else tx) * (if (dy == 0) 1-ty else ty)
+                val a = Color.alpha(c) * weight
+                alpha += a; red += Color.red(c) * a; green += Color.green(c) * a; blue += Color.blue(c) * a
+            }
+            if (alpha < .5f) return Color.TRANSPARENT
+            return Color.argb(alpha.roundToInt().coerceIn(0,255), (red/alpha).roundToInt().coerceIn(0,255),
+                (green/alpha).roundToInt().coerceIn(0,255), (blue/alpha).roundToInt().coerceIn(0,255))
+        }
+        val center = dev.tipstroke.core.geometry.Point(toX, toY)
+        val delta = dev.tipstroke.core.geometry.Point(toX-fromX, toY-fromY)
+        for (y in top until bottom) for (x in left until right) {
+            val p = dev.tipstroke.core.geometry.Point(x.toFloat(), y.toFloat())
+            if (selection != null && !selection.contains(dev.tipstroke.core.geometry.Point(x+.5f,y+.5f))) continue
+            val warped = dev.tipstroke.core.geometry.ColorPush.source(p, center, delta, r, strength)
+            val value = sample(warped.x, warped.y)
+            if (value == source[(y-sourceTop)*width+x-sourceLeft]) continue
+            val coordinate = TileCoordinate(x / tileSize, y / tileSize)
+            if (coordinate !in before) before[coordinate] = tiles[coordinate]?.copy(Bitmap.Config.ARGB_8888, false)
+            val pixels = changes.getOrPut(coordinate) { IntArray(tileSize * tileSize).also {
+                tiles[coordinate]?.getPixels(it, 0, tileSize, 0, 0, tileSize, tileSize)
+            } }
+            pixels[(y % tileSize) * tileSize + x % tileSize] = value
+            smudgeTouched += coordinate
+        }
+        changes.forEach { (coordinate, pixels) -> writableTile(coordinate).setPixels(pixels, 0, tileSize, 0, 0, tileSize, tileSize) }
+        lastDirtyTiles = changes.keys
+    }
+
+    internal fun cancelSmudge() {
+        val before = smudgeBefore ?: return
+        smudgeBefore = null
+        restore(before)
+        before.values.forEach { it?.recycle() }
+        smudgeTouched.clear()
+    }
+
     internal fun finishSmudge() {
         val before = smudgeBefore ?: return
         smudgeBefore = null

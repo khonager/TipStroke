@@ -496,3 +496,11 @@ closed band. It is a flat fill, independent of saved tip texture/pressure curves
 and works with selection clips, Paint inside, and Mirror wheel. Preview is native
 and transient until lift; undo and process recording use one raster edit. Elastic
 line is inactive for Ribbon. The trailing-edge geometry is portable core code.
+
+**Color push** is a local raster warp, separate from Smudge. Size sets its circular
+diameter (up to 192 document pixels); Strength controls displacement. Native input
+coalesces work to display frames and resamples only a bounded patch with
+premultiplied-alpha bilinear interpolation. Selection boundaries protect destination
+pixels. One gesture is one undo; cancellation restores the reached tiles. It does
+not use brush paint, Paint inside, Elastic line, or Mirror wheel. Fast jumps have
+bounded displacement to avoid severe distortion.

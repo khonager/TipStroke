@@ -17,6 +17,7 @@ class CanvasSettings {
     @Volatile var erasing: Boolean = false
     @Volatile var ribbon: Boolean = false
     @Volatile var lassoFill: Boolean = false
+    @Volatile var colorPushing: Boolean = false
     @Volatile var smudging: Boolean = false
     @Volatile var eraserHardness: Float = .35f
     @Volatile var debug: Boolean = false
