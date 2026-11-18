@@ -29,6 +29,38 @@ class BrushFavoritesDockTest {
     private var activity: ActivityController<ComponentActivity>? = null
     @After fun close() { activity?.close() }
 
+    @Test fun brushAidsCanBeToggledAndToolChoicesRemainReachable() {
+        var assists by mutableStateOf(dev.tipstroke.core.drawing.BrushAssists())
+        var copies by mutableStateOf(1)
+        var ribbon = false
+        var push = false
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            MaterialTheme {
+                BrushFavoritesDock(BrushPreset.Ink, emptyList(), true, {}, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                    Modifier.width(400.dp), assists = assists, onAssists = { assists = it },
+                    mirrorCopies = copies, onMirrorCopies = { copies = it }, onRibbon = { ribbon = true }, onColorPush = { push = true })
+            }
+        }
+        compose.onNodeWithContentDescription("Drawing tools").performClick()
+        compose.onNodeWithText("Brush aids").performScrollTo().performClick()
+        compose.onNodeWithText("Paint inside").performClick()
+        compose.onNodeWithText("Elastic line").performClick()
+        compose.onNodeWithText("Mirror wheel: 6 copies").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(assists.paintInside); assertTrue(assists.elasticLine); assertEquals(6, copies) }
+        compose.onNodeWithText("Back to tools").performScrollTo().performClick()
+        compose.onNodeWithText("Ribbon").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(ribbon) }
+        compose.onNodeWithContentDescription("Drawing tools").performClick()
+        compose.onNodeWithText("Color push").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(push) }
+        compose.onNodeWithContentDescription("Drawing tools").performClick()
+        compose.onNodeWithText("Brush aids").performScrollTo().performClick()
+        compose.onNodeWithText("Paint inside").performClick()
+        compose.onNodeWithText("Elastic line").performClick()
+        compose.onNodeWithText("Mirror wheel: Off").performClick()
+        compose.runOnIdle { assertFalse(assists.paintInside); assertFalse(assists.elasticLine); assertEquals(1, copies) }
+    }
+
     @Test fun dockFitsMeasuredWidthAndShrinksWithoutScrolling() {
         var width by mutableStateOf(420)
         var capacity = -1

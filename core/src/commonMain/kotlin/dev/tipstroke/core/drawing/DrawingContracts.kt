@@ -40,6 +40,8 @@ data class StrokeStyle(
     /** Fill the sampled polygon, closed from the current tip to its start, using even-odd coverage. */
     val lassoFill: Boolean = false,
     val ribbon: Boolean = false,
+    /** Internal handedness used when reflecting a ribbon stroke. */
+    val ribbonMirrored: Boolean = false,
     val mirrorWheel: MirrorWheel? = null,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {

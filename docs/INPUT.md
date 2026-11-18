@@ -466,7 +466,7 @@ renderers remain compatible. This tool does not create a selection or vector lay
 
 ### Temporary brush aids (Android)
 
-**Drawing tools → Paint inside** temporarily locks brush strokes to existing paint
+**Drawing tools → Brush aids → Paint inside** temporarily locks brush strokes to existing paint
 on the active layer, including soft edge alpha. It is a session setting shared by
 brushes, not a change to the saved preset. Toggle it again to paint freely. It does
 not choose a connected color region: use a selection when shading just one shape.
@@ -475,14 +475,14 @@ transparent pixels cannot become paint. It takes precedence over Reference strok
 while enabled. Pixel tools, lasso fill and erasing use the same coverage constraint;
 smudge is independent.
 
-**Elastic line** is another temporary Tools toggle. Draw with any brush, pause for
+**Elastic line** is another temporary Brush aids toggle. Draw with any brush, pause for
 650 ms without lifting, then drag to bend the smoothed curve between fixed endpoints.
 Lift to commit; cancellation discards it. Strokes shorter than 24 screen dp remain
 ordinary marks. This replaces shape recognition while enabled, and does not affect
 lasso fill. Geometry fitting and bending live in core; native samples and previews
 stay on Android. Paint inside and selections also constrain elastic strokes.
 
-**Mirror wheel** in Tools offers Off, a two-sided horizontal reflection, or 4/6/8/12
+**Mirror wheel** under Tools → Brush aids offers Off, a two-sided horizontal reflection, or 4/6/8/12
 radial copies. It defaults to the document center; **Place mirror center…** consumes
 the next drawing-pointer tap to reposition the visible crosshair. Copies preview
 natively and commit together as one undo operation. Selection/Paint inside clips
@@ -519,3 +519,6 @@ as a native preview. It never changes source pixels while dragging. Commit write
 only destination tiles, behind existing paint on the same layer. No shadow layer,
 vector effect, or document-schema change is introduced. Fully opaque backgrounds
 on that layer hide the shadow; use a separate paint layer for the subject.
+
+Brush aids share a reusable Compose control in `:shared-ui`. The Tools button
+shows an active state whenever an aid is enabled; aids are not stored in presets.

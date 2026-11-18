@@ -32,7 +32,7 @@ internal fun SelectionControls(
     onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit,
     onDuplicate: () -> Unit, onClear: () -> Unit, canTransform: Boolean, onTransform: () -> Unit,
     onReselect: () -> Unit, modifier: Modifier = Modifier,
-    onShadowPull: () -> Unit = {},
+    onShadowPull: () -> Unit = {}, shadowPullActive: Boolean = false,
 ) {
     var referencesOpen by remember { mutableStateOf(false) }
     Surface(modifier, color = Color(0xED202125), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF55575D))) {
@@ -59,6 +59,8 @@ internal fun SelectionControls(
                         }
                     }
                 }
+                if (shadowPullActive) Text("Drag a shadow; release to apply. Tap Shadow pull again to cancel.",
+                    color = Color.White, modifier = Modifier.padding(8.dp))
                 if (!moving && tool == SelectionTool.POLYGON) Text("Tap corners; tap the first dot to close.", color = Color.White)
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color(0xFF55575D))
                 FlowRow(maxItemsInEachRow = if (wide) 5 else 3,
@@ -68,7 +70,7 @@ internal fun SelectionControls(
                     SelectionAction("Deselect", Icons.Outlined.Deselect, enabled = hasSelection, onClick = onClear)
                     SelectionAction("Move selected pixels", Icons.Outlined.OpenWith, moving, hasSelection && canMove, onClick = onMove)
                     SelectionAction("Transform selected pixels", Icons.Outlined.Transform, enabled = hasSelection && canTransform, onClick = onTransform)
-                    SelectionAction("Shadow pull", Icons.Outlined.FlipToBack, enabled = hasSelection && canDuplicate, onClick = onShadowPull)
+                    SelectionAction("Shadow pull", Icons.Outlined.Tonality, active = shadowPullActive, enabled = hasSelection && canDuplicate, onClick = onShadowPull)
                     SelectionAction("Erase selected pixels", Icons.Outlined.DeleteOutline, enabled = hasSelection && canDuplicate, onClick = onDelete)
                     SelectionAction("Copy selection to new layer", Icons.Outlined.ContentCopy, enabled = hasSelection && canDuplicate, onClick = onDuplicate)
                     SelectionAction("Cut selection to new layer", Icons.Outlined.ContentCut, enabled = hasSelection && canDuplicate, onClick = onCut)

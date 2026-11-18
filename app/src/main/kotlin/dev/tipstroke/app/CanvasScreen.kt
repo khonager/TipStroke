@@ -92,6 +92,7 @@ fun CanvasScreen(
     var assists by remember { mutableStateOf(dev.tipstroke.core.drawing.BrushAssists()) }
     var ribbon by remember { mutableStateOf(false) }
     var lassoFill by remember { mutableStateOf(false) }
+    var shadowPullActive by remember { mutableStateOf(false) }
     var colorPushing by remember { mutableStateOf(false) }
     var smudging by remember { mutableStateOf(false) }
     val smallCanvas = editorWidthPx <= 128 && editorHeightPx <= 128
@@ -558,6 +559,7 @@ fun CanvasScreen(
                 view.visiblePaletteListener = { drawingPalette = it }
                 view.drawnColorListener = { drawn -> colorHistory = colorHistoryPreferences.record(drawn) }
                 view.stylusButtonListener = ::performStylusButton
+                view.shadowPullListener = { shadowPullActive = it }
                 view.referenceStrokesListener = { referenceLayerId = it }
                 view.selectionListener = { active, selected -> selectionMode = active; hasSelection = selected }
                 if (library != null && documentId != null) {
@@ -686,8 +688,8 @@ fun CanvasScreen(
                 onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                 onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
                 assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
-                mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
-                onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
+                    mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
+                    onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
                 pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
                 onStudio = { brushStudioOpen = true }, onTune = { brushStudioOpen = true },
                 tuneDescription = "Adjust tip", horizontal = portrait,
@@ -757,7 +759,7 @@ fun CanvasScreen(
                     onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then hold Select to use it again." },
                     onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                     onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
-                assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
+                    assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                 mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
                 onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
                     pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
@@ -818,9 +820,11 @@ fun CanvasScreen(
             onOperation = { selectionOperation = it; surface?.setSelectionOperation(it) },
             onInvert = { surface?.invertSelection() },
             onCut = { surface?.moveSelectionToNewLayer() },
+            shadowPullActive = shadowPullActive,
             onShadowPull = {
                 movingSelection = false
-                message = if (surface?.armShadowPull() == true) "Drag to pull a shadow. Uses current color and opacity; Undo cancels."
+                if (shadowPullActive) surface?.cancelShadowPull()
+                else message = if (surface?.armShadowPull() == true) "Drag to pull a shadow. Uses current color and opacity; Undo cancels."
                     else "Select painted pixels on an active paint layer first."
             },
             onDelete = { surface?.deleteSelection() },

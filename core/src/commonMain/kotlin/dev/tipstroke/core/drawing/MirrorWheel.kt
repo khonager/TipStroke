@@ -22,6 +22,7 @@ fun CompletedStroke.mirrorCopies(): List<CompletedStroke> {
     val plainStyle = style.copy(mirrorWheel = null)
     return List(wheel.copies) { index ->
         CompletedStroke(samples.map { it.copy(position = wheel.point(it.position, index),
-            orientationRadians = wheel.orientation(it.orientationRadians, index)) }, plainStyle)
+            orientationRadians = wheel.orientation(it.orientationRadians, index)) },
+            plainStyle.copy(ribbonMirrored = style.ribbonMirrored xor (wheel.copies == 2 && index == 1)))
     }
 }

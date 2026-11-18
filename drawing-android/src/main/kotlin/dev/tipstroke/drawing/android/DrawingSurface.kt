@@ -1109,6 +1109,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(true, selectionRegion != null)
     }
     fun setSelectionMoveMode(enabled: Boolean) {
+        if (enabled) cancelShadowPull()
         // Compose can deliver the previous move toggle after a transform session starts.
         if (transformSelectionOriginal != null) return
         if (enabled && selectionRegion == null) selectAll()
@@ -1119,6 +1120,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
     fun beginSelectionTransform(): Boolean {
+        cancelShadowPull()
         val selection = selectionRegion ?: return false
         if (activeDrawingPointerId != null || pendingAnimationFrame != null || pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()) return false
         val ids = layerStack.selectedLayerIds()
@@ -1732,6 +1734,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         processRecorder?.detach()
         processRecorder = null
         settings.mirrorCenter = null
+        rasterView.mirrorCenter = null
         layerStack = createLayerStack(widthPx, heightPx)
         processRecorder = ProcessRecorder(widthPx, heightPx)
         processReadError = null
@@ -1876,6 +1879,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return !mediaSeeking && mediaCelLoading == null && active.mediaDrawingActive
     }
 
+    var shadowPullListener: ((Boolean) -> Unit)? = null
     private var shadowPullArmed = false
     private var shadowPointer: Int? = null
     private var shadowStart = Point(0f, 0f)
@@ -1884,15 +1888,21 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         cancelShadowPull()
         selectionMoveMode = false
         clearMovePreview()
+        selectionMode = true
+        placingMirrorCenter = false
+        selectionListener?.invoke(true, true)
         shadowPullArmed = true
+        shadowPullListener?.invoke(true)
         return true
     }
     fun cancelShadowPull() {
+        val wasActive = shadowPullArmed || shadowPointer != null
         rasterView.shadowPreview?.discard()
         rasterView.shadowPreview = null
         if (shadowPointer != null) activeDrawingPointerId = null
         shadowPointer = null
         shadowPullArmed = false
+        if (wasActive) shadowPullListener?.invoke(false)
         rasterView.invalidate()
     }
     private fun handleShadowPull(event: MotionEvent): Boolean {
@@ -1931,7 +1941,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     private var placingMirrorCenter = false
-    fun placeMirrorCenter() { placingMirrorCenter = true }
+    fun placeMirrorCenter() { cancelShadowPull(); placingMirrorCenter = true }
     fun setMirrorCopies(copies: Int) {
         require(copies in 1..12)
         settings.mirrorCopies = copies

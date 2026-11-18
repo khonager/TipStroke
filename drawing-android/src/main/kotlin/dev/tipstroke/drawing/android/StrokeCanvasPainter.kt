@@ -160,7 +160,7 @@ internal object StrokeCanvasPainter {
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
         if (stroke.style.lassoFill || stroke.style.ribbon) {
             val points = if (stroke.style.ribbon) dev.tipstroke.core.geometry.RibbonPath.outline(
-                stroke.samples.map { it.position }, stroke.style.sizePx) else stroke.samples.map { it.position }
+                stroke.samples.map { it.position }, stroke.style.sizePx, stroke.style.ribbonMirrored) else stroke.samples.map { it.position }
             if (points.size >= 3) {
                 val path = Path().apply {
                     fillType = Path.FillType.EVEN_ODD

@@ -580,3 +580,11 @@ palettes, the quick-color row, imported/captured tip sources, clipping, referenc
 strokes, merge, gallery thumbnails and document resize in portrait, landscape and
 narrow iPad windows. Native brush quality and all remaining `IOS.md` gaps must be
 resolved before claiming the two apps have full feature or visual parity.
+
+The creative-tools regression suite includes `PaintInsideTest`, `ElasticLineInputTest`,
+`MirrorWheelTest`, `RibbonRenderingTest`, `ColorPushTest`, and `ShadowPullTest` in
+`:drawing-android`, plus portable curve/ribbon geometry tests in `:core`.
+These cover native input cancellation, transient preview, sparse tile boundaries,
+selection/alpha constraints, exact recording patches, and one-gesture undo.
+Ribbon edge comparisons allow Skia's clipped antialias coverage rounding (8/255);
+filled interiors retain the requested opacity.

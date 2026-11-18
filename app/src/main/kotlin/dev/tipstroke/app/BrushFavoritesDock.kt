@@ -37,6 +37,8 @@ internal fun BrushFavoritesDock(
     mirrorCopies: Int = 1, onMirrorCopies: (Int) -> Unit = {}, onMirrorCenter: () -> Unit = {},
 ) {
     var toolsOpen by remember { mutableStateOf(false) }
+    var aidsOpen by remember { mutableStateOf(false) }
+    val aidsActive = assists.paintInside || assists.elasticLine || mirrorCopies > 1
     Surface(modifier, color = Color(0xE6202125), shape = MaterialTheme.shapes.large,
         border = BorderStroke(1.dp, Color(0xB345474D))) {
         BoxWithConstraints(Modifier.padding(4.dp)) {
@@ -51,7 +53,7 @@ internal fun BrushFavoritesDock(
                     key(preset.id.value) { DockCell(preset.displayName, brushActive && preset.id == selected.id, slot, !horizontal, { onBrush(preset) }, preset = preset) }
                 }
                 Box {
-                    DockCell("Drawing tools", !brushActive || toolsOpen, slot, !horizontal, { toolsOpen = true }, icon = when (toolLabel) {
+                    DockCell("Drawing tools", !brushActive || aidsActive || toolsOpen, slot, !horizontal, { aidsOpen = false; toolsOpen = true }, icon = when (toolLabel) {
                         "Eraser" -> Icons.Outlined.AutoFixNormal
                         "Color push" -> Icons.Outlined.OpenWith
                         "Ribbon" -> Icons.Outlined.Gesture
@@ -59,45 +61,37 @@ internal fun BrushFavoritesDock(
                         "Smudge" -> Icons.Outlined.BlurOn
                         "Select" -> Icons.Outlined.SelectAll
                         else -> Icons.Outlined.Build
-                    }, onLongClick = onReselect, stateLabel = toolLabel)
-                    DropdownMenu(toolsOpen, { toolsOpen = false }) {
+                    }, onLongClick = onReselect, stateLabel = if (aidsActive) "$toolLabel; brush aids active" else toolLabel)
+                    val menuScroll = androidx.compose.foundation.rememberScrollState()
+                    LaunchedEffect(toolsOpen, aidsOpen) { menuScroll.scrollTo(0) }
+                    DropdownMenu(toolsOpen, { toolsOpen = false }, scrollState = menuScroll) {
                         fun action(callback: () -> Unit) { toolsOpen = false; callback() }
-                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                            .combinedClickable(role = Role.Button, onClick = { action(onSelect) },
-                                onLongClick = { action(onReselect) }, onLongClickLabel = "Reselect previous area")
-                            .semantics { contentDescription = "Select" }.padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.SelectAll, null)
-                            Spacer(Modifier.width(12.dp))
-                            Text("Select")
+                        if (aidsOpen) {
+                            DropdownMenuItem(text = { Text("Back to tools") }, onClick = { aidsOpen = false })
+                            dev.tipstroke.ui.DrawingAssistsMenu(assists, onAssists, mirrorCopies, onMirrorCopies) { action(onMirrorCenter) }
+                        } else {
+                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                .combinedClickable(role = Role.Button, onClick = { action(onSelect) },
+                                    onLongClick = { action(onReselect) }, onLongClickLabel = "Reselect previous area")
+                                .semantics { contentDescription = "Select" }.padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.SelectAll, null)
+                                Spacer(Modifier.width(12.dp))
+                                Text("Select")
+                            }
+                            DropdownMenuItem(text = { Text("Eraser") }, onClick = { action(onEraser) }, modifier = Modifier.semantics { contentDescription = "Eraser" })
+                            DropdownMenuItem(text = { Text("Smudge") }, onClick = { action(onSmudge) }, modifier = Modifier.semantics { contentDescription = "Smudge" })
+                            DropdownMenuItem(text = { Text("Lasso fill") }, onClick = { action(onLassoFill) })
+                            DropdownMenuItem(text = { Text("Ribbon") }, onClick = { action(onRibbon) })
+                            DropdownMenuItem(text = { Text("Color push") }, onClick = { action(onColorPush) })
+                            if (pixelToolsAvailable) PixelTool.entries.forEach { tool ->
+                                DropdownMenuItem(text = { Text(when (tool) { PixelTool.PENCIL -> "Pixel pencil"; PixelTool.LINE -> "Pixel line"; PixelTool.DITHER -> "Dither" }) }, onClick = { action { onPixelTool(tool) } })
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(text = { Text("Brush aids") }, trailingIcon = { Text(if (aidsActive) "On ›" else "›") },
+                                onClick = { aidsOpen = true })
+                            DropdownMenuItem(text = { Text("Adjust tip") }, onClick = { action(onStudio) })
                         }
-                        DropdownMenuItem(text = { Text("Eraser") }, onClick = { action(onEraser) }, modifier = Modifier.semantics { contentDescription = "Eraser" })
-                        DropdownMenuItem(text = { Text("Smudge") }, onClick = { action(onSmudge) }, modifier = Modifier.semantics { contentDescription = "Smudge" })
-                        DropdownMenuItem(text = { Text("Lasso fill") }, onClick = { action(onLassoFill) })
-                        DropdownMenuItem(text = { Text("Ribbon") }, onClick = { action(onRibbon) })
-                        DropdownMenuItem(text = { Text("Color push") }, onClick = { action(onColorPush) })
-                        if (pixelToolsAvailable) PixelTool.entries.forEach { tool ->
-                            DropdownMenuItem(text = { Text(when (tool) { PixelTool.PENCIL -> "Pixel pencil"; PixelTool.LINE -> "Pixel line"; PixelTool.DITHER -> "Dither" }) }, onClick = { action { onPixelTool(tool) } })
-                        }
-                        HorizontalDivider()
-                        DropdownMenuItem(text = { Text("Paint inside") },
-                            leadingIcon = { Checkbox(assists.paintInside, null) },
-                            onClick = { onAssists(assists.copy(paintInside = !assists.paintInside)) })
-                        DropdownMenuItem(text = { Text("Elastic line") },
-                            leadingIcon = { Checkbox(assists.elasticLine, null) },
-                            onClick = { onAssists(assists.copy(elasticLine = !assists.elasticLine)) })
-                        if (assists.elasticLine) Text("Draw, hold, then drag to bend. Lift to finish.",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.widthIn(max = 260.dp).padding(horizontal = 12.dp, vertical = 4.dp))
-                        listOf(1, 2, 4, 6, 8, 12).forEach { count ->
-                            val label = when (count) { 1 -> "Mirror wheel: Off"; 2 -> "Mirror: 2 sides"; else -> "Mirror wheel: $count copies" }
-                            DropdownMenuItem(text = { Text(label) }, leadingIcon = { RadioButton(mirrorCopies == count, null) },
-                                onClick = { onMirrorCopies(count) })
-                        }
-                        if (mirrorCopies > 1) DropdownMenuItem(text = { Text("Place mirror center…") }, onClick = { action(onMirrorCenter) })
-                        Text("Paint inside keeps strokes on existing paint.", style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.widthIn(max = 260.dp).padding(horizontal = 12.dp, vertical = 4.dp))
-                        DropdownMenuItem(text = { Text("Adjust tip") }, onClick = { action(onStudio) })
                     }
                 }
                 DockCell(tuneDescription, false, slot, !horizontal, onTune, icon = Icons.Outlined.Tune)
