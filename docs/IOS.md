@@ -167,3 +167,5 @@ calling this port device-validated or ready for distribution.
 Android control-layout parity: Android now offers inline layer-row renaming and
 compact expanded settings. UIKit currently retains its separate layer-settings
 screen and name field. Native input/rendering and document semantics are unchanged.
+The consolidated TipStroke gallery heading/action row is currently Android-only;
+the UIKit gallery retains its native large-title navigation bar.

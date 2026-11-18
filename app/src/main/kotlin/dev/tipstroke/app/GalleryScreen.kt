@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
@@ -78,7 +80,7 @@ fun GalleryScreen(
         text = { Column { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Preparing your local canvas…") } }, confirmButton = {})
     mediaImportError?.let { error -> AlertDialog(onDismissRequest = { mediaImportError = null },
         title = { Text("Import failed") }, text = { Text(error) },
-        confirmButton = { TextButton(onClick = { mediaImportError = null }) { Text("OK") } }) }
+        confirmButton = { TipAction("OK", Icons.Outlined.Check, onClick = { mediaImportError = null }) }) }
     var items by remember(library) { mutableStateOf(library.galleryItems()) }
     var openStackId by remember { mutableStateOf<String?>(null) }
     var transferOpen by remember { mutableStateOf(false) }
@@ -224,7 +226,6 @@ fun GalleryScreen(
         val gutter = if (maxWidth < 600.dp || shortWindow) 16.dp else 28.dp
         val thumbnailHeight = (maxHeight * .32f).coerceIn(100.dp, 220.dp)
         Column {
-            GalleryTopBar(onNew = { creating = true }, onSettings = onSettings)
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(if (shortWindow) 180.dp else 240.dp),
                 state = gridState,
@@ -237,22 +238,24 @@ fun GalleryScreen(
                     Column {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                                if (openStack != null) TextButton(onClick = { openStackId = null }) { Text("‹ Gallery") }
-                                Text(openStack?.name ?: "Your drawings", color = Color(0xFFF5F5F2), fontSize = if (shortWindow) 22.sp else 28.sp, fontWeight = FontWeight.SemiBold)
+                                if (openStack != null) TipAction("‹ Gallery", Icons.Outlined.ArrowBack, onClick = { openStackId = null })
+                                Text(openStack?.name ?: "TipStroke", color = Color(0xFFF5F5F2), fontSize = if (shortWindow) 22.sp else 28.sp, fontWeight = FontWeight.SemiBold)
                                 if (openStack != null) {
-                                    TextButton(onClick = { renameStack = openStack }) { Text("Rename") }
-                                    TextButton(onClick = { library.unstack(openStack.id); refreshGallery() }) { Text("Unstack") }
+                                    TipAction("Rename", Icons.Outlined.Edit, onClick = { renameStack = openStack })
+                                    TipAction("Unstack", Icons.Outlined.LayersClear, onClick = { library.unstack(openStack.id); refreshGallery() })
                                 }
                             }
                             Row(Modifier.horizontalScroll(rememberScrollState())) {
-                                TextButton(onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) }, enabled = !importingMedia) { Text("Image / GIF / video") }
-                                TextButton(onClick = { reordering = !reordering }) { Text(if (reordering) "Done reordering" else "Reorder") }
-                                TextButton(onClick = { transferIds = null; transferOpen = true }) { Text("Import project") }
-                                TextButton(onClick = { selecting = true; reordering = false }) { Text("Select drawings") }
+                                TipAction("New drawing", Icons.Outlined.Add) { creating = true }
+                                TipAction("Settings", Icons.Outlined.Settings, onClick = onSettings)
+                                TipAction("Image / GIF / video", Icons.Outlined.PermMedia, enabled = !importingMedia, onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) })
+                                TipAction(if (reordering) "Done reordering" else "Reorder", if (reordering) Icons.Outlined.Check else Icons.Outlined.SwapVert) { reordering = !reordering }
+                                TipAction("Import project", Icons.Outlined.FileOpen, onClick = { transferIds = null; transferOpen = true })
+                                TipAction("Select drawings", Icons.Outlined.Checklist, onClick = { selecting = true; reordering = false })
                                 if (selecting) {
-                                    TextButton(onClick = { selectedDrawings = visibleItems.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }.toSet() }) { Text("Select visible") }
-                                    TextButton(onClick = { transferIds = selectedDrawings.toList(); transferOpen = true }, enabled = selectedDrawings.isNotEmpty()) { Text("Export ${selectedDrawings.size}") }
-                                    TextButton(onClick = { selecting = false; selectedDrawings = emptySet() }) { Text("Cancel selection") }
+                                    TipAction("Select visible", Icons.Outlined.SelectAll, onClick = { selectedDrawings = visibleItems.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }.toSet() })
+                                    TipAction("Export ${selectedDrawings.size} drawings", Icons.Outlined.IosShare, enabled = selectedDrawings.isNotEmpty()) { transferIds = selectedDrawings.toList(); transferOpen = true }
+                                    TipAction("Cancel selection", Icons.Outlined.Close, onClick = { selecting = false; selectedDrawings = emptySet() })
                                 }
                             }
                         }
@@ -264,8 +267,8 @@ fun GalleryScreen(
                 items(visibleItems, key = GalleryItem::key) { item ->
                     Column {
                     if (reordering) Row {
-                        TextButton(onClick = { moveItem(item, -1) }, enabled = visibleItems.firstOrNull()?.key != item.key) { Text("Move earlier") }
-                        TextButton(onClick = { moveItem(item, 1) }, enabled = visibleItems.lastOrNull()?.key != item.key) { Text("Move later") }
+                        TipAction("Move earlier", Icons.Outlined.ArrowBack, enabled = visibleItems.firstOrNull()?.key != item.key, onClick = { moveItem(item, -1) })
+                        TipAction("Move later", Icons.Outlined.ArrowForward, enabled = visibleItems.lastOrNull()?.key != item.key, onClick = { moveItem(item, 1) })
                     }
                     when (item) {
                         is GalleryDrawing -> DrawingCard(
@@ -305,8 +308,8 @@ fun GalleryScreen(
             onDismissRequest = { deleteCandidate = null },
             title = { Text("Delete ${drawing.name}?") },
             text = { Text("This removes the local drawing and cannot be undone.") },
-            confirmButton = { TextButton(onClick = { library.delete(drawing.id); deleteCandidate = null; refreshGallery() }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { deleteCandidate = null }) { Text("Cancel") } },
+            confirmButton = { TipAction("Delete", Icons.Outlined.Delete, onClick = { library.delete(drawing.id); deleteCandidate = null; refreshGallery() }) },
+            dismissButton = { TipAction("Cancel", Icons.Outlined.Close, onClick = { deleteCandidate = null }) },
         )
     }
     operationError?.let { error ->
@@ -314,7 +317,7 @@ fun GalleryScreen(
             onDismissRequest = { operationError = null },
             title = { Text("Could not duplicate drawing") },
             text = { Text(error) },
-            confirmButton = { TextButton(onClick = { operationError = null }) { Text("OK") } },
+            confirmButton = { TipAction("OK", Icons.Outlined.Check, onClick = { operationError = null }) },
         )
     }
     renameStack?.let { stack ->
@@ -323,42 +326,6 @@ fun GalleryScreen(
             onDismiss = { renameStack = null },
             onRename = { library.renameStack(stack.id, it); renameStack = null; refreshGallery() },
         )
-    }
-}
-
-@Composable
-private fun GalleryTopBar(onNew: () -> Unit, onSettings: () -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val compact = maxWidth < 560.dp
-        Row(
-            Modifier.fillMaxWidth().height(62.dp).border(.5.dp, Color(0xFF34363A)).padding(horizontal = if (compact) 16.dp else 28.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Tip", color = Color(0xFFF4F4F2), fontSize = if (compact) 21.sp else 25.sp, fontWeight = FontWeight.SemiBold)
-            Text("Stroke", color = Color(0xFFED6A5A), fontSize = if (compact) 21.sp else 25.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.weight(1f))
-            Button(onNew, shape = RoundedCornerShape(18.dp), contentPadding = PaddingValues(horizontal = if (compact) 13.dp else 18.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A))) {
-                Text(if (compact) "＋" else "＋  New drawing", color = Color.White, fontSize = if (compact) 20.sp else 14.sp)
-            }
-            Spacer(Modifier.width(if (compact) 4.dp else 12.dp))
-            if (compact) IconButton(onClick = onSettings, modifier = Modifier.semantics { contentDescription = "Settings" }) { GallerySettingsIcon() }
-            else TextButton(onClick = onSettings, modifier = Modifier.semantics { contentDescription = "Settings" }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Settings", color = Color(0xFFE8E8E6)) }
-        }
-    }
-}
-
-@Composable private fun GallerySettingsIcon() {
-    Canvas(Modifier.size(24.dp)) {
-        val center = Offset(size.width / 2, size.height / 2)
-        val color = Color(0xFFE8E8E6)
-        drawCircle(color, size.minDimension * .25f, center, style = Stroke(2.dp.toPx()))
-        drawCircle(color, size.minDimension * .06f, center)
-        repeat(8) { index ->
-            val angle = Math.toRadians((index * 45.0))
-            val inner = size.minDimension * .33f
-            val outer = size.minDimension * .44f
-            drawLine(color, Offset(center.x + kotlin.math.cos(angle).toFloat() * inner, center.y + kotlin.math.sin(angle).toFloat() * inner), Offset(center.x + kotlin.math.cos(angle).toFloat() * outer, center.y + kotlin.math.sin(angle).toFloat() * outer), 2.dp.toPx(), StrokeCap.Round)
-        }
     }
 }
 
@@ -392,7 +359,7 @@ private fun DrawingCard(
                 )
             }
             if (selected == null) Box {
-                TextButton(onClick = { menuOpen = true }, contentPadding = PaddingValues(0.dp), modifier = Modifier.size(38.dp)) { Text("⋮", fontSize = 24.sp) }
+                TipAction("Drawing actions", Icons.Outlined.MoreVert) { menuOpen = true }
                 DropdownMenu(menuOpen, { menuOpen = false }) {
                     onMoveOut?.let { moveOut -> DropdownMenuItem(text = { Text("Move out of stack") }, onClick = { menuOpen = false; moveOut() }) }
                     DropdownMenuItem(text = { Text("Export") }, onClick = { menuOpen = false; onExport() })
@@ -441,7 +408,7 @@ private fun RenameStackDialog(currentName: String, onDismiss: () -> Unit, onRena
         title = { Text("Rename stack") },
         text = { OutlinedTextField(name, { name = it }, label = { Text("Stack name") }, singleLine = true) },
         confirmButton = { Button(onClick = { onRename(name) }) { Text("Rename") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TipAction("Cancel", Icons.Outlined.Close, onClick = onDismiss) },
     )
 }
 
@@ -528,6 +495,6 @@ private fun NewDrawingDialog(onDismiss: () -> Unit, onCreate: (String, Int, Int)
             }
         },
         confirmButton = { Button(onClick = { onCreate(name.ifBlank { "Untitled drawing" }, validWidth!!, validHeight!!) }, enabled = validWidth != null && validHeight != null) { Text("Create") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TipAction("Cancel", Icons.Outlined.Close, onClick = onDismiss) },
     )
 }

@@ -69,3 +69,8 @@ Timelines default to compact controls. Hand-drawn animation keeps a single frame
 strip; import and the optional scrubber live in its menu. Video keeps playback,
 time, Next undrawn, and a thin coverage strip visible; Expand timeline reveals
 clip editing, drawing chips, and hold controls. Collapse restores canvas space.
+
+The Android gallery uses one TipStroke headline and a single scrollable action
+row for new drawing, settings, media/project import, reorder, and selection.
+Actions are icons with delayed hover labels and accessible action names; the
+separate branded top bar has been removed.
