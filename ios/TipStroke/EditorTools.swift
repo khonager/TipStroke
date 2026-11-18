@@ -36,6 +36,7 @@ extension EditorController {
             })
         }
         menu.addAction(UIAlertAction(title: viewport.canvas.filledShapes ? "Outline shapes" : "Filled shapes", style: .default) { [weak self] _ in self?.viewport.canvas.filledShapes.toggle() })
+        menu.addAction(UIAlertAction(title: "Brush aids", style: .default) { [weak self] _ in self?.brushAids() })
         menu.addAction(UIAlertAction(title: "Selection actions", style: .default) { [weak self] _ in self?.selectionActions() })
         menu.addAction(UIAlertAction(title: "Animation timeline", style: .default) { [weak self] _ in self?.showTimeline() })
         menu.addAction(UIAlertAction(title: "Paper color", style: .default) { [weak self] _ in self?.setPaperColor() })
@@ -173,5 +174,15 @@ extension EditorController {
                 catch { self.showError(error) }
             }
         }
+    }
+}
+
+
+extension EditorController {
+    func brushAids() {
+        viewport.canvas.cancelStroke()
+        let menu = UIAlertController(title: "Brush aids", message: "Temporary aids stay active until switched off. Paint inside preserves the active layer’s existing transparency.", preferredStyle: .actionSheet)
+        menu.addAction(UIAlertAction(title: "Paint inside" + (document.paintInside ? " ✓" : ""), style: .default) { [weak self] _ in self?.document.paintInside.toggle() })
+        menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
     }
 }

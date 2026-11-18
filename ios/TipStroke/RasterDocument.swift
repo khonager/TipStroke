@@ -5,6 +5,7 @@ final class RasterDocument {
     static let maximumTiles = 512 // 128 MiB of resident RGBA artwork
     static let historyBudget = 32 * 1024 * 1024
     static let tileBytes = 256 * 256 * 4
+    var paintInside = false
     var selection: CanvasSelection?
     var record: DocumentRecord
     var framePixels: [UUID: [UUID: [TileKey: CGImage]]] = [:]
@@ -93,7 +94,7 @@ final class RasterDocument {
         let area = CGRect(x: min(start.x, end.x), y: min(start.y, end.y),
                           width: abs(end.x - start.x), height: abs(end.y - start.y))
             .insetBy(dx: -radius - 2, dy: -radius - 2).intersection(bounds)
-        let alphaLocked = record.layers.first { $0.id == layer }?.alphaLocked == true
+        let alphaLocked = paintInside || record.layers.first { $0.id == layer }?.alphaLocked == true
         if alphaLocked && erasing { return .null }
         let keys = TileKey.intersecting(area, width: record.width, height: record.height)
             .filter { (!erasing && !alphaLocked) || pixels[layer]?[$0] != nil }
@@ -131,8 +132,8 @@ final class RasterDocument {
     }
     func editTiles(keys: [TileKey], erasing: Bool, draw: (CGContext) throws -> Void) throws {
         guard let layer = strokeLayer else { return }
-        let referenceID = record.layers.first { $0.reference }?.id
-        let alphaLocked = record.layers.first { $0.id == layer }?.alphaLocked == true || referenceID == layer
+        let referenceID = paintInside ? nil : record.layers.first { $0.reference }?.id
+        let alphaLocked = paintInside || record.layers.first { $0.id == layer }?.alphaLocked == true || referenceID == layer
         if erasing && alphaLocked { return }
         let keys = keys.filter { key in
             ((!erasing && !alphaLocked) || pixels[layer]?[key] != nil) &&

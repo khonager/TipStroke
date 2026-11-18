@@ -570,3 +570,6 @@ still drawings only. Imported image line art must first be on a paint layer.
 On iOS, Lasso fill uses a native display-link preview: only reached sparse tiles are
 restored from the stroke transaction before the even-odd polygon is repainted.
 Lifting commits one undo entry; cancellation restores the original tiles.
+iOS Tools → Brush aids exposes temporary Paint inside. It uses source-atop for
+all native brush/stamp paths, preserves soft alpha, and takes priority over the
+reference layer. It is session state, separate from saved layer alpha lock.
