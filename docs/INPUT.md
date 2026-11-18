@@ -439,3 +439,7 @@ collapsed. Done or leaving the field commits a nonblank name as one rename.
 Expanded settings show blend/opacity and image scale without a repeated name.
 Image placement uses the scale slider, canvas transform, fit and original-size
 actions; half/double scale buttons are no longer shown.
+
+Layer action icons and canvas toolbar actions expose their names after a 650 ms
+mouse/stylus hover. Layer actions also support touch-and-hold hints. Duplicate
+uses a stacked-add symbol to distinguish it from clipboard copy.

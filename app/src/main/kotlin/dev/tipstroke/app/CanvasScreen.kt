@@ -1428,8 +1428,8 @@ private val PixelTool.displayName: String get() = when (this) {
     PixelTool.DITHER -> "Shade"
 }
 
-@Composable private fun IconAction(label: String, enabled: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) { IconButton(onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { icon() } }
-@Composable private fun PhoneIconAction(label: String, enabled: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) { IconButton(onClick, enabled = enabled, modifier = Modifier.size(38.dp).semantics { contentDescription = label }) { icon() } }
+@Composable private fun IconAction(label: String, enabled: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) { TipHint(label) { IconButton(onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { icon() } } }
+@Composable private fun PhoneIconAction(label: String, enabled: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) { TipHint(label) { IconButton(onClick, enabled = enabled, modifier = Modifier.size(38.dp).semantics { contentDescription = label }) { icon() } } }
 @Composable private fun UndoIcon() = ArcArrow(false)
 @Composable private fun RedoIcon() = ArcArrow(true)
 @Composable private fun ArcArrow(mirror: Boolean) { Canvas(Modifier.size(23.dp).graphicsLayer { scaleX = if (mirror) -1f else 1f }) { val path = Path().apply { moveTo(size.width*.85f,size.height*.72f); cubicTo(size.width*.85f,size.height*.3f,size.width*.45f,size.height*.22f,size.width*.24f,size.height*.42f); moveTo(size.width*.24f,size.height*.42f); lineTo(size.width*.28f,size.height*.17f); moveTo(size.width*.24f,size.height*.42f); lineTo(size.width*.48f,size.height*.43f) }; drawPath(path, Color.White, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)) } }

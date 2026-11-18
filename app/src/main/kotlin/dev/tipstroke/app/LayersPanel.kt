@@ -168,9 +168,9 @@ internal fun LayersPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Layers", color = Color(0xFFF5F5F2), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onImportImage, enabled = layers.size < maximumLayers) { Text("Import") }
-                TextButton(onClick = onAddPaint, enabled = layers.size < maximumLayers) { Text("＋ Layer") }
-                TextButton(onClick = onDismiss) { Text("Done") }
+                TipAction("Import image", Icons.Outlined.AddPhotoAlternate, enabled = layers.size < maximumLayers, onClick = onImportImage)
+                TipAction("Add layer", Icons.Outlined.Add, enabled = layers.size < maximumLayers, onClick = onAddPaint)
+                TipAction("Done", Icons.Outlined.Check, onClick = onDismiss)
             }
             Text("${layers.size}/$maximumLayers Layers", color = Color.White, fontSize = 14.sp)
             if (layers.size >= maximumLayers) Text("This canvas supports $maximumLayers layer${if (maximumLayers == 1) "" else "s"}. You can keep drawing on the existing layers.",
@@ -248,8 +248,7 @@ internal fun LayersPanel(
                                 Text("${if (layers.filter { it.groupId == layer.groupId }.all { it.id in selectedIds }) "✓ " else ""}Group · ${layers.count { it.groupId == layer.groupId }} layers", color = Color(0xFFB8C9E5), fontSize = 11.sp,
                                     modifier = Modifier.weight(1f).clickable { onSelectGroup(layer.groupId!!) }
                                         .padding(vertical = 8.dp).semantics { contentDescription = "Select group" })
-                                TextButton(onClick = { onUngroup(layer.groupId!!) }, modifier = Modifier.height(28.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Ungroup", fontSize = 10.sp) }
+                                TipAction("Ungroup", Icons.Outlined.LayersClear) { onUngroup(layer.groupId!!) }
                             }
                         }
                         Box(Modifier.padding(start = if (layer.groupId != null) 12.dp else 0.dp)
@@ -401,9 +400,7 @@ internal fun LayersPanel(
                         Slider(backgroundOpacity, onBackgroundOpacity,
                             onValueChangeFinished = onBackgroundOpacityFinished,
                             valueRange = 0f..1f, modifier = Modifier.fillMaxWidth())
-                        TextButton(onClick = closeBackgroundPicker, modifier = Modifier.align(Alignment.End)) {
-                            Text("Done")
-                        }
+                        TipAction("Done", Icons.Outlined.Check, onClick = closeBackgroundPicker)
                     },
                 )
             }
@@ -430,10 +427,8 @@ private fun LayerControls(
     ) {
         var blendMenu by remember(layer.id) { mutableStateOf(false) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { onOpacityFinished(); blendMenu = !blendMenu }, modifier = Modifier.weight(1f)) {
-                Text("Blend · ${layer.blendMode.label}")
-            }
-            if (blendMenu) TextButton(onClick = { blendMenu = false }) { Text("Done") }
+            Text(layer.blendMode.label, modifier = Modifier.weight(1f), color = Color.White, fontSize = 12.sp)
+            TipAction(if (blendMenu) "Close blend modes" else "Choose blend mode", Icons.Outlined.BlurOn) { onOpacityFinished(); blendMenu = !blendMenu }
         }
         if (blendMenu) {
             BlendModeScroller(layer.id, layer.blendMode, onBlendMode,
@@ -543,12 +538,10 @@ private fun LayerRow(
                 color = Color(0xFF9EA0A6), fontSize = 10.sp,
             )
         }
-        IconButton(onSettings, Modifier.size(36.dp).semantics { contentDescription = "${if (expanded) "Collapse" else "Expand"} settings for ${layer.name}" }) {
-            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, tint = Color(0xFFB9BBC0))
-        }
-        IconButton(onVisibility, Modifier.size(40.dp).semantics { contentDescription = if (layer.visible) "Hide ${layer.name}" else "Show ${layer.name}" }) {
-            EyeIcon(layer.visible)
-        }
+        TipAction("${if (expanded) "Collapse" else "Expand"} settings for ${layer.name}",
+            if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, onClick = onSettings)
+        TipAction(if (layer.visible) "Hide ${layer.name}" else "Show ${layer.name}",
+            if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, onClick = onVisibility)
     }
 }
 
@@ -605,9 +598,9 @@ private fun ValueHeader(label: String, value: String) {
 @Composable
 private fun LayerAction(label: String, icon: ImageVector, active: Boolean = false,
     enabled: Boolean = true, onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled) {
-        Icon(icon, contentDescription = label,
-            tint = if (!enabled) Color(0xFF777A81) else if (active) Color(0xFF75A7FF) else Color.White)
+    CompositionLocalProvider(LocalContentColor provides
+        (if (active) Color(0xFF75A7FF) else Color.White)) {
+        TipAction(label, icon, enabled, onClick)
     }
 }
 
