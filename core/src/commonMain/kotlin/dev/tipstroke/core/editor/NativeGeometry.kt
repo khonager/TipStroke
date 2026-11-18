@@ -26,3 +26,9 @@ class NativeColorPush(x: Float, y: Float, dx: Float, dy: Float, private val radi
     private val delta = Point(dx, dy)
     fun source(x: Float, y: Float): Point = dev.tipstroke.core.geometry.ColorPush.source(Point(x, y), center, delta, radius, strength)
 }
+
+class NativePerspectiveRuler(mode: Int, x1: Float, y1: Float, x2: Float, y2: Float, threshold: Float) {
+    private val ruler = dev.tipstroke.core.geometry.MagneticRuler(
+        dev.tipstroke.core.geometry.PerspectiveRuler(dev.tipstroke.core.geometry.PerspectiveMode.entries[mode.coerceIn(0, 2)], Point(x1, y1), Point(x2, y2)), threshold)
+    fun project(x: Float, y: Float): Point = ruler.project(Point(x, y))
+}

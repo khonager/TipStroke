@@ -13,6 +13,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var filledShapes = false
     var quickShapes = true
     var elasticLine = false
+    var perspectiveMode = 0
+    var vanishingPoint1: CGPoint?
+    var vanishingPoint2: CGPoint?
+    var placingVanishingPoint = 0
+    private var magneticRuler: NativePerspectiveRuler?
     var placingMirrorCenter = false
     var shadowPull = false
     private var shadowTiles: [TileKey: CGImage] = [:]
@@ -157,6 +162,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
     }
     private func start(_ touch: UITouch, event: UIEvent?) {
+        if placingVanishingPoint != 0 {
+            if placingVanishingPoint == 1 { vanishingPoint1 = touch.location(in: self) }
+            else { vanishingPoint2 = touch.location(in: self) }
+            placingVanishingPoint = 0; refreshSelection(); return
+        }
         if placingMirrorCenter {
             document.mirrorCenter = touch.location(in: self); placingMirrorCenter = false; refreshSelection(); return
         }
@@ -168,6 +178,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
         if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull) { return }
         pointer = touch; previous = nil; previousTimestamp = -1
+        let first = vanishingPoint1 ?? CGPoint(x: bounds.width * 0.25, y: bounds.height * 0.35)
+        let second = vanishingPoint2 ?? CGPoint(x: bounds.width * 0.75, y: bounds.height * 0.35)
+        let scale = (superview as? UIScrollView)?.zoomScale ?? 1
+        magneticRuler = mode == .paint && perspectiveMode > 0 ? NativePerspectiveRuler(mode: Int32(perspectiveMode), x1: Float(first.x), y1: Float(first.y), x2: Float(second.x), y2: Float(second.y), threshold: Float(4 / scale)) : nil
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
         stampPath = brush.usesStamps ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
         strokeBrush = brush
@@ -239,6 +253,19 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         if mode == .fill { onFill?(point) }
     }
     func refreshSelection() {
+        if perspectiveMode > 0 {
+            let path = CGMutablePath()
+            if let selection = document.selection { path.addPath(selection.path) }
+            let points = [vanishingPoint1 ?? CGPoint(x: bounds.width * 0.25, y: bounds.height * 0.35), vanishingPoint2 ?? CGPoint(x: bounds.width * 0.75, y: bounds.height * 0.35)]
+            for c in points.prefix(perspectiveMode) {
+                for i in 0..<12 {
+                    let angle = CGFloat(i) * .pi / 6, length = max(bounds.width, bounds.height) * 2
+                    path.move(to: c); path.addLine(to: CGPoint(x: c.x + cos(angle) * length, y: c.y + sin(angle) * length))
+                }
+                path.addEllipse(in: CGRect(x: c.x - 6, y: c.y - 6, width: 12, height: 12))
+            }
+            outlineLayer.path = path; return
+        }
         if let selection = document.selection { outlineLayer.path = selection.path; return }
         guard document.mirrorCopies >= 2 else { outlineLayer.path = nil; return }
         let c = document.mirrorCenter ?? CGPoint(x: bounds.midX, y: bounds.midY)
@@ -318,6 +345,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                     let response = 1 - CGFloat(strokeBrush.stabilization) * 0.85
                     point = CGPoint(x: previous.x + (point.x - previous.x) * response, y: previous.y + (point.y - previous.y) * response)
                 }
+                if let magneticRuler {
+                    let projected = magneticRuler.project(x: Float(point.x), y: Float(point.y))
+                    point = CGPoint(x: CGFloat(projected.x), y: CGFloat(projected.y))
+                }
                 // Do not bake estimated force into permanent pixels. USB-C Pencil and fingers use constant pressure.
                 let measured = sample.type == .pencil && sample.maximumPossibleForce > 0 &&
                     !sample.estimatedProperties.contains(.force) && sample.force > 0
@@ -352,7 +383,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             }
             if !dirty.isNull { refresh(dirty) }
             holdWork?.cancel()
-            if mode == .paint && (quickShapes || elasticLine) && strokeTool != .eraser {
+            if mode == .paint && magneticRuler == nil && (quickShapes || elasticLine) && strokeTool != .eraser {
                 let work = DispatchWorkItem { [weak self] in self?.fitQuickShape() }
                 holdWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
             }

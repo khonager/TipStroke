@@ -186,6 +186,7 @@ extension EditorController {
     func brushAids() {
         viewport.canvas.cancelStroke()
         let menu = UIAlertController(title: "Brush aids", message: "Temporary aids stay active until switched off. Paint inside preserves the active layer’s existing transparency.", preferredStyle: .actionSheet)
+        menu.addAction(UIAlertAction(title: "Perspective rulers", style: .default) { [weak self] _ in self?.perspectiveSettings() })
         menu.addAction(UIAlertAction(title: "Mirror wheel", style: .default) { [weak self] _ in self?.mirrorSettings() })
         menu.addAction(UIAlertAction(title: "Elastic line" + (viewport.canvas.elasticLine ? " ✓" : ""), style: .default) { [weak self] _ in self?.viewport.canvas.elasticLine.toggle() })
         menu.addAction(UIAlertAction(title: "Paint inside" + (document.paintInside ? " ✓" : ""), style: .default) { [weak self] _ in self?.document.paintInside.toggle() })
@@ -202,6 +203,21 @@ extension EditorController {
             })
         }
         menu.addAction(UIAlertAction(title: "Place center with next touch", style: .default) { [weak self] _ in self?.viewport.canvas.placingMirrorCenter = true })
+        menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
+    }
+}
+
+extension EditorController {
+    func perspectiveSettings() {
+        let menu = UIAlertController(title: "Magnetic perspective", message: "Brush strokes lock to the closest ruler direction. Rulers take priority over Elastic line. Place each vanishing point with the next touch.", preferredStyle: .actionSheet)
+        for (index, title) in ["Off", "One point", "Two points"].enumerated() {
+            menu.addAction(UIAlertAction(title: title + (viewport.canvas.perspectiveMode == index ? " ✓" : ""), style: .default) { [weak self] _ in
+                self?.viewport.canvas.perspectiveMode = index; self?.viewport.canvas.refreshSelection()
+            })
+        }
+        for index in 1...2 {
+            menu.addAction(UIAlertAction(title: "Place vanishing point \(index)", style: .default) { [weak self] _ in self?.viewport.canvas.placingVanishingPoint = index })
+        }
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
     }
 }

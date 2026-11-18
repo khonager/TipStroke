@@ -586,3 +586,6 @@ Cancel/Undo restores the transaction. Opaque paint on that layer hides shadows.
 iOS Color push runs once per display frame with a maximum 96 px radius. It uses
 the shared inverse-warp falloff and premultiplied bilinear samples, clips writes
 to the selection, and keeps a single cancellable undo transaction.
+iOS magnetic perspective uses the shared direction-lock solver on native samples
+before raster/stamp painting. One/two-point guides and placement live under Brush
+aids, retain positions when disabled, and override hold-to-fit while active.
