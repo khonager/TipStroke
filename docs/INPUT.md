@@ -421,8 +421,10 @@ Pencil pressure/tilt and stamping remain outside cross-platform UI state.
 Android and iOS use a shared paper-stack preview on the left and a snapping size
 list on the right. Swiping the list selects the sheet nearest its center; tapping
 a size or a favorite shortcut selects it directly. Sheets retain their aspect
-ratios and show exact pixel dimensions. The stack is schematic: tiny pixel-art
-sizes are enlarged for visibility, so sheet areas are not a physical scale chart.
+ratios and show exact pixel dimensions. Every sheet uses the same pixel-to-preview scale, fitted to the largest width
+and height in the stack. Pixel-art sheets remain genuinely small: a 16 × 16
+sheet has half the width and height, and one quarter the area, of a 32 × 32
+sheet. Selecting a different preset does not change the scale.
 
 Pin this size adds the selected preset to one non-scrolling shortcut row. Capacity
 is calculated from the actual picker width (104 dp minimum per shortcut plus an

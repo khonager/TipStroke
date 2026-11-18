@@ -28,7 +28,6 @@ import dev.tipstroke.core.canvas.resolutionFavoriteCapacity
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import kotlin.math.sqrt
 
 /** A settings control only: no drawing surfaces or pointer samples pass through here. */
 @Composable
@@ -96,7 +95,7 @@ fun ResolutionBrowser(
                     }
                 }
             }
-            Text("Scroll sizes on the right · Preview is schematic", style = MaterialTheme.typography.bodySmall)
+            Text("Scroll sizes on the right · Papers shown to scale", style = MaterialTheme.typography.bodySmall)
             if (pinned.isNotEmpty() && capacity > 0) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     pinned.take(capacity).forEach { preset ->
@@ -127,26 +126,25 @@ fun ResolutionBrowser(
 @Composable
 private fun PaperStack(presets: List<CanvasPreset>, selected: Int, modifier: Modifier) {
     BoxWithConstraints(modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp)).padding(12.dp)) {
-        val largest = presets.maxOf { maxOf(it.widthPx, it.heightPx) }.toFloat()
+        // One scale for the whole stack: doubling both sides quadruples sheet area.
+        // Keep this independent of selection so scrolling never resizes the other sheets.
+        val factor = minOf(
+            maxWidth.value * .78f / presets.maxOf { it.widthPx },
+            maxHeight.value * .68f / presets.maxOf { it.heightPx },
+        )
         presets.forEachIndexed { index, preset ->
             val active = index == selected
             val distance = index - selected
             val turn by animateFloatAsState(if (active) 0f else (distance * 2f).coerceIn(-12f, 12f))
             val lift by animateFloatAsState(if (active) 0f else (distance * 5f).coerceIn(-28f, 28f))
-            val longest = maxOf(preset.widthPx, preset.heightPx).toFloat()
-            // Schematic scale keeps pixel-art sheets visible; aspect ratios are exact.
-            val scale = (.35f + .65f * sqrt(longest / largest))
-            val paperWidth = maxWidth * .78f * scale * (preset.widthPx / longest)
-            val paperHeight = maxHeight * .68f * scale * (preset.heightPx / longest)
-            // Use one common pixel-to-dp factor so wide and tall sheets retain their ratio.
-            val factor = minOf(paperWidth.value / preset.widthPx, paperHeight.value / preset.heightPx)
+            val shortestSide = minOf(preset.widthPx, preset.heightPx) * factor
             Surface(Modifier.align(Alignment.Center).offset(y = lift.dp)
                 .zIndex(if (active) 1000f else -abs(distance).toFloat())
-                .graphicsLayer { rotationZ = turn; rotationY = if (active) 0f else turn * 2f }
+                .graphicsLayer { rotationZ = turn }
                 .size((preset.widthPx * factor).dp, (preset.heightPx * factor).dp)
-                .shadow(if (active) 8.dp else 2.dp),
+                .shadow(minOf(if (active) 8f else 2f, shortestSide / 8f).dp),
                 color = if (active) Color(0xFFFFFDF7) else Color(0xFFD9D5CB),
-                border = BorderStroke(if (active) 2.dp else 1.dp, if (active) MaterialTheme.colorScheme.primary else Color(0xFFA7A49C))) {}
+                border = BorderStroke(minOf(if (active) 2f else 1f, shortestSide / 8f).dp, if (active) MaterialTheme.colorScheme.primary else Color(0xFFA7A49C))) {}
         }
         val preset = presets[selected]
         Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
