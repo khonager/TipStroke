@@ -50,12 +50,12 @@ class MediaTimelinePanelTest {
             paintedFrameIds = setOf(frame.id), coveragePending = true))
         var sought = -1L
         content { MediaTimelinePanel(state, { sought = it }, {}, {}, {}, {}, {}, {}, {}) }
-        compose.onNodeWithText("Checking…").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Checking undrawn frames").assertIsNotEnabled()
         compose.runOnIdle { state = state.copy(coveragePending = false) }
-        compose.onNodeWithText("Next undrawn").performClick()
+        compose.onNodeWithContentDescription("Next undrawn").performClick()
         assertEquals(500_000L, sought)
         compose.runOnIdle { state = state.copy(mediaDurationUs = 500_000) }
-        compose.onNodeWithText("All drawn").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("All drawn").assertIsNotEnabled()
     }
 
     @Test fun changingOnlyDrawingFpsDoesNotRewriteTheHold() {
@@ -68,7 +68,7 @@ class MediaTimelinePanelTest {
         }
         compose.onNodeWithContentDescription("Drawing timing · 12 FPS").performClick()
         compose.onNodeWithText("Drawing FPS (1–60)").performTextReplacement("24")
-        compose.onNodeWithText("Apply").performClick()
+        compose.onNodeWithContentDescription("Apply").performClick()
         assertEquals(24, fps)
         assertEquals(0, holdChanges)
     }
@@ -77,7 +77,7 @@ class MediaTimelinePanelTest {
         content { AnimationExportDialog("Video", 640, 480, {}, {}, hasMedia = true) { request = it } }
         compose.onNodeWithText("Smooth video + held drawings").assertIsDisplayed()
         compose.onNodeWithText("Video at drawing FPS").performClick()
-        compose.onNodeWithText("Export", useUnmergedTree = true).performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Export", useUnmergedTree = true).performScrollTo().performClick()
         assertEquals(MediaExportTiming.DRAWING_FPS, request?.timing)
     }
     @Test fun splitAndKeyframeControlsUpdateOneTrack() {
@@ -96,11 +96,11 @@ class MediaTimelinePanelTest {
         assertEquals(1_000_000L, state.videoEdit!!.clips[1].sourceInUs)
         compose.onNodeWithContentDescription("Keyframe here").performScrollTo().performClick()
         compose.onNodeWithText("Scale (%)").performScrollTo().performTextReplacement("150")
-        compose.onNodeWithText("Save keyframe").performClick()
+        compose.onNodeWithContentDescription("Save keyframe").performClick()
         assertEquals(1.5f, state.videoEdit!!.clips[1].keyframes.single().pose.scale)
         compose.onNodeWithContentDescription("Trim / duration").performScrollTo().performClick()
         compose.onNodeWithText("Photo duration (seconds)").performTextReplacement("8")
-        compose.onNodeWithText("Apply trim").performClick()
+        compose.onNodeWithContentDescription("Apply trim").performClick()
         assertEquals(8_000_000L, state.videoEdit!!.clips[1].durationUs)
         compose.runOnIdle {
             val root = activity!!.get().window.decorView

@@ -48,8 +48,8 @@ class LayerDragLifecycleTest {
             MaterialTheme {
                 LayersPanel(currentLayers, emptyMap(), currentLayers.first().id, setOf(currentLayers.first().id),
                     onBackgroundOpacityFinished = {}, imageTransforming = false,
-                    onSelect = {}, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {},
-                    onOpacityFinished = {}, onRename = {}, onImageScale = {}, onFitImage = {},
+                    onSelect = { surface.selectLayer(it) }, onToggleSelection = {}, onToggleVisibility = {}, onOpacity = {},
+                    onOpacityFinished = {}, onRename = { surface.renameSelectedLayer(it) }, onImageScale = {}, onFitImage = {},
                     onOriginalImageSize = {}, onImageTransforming = {}, onAddPaint = {}, onImportImage = {},
                     onDuplicate = {}, onDelete = {},
                     // Identical direction conversion to CanvasScreen, through the real native stack.
@@ -69,14 +69,46 @@ class LayerDragLifecycleTest {
         compose.onNodeWithContentDescription("Duplicate layer").assertDoesNotExist()
         compose.onNodeWithContentDescription("Expand settings for ${layer.name}").performClick()
         compose.onNodeWithContentDescription("Duplicate layer").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Rename layer").assertIsDisplayed()
+        compose.onAllNodesWithContentDescription("Rename layer")[0].assertIsDisplayed()
         compose.onNodeWithContentDescription("Delete layer").assertIsDisplayed()
+        screenshot("compact-layer-settings")
         compose.onNodeWithText("Layer settings").assertDoesNotExist()
         compose.onNodeWithText("Back").assertDoesNotExist()
         compose.onNodeWithText("Front").assertDoesNotExist()
         compose.onNodeWithContentDescription("Collapse settings for ${layer.name}").performClick()
         compose.onNodeWithContentDescription("Duplicate layer").assertDoesNotExist()
         row(layer).assertIsDisplayed()
+    }
+
+    @Test fun collapsedLayerNameCommitsToTheCorrectLayerAndRejectsBlankNames() {
+        val original = showNativeLayers(2)
+        compose.onNodeWithContentDescription("Duplicate layer").assertDoesNotExist()
+        val name = compose.onAllNodesWithContentDescription("Rename layer")[1]
+        name.performTextReplacement("Background sketch")
+        name.performImeAction()
+        compose.runOnIdle {
+            assertEquals(original[0].name, currentLayers[0].name)
+            assertEquals("Background sketch", currentLayers[1].name)
+        }
+        name.performTextReplacement("   ")
+        name.performImeAction()
+        compose.runOnIdle { assertEquals("Background sketch", currentLayers[1].name) }
+        compose.onNodeWithContentDescription("Duplicate layer").assertDoesNotExist()
+    }
+
+    @Test fun layerActionLabelAppearsAfterHoverDelay() {
+        showNativeLayers(1)
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithContentDescription("Add layer").performMouseInput { enter(center) }
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithText("Add layer").assertDoesNotExist()
+        compose.mainClock.advanceTimeBy(700)
+        compose.onNodeWithText("Add layer").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Add layer").performMouseInput { moveTo(Offset(-20f, 70f)); exit() }
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(100))
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithText("Add layer").assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
     }
 
     private fun row(layer: LayerSummary) = compose.onNodeWithContentDescription("Layer row: ${layer.name}")
@@ -318,7 +350,7 @@ class LayerDragLifecycleTest {
                     onDuplicate = {}, onDelete = {})
             }
         }
-        compose.onNodeWithText("Canvas background").performClick()
+        compose.onNodeWithContentDescription("Canvas background").performClick()
         compose.onNodeWithContentDescription("Wheel color picker").assertExists()
         compose.onNodeWithContentDescription("Sliders color picker").performClick()
         compose.onNodeWithContentDescription("Values color picker").performClick()

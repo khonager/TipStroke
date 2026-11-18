@@ -170,7 +170,7 @@ class BrushCreatorFlowTest {
         compose.onNodeWithContentDescription("Select Jetpack Round").assertIsDisplayed()
         compose.onNodeWithContentDescription("Select Pencil").assertDoesNotExist()
         compose.onNodeWithContentDescription("Create tip").performClick()
-        compose.onNodeWithText("Jetpack Ink tip").performClick()
+        compose.onNodeWithContentDescription("Jetpack Ink tip").performClick()
         compose.onNodeWithText("Ink Studio").assertIsDisplayed()
         compose.onNodeWithText("Tip name").performTextReplacement("My soft Ink")
         compose.onNodeWithText("Tip").performClick()
@@ -203,7 +203,7 @@ class BrushCreatorFlowTest {
             throw error
         }
         compose.onNodeWithContentDescription("Create tip").performClick()
-        compose.onNodeWithText("Custom tip").performClick()
+        compose.onNodeWithContentDescription("Custom tip").performClick()
         compose.onNodeWithText("Tip name").performTextReplacement("Soft graphite")
         compose.onNodeWithText("Creator name (optional)").performTextReplacement("Artist")
         compose.onNodeWithText("Grain").performClick()

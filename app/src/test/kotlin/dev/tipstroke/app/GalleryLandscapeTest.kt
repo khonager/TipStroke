@@ -44,6 +44,11 @@ class GalleryLandscapeTest {
             bitmap.recycle()
         }
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent { TipStrokeTheme { GalleryScreen(library, {}, {}, {}) } }
+        compose.onNodeWithText("TipStroke").assertIsDisplayed()
+        compose.onNodeWithText("Your drawings").assertDoesNotExist()
+        compose.onNodeWithContentDescription("New drawing").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Settings").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Import project").assertIsDisplayed()
         val grid = compose.onNodeWithContentDescription("Gallery drawings")
         assertTrue(grid.fetchSemanticsNode().boundsInRoot.height > 240f)
         val thumbnail = compose.onNodeWithContentDescription("Portrait 0", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
