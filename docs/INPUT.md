@@ -474,3 +474,10 @@ The native reference-coverage adapter captures reached tile alpha before edits;
 transparent pixels cannot become paint. It takes precedence over Reference strokes
 while enabled. Pixel tools, lasso fill and erasing use the same coverage constraint;
 smudge is independent.
+
+**Elastic line** is another temporary Tools toggle. Draw with any brush, pause for
+650 ms without lifting, then drag to bend the smoothed curve between fixed endpoints.
+Lift to commit; cancellation discards it. Strokes shorter than 24 screen dp remain
+ordinary marks. This replaces shape recognition while enabled, and does not affect
+lasso fill. Geometry fitting and bending live in core; native samples and previews
+stay on Android. Paint inside and selections also constrain elastic strokes.

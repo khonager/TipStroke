@@ -175,3 +175,5 @@ UIKit retains its existing native action presentation.
 
 Android temporary Paint inside uses the shared `BrushAssists` contract. Its native
 transparency-lock adapter and Tools toggle are pending on iOS.
+Elastic line's bounded curve geometry is shared in core; its hold/drag adapter and
+brush-aid toggle are currently Android-only.

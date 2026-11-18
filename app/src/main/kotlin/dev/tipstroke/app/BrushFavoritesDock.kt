@@ -78,6 +78,12 @@ internal fun BrushFavoritesDock(
                         DropdownMenuItem(text = { Text("Paint inside") },
                             leadingIcon = { Checkbox(assists.paintInside, null) },
                             onClick = { onAssists(assists.copy(paintInside = !assists.paintInside)) })
+                        DropdownMenuItem(text = { Text("Elastic line") },
+                            leadingIcon = { Checkbox(assists.elasticLine, null) },
+                            onClick = { onAssists(assists.copy(elasticLine = !assists.elasticLine)) })
+                        if (assists.elasticLine) Text("Draw, hold, then drag to bend. Lift to finish.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.widthIn(max = 260.dp).padding(horizontal = 12.dp, vertical = 4.dp))
                         Text("Paint inside keeps strokes on existing paint.", style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.widthIn(max = 260.dp).padding(horizontal = 12.dp, vertical = 4.dp))
                         DropdownMenuItem(text = { Text("Adjust tip") }, onClick = { action(onStudio) })

@@ -4,7 +4,7 @@ import kotlin.math.*
 
 /** Geometry only: recognition runs once after a hold, never on the sample hot path. */
 object QuickShape {
-    enum class Kind { LINE, CIRCLE, ELLIPSE, RECTANGLE, SQUARE, TRIANGLE, ARROW }
+    enum class Kind { LINE, CIRCLE, ELLIPSE, RECTANGLE, SQUARE, TRIANGLE, ARROW, CURVE }
     data class Shape(val kind: Kind, val points: List<Point>) {
         val closed: Boolean get() = kind in setOf(Kind.CIRCLE, Kind.ELLIPSE, Kind.RECTANGLE, Kind.SQUARE, Kind.TRIANGLE)
     }

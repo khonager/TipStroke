@@ -204,6 +204,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var shapeAnchor: Point? = null
     private var shapeSnapped = false
     private var shapeStyle: StrokeStyle? = null
+    private var elasticStroke = false
     private var fittedShape: QuickShape.Shape? = null
     private var shapeGrab: Point? = null
     private var fittedSamples: List<StrokeSample> = emptyList()
@@ -2021,7 +2022,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val style = styleForTarget(baseStyle, target)
                 shapeStyle = style
                 shapeSnapped = false
-                if (style.lassoFill) {
+                elasticStroke = settings.assists.elasticLine && !style.lassoFill
+                if (style.lassoFill || elasticStroke) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
                 } else if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
@@ -2825,7 +2827,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun updateShapeHold(event: MotionEvent, pointerId: Int) {
         val index = event.findPointerIndex(pointerId)
-        if (index < 0 || shapeStyle?.lassoFill == true || shapeStyle?.pixelTool == PixelTool.LINE || shapeStyle?.brush?.stamp != null) return
+        if (index < 0 || shapeStyle?.lassoFill == true || shapeStyle?.pixelTool == PixelTool.LINE || (shapeStyle?.brush?.stamp != null && !elasticStroke)) return
         val point = Point(event.getX(index), event.getY(index))
         val anchor = shapeAnchor
         val moved = anchor == null || hypot(point.x - anchor.x, point.y - anchor.y) > 8f * resources.displayMetrics.density
@@ -2838,7 +2840,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             val samples = pendingSamples[pointerId] ?: return@Runnable
             val target = pendingTargets[pointerId] ?: return@Runnable
             val style = shapeStyle ?: return@Runnable
-            val geometry = QuickShape.recognize(samples.map { it.position }) ?: return@Runnable
+            val geometry = if (elasticStroke) QuickShape.Shape(QuickShape.Kind.CURVE,
+                dev.tipstroke.core.geometry.ElasticLine.fit(samples.map { it.position }))
+            else QuickShape.recognize(samples.map { it.position }) ?: return@Runnable
             // Tiny marks and dots are never promoted to shapes.
             val extent = maxOf(samples.maxOf { it.position.x } - samples.minOf { it.position.x },
                 samples.maxOf { it.position.y } - samples.minOf { it.position.y })
@@ -2901,7 +2905,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val target = pendingTargets[pointerId] ?: return
         val style = shapeStyle ?: return
         val position = sample(event, index).forTarget(target).position
-        val adjusted = QuickShape.adjust(shape, grab, position)
+        val adjusted = if (shape.kind == QuickShape.Kind.CURVE) shape.copy(points =
+            dev.tipstroke.core.geometry.ElasticLine.bend(shape.points, Point(position.x - grab.x, position.y - grab.y)))
+        else QuickShape.adjust(shape, grab, position)
         val samples = adjusted.points.mapIndexed { i, point -> fittedSamples[i].copy(position = point) }
         pendingSamples[pointerId]?.apply { clear(); addAll(samples) }
         if (customPreviewStyle != null) {
