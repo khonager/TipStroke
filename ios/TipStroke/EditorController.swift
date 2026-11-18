@@ -91,6 +91,17 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             bottomPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -4),
             saveLabel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -2), saveLabel.centerXAnchor.constraint(equalTo: safe.centerXAnchor)
         ])
+        let hint = UIButton(type: .system)
+        hint.configuration = .tinted(); hint.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
+        hint.translatesAutoresizingMaskIntoConstraints = false; hint.isHidden = true
+        hint.addAction(UIAction { [weak self] _ in self?.viewport.canvas.cancelStroke() }, for: .touchUpInside)
+        view.addSubview(hint)
+        NSLayoutConstraint.activate([
+            hint.topAnchor.constraint(equalTo: topPanel.bottomAnchor, constant: 8),
+            hint.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
+            hint.widthAnchor.constraint(lessThanOrEqualTo: safe.widthAnchor, constant: -16)
+        ])
+        viewport.canvas.onInteractionHint = { [weak hint] text in hint?.setTitle(text, for: .normal); hint?.isHidden = text == nil }
         viewport.canvas.onCommit = { [weak self] in self?.sharedControls.recordColor(); self?.changed(redraw: false) }
         viewport.canvas.onPickColor = { [weak self] color in
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0

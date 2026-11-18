@@ -84,13 +84,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | Area | Remaining difference |
 | --- | --- |
 | Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation, complete per-tip preferences/favorites/categories |
-| Colorize mask | Shared settings codec and region solver; Android editable input layers and generation UI implemented; native Apple workflow/project exchange pending |
-| Blur and bloom | Shared Gaussian/Motion/Perspective/Bloom math and controls; Android tiled worker/preview adapter implemented, Apple adapter pending |
-| Perspective rulers | Shared magnetic projection and controls; Android native guides/input adapter implemented, Apple adapter pending |
-| Shadow pull | Android selection action with native tinted-offset preview and raster commit; Apple adapter pending |
-| Color push | Android local raster warp; shared inverse-warp math, native Apple adapter pending |
-| Brush assists and Ribbon | Android has Paint inside, Elastic line, movable Mirror wheel, and Ribbon; core geometry/contracts are shared, native Apple adapters are pending |
-| Lasso fill | Android has a live, tip-closed polygon fill with pen-up commit; iOS native adapter is not implemented yet |
+| Creative tools added in this port | Native implementations present; Apple SDK compilation, iPhone/iPad simulator tests and physical Pencil checks still required |
 | Fill and gestures | Android color-drop/reveal UI, concurrent editing during fill, configurable gesture actions and camera rotation |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
 | Animation | Shared background cels, live motion recording, disk-backed long timelines, resolution reduction and PNG-sequence export |
@@ -179,15 +173,35 @@ the UIKit gallery retains its native large-title navigation bar.
 Android action buttons now use icons with delayed mouse/stylus hover labels;
 UIKit retains its existing native action presentation.
 
-Android temporary Paint inside uses the shared `BrushAssists` contract. Its native
-transparency-lock adapter and Tools toggle are pending on iOS.
-Elastic line's bounded curve geometry is shared in core; its hold/drag adapter and
-brush-aid toggle are currently Android-only.
-Mirror wheel's point/orientation mapping is shared in core. Its native multi-copy
-preview, center placement, and Tools controls currently ship on Android only.
-Ribbon outline geometry is shared in core; the Ribbon tool and native preview are
-currently Android-only.
+## Creative tools on iOS
 
-Manga screentone presets are defined in core and available through the existing
-shared preset list and stamp adapter. Android additionally has a dedicated Manga
-library filter and inline usage guidance; that shelf presentation is pending on iOS.
+- **Tools → Paint tools**: live Lasso fill, Ribbon and Color push alongside Brush,
+  Fill and Smudge. Lasso/Ribbon use native display-link previews; Color push uses
+  a bounded local inverse warp, with size as diameter and opacity as strength.
+- **Tools → Brush aids**: temporary Paint inside, hold-and-bend Elastic line,
+  Mirror wheel (Off/2/4/6/8/12, movable center), and magnetic one/two-point rulers.
+  Paint inside preserves existing soft alpha and overrides reference constraints.
+  Rulers take priority over Elastic line. Numeric vanishing-point entry supports
+  off-canvas points. Placement prompts offer a visible Cancel button.
+- **Tools → Selection actions → Shadow pull**: select, arm, drag, release. A
+  current-color shadow is composited behind paint on the same layer. Preview can
+  be cancelled; opaque paint on that layer naturally hides the shadow.
+- **Tools → Blur & bloom**: Gaussian, Motion, Perspective and Bloom with relevant
+  radius/angle/center/threshold/intensity controls. Worker-owned tile halos reuse
+  core filter math. Preview does not mutate the source; Apply commits exactly
+  that preview as one undo transaction.
+- **Tools → Colorize mask**: creates saved editable hints above line art and
+  generated output beneath it. Reopen hints, use magenta for transparent regions,
+  tune gap/threshold, Preview, then Apply. Shared codec/solver, still drawings,
+  1024-pixel analysis limit and sparse native-resolution output. Schema 4 retains
+  recipe links; generation and hints visibility undo together. Missing inputs
+  preserve existing generated paint and report an error when regenerating.
+- **Tools → Manga tips**: six shared dot/hatching presets, native canvas-anchored
+  grain, nearest-neighbor pattern sampling and inline usage guidance.
+
+These additions preserve native UIKit sample routing, 256 px sparse tiles, the
+512-resident-tile cap and 32 MiB undo budget. Large effects/colorize outputs can
+require a smaller selected area/drawing. The new `CreativeToolsTests` cover raster
+transactions and persistence; they are checked in for the existing Codemagic
+simulator workflow. Linux validation covers shared JVM tests and Swift syntax
+parsing only, not UIKit type checking or simulator/device behavior.

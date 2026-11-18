@@ -17,10 +17,15 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var perspectiveMode = 0
     var vanishingPoint1: CGPoint?
     var vanishingPoint2: CGPoint?
-    var placingVanishingPoint = 0
+    var placingVanishingPoint = 0 { didSet { updateInteractionHint() } }
     private var magneticRuler: NativePerspectiveRuler?
-    var placingMirrorCenter = false
-    var shadowPull = false
+    var placingMirrorCenter = false { didSet { updateInteractionHint() } }
+    var shadowPull = false { didSet { updateInteractionHint() } }
+    var onInteractionHint: ((String?) -> Void)?
+    private func updateInteractionHint() {
+        let hint: String? = shadowPull ? "Shadow pull: drag selected paint · Cancel" : placingMirrorCenter ? "Touch to place mirror center · Cancel" : placingVanishingPoint > 0 ? "Touch to place vanishing point \(placingVanishingPoint) · Cancel" : nil
+        onInteractionHint?(hint)
+    }
     private var shadowTiles: [TileKey: CGImage] = [:]
     private var elasticShape: NativeShape?
     private var bendAnchor = CGPoint.zero
@@ -36,7 +41,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     @objc private func renderLivePreview() {
         guard previewPending, pointer != nil else { return }
         previewPending = false
-        if mode != .colorPush { document.resetStrokePreview() }
+        let restoresPreview = mode != .colorPush
+        if restoresPreview { document.resetStrokePreview() }
         do {
             if mode == .colorPush, let p = pointer?.location(in: self) {
                 try document.pushColor(from: previous ?? gesturePoints[0], to: p, radius: strokeSize / 2, strength: strokeOpacity)
@@ -58,7 +64,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             } else { path = mode.outline(gesturePoints) }
             try document.paintPath(path, color: strokeColor.withAlphaComponent(strokeOpacity), width: 0, filled: true)
             }
-            refresh()
+            if restoresPreview { refresh(document.strokePreviewBounds) }
+            else if let previous { refresh(CGRect(x: previous.x, y: previous.y, width: 1, height: 1).insetBy(dx: -min(96, strokeSize / 2) - 2, dy: -min(96, strokeSize / 2) - 2)) }
         } catch { cancelStroke(); onError?(error) }
     }
     var tool: Tool = .ink
@@ -123,7 +130,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         let snapshot = previewSnapshot ?? DocumentSnapshot(record: document.record, pixels: document.pixels)
         for key in keys {
             let existed = displayTiles[key] != nil
-            if existed, let dirty, !dirty.intersects(key.rect) { continue }
+            if existed, let dirty, !document.mirrorTransforms.contains(where: { dirty.applying($0).intersects(key.rect) }) { continue }
             let onion = document.record.animation?.onionSkin == true
             guard onion || snapshot.record.layers.contains(where: { $0.visible && snapshot.pixels[$0.id]?[key] != nil }) else {
                 displayTiles.removeValue(forKey: key)?.removeFromSuperlayer(); continue
@@ -177,7 +184,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             do { shadowTiles = try document.shadowSource(color: brushColor.withAlphaComponent(brushOpacity)) }
             catch { shadowPull = false; onError?(error); return }
         }
-        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull) { return }
+        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull, brushAids: mode != .colorPush && !shadowPull) { return }
         pointer = touch; previous = nil; previousTimestamp = -1
         let first = vanishingPoint1 ?? CGPoint(x: bounds.width * 0.25, y: bounds.height * 0.35)
         let second = vanishingPoint2 ?? CGPoint(x: bounds.width * 0.75, y: bounds.height * 0.35)
@@ -219,7 +226,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             guard self.pointer != nil else { return }
             document.endStroke(cancelled: false)
         } else if mode.streamsPaint {
-            if shadowPull || mode == .colorPush || elasticShape != nil { previewPending = true; renderLivePreview() }
+            if elasticShape != nil { previewPending = true; renderLivePreview() }
             if !fitted { consume(pointer, event: event) }
             guard self.pointer != nil else { return }
             document.endStroke(cancelled: false)
@@ -229,19 +236,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 if mode.isSelection { document.selection = CanvasSelection(path: mode.outline(gesturePoints)) }
                 else if mode.isShape, document.beginStroke() {
                     if mode == .pixelLine { try document.paintPixelLine(from: gesturePoints[0], to: point, size: Int(brushSize), color: brushColor.withAlphaComponent(brushOpacity), dither: false) }
-                    else { if let elasticShape {
-                let delta = (pointer?.location(in: self) ?? bendAnchor)
-                let points = elasticShape.bend(x: Float(delta.x - bendAnchor.x), y: Float(delta.y - bendAnchor.y)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
-                try paintFitted(points)
-            } else {
-            let path: CGPath
-            if mode == .ribbon {
-                let tracker = NativeShapeTracker()
-                for p in gesturePoints { tracker.append(x: Float(p.x), y: Float(p.y)) }
-                let outline = tracker.ribbon(width: Float(strokeSize)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
-                let ribbon = CGMutablePath(); ribbon.addLines(between: outline); ribbon.closeSubpath(); path = ribbon
-            } else { path = mode.outline(gesturePoints) }
-            try document.paintPath(path, color: brushColor.withAlphaComponent(brushOpacity), width: brushSize, filled: filledShapes && [.rectangle, .ellipse, .triangle].contains(mode)) }
+                    else { try document.paintPath(mode.outline(gesturePoints), color: brushColor.withAlphaComponent(brushOpacity), width: brushSize, filled: filledShapes && [.rectangle, .ellipse, .triangle].contains(mode)) }
                     document.endStroke(cancelled: false)
                 } else if mode == .transform {
                     try document.transformSelection(CGAffineTransform(translationX: point.x - gesturePoints[0].x, y: point.y - gesturePoints[0].y))
@@ -285,7 +280,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     func cancelFingerStroke() { if pointer?.type != .pencil { cancelStroke() } }
     func cancelStroke() {
-        guard pointer != nil else { shadowPull = false; shadowTiles = [:]; return }
+        previewSnapshot = nil
+        guard pointer != nil else { shadowPull = false; shadowTiles = [:]; placingMirrorCenter = false; placingVanishingPoint = 0; return }
         holdWork?.cancel(); previewLink?.invalidate(); previewLink = nil
         document.endStroke(cancelled: true)
         pointer = nil; previous = nil; shadowPull = false; shadowTiles = [:]
@@ -294,7 +290,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         onCommit?()
     }
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        pointer?.type != .pencil && gestureRecognizer.numberOfTouches == 1
+        pointer?.type != .pencil && gestureRecognizer.numberOfTouches == 1 && !elasticLine && !liveFill && !shadowPull && mode != .colorPush
     }
     @objc private func pickColor(_ gesture: UILongPressGestureRecognizer) {
         guard pointer?.type != .pencil, gesture.state == .began || gesture.state == .changed else { return }
@@ -308,10 +304,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private func paintFitted(_ points: [CGPoint]) throws {
         if let stampRenderer {
             let path = strokeBrush.path(size: Float(strokeSize), opacity: Float(strokeOpacity))
+            var stamps: [BrushStamp] = []
             for (i, point) in points.enumerated() {
-                let stamps = path.append(x: Float(point.x), y: Float(point.y), pressure: 0.5, tilt: 0, time: Double(i) / 120)
-                _ = try stampRenderer.paint(stamps, color: strokeColor, document: document, erasing: strokeTool == .eraser)
+                stamps += path.append(x: Float(point.x), y: Float(point.y), pressure: 0.5, tilt: 0, time: Double(i) / 120)
             }
+            _ = try stampRenderer.paint(stamps, color: strokeColor, document: document, erasing: strokeTool == .eraser)
         } else {
             let path = CGMutablePath(); path.addLines(between: points)
             try document.paintPath(path, color: strokeColor.withAlphaComponent(strokeOpacity), width: strokeSize, filled: false, erasing: strokeTool == .eraser)
@@ -384,7 +381,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             }
             if !dirty.isNull { refresh(dirty) }
             holdWork?.cancel()
-            if mode == .paint && magneticRuler == nil && (quickShapes || elasticLine) && strokeTool != .eraser {
+            if mode == .paint && magneticRuler == nil && (quickShapes || elasticLine) && (elasticLine || strokeTool != .eraser) {
                 let work = DispatchWorkItem { [weak self] in self?.fitQuickShape() }
                 holdWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
             }

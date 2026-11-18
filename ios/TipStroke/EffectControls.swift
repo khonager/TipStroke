@@ -33,6 +33,7 @@ extension EditorController {
     }
     private func previewEffect(_ settings: EffectSettings, title: String) {
         viewport.canvas.cancelStroke()
+        let revision = document.revision
         let snapshot = document.snapshot(), layer = document.activeLayer, selection = document.selection
         guard let target = snapshot.record.layers.first(where: { $0.id == layer }), target.visible, !target.locked else { showError(DrawingError.message("Select a visible, unlocked paint layer.")); return }
         view.isUserInteractionEnabled = false
@@ -41,6 +42,7 @@ extension EditorController {
             DispatchQueue.main.async {
                 self.view.isUserInteractionEnabled = true
                 do {
+                    guard self.document.revision == revision, self.document.activeLayer == layer else { throw DrawingError.message("The drawing changed. Preview the effect again.") }
                     let tiles = try result.get()
                     var preview = snapshot
                     for (key, image) in tiles { preview.pixels[layer, default: [:]][key] = image }
@@ -49,7 +51,10 @@ extension EditorController {
                     alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in self.viewport.canvas.previewSnapshot = nil; self.viewport.canvas.refresh() })
                     alert.addAction(UIAlertAction(title: "Apply", style: .default) { _ in
                         self.viewport.canvas.previewSnapshot = nil
-                        do { try self.document.replaceTiles(tiles); self.changed() } catch { self.viewport.canvas.refresh(); self.showError(error) }
+                        do {
+                            guard self.document.revision == revision, self.document.activeLayer == layer else { throw DrawingError.message("The drawing changed. Preview the effect again.") }
+                            try self.document.replacePreparedTiles(tiles); self.changed()
+                        } catch { self.viewport.canvas.refresh(); self.showError(error) }
                     })
                     self.present(alert, animated: true)
                 } catch { self.showError(error) }

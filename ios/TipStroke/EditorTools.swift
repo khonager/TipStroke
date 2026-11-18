@@ -30,11 +30,14 @@ extension EditorController {
         menu.addAction(UIAlertAction(title: "Tip library · Create and share", style: .default) { [weak self] _ in self?.showBrushLibrary() })
         menu.addAction(UIAlertAction(title: "Manga tips · Screentone & hatching", style: .default) { [weak self] _ in self?.mangaTips() })
         menu.addAction(UIAlertAction(title: "Brush shape / grain sources", style: .default) { [weak self] _ in self?.brushSources() })
-        for mode in CanvasMode.allCases {
-            menu.addAction(UIAlertAction(title: mode.rawValue + (viewport.canvas.mode == mode ? " ✓" : ""), style: .default) { [weak self] _ in
-                self?.viewport.canvas.mode = mode
-                if [.pixel, .pixelLine, .dither].contains(mode) { self?.viewport.canvas.brushSize = 1 }
-            })
+        let groups: [(String, [CanvasMode])] = [
+            ("Paint tools", [.paint, .fill, .lassoFill, .ribbon, .smudge, .colorPush]),
+            ("Pixel tools", [.pixel, .pixelLine, .dither]),
+            ("Shapes", [.line, .rectangle, .ellipse, .triangle, .arrow]),
+            ("Select an area", [.lasso, .rectangleSelection, .ellipseSelection, .transform])
+        ]
+        for (title, modes) in groups {
+            menu.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in self?.chooseCanvasMode(modes, title: title) })
         }
         menu.addAction(UIAlertAction(title: viewport.canvas.filledShapes ? "Outline shapes" : "Filled shapes", style: .default) { [weak self] _ in self?.viewport.canvas.filledShapes.toggle() })
         menu.addAction(UIAlertAction(title: "Colorize mask", style: .default) { [weak self] _ in self?.colorizeMenu() })
@@ -218,9 +221,39 @@ extension EditorController {
                 self?.viewport.canvas.perspectiveMode = index; self?.viewport.canvas.refreshSelection()
             })
         }
+        menu.addAction(UIAlertAction(title: "Enter coordinates · including off canvas", style: .default) { [weak self] _ in self?.vanishingPointCoordinates() })
         for index in 1...2 {
             menu.addAction(UIAlertAction(title: "Place vanishing point \(index)", style: .default) { [weak self] _ in self?.viewport.canvas.placingVanishingPoint = index })
         }
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
+    }
+}
+
+extension EditorController {
+    private func chooseCanvasMode(_ modes: [CanvasMode], title: String) {
+        let menu = UIAlertController(title: title, message: modes.contains(.colorPush) ? "Color push uses size as diameter (up to 192 px) and opacity as strength." : nil, preferredStyle: .actionSheet)
+        for mode in modes {
+            menu.addAction(UIAlertAction(title: mode.rawValue + (viewport.canvas.mode == mode ? " ✓" : ""), style: .default) { [weak self] _ in
+                self?.viewport.canvas.mode = mode
+                if [.pixel, .pixelLine, .dither].contains(mode) { self?.viewport.canvas.brushSize = 1 }
+            })
+        }
+        menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
+    }
+    private func vanishingPointCoordinates() {
+        let canvas = viewport.canvas
+        let p = canvas.vanishingPoint1 ?? CGPoint(x: canvas.bounds.width * 0.25, y: canvas.bounds.height * 0.35)
+        let q = canvas.vanishingPoint2 ?? CGPoint(x: canvas.bounds.width * 0.75, y: canvas.bounds.height * 0.35)
+        let alert = UIAlertController(title: "Vanishing point coordinates", message: "Document pixels; negative or off-canvas coordinates are allowed (±100,000).", preferredStyle: .alert)
+        let labels = ["First X", "First Y", "Second X", "Second Y"]
+        for (i, value) in [p.x, p.y, q.x, q.y].enumerated() { alert.addTextField { $0.text = String(Double(value)); $0.placeholder = labels[i]; $0.accessibilityLabel = labels[i]; $0.keyboardType = .numbersAndPunctuation } }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Apply", style: .default) { [weak self, weak alert] _ in
+            guard let self, let fields = alert?.textFields else { return }
+            let values = fields.map { Double($0.text ?? "") ?? .nan }
+            guard values.allSatisfy({ $0.isFinite && abs($0) <= 100_000 }) else { self.showError(DrawingError.message("Enter finite coordinates between −100,000 and 100,000.")); return }
+            canvas.vanishingPoint1 = CGPoint(x: values[0], y: values[1]); canvas.vanishingPoint2 = CGPoint(x: values[2], y: values[3]); canvas.refreshSelection()
+        })
+        present(alert, animated: true)
     }
 }

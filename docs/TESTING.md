@@ -594,3 +594,18 @@ Colorize/effects/ruler regressions: `MangaTipsTest`, `PerspectiveRulerTest`,
 `PerspectiveRulerInputTest`, `RasterAdjustmentTest`, `RasterColorizeTest`, and
 `ColorizePersistenceTest` for native snapping, halos, source preservation,
 worker cancellation/revision checks, undo, saved recipes, and archive exchange.
+
+## iOS creative-tool regression suite
+
+`CreativeToolsTests` exercises shrinking lasso previews, cancellation, soft-alpha
+Paint inside, mirrored undo and document-coordinate selection clipping, Shadow
+pull across tiles, Color push undo, blur halo/immutable preview, colorize recipe
+save/reopen and compound undo, and manga grain registration across strokes.
+`NativeCreativeToolsTest` runs shared adapter checks on JVM and Apple targets.
+
+Run the existing `ios-simulator` Codemagic workflow or `./tipstroke ios-test` on
+macOS for UIKit compilation and XCTest. Before device signoff, use Pencil and
+finger input to check lasso backtracking, Ribbon loops, Elastic hold/bend/lift,
+mirror placement, off-canvas ruler coordinates, Shadow pull Cancel, and effect /
+colorize Preview → Cancel/Apply → Undo/Redo. Test at tile boundaries and zoomed in.
+Swift syntax parsing and JVM success on Linux do not execute these UIKit tests.

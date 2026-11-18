@@ -270,6 +270,7 @@ extension RasterDocument {
         let reader = TilePixels(pixels[activeLayer] ?? [:])
         let output = try Self.context(width: Int(area.width), height: Int(area.height))
         let bytes = output.data!.assumingMemoryBound(to: UInt8.self)
+        let preserveAlpha = record.layers.first(where: { $0.id == activeLayer })?.alphaLocked == true
         let warp = NativeColorPush(x: Float(to.x), y: Float(to.y), dx: Float(to.x - from.x), dy: Float(to.y - from.y), radius: Float(radius), strength: Float(strength))
         for y in 0..<Int(area.height) { for x in 0..<Int(area.width) {
             let source = warp.source(x: Float(area.minX) + Float(x), y: Float(area.minY) + Float(y))
@@ -281,6 +282,15 @@ extension RasterDocument {
                 var value: Float = 0
                 for i in 0..<4 { value += Float((samples[i] >> (24 - channel * 8)) & 255) * weights[i] }
                 bytes[(y * Int(area.width) + x) * 4 + channel] = UInt8(max(0, min(255, value)).rounded())
+            }
+            if preserveAlpha {
+                let i = (y * Int(area.width) + x) * 4
+                let original = try reader.rgba(Int(area.minX) + x, Int(area.minY) + y)
+                let oldAlpha = Int(original & 255), newAlpha = Int(bytes[i + 3])
+                for channel in 0..<3 {
+                    bytes[i + channel] = newAlpha > 0 ? UInt8(min(oldAlpha, Int(bytes[i + channel]) * oldAlpha / newAlpha)) : UInt8((original >> (24 - channel * 8)) & 255)
+                }
+                bytes[i + 3] = UInt8(oldAlpha)
             }
         } }
         guard let image = output.makeImage() else { throw DrawingError.message("Could not prepare Color push.") }

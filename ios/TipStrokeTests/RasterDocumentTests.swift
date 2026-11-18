@@ -224,7 +224,7 @@ final class RasterDocumentTests: XCTestCase {
         let store = ProjectStore(root: root)
         try store.save(document.snapshot())
         let restored = try store.load(document.record.id)
-        XCTAssertEqual(restored.record.schemaVersion, 3)
+        XCTAssertEqual(restored.record.schemaVersion, 4)
         XCTAssertEqual(restored.record.layers[1].blendMode, "MULTIPLY")
         XCTAssertEqual(restored.pixels.count, 2)
     }

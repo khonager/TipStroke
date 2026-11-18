@@ -56,7 +56,7 @@ extension RasterDocument {
                 writeARGB(value, to: bytes, index: y * 256 + x)
             } }
             guard let image = context.makeImage() else { throw DrawingError.message("Could not prepare effect tiles.") }
-            output[key] = image
+            if source[key] != nil || (0..<(256 * 256)).contains(where: { bytes[$0 * 4 + 3] != 0 }) { output[key] = image }
         }
         return output
     }

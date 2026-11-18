@@ -1,4 +1,5 @@
 import UIKit
+import TipStrokeShared
 
 // Main-thread owned. Only immutable CGImage snapshots cross onto the persistence queue.
 final class RasterDocument {
@@ -9,6 +10,8 @@ final class RasterDocument {
     var mirrorCopies = 0
     var mirrorCenter: CGPoint?
     private var strokeMirroring = true
+    private var strokePaintInside = false
+    private var strokeReferenceID: UUID?
     var mirrorTransforms: [CGAffineTransform] {
         guard strokeMirroring, mirrorCopies >= 2 else { return [.identity] }
         let center = mirrorCenter ?? CGPoint(x: bounds.midX, y: bounds.midY)
@@ -55,6 +58,7 @@ final class RasterDocument {
         case image(CGImage)
         var image: CGImage? { if case .image(let image) = self { return image }; return nil }
     }
+    private(set) var revision: UInt64 = 0
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
     var activeLayer: UUID { record.selectedLayer ?? record.layers.last!.id }
@@ -93,9 +97,15 @@ final class RasterDocument {
         return DocumentSnapshot(record: saved, pixels: pixels, frames: frames)
     }
 
-    func beginStroke(mirrored: Bool = true) -> Bool {
+    func beginStroke(mirrored: Bool = true, brushAids: Bool = true) -> Bool {
         guard strokeLayer == nil, metadataBefore == nil,
               let layer = record.layers.first(where: { $0.id == activeLayer }), layer.visible, !layer.locked, layer.opacity > 0 else { return false }
+        strokePaintInside = paintInside && brushAids
+        let paintingColorHints = record.layers.contains { candidate in
+            guard let text = candidate.colorizeMask, let recipe = try? NativeColorizeRecipe.companion.decode(text: text) else { return false }
+            return recipe.hintsId == activeLayer.uuidString
+        }
+        strokeReferenceID = strokePaintInside || paintingColorHints ? nil : record.layers.first { $0.reference }?.id
         strokeLayer = activeLayer; strokeMirroring = mirrored
         before = [:]
         return true
@@ -107,10 +117,9 @@ final class RasterDocument {
         let area = CGRect(x: min(start.x, end.x), y: min(start.y, end.y),
                           width: abs(end.x - start.x), height: abs(end.y - start.y))
             .insetBy(dx: -radius - 2, dy: -radius - 2).intersection(bounds)
-        let alphaLocked = paintInside || record.layers.first { $0.id == layer }?.alphaLocked == true
+        let alphaLocked = strokePaintInside || record.layers.first { $0.id == layer }?.alphaLocked == true
         if alphaLocked && erasing { return .null }
         let keys = TileKey.intersecting(area, width: record.width, height: record.height)
-            .filter { (!erasing && !alphaLocked) || pixels[layer]?[$0] != nil }
         try editTiles(keys: keys, erasing: erasing) { context in
             context.setStrokeColor(color.cgColor)
             context.setFillColor(color.cgColor)
@@ -145,8 +154,8 @@ final class RasterDocument {
     }
     func editTiles(keys: [TileKey], erasing: Bool, draw: (CGContext) throws -> Void) throws {
         guard let layer = strokeLayer else { return }
-        let referenceID = paintInside ? nil : record.layers.first { $0.reference }?.id
-        let alphaLocked = paintInside || record.layers.first { $0.id == layer }?.alphaLocked == true || referenceID == layer
+        let referenceID = strokeReferenceID
+        let alphaLocked = strokePaintInside || record.layers.first { $0.id == layer }?.alphaLocked == true || referenceID == layer
         if erasing && alphaLocked { return }
         let transforms = mirrorTransforms
         let expanded = Set(keys.flatMap { key in transforms.flatMap { TileKey.intersecting(key.rect.applying($0), width: record.width, height: record.height) } })
@@ -197,7 +206,22 @@ final class RasterDocument {
         } catch { endStroke(cancelled: true); throw error }
     }
 
+    // Worker outputs already include selection/constraints. Publish the exact preview atomically.
+    func replacePreparedTiles(_ tiles: [TileKey: CGImage]) throws {
+        guard tiles.count * Self.tileBytes * 2 <= Self.historyBudget,
+              residentTileCount + tiles.keys.filter({ pixels[activeLayer]?[$0] == nil }).count <= Self.maximumTiles else {
+            throw DrawingError.message("This effect exceeds the painting or undo budget.")
+        }
+        guard beginStroke(mirrored: false) else { throw DrawingError.message("The active layer cannot be edited.") }
+        for (key, image) in tiles {
+            before[key] = pixels[activeLayer]?[key].map(TileState.image) ?? .empty
+            pixels[activeLayer, default: [:]][key] = image
+        }
+        endStroke(cancelled: false)
+    }
+
     // Restore only tiles reached by this provisional stroke; retain their original undo states.
+    var strokePreviewBounds: CGRect { before.keys.reduce(CGRect.null) { $0.union($1.rect) } }
     func resetStrokePreview() {
         guard let layer = strokeLayer else { return }
         apply(before, layer: layer)
@@ -207,6 +231,7 @@ final class RasterDocument {
         guard let layer = strokeLayer else { return }
         if cancelled { apply(before, layer: layer) }
         else if !before.isEmpty {
+            revision &+= 1
             let after = before.keys.reduce(into: [TileKey: TileState]()) { $0[$1] = pixels[layer]?[$1].map(TileState.image) ?? .empty }
             redoStack = []
             undoStack.append(Edit(layer: layer, frame: record.animation.map { $0.frames[$0.selectedIndex].id }, before: before, after: after))
@@ -217,12 +242,14 @@ final class RasterDocument {
 
     func undo() {
         guard strokeLayer == nil, metadataBefore == nil, let edit = undoStack.popLast() else { return }
+        revision &+= 1
         if let state = edit.oldMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames }
         else { restoreFrameForHistory(edit.frame); apply(edit.before, layer: edit.layer) }
         redoStack.append(edit)
     }
     func redo() {
         guard strokeLayer == nil, metadataBefore == nil, let edit = redoStack.popLast() else { return }
+        revision &+= 1
         if let state = edit.newMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames }
         else { restoreFrameForHistory(edit.frame); apply(edit.after, layer: edit.layer) }
         undoStack.append(edit)
@@ -263,6 +290,7 @@ final class RasterDocument {
         guard let old = metadataBefore else { return }
         metadataBefore = nil
         guard force || old.record != record else { return }
+        revision &+= 1
         redoStack = []
         undoStack.append(Edit(layer: activeLayer, before: [:], after: [:], oldMetadata: old,
                               newMetadata: Metadata(record: record, pixels: pixels, frames: framePixels)))

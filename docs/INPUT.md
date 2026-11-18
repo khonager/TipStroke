@@ -598,3 +598,6 @@ Tools → Colorize mask can reopen hints, set magenta transparent seeds, preview
 shared bounded region propagation, and apply with a single compound undo entry.
 It supports still drawings, gap 0–4 and ink threshold 0.02–1. Generation runs off
 the input thread and uses at most a 1024×1024 analysis grid.
+iOS tools are grouped into Paint tools, Pixel tools, Shapes and Select an area.
+Shadow pull and point placement show a temporary cancellable prompt. Perspective
+settings also accept document-coordinate vanishing points outside the canvas.

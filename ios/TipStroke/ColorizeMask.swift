@@ -90,6 +90,7 @@ extension RasterDocument {
 extension EditorController {
     func colorizeMenu() {
         viewport.canvas.cancelStroke()
+        guard document.record.animation == nil else { showError(DrawingError.message("Colorize masks currently support still drawings.")); return }
         let output = document.colorizeOutput()
         let menu = UIAlertController(title: "Colorize mask", message: "Paint short color hints inside line art, then generate. Magenta marks transparent regions. Analysis is limited to 1024 pixels on the longest side; output stays at canvas resolution.", preferredStyle: .actionSheet)
         menu.addAction(UIAlertAction(title: output == nil ? "Create mask & paint hints" : "Edit color hints", style: .default) { [weak self] _ in
@@ -106,13 +107,13 @@ extension EditorController {
                 self.document.selection = nil; self.document.paintInside = false; self.document.mirrorCopies = 0
                 let canvas = self.viewport.canvas
                 canvas.mode = .paint; canvas.elasticLine = false; canvas.perspectiveMode = 0
-                canvas.tool = .ink; canvas.brush = NativeBrush.companion.builtIn(id: "ink-v1"); canvas.brushSize = 16; canvas.brushOpacity = 1
+                self.sharedControls.restore(id: "ink-v1", size: 16, opacity: 1, finger: canvas.fingerDrawing)
                 canvas.refreshSelection(); self.changed()
             } catch { self.showError(error) }
         })
         if let output {
             menu.addAction(UIAlertAction(title: "Preview generation…", style: .default) { [weak self] _ in self?.colorizeSettings(output) })
-            menu.addAction(UIAlertAction(title: "Use transparent hint color", style: .default) { [weak self] _ in self?.viewport.canvas.brushColor = .magenta })
+            menu.addAction(UIAlertAction(title: "Use transparent hint color", style: .default) { [weak self] _ in guard let self else { return }; self.viewport.canvas.brushColor = .magenta; self.sharedControls.setColor(red: 1, green: 0, blue: 1) })
         }
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
     }
@@ -133,6 +134,7 @@ extension EditorController {
         } catch { showError(error) }
     }
     private func previewColorize(_ output: UUID, recipe: NativeColorizeRecipe) {
+        let revision = document.revision
         let snapshot = document.snapshot()
         view.isUserInteractionEnabled = false
         ProjectStore.shared.queue.async {
@@ -140,6 +142,7 @@ extension EditorController {
             DispatchQueue.main.async {
                 self.view.isUserInteractionEnabled = true
                 do {
+                    guard self.document.revision == revision else { throw DrawingError.message("The drawing changed. Generate a new preview.") }
                     let tiles = try result.get()
                     var preview = snapshot; preview.pixels[output] = tiles
                     for i in preview.record.layers.indices {
@@ -151,7 +154,10 @@ extension EditorController {
                     alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in self.viewport.canvas.previewSnapshot = nil; self.viewport.canvas.refresh() })
                     alert.addAction(UIAlertAction(title: "Apply", style: .default) { _ in
                         self.viewport.canvas.previewSnapshot = nil
-                        do { try self.document.applyColorize(tiles, output: output, recipe: recipe); self.changed() }
+                        do {
+                            guard self.document.revision == revision else { throw DrawingError.message("The drawing changed. Generate a new preview.") }
+                            try self.document.applyColorize(tiles, output: output, recipe: recipe); self.changed()
+                        }
                         catch { self.viewport.canvas.refresh(); self.showError(error) }
                     })
                     self.present(alert, animated: true)
