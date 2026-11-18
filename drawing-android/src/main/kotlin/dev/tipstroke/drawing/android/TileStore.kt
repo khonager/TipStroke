@@ -922,6 +922,27 @@ class TileStore(
         smudgeTouched.clear()
     }
 
+    internal fun commitShadow(source: TileStore, dx: Float, dy: Float, tint: Paint): Set<TileCoordinate> {
+        if (hypot(dx, dy) < .5f || tint.alpha == 0) return emptySet()
+        val dirty = source.tiles.keys.flatMapTo(mutableSetOf()) { c ->
+            TileGrid.intersecting(dev.tipstroke.core.geometry.Rect(c.x*tileSize+dx, c.y*tileSize+dy,
+                (c.x+1)*tileSize+dx, (c.y+1)*tileSize+dy), canvasWidth, canvasHeight, tileSize)
+        }
+        if (dirty.isEmpty()) return emptySet()
+        val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        val paint = Paint(tint).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OVER) }
+        dirty.forEach { c ->
+            val canvas = Canvas(writableTile(c))
+            canvas.translate(-c.x*tileSize+dx, -c.y*tileSize+dy)
+            source.draw(canvas, paint)
+        }
+        dirty.forEach { c -> tiles[c]?.let { if (it.isFullyTransparent()) removeTile(c) } }
+        val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
+        history.push(TileSnapshotTransaction(this, before, after))
+        lastDirtyTiles = dirty
+        return dirty
+    }
+
     /** Moves only pixels inside [selection] without copying the full canvas or layer. */
     internal fun moveSelection(selection: SelectionRegion, deltaX: Float, deltaY: Float): Set<TileCoordinate> {
         if (abs(deltaX) < .01f && abs(deltaY) < .01f) return emptySet()

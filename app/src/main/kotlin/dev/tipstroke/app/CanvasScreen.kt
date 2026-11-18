@@ -818,6 +818,11 @@ fun CanvasScreen(
             onOperation = { selectionOperation = it; surface?.setSelectionOperation(it) },
             onInvert = { surface?.invertSelection() },
             onCut = { surface?.moveSelectionToNewLayer() },
+            onShadowPull = {
+                movingSelection = false
+                message = if (surface?.armShadowPull() == true) "Drag to pull a shadow. Uses current color and opacity; Undo cancels."
+                    else "Select painted pixels on an active paint layer first."
+            },
             onDelete = { surface?.deleteSelection() },
             hasSelection = hasSelection,
             tool = selectionTool,

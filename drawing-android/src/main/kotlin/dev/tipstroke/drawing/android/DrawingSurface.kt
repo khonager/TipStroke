@@ -606,6 +606,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun onDetachedFromWindow() {
+        cancelShadowPull()
         flushRasterSamples()
         animation?.storageEnabled = false
         if (toolSmudgePointer != null) finishSmudgeTool()
@@ -877,7 +878,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (wasRevealing) notifyLayers()
     }
 
-    fun undo() { if (reducingResolution) return; if (fillRequest != null) { cancelFill(); return }; cancelFill(); layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
+    fun undo() { if (shadowPullArmed) { cancelShadowPull(); return }; if (reducingResolution) return; if (fillRequest != null) { cancelFill(); return }; cancelFill(); layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun redo() { if (reducingResolution) return; cancelFill(); layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun resetView() = rasterView.fitCanvas()
     val canvasWidthPx: Int get() = layerStack.canvasWidth
@@ -1046,7 +1047,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         animation?.register(layerStack.selected()); notifyLayers(); notifyHistory(); publishAnimation()
     }
     fun selectLayerGroup(groupId: String) { layerStack.selectGroup(groupId); notifyLayers(); notifyHistory() }
-    fun selectLayer(id: LayerId) { layerStack.select(id); notifyLayers(); notifyHistory() }
+    fun selectLayer(id: LayerId) { cancelShadowPull(); layerStack.select(id); notifyLayers(); notifyHistory() }
     fun toggleLayerSelection(id: LayerId) { layerStack.toggleAdditionalSelection(id); notifyLayers(); notifyHistory() }
     fun beginOpacityAdjustment() { opacityAdjustmentInProgress = true }
     fun finishOpacityAdjustment() {
@@ -1093,12 +1094,14 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.invalidate()
     }
     fun setSelectionMode(enabled: Boolean) {
+        if (!enabled) cancelShadowPull()
         if (!enabled && selectionTool == SelectionTool.POLYGON) cancelPolygon()
         selectionMode = enabled
         if (enabled) { selectionMoveMode = false; setImageTransformMode(false) }
         selectionListener?.invoke(selectionMode, selectionRegion != null)
     }
     fun setSelectionTool(tool: SelectionTool) {
+        cancelShadowPull()
         if (tool != selectionTool && selectionTool == SelectionTool.POLYGON) cancelPolygon()
         selectionTool = tool
         selectionMoveMode = false
@@ -1204,6 +1207,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return true
     }
     fun clearSelection() {
+        cancelShadowPull()
         selectionRegion?.let { lastSelection = it }
         transformSelectionOriginal = null; pendingSelectionTransform = null
         selectionPointerId = null
@@ -1872,6 +1876,60 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return !mediaSeeking && mediaCelLoading == null && active.mediaDrawingActive
     }
 
+    private var shadowPullArmed = false
+    private var shadowPointer: Int? = null
+    private var shadowStart = Point(0f, 0f)
+    fun armShadowPull(): Boolean {
+        if (selectionRegion == null || layerStack.selectedRaster() == null || activeDrawingPointerId != null) return false
+        cancelShadowPull()
+        selectionMoveMode = false
+        clearMovePreview()
+        shadowPullArmed = true
+        return true
+    }
+    fun cancelShadowPull() {
+        rasterView.shadowPreview?.discard()
+        rasterView.shadowPreview = null
+        if (shadowPointer != null) activeDrawingPointerId = null
+        shadowPointer = null
+        shadowPullArmed = false
+        rasterView.invalidate()
+    }
+    private fun handleShadowPull(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (!isDrawingPointer(event, event.actionIndex)) return handleTouchGesture(event)
+            val target = layerStack.selectedRaster() ?: return true
+            val selection = selectionRegion ?: return true
+            shadowPointer = event.getPointerId(event.actionIndex)
+            activeDrawingPointerId = shadowPointer
+            val p = rasterView.screenToDocument(event.x, event.y)
+            shadowStart = Point(p.x, p.y)
+            rasterView.shadowPreview = ShadowPullPreview(target, target.tiles.duplicate(selection), fillArgb(settings.color), settings.opacity)
+            requestUnbufferedDispatch(event)
+        }
+        val pointer = shadowPointer ?: return true
+        val index = event.findPointerIndex(pointer)
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL || index < 0 ||
+            (Build.VERSION.SDK_INT >= 33 && event.flags and MotionEvent.FLAG_CANCELED != 0)) {
+            cancelShadowPull(); return true
+        }
+        if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN && !isStylus(event, index)) {
+            cancelShadowPull(); return handleTouchGesture(event)
+        }
+        val ending = event.actionMasked in intArrayOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP) &&
+            event.getPointerId(event.actionIndex) == pointer
+        if (event.actionMasked == MotionEvent.ACTION_MOVE || ending) {
+            val p = rasterView.screenToDocument(event.getX(index), event.getY(index))
+            rasterView.shadowPreview?.let { preview ->
+                preview.dx = p.x - shadowStart.x; preview.dy = p.y - shadowStart.y
+                if (ending) preview.layer.tiles.commitShadow(preview.source, preview.dx, preview.dy, preview.paint)
+            }
+            rasterView.postInvalidateOnAnimation()
+        }
+        if (ending) { cancelShadowPull(); notifyHistory(); notifyLayers(); notifyVisiblePalette() }
+        return true
+    }
+
     private var placingMirrorCenter = false
     fun placeMirrorCenter() { placingMirrorCenter = true }
     fun setMirrorCopies(copies: Int) {
@@ -1900,6 +1958,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             return true
         }
         resizeOverlay?.let { return it.dispatchTouchEvent(event) }
+        if (shadowPullArmed) return handleShadowPull(event)
         if (placingMirrorCenter && event.pointerCount == 1 && isDrawingPointer(event, event.actionIndex)) {
             if (event.actionMasked == MotionEvent.ACTION_UP) {
                 val point = rasterView.screenToDocument(event.x, event.y)

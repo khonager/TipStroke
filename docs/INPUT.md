@@ -504,3 +504,18 @@ premultiplied-alpha bilinear interpolation. Selection boundaries protect destina
 pixels. One gesture is one undo; cancellation restores the reached tiles. It does
 not use brush paint, Paint inside, Elastic line, or Mirror wheel. Fast jumps have
 bounded displacement to avoid severe distortion.
+
+### Shadow pull (Android selection action)
+
+Select painted pixels on the active paint layer, then choose **Shadow pull** in
+selection controls. Drag anywhere on the canvas to offset a tinted silhouette
+behind the original pixels. The current color and opacity define the shadow;
+release commits one raster edit, Undo while armed cancels, and pointer cancellation
+leaves the layer untouched. The selection is the source mask, not a destination
+clip, so the shadow may extend beyond it. Existing layer clips/blends still apply.
+
+The adapter captures selected sparse tiles once and redraws their translated tint
+as a native preview. It never changes source pixels while dragging. Commit writes
+only destination tiles, behind existing paint on the same layer. No shadow layer,
+vector effect, or document-schema change is introduced. Fully opaque backgrounds
+on that layer hide the shadow; use a separate paint layer for the subject.
