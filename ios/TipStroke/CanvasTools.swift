@@ -1,6 +1,7 @@
 import UIKit
 
 enum CanvasMode: String, CaseIterable {
+    case lassoFill = "Lasso fill"
     case paint = "Brush", fill = "Fill", smudge = "Smudge"
     case pixel = "Pixel pencil", pixelLine = "Pixel line", dither = "Dither"
     case line = "Line", rectangle = "Rectangle", ellipse = "Ellipse", triangle = "Triangle", arrow = "Arrow"
@@ -24,7 +25,7 @@ enum CanvasMode: String, CaseIterable {
             path.move(to: first); path.addLine(to: last)
             path.addLine(to: CGPoint(x: last.x - dx * 0.22 - dy * 0.13, y: last.y - dy * 0.22 + dx * 0.13))
             path.move(to: last); path.addLine(to: CGPoint(x: last.x - dx * 0.22 + dy * 0.13, y: last.y - dy * 0.22 - dx * 0.13))
-        case .lasso:
+        case .lasso, .lassoFill:
             path.addLines(between: points); path.closeSubpath()
         default: path.move(to: first); path.addLine(to: last)
         }

@@ -178,6 +178,12 @@ final class RasterDocument {
         } catch { endStroke(cancelled: true); throw error }
     }
 
+    // Restore only tiles reached by this provisional stroke; retain their original undo states.
+    func resetStrokePreview() {
+        guard let layer = strokeLayer else { return }
+        apply(before, layer: layer)
+    }
+
     func endStroke(cancelled: Bool) {
         guard let layer = strokeLayer else { return }
         if cancelled { apply(before, layer: layer) }

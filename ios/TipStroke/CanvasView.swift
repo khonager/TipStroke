@@ -18,6 +18,18 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private var shapeTracker = NativeShapeTracker()
     private var holdWork: DispatchWorkItem?
     private var fitted = false
+    private var previewLink: CADisplayLink?
+    private var previewPending = false
+    private var liveFill: Bool { mode == .lassoFill }
+    @objc private func renderLivePreview() {
+        guard previewPending, pointer != nil else { return }
+        previewPending = false
+        document.resetStrokePreview()
+        do {
+            try document.paintPath(mode.outline(gesturePoints), color: strokeColor.withAlphaComponent(strokeOpacity), width: 0, filled: true)
+            refresh()
+        } catch { cancelStroke(); onError?(error) }
+    }
     var tool: Tool = .ink
     var brush = NativeBrush.companion.builtIn(id: "ink-v1") {
         didSet {
@@ -122,18 +134,26 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private func start(_ touch: UITouch, event: UIEvent?) {
         if mode == .paint && brush.usesStamps && stampRenderer == nil { onError?(DrawingError.message("The brush texture could not be prepared.")); return }
 
-        if mode.streamsPaint && !document.beginStroke() { return }
+        if (mode.streamsPaint || liveFill) && !document.beginStroke() { return }
         pointer = touch; previous = nil; previousTimestamp = -1
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false
         stampPath = brush.usesStamps ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
         strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
+        if liveFill {
+            previewLink = CADisplayLink(target: self, selector: #selector(renderLivePreview))
+            previewLink?.add(to: .main, forMode: .common)
+        }
         if mode.streamsPaint { consume(touch, event: event) }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let pointer, touches.contains(pointer) else { return }
         if mode.streamsPaint { if !fitted { consume(pointer, event: event) }; return }
         let point = pointer.location(in: self)
+        if liveFill {
+            if gesturePoints.count >= 8192 { gesturePoints = gesturePoints.enumerated().filter { $0.offset % 2 == 0 }.map(\.element) }
+            gesturePoints.append(point); previewPending = true; return
+        }
         if mode == .lasso { if gesturePoints.count < 8192 { gesturePoints.append(point) } }
         else { gesturePoints = [gesturePoints[0], point] }
         if mode.isSelection || mode.isShape { outlineLayer.path = mode.outline(gesturePoints) }
@@ -146,7 +166,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         guard let pointer, touches.contains(pointer) else { return }
         holdWork?.cancel()
         let point = pointer.location(in: self)
-        if mode.streamsPaint {
+        if liveFill {
+            gesturePoints.append(point); previewPending = true; renderLivePreview()
+            guard self.pointer != nil else { return }
+            document.endStroke(cancelled: false)
+        } else if mode.streamsPaint {
             if !fitted { consume(pointer, event: event) }
             guard self.pointer != nil else { return }
             document.endStroke(cancelled: false)
@@ -163,6 +187,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 }
             } catch { document.endStroke(cancelled: true); onError?(error) }
         }
+        previewLink?.invalidate(); previewLink = nil
         self.pointer = nil; previous = nil
         refresh(); refreshSelection(); onCommit?()
         if mode == .fill { onFill?(point) }
@@ -175,7 +200,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     func cancelFingerStroke() { if pointer?.type != .pencil { cancelStroke() } }
     func cancelStroke() {
         guard pointer != nil else { return }
-        holdWork?.cancel()
+        holdWork?.cancel(); previewLink?.invalidate(); previewLink = nil
         document.endStroke(cancelled: true)
         pointer = nil; previous = nil
         refreshSelection()

@@ -566,3 +566,7 @@ and hides the hints; Cancel leaves the artwork unchanged. Saved metadata retains
 input layer IDs and settings for later regeneration. Missing input layers report
 an error while retaining the last generated artwork. Generation is currently for
 still drawings only. Imported image line art must first be on a paint layer.
+
+On iOS, Lasso fill uses a native display-link preview: only reached sparse tiles are
+restored from the stroke transaction before the even-odd polygon is repainted.
+Lifting commits one undo entry; cancellation restores the original tiles.
