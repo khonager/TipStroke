@@ -28,6 +28,7 @@ extension EditorController {
         viewport.canvas.cancelStroke()
         let menu = UIAlertController(title: "Canvas tools", message: nil, preferredStyle: .actionSheet)
         menu.addAction(UIAlertAction(title: "Tip library · Create and share", style: .default) { [weak self] _ in self?.showBrushLibrary() })
+        menu.addAction(UIAlertAction(title: "Manga tips · Screentone & hatching", style: .default) { [weak self] _ in self?.mangaTips() })
         menu.addAction(UIAlertAction(title: "Brush shape / grain sources", style: .default) { [weak self] _ in self?.brushSources() })
         for mode in CanvasMode.allCases {
             menu.addAction(UIAlertAction(title: mode.rawValue + (viewport.canvas.mode == mode ? " ✓" : ""), style: .default) { [weak self] _ in
@@ -127,7 +128,7 @@ extension EditorController {
         }
         action("Shadow pull · drag selected paint") {
             guard self.document.selection != nil else { throw DrawingError.message("Select an area first.") }
-            self.viewport.canvas.shadowPull = true
+            self.viewport.canvas.mode = .paint; self.viewport.canvas.shadowPull = true
         }
         action("Move") { self.viewport.canvas.mode = .transform }
         action("Copy and offset") { try self.document.transformSelection(CGAffineTransform(translationX: 24, y: 24), copy: true) }

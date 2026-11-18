@@ -212,3 +212,7 @@ textures, so export/import needs no new schema. Use a selection or Paint inside 
 limit shading; keep opacity at 100% for crisp dots. Size controls brush coverage,
 while Grain scale controls pattern spacing. Scaling finished tone artwork can cause
 moiré; choose tone spacing at the intended output resolution.
+
+iOS Tools → Manga tips exposes all six shared presets with usage guidance. The
+native stamp adapter uses nearest-neighbor pattern sampling for crisp tones;
+canvas-anchored grain keeps separate strokes registered.

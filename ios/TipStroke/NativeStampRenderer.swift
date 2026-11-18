@@ -72,6 +72,7 @@ final class NativeStampRenderer {
                     context.concatenate(local.inverted())
                     let side = CGFloat(self.brush.grainScale)
                     let origin = self.brush.grainFollowsStamp ? CGPoint(x: x - size / 2, y: y - size / 2) : .zero
+                    if self.brush.id.hasPrefix("manga-") { context.interpolationQuality = .none }
                     context.drawTiledImage(in: CGRect(x: origin.x, y: origin.y, width: side, height: side), image: texture)
                 } else {
                     context.setFillColor(tint.cgColor); context.fill(CGRect(x: -0.5, y: -0.5, width: 1, height: 1))

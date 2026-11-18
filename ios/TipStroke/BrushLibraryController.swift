@@ -132,3 +132,17 @@ extension EditorController {
         }
     }
 }
+
+extension EditorController {
+    func mangaTips() {
+        let menu = UIAlertController(title: "Manga tips", message: "Size controls painted coverage. Grain scale controls pattern spacing. Use full opacity for crisp tones; keep spacing consistent across a page to avoid moiré. Paint inside or a selection keeps shading in its shape.", preferredStyle: .actionSheet)
+        for (id, name) in [("dots-10", "Dots 10%"), ("dots-30", "Dots 30%"), ("dots-50", "Dots 50%"), ("hatch", "Hatching"), ("crosshatch", "Crosshatching"), ("lines", "Parallel shade")] {
+            menu.addAction(UIAlertAction(title: name, style: .default) { [weak self] _ in
+                guard let self else { return }
+                self.viewport.canvas.mode = .paint; self.viewport.canvas.tool = .ink
+                self.sharedControls.selectBrush(id: "manga-\(id)-v1")
+            })
+        }
+        menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
+    }
+}
