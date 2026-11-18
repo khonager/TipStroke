@@ -160,6 +160,7 @@ internal fun LayersPanel(
     Surface(
         modifier.widthIn(max = 420.dp).fillMaxWidth().fillMaxHeight().semantics { contentDescription = "Layers panel" },
         color = Color(0xE6202125),
+        contentColor = Color.White,
         shape = RoundedCornerShape(24.dp),
         border = BorderStroke(1.dp, Color(0xFF47494F)),
         shadowElevation = 18.dp,

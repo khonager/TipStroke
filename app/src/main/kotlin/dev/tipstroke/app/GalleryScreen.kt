@@ -221,6 +221,7 @@ fun GalleryScreen(
             )
         }
 
+    CompositionLocalProvider(LocalContentColor provides Color(0xFFF5F5F2)) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF17181B)).safeDrawingPadding()) {
         val shortWindow = maxHeight < 500.dp
         val gutter = if (maxWidth < 600.dp || shortWindow) 16.dp else 28.dp
@@ -292,6 +293,8 @@ fun GalleryScreen(
                 }
             }
         }
+    }
+
     }
 
     if (transferOpen) GalleryTransfer(library, transferIds, { transferOpen = false }, ::refreshGallery)
