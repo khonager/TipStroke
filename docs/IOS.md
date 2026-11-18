@@ -69,6 +69,16 @@ navigation. Pencil takes priority. Pressureless hardware, fingers and estimated
 force use the constant fallback. No predicted or late-corrected samples are baked
 into permanent tiles. Hover, squeeze and barrel roll remain unimplemented.
 
+## New drawing sizes
+
+The gallery presents the shared Compose paper-stack browser via
+`AppleNewDrawingBridge`. It supports scrolling or tapping sizes, locally saved
+custom presets, a default size, and width-limited favorite shortcuts persisted in
+`NSUserDefaults`. Android uses the same browser with SharedPreferences adapters.
+Portable presets and preference serialization live in `:core`; native canvas
+input and rendering are unchanged. iOS keeps its 16–4096 px side limit; Android
+supports up to 8192 px and additionally offers its heap-based maximum square.
+
 ## Remaining parity work
 
 | Area | Remaining difference |

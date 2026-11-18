@@ -415,3 +415,20 @@ undo transaction. Fill currently uses a fixed tolerance of 24, prepares on the
 project worker and pauses editing until publication. Android's color-drop gesture,
 progressive reveal and concurrent-fill editing are not yet reproduced on Apple.
 Pencil pressure/tilt and stamping remain outside cross-platform UI state.
+
+### New drawing paper browser
+
+Android and iOS use a shared paper-stack preview on the left and a snapping size
+list on the right. Swiping the list selects the sheet nearest its center; tapping
+a size or a favorite shortcut selects it directly. Sheets retain their aspect
+ratios and show exact pixel dimensions. The stack is schematic: tiny pixel-art
+sizes are enlarged for visibility, so sheet areas are not a physical scale chart.
+
+Pin this size adds the selected preset to one non-scrolling shortcut row. Capacity
+is calculated from the actual picker width (104 dp minimum per shortcut plus an
+8 dp gap, up to eight). A full row disables adding pins; existing pins can always
+be removed. Narrowing the window hides overflow pins without deleting them;
+widening restores them. Favorites are local device preferences and do not change
+the default size. Custom sizes can be saved, pinned, and removed; removing a
+custom preset also removes its shortcut. Create remains an explicit action after
+choosing the name and size.

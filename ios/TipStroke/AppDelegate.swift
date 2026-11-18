@@ -1,4 +1,5 @@
 import UIKit
+import TipStrokeShared
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -22,7 +23,7 @@ extension UIViewController {
     }
 }
 
-final class GalleryController: UITableViewController {
+final class GalleryController: UITableViewController, AppleNewDrawingActions {
     private var drawings: [DocumentRecord] = []
     private let thumbnails = NSCache<NSUUID, UIImage>()
     private let store = ProjectStore.shared
@@ -60,31 +61,33 @@ final class GalleryController: UITableViewController {
         }
     }
     @objc private func newDrawing() {
-        let alert = UIAlertController(title: "New drawing", message: "Canvas size in pixels (16–4096 per side)", preferredStyle: .alert)
-        alert.addTextField { $0.placeholder = "Name"; $0.text = "Untitled" }
-        alert.addTextField { $0.placeholder = "Width"; $0.text = "2048"; $0.keyboardType = .numberPad }
-        alert.addTextField { $0.placeholder = "Height"; $0.text = "2048"; $0.keyboardType = .numberPad }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Create", style: .default) { [weak self, weak alert] _ in
-            guard let self, let fields = alert?.textFields else { return }
-            let name = (fields[0].text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty, let width = Int(fields[1].text ?? ""), let height = Int(fields[2].text ?? ""),
-                  (16...4096).contains(width), (16...4096).contains(height) else {
-                self.showError(DrawingError.message("Enter a name and dimensions between 16 and 4096.")); return
-            }
-            let document = RasterDocument(name: name, width: width, height: height)
-            let snapshot = document.snapshot()
+        let screen = view.window?.screen ?? UIScreen.main
+        let controller = AppleNewDrawingBridge(actions: self).controller(
+            screenWidth: Int32(screen.bounds.width * screen.scale),
+            screenHeight: Int32(screen.bounds.height * screen.scale))
+        controller.modalPresentationStyle = .pageSheet
+        controller.sheetPresentationController?.detents = [.large()]
+        controller.sheetPresentationController?.prefersGrabberVisible = true
+        present(controller, animated: true)
+    }
+    func cancelNewDrawing() { dismiss(animated: true) }
+    func createDrawing(name: String, width: Int32, height: Int32) {
+        guard !loading, (16...4096).contains(Int(width)), (16...4096).contains(Int(height)) else { return }
+        loading = true
+        let document = RasterDocument(name: name, width: Int(width), height: Int(height))
+        let snapshot = document.snapshot()
+        dismiss(animated: true) {
             self.store.queue.async {
                 let result = Result { try self.store.save(snapshot) }
                 DispatchQueue.main.async {
+                    self.loading = false
                     switch result {
                     case .success: self.navigationController?.pushViewController(EditorController(document: document), animated: true)
                     case .failure(let error): self.showError(error)
                     }
                 }
             }
-        })
-        present(alert, animated: true)
+        }
     }
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { drawings.count }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {

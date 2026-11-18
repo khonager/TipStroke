@@ -18,11 +18,14 @@ class CanvasPresetPreferencesTest {
         assertEquals("max-square", preferences.defaultId())
         val preset = preferences.add("Sprites", 32, 48)
         preferences.setDefault(preset.id)
+        preferences.setFavorites(listOf("full-hd", preset.id))
         val reopened = CanvasPresetPreferences(context)
+        assertEquals(listOf("full-hd", preset.id), reopened.favoriteIds())
         assertEquals(preset, reopened.saved().single())
         assertEquals(preset.id, reopened.defaultId())
         reopened.remove(preset.id)
         assertTrue(reopened.saved().isEmpty())
+        assertEquals(listOf("full-hd"), reopened.favoriteIds())
         assertEquals("max-square", reopened.defaultId())
     }
 

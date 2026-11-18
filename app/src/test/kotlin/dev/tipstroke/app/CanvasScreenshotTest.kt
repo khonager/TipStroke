@@ -35,6 +35,18 @@ import org.json.JSONObject
 @Config(sdk = [35], qualifiers = "w1280dp-h800dp-land-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CanvasScreenshotTest {
+    @Test fun renderResolutionPickerForVisualReview() = render(720, 1440, "tipstroke-resolution-picker.png") {
+        androidx.compose.material3.MaterialTheme {
+            androidx.compose.material3.Surface {
+                dev.tipstroke.ui.ResolutionBrowser(
+                    dev.tipstroke.core.canvas.standardCanvasPresets(), "square-2048",
+                    listOf("full-hd", "square-2048"), {}, {},
+                    androidx.compose.ui.Modifier,
+                )
+            }
+        }
+    }
+
     @Test fun renderLandscapeCanvasForVisualReview() = render(2560, 1600, "tipstroke-landscape.png") { CanvasScreen(initialLayersOpen = true) }
 
     @Test fun renderPortraitCanvasForVisualReview() = render(1600, 2560, "tipstroke-portrait.png") { CanvasScreen() }

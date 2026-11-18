@@ -5,18 +5,11 @@ import android.content.Context
 import android.os.Build
 import android.view.WindowManager
 import org.json.JSONArray
-import org.json.JSONObject
 import java.util.UUID
 import kotlin.math.floor
 import kotlin.math.sqrt
 
-internal data class CanvasPreset(
-    val id: String,
-    val name: String,
-    val widthPx: Int,
-    val heightPx: Int,
-    val category: String,
-)
+internal typealias CanvasPreset = dev.tipstroke.core.canvas.CanvasPreset
 
 internal const val MIN_CANVAS_SIDE = 16
 internal const val MAX_CANVAS_SIDE = 8192
@@ -41,23 +34,20 @@ internal fun builtInCanvasPresets(context: Context): List<CanvasPreset> {
     return listOf(
         CanvasPreset("screen", "Screen size", screenWidth, screenHeight, "Everyday"),
         CanvasPreset("max-square", "Max one-layer square", square, square, "Everyday"),
-        CanvasPreset("full-hd", "Full HD", 1920, 1080, "Everyday"),
-        CanvasPreset("square-2048", "Square", 2048, 2048, "Everyday"),
-        CanvasPreset("uhd-4k", "4K UHD", 3840, 2160, "Everyday"),
-        CanvasPreset("manga-page", "Manga page (A4, 300 dpi)", 2480, 3508, "Comics"),
-        CanvasPreset("manga-panel", "Manga panel", 1200, 1800, "Comics"),
-        CanvasPreset("icon-64", "Small icon", 64, 64, "Icons"),
-        CanvasPreset("icon-256", "App icon", 256, 256, "Icons"),
-        CanvasPreset("icon-512", "Large icon", 512, 512, "Icons"),
-        CanvasPreset("pixel-16", "Pixel art 16", 16, 16, "Pixel art"),
-        CanvasPreset("pixel-32", "Pixel art 32", 32, 32, "Pixel art"),
-        CanvasPreset("pixel-64", "Pixel art 64", 64, 64, "Pixel art"),
-        CanvasPreset("pixel-128", "Pixel art 128", 128, 128, "Pixel art"),
-    )
+    ) + dev.tipstroke.core.canvas.standardCanvasPresets()
 }
 
 internal class CanvasPresetPreferences(context: Context) {
     private val preferences = context.getSharedPreferences("canvas-presets", Context.MODE_PRIVATE)
+
+    fun favoriteIds(): List<String> = runCatching {
+        val array = JSONArray(preferences.getString("favorites", "[]"))
+        (0 until array.length()).map { array.getString(it) }.distinct().take(8)
+    }.getOrDefault(emptyList())
+
+    fun setFavorites(ids: List<String>) {
+        preferences.edit().putString("favorites", JSONArray(ids.distinct().take(8)).toString()).apply()
+    }
 
     fun defaultId(): String = preferences.getString("default-id", "max-square") ?: "max-square"
 
@@ -65,16 +55,9 @@ internal class CanvasPresetPreferences(context: Context) {
         preferences.edit().putString("default-id", id).apply()
     }
 
-    fun saved(): List<CanvasPreset> = runCatching {
-        val array = JSONArray(preferences.getString("saved", "[]"))
-        (0 until array.length()).mapNotNull { index ->
-            val item = array.optJSONObject(index) ?: return@mapNotNull null
-            val width = item.optInt("width")
-            val height = item.optInt("height")
-            if (width !in MIN_CANVAS_SIDE..MAX_CANVAS_SIDE || height !in MIN_CANVAS_SIDE..MAX_CANVAS_SIDE) return@mapNotNull null
-            CanvasPreset(item.getString("id"), item.getString("name"), width, height, "Saved")
-        }
-    }.getOrDefault(emptyList())
+    fun saved(): List<CanvasPreset> = dev.tipstroke.core.canvas.CanvasPresetCodec.decode(
+        preferences.getString("saved", "[]").orEmpty(), MAX_CANVAS_SIDE,
+    )
 
     fun add(name: String, width: Int, height: Int): CanvasPreset {
         require(width in MIN_CANVAS_SIDE..MAX_CANVAS_SIDE && height in MIN_CANVAS_SIDE..MAX_CANVAS_SIDE)
@@ -86,15 +69,11 @@ internal class CanvasPresetPreferences(context: Context) {
 
     fun remove(id: String) {
         write(saved().filterNot { it.id == id })
+        setFavorites(favoriteIds().filterNot { it == id })
         if (defaultId() == id) setDefault("max-square")
     }
 
     private fun write(presets: List<CanvasPreset>) {
-        val array = JSONArray()
-        presets.forEach { preset ->
-            array.put(JSONObject().put("id", preset.id).put("name", preset.name)
-                .put("width", preset.widthPx).put("height", preset.heightPx))
-        }
-        preferences.edit().putString("saved", array.toString()).apply()
+        preferences.edit().putString("saved", dev.tipstroke.core.canvas.CanvasPresetCodec.encode(presets)).apply()
     }
 }

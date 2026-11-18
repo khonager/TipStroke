@@ -463,6 +463,7 @@ private fun NewDrawingDialog(onDismiss: () -> Unit, onCreate: (String, Int, Int)
     val builtIns = remember(context) { builtInCanvasPresets(context) }
     var saved by remember { mutableStateOf(preferences.saved()) }
     var defaultId by remember { mutableStateOf(preferences.defaultId()) }
+    var favorites by remember { mutableStateOf(preferences.favoriteIds()) }
     val initial = (builtIns + saved).firstOrNull { it.id == defaultId } ?: builtIns.first()
     var selectedId by remember { mutableStateOf<String?>(initial.id) }
     var name by remember { mutableStateOf("Untitled drawing") }
@@ -478,28 +479,24 @@ private fun NewDrawingDialog(onDismiss: () -> Unit, onCreate: (String, Int, Int)
     }
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(16.dp),
         title = { Text("New drawing") },
         text = {
             Column(Modifier.heightIn(max = 540.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
-                (builtIns + saved).groupBy(CanvasPreset::category).forEach { (category, presets) ->
-                    Column {
-                        Text(category, style = MaterialTheme.typography.labelLarge)
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            presets.forEach { preset ->
-                                FilterChip(
-                                    selected = selectedId == preset.id,
-                                    onClick = { select(preset) },
-                                    label = { Text("${preset.name} · ${preset.widthPx} × ${preset.heightPx}${if (preset.id == defaultId) " ★" else ""}") },
-                                )
-                            }
-                        }
-                    }
-                }
+                dev.tipstroke.ui.ResolutionBrowser(
+                    presets = builtIns + saved, selectedId = selectedId, favorites = favorites,
+                    onSelect = { select(it) },
+                    onFavorites = { favorites = it; preferences.setFavorites(it) },
+                    customPreview = if (validWidth != null && validHeight != null)
+                        CanvasPreset("custom-preview", "Custom", validWidth, validHeight, "Custom") else null,
+                )
                 saved.firstOrNull { it.id == selectedId }?.let { selected ->
                     TextButton(onClick = {
                         preferences.remove(selected.id)
                         saved = preferences.saved()
+                        favorites = preferences.favoriteIds()
                         defaultId = preferences.defaultId()
                         select(builtIns.first())
                     }) { Text("Remove saved preset") }
