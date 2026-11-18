@@ -2985,7 +2985,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
             lassoFill = settings.lassoFill && !erasing,
             pixelTool = if (settings.lassoFill && !erasing) null else settings.pixelTool,
-            referenceStrokes = referenceLayerId?.let { id ->
+            referenceStrokes = if (settings.assists.paintInside) layerStack.selectedStore()?.let { ReferenceStrokes(it, true) } else referenceLayerId?.let { id ->
                 (layerStack.layers.firstOrNull { it.id == id } as? RasterLayerRuntime)?.let { ReferenceStrokes(it.tiles, id == layerStack.selectedId) }
             })
     }

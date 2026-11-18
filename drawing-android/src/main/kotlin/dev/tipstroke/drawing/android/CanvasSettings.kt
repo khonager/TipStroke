@@ -5,6 +5,7 @@ import dev.tipstroke.core.model.*
 import dev.tipstroke.core.drawing.PixelTool
 
 class CanvasSettings {
+    @Volatile var assists = dev.tipstroke.core.drawing.BrushAssists()
     @Volatile var brush: BrushPreset = BrushPreset.Ink
     @Volatile var pixelTool: PixelTool? = null
     @Volatile var sizeUnit = dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS

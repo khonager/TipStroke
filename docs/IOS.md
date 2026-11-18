@@ -172,3 +172,6 @@ The consolidated TipStroke gallery heading/action row is currently Android-only;
 the UIKit gallery retains its native large-title navigation bar.
 Android action buttons now use icons with delayed mouse/stylus hover labels;
 UIKit retains its existing native action presentation.
+
+Android temporary Paint inside uses the shared `BrushAssists` contract. Its native
+transparency-lock adapter and Tools toggle are pending on iOS.

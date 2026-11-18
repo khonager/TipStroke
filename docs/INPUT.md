@@ -463,3 +463,14 @@ The native preview holds samples without painting permanent tiles. Pen-up commit
 only intersecting sparse tiles as one undoable edit; cancellation discards the
 preview. Process recordings store exact raster patches so existing recording
 renderers remain compatible. This tool does not create a selection or vector layer.
+
+### Temporary brush aids (Android)
+
+**Drawing tools → Paint inside** temporarily locks brush strokes to existing paint
+on the active layer, including soft edge alpha. It is a session setting shared by
+brushes, not a change to the saved preset. Toggle it again to paint freely. It does
+not choose a connected color region: use a selection when shading just one shape.
+The native reference-coverage adapter captures reached tile alpha before edits;
+transparent pixels cannot become paint. It takes precedence over Reference strokes
+while enabled. Pixel tools, lasso fill and erasing use the same coverage constraint;
+smudge is independent.

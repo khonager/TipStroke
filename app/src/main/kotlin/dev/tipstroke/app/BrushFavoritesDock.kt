@@ -32,6 +32,8 @@ internal fun BrushFavoritesDock(
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String = "Tools",
     onReselect: () -> Unit = {},
     onLassoFill: () -> Unit = {},
+    assists: dev.tipstroke.core.drawing.BrushAssists = dev.tipstroke.core.drawing.BrushAssists(),
+    onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
 ) {
     var toolsOpen by remember { mutableStateOf(false) }
     Surface(modifier, color = Color(0xE6202125), shape = MaterialTheme.shapes.large,
@@ -73,6 +75,11 @@ internal fun BrushFavoritesDock(
                             DropdownMenuItem(text = { Text(when (tool) { PixelTool.PENCIL -> "Pixel pencil"; PixelTool.LINE -> "Pixel line"; PixelTool.DITHER -> "Dither" }) }, onClick = { action { onPixelTool(tool) } })
                         }
                         HorizontalDivider()
+                        DropdownMenuItem(text = { Text("Paint inside") },
+                            leadingIcon = { Checkbox(assists.paintInside, null) },
+                            onClick = { onAssists(assists.copy(paintInside = !assists.paintInside)) })
+                        Text("Paint inside keeps strokes on existing paint.", style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.widthIn(max = 260.dp).padding(horizontal = 12.dp, vertical = 4.dp))
                         DropdownMenuItem(text = { Text("Adjust tip") }, onClick = { action(onStudio) })
                     }
                 }

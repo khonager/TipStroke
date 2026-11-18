@@ -88,6 +88,7 @@ fun CanvasScreen(
     var brush by remember { mutableStateOf(BrushPreset.Ink) }
     var erasing by remember { mutableStateOf(false) }
     var smudgeSize by remember { mutableFloatStateOf(40f) }
+    var assists by remember { mutableStateOf(dev.tipstroke.core.drawing.BrushAssists()) }
     var lassoFill by remember { mutableStateOf(false) }
     var smudging by remember { mutableStateOf(false) }
     val smallCanvas = editorWidthPx <= 128 && editorHeightPx <= 128
@@ -265,6 +266,7 @@ fun CanvasScreen(
                 pencilShadeStartRadians = pencilShadeStartRadians,
                 pencilShadeTransitionRadians = pencilShadeTransitionRadians,
             )
+            this.assists = assists
             sizeUnit = brushSizeUnit
             sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.smudging = smudging; this.lassoFill = lassoFill
             this.eraserHardness = eraserHardness; this.debug = debug; gestures = effectiveGestureSettings
@@ -656,6 +658,7 @@ fun CanvasScreen(
                 onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then hold Select to use it again." },
                 onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                 onLassoFill = ::selectLassoFill,
+                assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                 pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
                 onStudio = { brushStudioOpen = true }, onTune = { brushStudioOpen = true },
                 tuneDescription = "Adjust tip", horizontal = portrait,
@@ -724,6 +727,7 @@ fun CanvasScreen(
                     onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then hold Select to use it again." },
                     onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                     onLassoFill = ::selectLassoFill,
+                assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                     pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
                     onStudio = { brushStudioOpen = true },
                     onTune = { phoneAdjustmentsOpen = !phoneAdjustmentsOpen },
