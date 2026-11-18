@@ -13,6 +13,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var filledShapes = false
     var quickShapes = true
     var elasticLine = false
+    var placingMirrorCenter = false
     private var elasticShape: NativeShape?
     private var bendAnchor = CGPoint.zero
     var onFill: ((CGPoint) -> Void)?
@@ -141,9 +142,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
     }
     private func start(_ touch: UITouch, event: UIEvent?) {
+        if placingMirrorCenter {
+            document.mirrorCenter = touch.location(in: self); placingMirrorCenter = false; refreshSelection(); return
+        }
         if mode == .paint && brush.usesStamps && stampRenderer == nil { onError?(DrawingError.message("The brush texture could not be prepared.")); return }
 
-        if (mode.streamsPaint || liveFill) && !document.beginStroke() { return }
+        if (mode.streamsPaint || liveFill) && !document.beginStroke(mirrored: mode != .smudge) { return }
         pointer = touch; previous = nil; previousTimestamp = -1
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
         stampPath = brush.usesStamps ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
@@ -208,7 +212,19 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         refresh(); refreshSelection(); onCommit?()
         if mode == .fill { onFill?(point) }
     }
-    func refreshSelection() { outlineLayer.path = document.selection?.path }
+    func refreshSelection() {
+        if let selection = document.selection { outlineLayer.path = selection.path; return }
+        guard document.mirrorCopies >= 2 else { outlineLayer.path = nil; return }
+        let c = document.mirrorCenter ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        let path = CGMutablePath()
+        let count = document.mirrorCopies == 2 ? 1 : document.mirrorCopies
+        for i in 0..<count {
+            let angle = document.mirrorCopies == 2 ? CGFloat.pi / 2 : CGFloat(i) * 2 * .pi / CGFloat(count)
+            let dx = cos(angle) * bounds.width * 2, dy = sin(angle) * bounds.height * 2
+            path.move(to: CGPoint(x: c.x - dx, y: c.y - dy)); path.addLine(to: CGPoint(x: c.x + dx, y: c.y + dy))
+        }
+        path.addEllipse(in: CGRect(x: c.x - 6, y: c.y - 6, width: 12, height: 12)); outlineLayer.path = path
+    }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let pointer, touches.contains(pointer) else { return }
         cancelStroke()

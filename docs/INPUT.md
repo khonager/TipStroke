@@ -575,3 +575,6 @@ all native brush/stamp paths, preserves soft alpha, and takes priority over the
 reference layer. It is session state, separate from saved layer alpha lock.
 iOS Elastic line fits the shared bounded quadratic after a 650 ms hold. Dragging
 bends it with fixed endpoints; native stamp brushes retain their tip/grain.
+iOS Mirror wheel repeats native brush geometry inside one tile transaction, while
+selection/reference clips remain in document coordinates. Tools → Brush aids →
+Mirror wheel offers Off/2/4/6/8/12 copies and next-touch center placement.

@@ -182,8 +182,22 @@ extension EditorController {
     func brushAids() {
         viewport.canvas.cancelStroke()
         let menu = UIAlertController(title: "Brush aids", message: "Temporary aids stay active until switched off. Paint inside preserves the active layer’s existing transparency.", preferredStyle: .actionSheet)
+        menu.addAction(UIAlertAction(title: "Mirror wheel", style: .default) { [weak self] _ in self?.mirrorSettings() })
         menu.addAction(UIAlertAction(title: "Elastic line" + (viewport.canvas.elasticLine ? " ✓" : ""), style: .default) { [weak self] _ in self?.viewport.canvas.elasticLine.toggle() })
         menu.addAction(UIAlertAction(title: "Paint inside" + (document.paintInside ? " ✓" : ""), style: .default) { [weak self] _ in self?.document.paintInside.toggle() })
+        menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
+    }
+}
+
+extension EditorController {
+    func mirrorSettings() {
+        let menu = UIAlertController(title: "Mirror wheel", message: "Two copies reflect; higher counts repeat around the center. All copies undo together.", preferredStyle: .actionSheet)
+        for count in [0, 2, 4, 6, 8, 12] {
+            menu.addAction(UIAlertAction(title: (count == 0 ? "Off" : "\(count) copies") + (document.mirrorCopies == count ? " ✓" : ""), style: .default) { [weak self] _ in
+                self?.document.mirrorCopies = count; self?.viewport.canvas.refreshSelection()
+            })
+        }
+        menu.addAction(UIAlertAction(title: "Place center with next touch", style: .default) { [weak self] _ in self?.viewport.canvas.placingMirrorCenter = true })
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
     }
 }

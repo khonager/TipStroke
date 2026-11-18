@@ -6,6 +6,19 @@ final class RasterDocument {
     static let historyBudget = 32 * 1024 * 1024
     static let tileBytes = 256 * 256 * 4
     var paintInside = false
+    var mirrorCopies = 0
+    var mirrorCenter: CGPoint?
+    private var strokeMirroring = true
+    var mirrorTransforms: [CGAffineTransform] {
+        guard strokeMirroring, mirrorCopies >= 2 else { return [.identity] }
+        let center = mirrorCenter ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        return (0..<mirrorCopies).map { index in
+            var t = CGAffineTransform(translationX: center.x, y: center.y)
+            if mirrorCopies == 2 { t = t.scaledBy(x: index == 0 ? 1 : -1, y: 1) }
+            else { t = t.rotated(by: CGFloat(index) * 2 * .pi / CGFloat(mirrorCopies)) }
+            return t.translatedBy(x: -center.x, y: -center.y)
+        }
+    }
     var selection: CanvasSelection?
     var record: DocumentRecord
     var framePixels: [UUID: [UUID: [TileKey: CGImage]]] = [:]
@@ -80,10 +93,10 @@ final class RasterDocument {
         return DocumentSnapshot(record: saved, pixels: pixels, frames: frames)
     }
 
-    func beginStroke() -> Bool {
+    func beginStroke(mirrored: Bool = true) -> Bool {
         guard strokeLayer == nil, metadataBefore == nil,
               let layer = record.layers.first(where: { $0.id == activeLayer }), layer.visible, !layer.locked, layer.opacity > 0 else { return false }
-        strokeLayer = activeLayer
+        strokeLayer = activeLayer; strokeMirroring = mirrored
         before = [:]
         return true
     }
@@ -135,7 +148,9 @@ final class RasterDocument {
         let referenceID = paintInside ? nil : record.layers.first { $0.reference }?.id
         let alphaLocked = paintInside || record.layers.first { $0.id == layer }?.alphaLocked == true || referenceID == layer
         if erasing && alphaLocked { return }
-        let keys = keys.filter { key in
+        let transforms = mirrorTransforms
+        let expanded = Set(keys.flatMap { key in transforms.flatMap { TileKey.intersecting(key.rect.applying($0), width: record.width, height: record.height) } })
+        let keys = expanded.filter { key in
             ((!erasing && !alphaLocked) || pixels[layer]?[key] != nil) &&
                 (referenceID == nil || pixels[referenceID!]?[key] != nil)
         }
@@ -162,13 +177,16 @@ final class RasterDocument {
             }
             context.setBlendMode(alphaLocked ? .sourceAtop : (erasing ? .destinationOut : .normal))
             context.setFillColor(UIColor.black.cgColor)
-            try draw(context)
+            for transform in transforms {
+                context.saveGState(); context.concatenate(transform)
+                try draw(context); context.restoreGState()
+            }
             guard let image = context.makeImage() else { throw DrawingError.message("Could not allocate a painting tile.") }
             pixels[layer, default: [:]][key] = image
         }
     }
     func replaceTiles(_ tiles: [TileKey: CGImage]) throws {
-        guard beginStroke() else { return }
+        guard beginStroke(mirrored: false) else { return }
         do {
             for (key, image) in tiles {
                 try editTiles(in: key.rect) { context in
