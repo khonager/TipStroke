@@ -84,6 +84,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | Area | Remaining difference |
 | --- | --- |
 | Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation, complete per-tip preferences/favorites/categories |
+| Lasso fill | Android has a live, tip-closed polygon fill with pen-up commit; iOS native adapter is not implemented yet |
 | Fill and gestures | Android color-drop/reveal UI, concurrent editing during fill, configurable gesture actions and camera rotation |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
 | Animation | Shared background cels, live motion recording, disk-backed long timelines, resolution reduction and PNG-sequence export |

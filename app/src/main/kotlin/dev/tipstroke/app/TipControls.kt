@@ -44,6 +44,7 @@ internal fun TipControls(
     modifier: Modifier = Modifier,
     sizeUnit: BrushSizeUnit = BrushSizeUnit.CANVAS_PIXELS,
     onSizeUnit: ((BrushSizeUnit) -> Unit)? = null,
+    showSize: Boolean = true,
 ) {
     val unitLabel = if (sizeUnit == BrushSizeUnit.SCREEN_DP) "dp" else "px"
     val sizeLabel: @Composable () -> Unit = {
@@ -60,7 +61,7 @@ internal fun TipControls(
                     .background(Color(0xD9202125), RoundedCornerShape(20.dp)).padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                PrecisionSlider("Size", "${size.roundToInt()} $unitLabel", size, sizeRange, 1f, onSize, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f), sizeLabel)
+                if (showSize) PrecisionSlider("Size", "${size.roundToInt()} $unitLabel", size, sizeRange, 1f, onSize, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f), sizeLabel)
                 PrecisionSlider("Opacity", "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
             }
         } else {
@@ -71,14 +72,14 @@ internal fun TipControls(
                     .padding(horizontal = 7.dp, vertical = if (compactVertical) 4.dp else 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                VerticalPrecisionSlider(
+                if (showSize) VerticalPrecisionSlider(
                     "Size", "${size.roundToInt()} $unitLabel", size, sizeRange, 1f, onSize,
                     onAdjustmentStart, onAdjustmentEnd,
                     trackHeight = verticalTrackHeight,
                     compact = compactVertical,
                     valueContent = sizeLabel,
                 )
-                HorizontalDivider(
+                if (showSize) HorizontalDivider(
                     Modifier.padding(vertical = if (compactVertical) 2.dp else 8.dp),
                     color = Color(0xFF3A3C41),
                 )

@@ -449,3 +449,17 @@ Android action buttons in gallery dialogs, export, brush management, animation,
 transforms and diagnostics follow the same icon/hover-label convention. Format
 choices, category names and numeric values remain text. Hover hints do not
 activate the action; icon-only controls keep descriptive accessibility labels.
+
+### Lasso fill (Android)
+
+Choose **Drawing tools → Lasso fill**, then draw an area with the pen (or the
+configured drawing pointer). The current tip connects straight back to the start;
+the closed polygon fills live with the current color and opacity. Retracing can
+remove preview coverage before release. Self intersections use even-odd coverage.
+Pressure and brush size/texture do not affect the fill. Existing selections and
+reference-stroke constraints still clip the result.
+
+The native preview holds samples without painting permanent tiles. Pen-up commits
+only intersecting sparse tiles as one undoable edit; cancellation discards the
+preview. Process recordings store exact raster patches so existing recording
+renderers remain compatible. This tool does not create a selection or vector layer.

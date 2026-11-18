@@ -31,6 +31,7 @@ internal fun BrushFavoritesDock(
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String = "Tools",
     onReselect: () -> Unit = {},
+    onLassoFill: () -> Unit = {},
 ) {
     var toolsOpen by remember { mutableStateOf(false) }
     Surface(modifier, color = Color(0xE6202125), shape = MaterialTheme.shapes.large,
@@ -49,6 +50,7 @@ internal fun BrushFavoritesDock(
                 Box {
                     DockCell("Drawing tools", !brushActive || toolsOpen, slot, !horizontal, { toolsOpen = true }, icon = when (toolLabel) {
                         "Eraser" -> Icons.Outlined.AutoFixNormal
+                        "Lasso fill" -> Icons.Outlined.FormatColorFill
                         "Smudge" -> Icons.Outlined.BlurOn
                         "Select" -> Icons.Outlined.SelectAll
                         else -> Icons.Outlined.Build
@@ -66,6 +68,7 @@ internal fun BrushFavoritesDock(
                         }
                         DropdownMenuItem(text = { Text("Eraser") }, onClick = { action(onEraser) }, modifier = Modifier.semantics { contentDescription = "Eraser" })
                         DropdownMenuItem(text = { Text("Smudge") }, onClick = { action(onSmudge) }, modifier = Modifier.semantics { contentDescription = "Smudge" })
+                        DropdownMenuItem(text = { Text("Lasso fill") }, onClick = { action(onLassoFill) })
                         if (pixelToolsAvailable) PixelTool.entries.forEach { tool ->
                             DropdownMenuItem(text = { Text(when (tool) { PixelTool.PENCIL -> "Pixel pencil"; PixelTool.LINE -> "Pixel line"; PixelTool.DITHER -> "Dither" }) }, onClick = { action { onPixelTool(tool) } })
                         }

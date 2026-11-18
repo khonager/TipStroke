@@ -991,7 +991,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun showBrushAdjustmentPreview() {
         gestureHandler.removeCallbacks(hideBrushPreview)
-        if (activeDrawingPointerId != null || width == 0 || height == 0) return
+        if (settings.lassoFill || activeDrawingPointerId != null || width == 0 || height == 0) return
         val center = rasterView.screenToDocument(width / 2f, height / 2f)
         val erasing = settings.erasing
         val previewBrush = settings.brush.copy(
@@ -1958,7 +1958,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         (0 until event.pointerCount).any { isStylus(event, it) }
 
     private fun updateStylusHoverPreview(event: MotionEvent, index: Int) {
-        if (!settings.gestures.showStylusHoverPreview || activeDrawingPointerId != null ||
+        if (settings.lassoFill || !settings.gestures.showStylusHoverPreview || activeDrawingPointerId != null ||
             selectionMode || selectionMoveMode || isTransformingImage()
         ) {
             rasterView.stylusHoverPreview = null
@@ -2021,7 +2021,10 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val style = styleForTarget(baseStyle, target)
                 shapeStyle = style
                 shapeSnapped = false
-                if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
+                if (style.lassoFill) {
+                    rasterPreviewStyle = style
+                    rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
+                } else if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
                     style.brush.stamp != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
                     style.referenceStrokes == null && strokeRecording == null) {
                     gpuStampPreview = GpuStampPreview(style, target.store.canvasWidth, target.store.canvasHeight).also {
@@ -2822,7 +2825,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun updateShapeHold(event: MotionEvent, pointerId: Int) {
         val index = event.findPointerIndex(pointerId)
-        if (index < 0 || shapeStyle?.pixelTool == PixelTool.LINE || shapeStyle?.brush?.stamp != null) return
+        if (index < 0 || shapeStyle?.lassoFill == true || shapeStyle?.pixelTool == PixelTool.LINE || shapeStyle?.brush?.stamp != null) return
         val point = Point(event.getX(index), event.getY(index))
         val anchor = shapeAnchor
         val moved = anchor == null || hypot(point.x - anchor.x, point.y - anchor.y) > 8f * resources.displayMetrics.density
@@ -2980,7 +2983,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val brush = if (erasing) settings.brush.copy(hardness = settings.eraserHardness) else settings.brush
         return StrokeStyle(brush, resolvedBrushSize(), settings.opacity, settings.color,
             if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
-            pixelTool = settings.pixelTool,
+            lassoFill = settings.lassoFill && !erasing,
+            pixelTool = if (settings.lassoFill && !erasing) null else settings.pixelTool,
             referenceStrokes = referenceLayerId?.let { id ->
                 (layerStack.layers.firstOrNull { it.id == id } as? RasterLayerRuntime)?.let { ReferenceStrokes(it.tiles, id == layerStack.selectedId) }
             })

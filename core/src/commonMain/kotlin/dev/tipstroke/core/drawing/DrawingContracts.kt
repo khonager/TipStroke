@@ -37,12 +37,16 @@ data class StrokeStyle(
     /** Transient pixel tool; it does not change the saved raster document format. */
     val pixelTool: PixelTool? = null,
     val referenceStrokes: StrokeCoverage? = null,
+    /** Fill the sampled polygon, closed from the current tip to its start, using even-odd coverage. */
+    val lassoFill: Boolean = false,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     /** Exact closure is emitted by fitted shapes and survives ordinary sample serialization. */
     val isClosed: Boolean get() = samples.size > 3 && samples.first().position == samples.last().position
     val bounds: Rect by lazy {
         require(samples.isNotEmpty())
+        if (style.lassoFill) return@lazy Rect(samples.minOf { it.position.x }, samples.minOf { it.position.y },
+            samples.maxOf { it.position.x }, samples.maxOf { it.position.y }).expanded(1f)
         // Custom tips can extend beyond half of the nominal brush size. Keep bounds
         // conservative so a rotated, tilted pencil or scattered airbrush particle
         // can never be clipped at a sparse-tile boundary.
