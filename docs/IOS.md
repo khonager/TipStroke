@@ -163,3 +163,7 @@ Linux can edit and regenerate the project but cannot build UIKit or run iOS
 simulators. Swift syntax parsing on Linux is not an Apple SDK type check. A green
 Codemagic run plus the physical-device checklist in `TESTING.md` is required before
 calling this port device-validated or ready for distribution.
+
+Android control-layout parity: Android now offers inline layer-row renaming and
+compact expanded settings. UIKit currently retains its separate layer-settings
+screen and name field. Native input/rendering and document semantics are unchanged.

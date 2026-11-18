@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -94,8 +95,6 @@ internal fun LayersPanel(
         }
     }
     var settingsLayerId by remember { mutableStateOf<LayerId?>(null) }
-    var renameLayer by remember { mutableStateOf<LayerSummary?>(null) }
-    var renameText by remember { mutableStateOf("") }
     var backgroundPickerOpen by remember { mutableStateOf(false) }
     var backgroundPickerMode by remember { mutableStateOf(ColorPickerMode.HSV_WHEEL) }
     val listState = rememberLazyListState()
@@ -263,6 +262,7 @@ internal fun LayersPanel(
                             onSelect = { onOpacityFinished(); settingsLayerId = null; onSelect(layer.id) },
                             onToggleSelection = { onToggleSelection(layer.id) },
                             onVisibility = { onToggleVisibility(layer.id) },
+                            onRename = { name -> onSelect(layer.id); onRename(name) },
                             expanded = settingsLayerId == layer.id && selectedId == layer.id,
                             onSettings = {
                                 onOpacityFinished()
@@ -283,7 +283,6 @@ internal fun LayersPanel(
                                 LayerControls(
                                     layer = layer,
                                     imageTransforming = imageTransforming,
-                                    onRename = { renameLayer = layer; renameText = layer.name },
                                     onBlendMode = onBlendMode,
                                     onBlendModeAdjustmentStart = onBlendModeAdjustmentStart,
                                     onBlendModeAdjustmentEnd = onBlendModeAdjustmentEnd,
@@ -298,7 +297,7 @@ internal fun LayersPanel(
                                     },
                                 )
                                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                                    LayerAction("Duplicate layer", Icons.Outlined.ContentCopy, enabled = layers.size < maximumLayers) {
+                                    LayerAction("Duplicate layer", Icons.Outlined.LibraryAdd, enabled = layers.size < maximumLayers) {
                                         onDuplicate(); settingsLayerId = null
                                     }
                                     var clipMenuOpen by remember(layer.id) { mutableStateOf(false) }
@@ -367,27 +366,6 @@ internal fun LayersPanel(
 
         }
     }
-    renameLayer?.let {
-        AlertDialog(
-            onDismissRequest = { renameLayer = null },
-            title = { Text("Rename layer") },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it.take(80) },
-                    label = { Text("Layer name") },
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = renameText.isNotBlank(),
-                    onClick = { onRename(renameText); renameLayer = null },
-                ) { Text("Rename") }
-            },
-            dismissButton = { TextButton(onClick = { renameLayer = null }) { Text("Cancel") } },
-        )
-    }
     if (backgroundPickerOpen) {
         val closeBackgroundPicker = {
             onBackgroundOpacityFinished()
@@ -437,7 +415,6 @@ internal fun LayersPanel(
 private fun LayerControls(
     layer: LayerSummary,
     imageTransforming: Boolean,
-    onRename: () -> Unit,
     onBlendMode: (dev.tipstroke.core.model.LayerBlendMode) -> Unit,
     onBlendModeAdjustmentStart: () -> Unit,
     onBlendModeAdjustmentEnd: () -> Unit,
@@ -449,12 +426,8 @@ private fun LayerControls(
     onImageTransforming: (Boolean) -> Unit,
 ) {
     Column(
-        Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(layer.name, color = Color(0xFFE7E7E5), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            LayerAction("Rename layer", Icons.Outlined.Edit, onClick = onRename)
-        }
         var blendMenu by remember(layer.id) { mutableStateOf(false) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { onOpacityFinished(); blendMenu = !blendMenu }, modifier = Modifier.weight(1f)) {
@@ -470,13 +443,6 @@ private fun LayerControls(
         Slider(layer.opacity, onOpacity, onValueChangeFinished = onOpacityFinished,
             valueRange = 0f..1f, modifier = Modifier.fillMaxWidth().height(40.dp))
         if (layer.kind == LayerKind.IMAGE) {
-            LayerAction(if (imageTransforming) "Finish transforming" else "Edit photo on canvas",
-                Icons.Outlined.OpenWith, active = imageTransforming) { onImageTransforming(!imageTransforming) }
-            Text(
-                "Drag to move · pinch to resize · twist to rotate",
-                color = Color(0xFFAAAEB4), fontSize = 11.sp,
-                modifier = Modifier.padding(top = 5.dp, bottom = 8.dp),
-            )
             ValueHeader("Image scale", "${((layer.imageScale ?: 1f) * 100).roundToInt()}%")
             val imageScale = layer.imageScale ?: 1f
             var scaleRange by remember(layer.id) { mutableFloatStateOf(maxOf(4f, imageScale * 2f)) }
@@ -487,19 +453,13 @@ private fun LayerControls(
                 valueRange = .0001f..scaleRange,
                 onValueChangeFinished = { if (imageScale >= scaleRange * .95f) scaleRange = (scaleRange * 2f).takeIf { it.isFinite() } ?: scaleRange },
                 modifier = Modifier.fillMaxWidth().height(40.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LayerAction("Half size", Icons.Outlined.ZoomOut) { onImageScale(imageScale / 2f) }
-                LayerAction("Double size", Icons.Outlined.ZoomIn) { onImageScale(imageScale * 2f) }
-            }
             Text(
                 "Original ${layer.originalWidthPx} × ${layer.originalHeightPx} px · source preserved",
                 color = Color(0xFFAAAEB4), fontSize = 11.sp,
             )
-            Text(
-                "Choose Eraser to hide image pixels non-destructively. A selection limits where it erases.",
-                color = Color(0xFFAAAEB4), fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp),
-            )
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LayerAction(if (imageTransforming) "Finish transforming" else "Move, resize or rotate image",
+                    Icons.Outlined.OpenWith, active = imageTransforming) { onImageTransforming(!imageTransforming) }
                 LayerAction("Fit canvas", Icons.Outlined.FitScreen, onClick = onFitImage)
                 LayerAction("Original image size", Icons.Outlined.PhotoSizeSelectActual, onClick = onOriginalImageSize)
             }
@@ -516,6 +476,7 @@ private fun LayerRow(
     onSelect: () -> Unit,
     onToggleSelection: () -> Unit,
     onVisibility: () -> Unit,
+    onRename: (String) -> Unit,
     expanded: Boolean = false,
     onSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -556,7 +517,27 @@ private fun LayerRow(
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(layer.name, color = Color(0xFFF1F1EF), fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            var name by remember(layer.id, layer.name) { mutableStateOf(layer.name) }
+            var editing by remember(layer.id) { mutableStateOf(false) }
+            val focus = androidx.compose.ui.platform.LocalFocusManager.current
+            fun commitName() {
+                val trimmed = name.trim()
+                if (trimmed.isNotEmpty() && trimmed != layer.name) onRename(trimmed)
+                else name = layer.name
+            }
+            androidx.compose.foundation.text.BasicTextField(
+                value = name, onValueChange = { name = it.take(80) }, singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFFF1F1EF), fontSize = 13.sp, fontWeight = FontWeight.Medium),
+                cursorBrush = SolidColor(Color(0xFFED6A5A)),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { focus.clearFocus() }),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    .semantics { contentDescription = "Rename layer" }
+                    .onFocusChanged { state ->
+                        if (editing && !state.isFocused) commitName()
+                        editing = state.isFocused
+                    },
+            )
             Text(
                 if (layer.clipSourceId != null) "Clipped layer" else if (layer.kind == LayerKind.IMAGE) "Image · original linked" else "Paint layer",
                 color = Color(0xFF9EA0A6), fontSize = 10.sp,

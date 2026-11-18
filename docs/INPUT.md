@@ -432,3 +432,10 @@ widening restores them. Favorites are local device preferences and do not change
 the default size. Custom sizes can be saved, pinned, and removed; removing a
 custom preset also removes its shortcut. Create remains an explicit action after
 choosing the name and size.
+
+### Compact Android layer controls
+Layer names are editable directly in the layer row, including while settings are
+collapsed. Done or leaving the field commits a nonblank name as one rename.
+Expanded settings show blend/opacity and image scale without a repeated name.
+Image placement uses the scale slider, canvas transform, fit and original-size
+actions; half/double scale buttons are no longer shown.
