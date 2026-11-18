@@ -31,7 +31,7 @@ internal fun ColorPickerPanel(
         initialColor, mode, drawingPalette, paletteColorCount, originalImageColors, colorHistory,
         onColorSelected, onModeChanged, onPaletteColorCountChanged, onOriginalImageColorsChanged,
         onClearHistory, compact, title, showOriginalImageColors, showPaletteAndHistory,
-        shelf = { selected, choose -> LocalColorShelf.current?.let { ColorShelfEditor(it, selected, choose) } },
+        shelf = { selected, choose -> LocalColorShelf.current?.let { dev.tipstroke.ui.ColorShelfEditor(it, selected, choose) } },
         footer = footer, modifier = modifier,
     )
 }

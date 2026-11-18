@@ -17,6 +17,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
     private let saveLabel = UILabel()
     lazy var sharedControls = AppleEditorBridge(actions: EditorActions(self))
+    var exporting = false
+    var importingBrush = false
+    var importingBrushTexture: Bool?
     private var previousTool: CanvasView.Tool = .ink
 
     init(document: RasterDocument) {
@@ -43,6 +46,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         share.menu = UIMenu(children: [
             UIAction(title: "Share PNG", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.export() },
             UIAction(title: "Share transparent PNG") { [weak self] _ in self?.export(transparent: true) },
+            UIAction(title: "Share animation MP4") { [weak self] _ in self?.exportAnimationVideo() },
+            UIAction(title: "Share animation GIF") { [weak self] _ in self?.exportAnimation() },
             UIAction(title: "Import image", image: UIImage(systemName: "photo")) { [weak self] _ in self?.importImage() }
         ])
         let top = UIStackView(arrangedSubviews: [back, undoButton, redoButton, fit, layers, share])
@@ -58,7 +63,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             self.showShared(self.sharedControls.colorController(), title: "Colors")
         }
         let settings = button("Brush size, opacity and finger drawing", symbol: "slider.horizontal.3") { [weak self] in self?.brushSettings() }
-        let bottomActions = UIStackView(arrangedSubviews: [color, settings]); bottomActions.distribution = .equalSpacing
+        let tools = button("Tools", symbol: "paintbrush.pointed") { [weak self] in self?.showTools() }
+        let bottomActions = UIStackView(arrangedSubviews: [color, tools, settings]); bottomActions.distribution = .equalSpacing
         let bottom = UIStackView(arrangedSubviews: [toolPicker, bottomActions]); bottom.spacing = 4
         bottom.axis = .vertical
         bottom.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
@@ -86,9 +92,16 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             color.getRed(&r, green: &g, blue: &b, alpha: &a)
             self?.sharedControls.setColor(red: Float(r), green: Float(g), blue: Float(b))
         }
+        viewport.canvas.onFill = { [weak self] point in self?.fill(at: point) }
         viewport.canvas.onError = { [weak self] error in self?.showError(error) }
         let pencil = UIPencilInteraction(); pencil.delegate = self; viewport.addInteraction(pencil)
         NotificationCenter.default.addObserver(self, selector: #selector(backgrounded), name: UIApplication.willResignActiveNotification, object: nil)
+        ProjectStore.shared.queue.async {
+            let url = ProjectStore.shared.root.appendingPathComponent("brush-library.json")
+            if let data = try? String(contentsOf: url, encoding: .utf8) {
+                DispatchQueue.main.async { _ = self.sharedControls.restoreLibrary(data: data) }
+            }
+        }
         let defaults = UserDefaults.standard
         let savedBrush = defaults.string(forKey: "brush.data")
         sharedControls.restore(id: defaults.string(forKey: "brush.id") ?? "ink-v1",
@@ -133,6 +146,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let tool = CanvasView.Tool.allCases[toolPicker.selectedSegmentIndex]
         if tool == .eraser && viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
         viewport.canvas.tool = tool
+        viewport.canvas.mode = .paint
         if tool != .eraser { sharedControls.selectBrush(id: tool.brushID) }
     }
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
@@ -142,7 +156,11 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
     }
     private func updateHistory() { undoButton.isEnabled = document.canUndo; redoButton.isEnabled = document.canRedo }
-    private func changed(redraw: Bool = true) {
+    func changed(redraw: Bool = true) {
+        if viewport.canvas.bounds.size != document.bounds.size {
+            viewport.setZoomScale(1, animated: false)
+            viewport.canvas.bounds = document.bounds; viewport.contentSize = document.bounds.size; viewport.fit()
+        }
         if redraw { viewport.canvas.refresh() }
         updateHistory(); saveLabel.text = "Unsaved changes"
         saveWork?.cancel()
@@ -226,7 +244,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.cancelStroke()
         showShared(sharedControls.brushController(), title: "Brush settings")
     }
-    private func showShared(_ controller: UIViewController, title: String) {
+    func showShared(_ controller: UIViewController, title: String) {
         controller.title = title
         controller.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
             primaryAction: UIAction { [weak controller] _ in controller?.dismiss(animated: true) })
@@ -255,8 +273,13 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         picker.delegate = self
         present(picker, animated: true)
     }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        importingBrush = false; importingBrushTexture = nil
+    }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
+        if importingBrush { importingBrush = false; importBrushFile(url); return }
+        if let grain = importingBrushTexture { importingBrushTexture = nil; importBrushTexture(url, grain: grain); return }
         // Decode and downsample off the input thread. Editing pauses while the new layer is prepared.
         view.isUserInteractionEnabled = false
         let width = document.record.width, height = document.record.height

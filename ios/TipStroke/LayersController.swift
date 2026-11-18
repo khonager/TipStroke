@@ -51,6 +51,12 @@ final class LayersController: UITableViewController {
         document.beginMetadataEdit()
         let layer = document.record.layers.remove(at: sourceIndex)
         document.record.layers.insert(layer, at: destinationIndex)
+        for index in document.record.layers.indices {
+            if let source = document.record.layers[index].clipSource,
+               !document.record.layers.prefix(index).contains(where: { $0.id == source }) {
+                document.record.layers[index].clipSource = nil
+            }
+        }
         document.endMetadataEdit()
         changed()
     }
@@ -84,7 +90,11 @@ final class LayerSettingsController: UIViewController {
     private func update(_ change: (inout LayerRecord) -> Void) {
         guard let index = document.record.layers.firstIndex(where: { $0.id == id }) else { return }
         if !editingMetadata { document.beginMetadataEdit() }
+        let wasReference = document.record.layers[index].reference
         change(&document.record.layers[index])
+        if !wasReference && document.record.layers[index].reference {
+            for other in document.record.layers.indices where other != index { document.record.layers[other].reference = false }
+        }
         if !editingMetadata { document.endMetadataEdit() }
         onChange?()
     }
@@ -133,7 +143,27 @@ final class LayerSettingsController: UIViewController {
             do { try self.document.duplicateLayer(self.id); self.onChange?(); self.navigationController?.popViewController(animated: true) }
             catch { self.showError(error) }
         }, for: .touchUpInside)
-        let stack = UIStackView(arrangedSubviews: [name, row, opacityLabel, opacity, lock, alpha, blend, duplicate]); stack.axis = .vertical; stack.spacing = 20
+        let reference = toggle("Use as Reference strokes", enabled: layer.reference) { $0.reference = $1 }
+        let clip = UIButton(type: .system); clip.setTitle("Clipping source", for: .normal)
+        clip.addAction(UIAction { [weak self] _ in
+            guard let self, let index = self.document.record.layers.firstIndex(where: { $0.id == self.id }) else { return }
+            let menu = UIAlertController(title: "Clip to layer", message: "Paint is visible only where the source layer has opacity.", preferredStyle: .actionSheet)
+            menu.addAction(UIAlertAction(title: "None", style: .default) { _ in self.update { $0.clipSource = nil } })
+            for source in self.document.record.layers.prefix(index) {
+                menu.addAction(UIAlertAction(title: source.name, style: .default) { _ in self.update { $0.clipSource = source.id } })
+            }
+            menu.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            menu.popoverPresentationController?.sourceView = clip; menu.popoverPresentationController?.sourceRect = clip.bounds
+            self.present(menu, animated: true)
+        }, for: .touchUpInside)
+        let merge = UIButton(type: .system); merge.setTitle("Merge down", for: .normal)
+        merge.isEnabled = document.record.animation == nil && document.record.layers.first?.id != id
+        merge.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            do { try self.document.mergeDown(self.id); self.onChange?(); self.navigationController?.popViewController(animated: true) }
+            catch { self.showError(error) }
+        }, for: .touchUpInside)
+        let stack = UIStackView(arrangedSubviews: [name, row, opacityLabel, opacity, lock, alpha, reference, blend, clip, duplicate, merge]); stack.axis = .vertical; stack.spacing = 20
         let scroll = UIScrollView(); scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll); scroll.addSubview(stack); stack.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([

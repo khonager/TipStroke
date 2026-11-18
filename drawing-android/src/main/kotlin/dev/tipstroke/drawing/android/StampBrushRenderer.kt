@@ -117,50 +117,11 @@ internal class StampBrushRenderer(private val style: StrokeStyle) : AutoCloseabl
             return Rect(stamp.x - radius, stamp.y - radius, stamp.x + radius, stamp.y + radius)
         }
 
-        private fun shapeBitmap(config: StampBrush, hardness: Float): Bitmap {
-            val texture = config.shapeTexture.takeIf { config.shape == StampShape.IMAGE }
-            val width = texture?.width ?: 128
-            val height = texture?.height ?: 128
-            // Transparent border makes CLAMP safe for rotated arbitrary sources on API 29.
-            val result = Bitmap.createBitmap(width + 2, height + 2, Bitmap.Config.ARGB_8888)
-            val pixels = IntArray((width + 2) * (height + 2))
-            for (y in 0 until height) for (x in 0 until width) {
-                val nx = (x + .5f) / width * 2f - 1f
-                val ny = (y + .5f) / height * 2f - 1f
-                val radius = when (config.shape) {
-                    StampShape.SQUARE -> max(abs(nx), abs(ny))
-                    StampShape.OVAL -> hypot(nx, ny * 2f)
-                    else -> hypot(nx, ny)
-                }
-                val soft = ((1f - radius) / (1f - hardness).coerceAtLeast(.015f)).coerceIn(0f, 1f)
-                val alpha = texture?.coverage(x, y) ?: if (config.shape == StampShape.BRISTLES) {
-                    (255 * soft * if ((x * 17 + y / 12) % 13 < 6) 1f else .08f).roundToInt()
-                } else (255 * soft).roundToInt()
-                pixels[(y + 1) * (width + 2) + x + 1] = Color.argb(alpha, 255, 255, 255)
-            }
-            result.setPixels(pixels, 0, width + 2, 0, 0, width + 2, height + 2)
-            return result
+        private fun bitmap(tip: BrushTip): Bitmap = Bitmap.createBitmap(tip.width, tip.height, Bitmap.Config.ARGB_8888).apply {
+            val pixels = IntArray(tip.width * tip.height) { Color.argb(tip.coverage(it), 255, 255, 255) }
+            setPixels(pixels, 0, tip.width, 0, 0, tip.width, tip.height)
         }
-
-        private fun grainBitmap(config: StampBrush): Bitmap {
-            val texture = config.grainTexture.takeIf { config.grain == StampGrain.IMAGE }
-            val width = texture?.width ?: 64
-            val height = texture?.height ?: 64
-            return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
-                val pixels = IntArray(width * height) { index ->
-                    val x = index % width; val y = index / width
-                    val noise = (((index * 1103515245 + 12345) ushr 16) and 255) / 255f
-                    val value = when (config.grain) {
-                        StampGrain.NONE -> 1f
-                        StampGrain.NOISE -> noise
-                        StampGrain.PAPER -> (.25f + .5f * noise + .25f * sin(x * .9f) * sin(y * .7f)).coerceIn(0f, 1f)
-                        StampGrain.LINES -> if (y % 8 < 3) .15f else 1f
-                        StampGrain.IMAGE -> requireNotNull(texture).coverage(x, y) / 255f
-                    }
-                    Color.argb(((1f - config.grainDepth + config.grainDepth * value) * 255).roundToInt(), 255, 255, 255)
-                }
-                setPixels(pixels, 0, width, 0, 0, width, height)
-            }
-        }
+        private fun shapeBitmap(config: StampBrush, hardness: Float) = bitmap(BrushTip.shape(config, hardness))
+        private fun grainBitmap(config: StampBrush) = bitmap(BrushTip.grain(config))
     }
 }

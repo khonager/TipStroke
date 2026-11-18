@@ -28,9 +28,11 @@ struct LayerRecord: Codable, Identifiable, Equatable {
     var blendMode = "NORMAL"
     var locked = false
     var alphaLocked = false
+    var clipSource: UUID?
+    var reference = false
 
     init() {}
-    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked }
+    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked, clipSource, reference }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
@@ -41,13 +43,15 @@ struct LayerRecord: Codable, Identifiable, Equatable {
         blendMode = try values.decodeIfPresent(String.self, forKey: .blendMode) ?? "NORMAL"
         locked = try values.decodeIfPresent(Bool.self, forKey: .locked) ?? false
         alphaLocked = try values.decodeIfPresent(Bool.self, forKey: .alphaLocked) ?? false
+        clipSource = try values.decodeIfPresent(UUID.self, forKey: .clipSource)
+        reference = try values.decodeIfPresent(Bool.self, forKey: .reference) ?? false
     }
 }
 
 struct DocumentRecord: Codable, Identifiable, Equatable {
     // Separate format namespace: never interpret Android project manifests as iOS documents.
     var format = "dev.tipstroke.ios.raster"
-    var schemaVersion = 2
+    var schemaVersion = 3
     var id = UUID()
     var name = "Untitled"
     var width = 2048
@@ -55,9 +59,12 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
     var modified = Date()
     var layers = [LayerRecord()]
     var selectedLayer: UUID?
+    var animation: AnimationRecord?
+    var backgroundARGB: UInt32?
+    var backgroundOpacity: Double?
 
     func validate() throws {
-        guard format == "dev.tipstroke.ios.raster", (1...2).contains(schemaVersion) else {
+        guard format == "dev.tipstroke.ios.raster", (1...3).contains(schemaVersion) else {
             throw DrawingError.message("This drawing uses an unsupported project format.")
         }
         guard (16...4096).contains(width), (16...4096).contains(height),
@@ -66,14 +73,42 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
               selectedLayer == nil || layers.contains(where: { $0.id == selectedLayer }) else {
             throw DrawingError.message("This drawing has invalid document metadata.")
         }
+        if let animation {
+            guard (1...240).contains(animation.frames.count), (1...60).contains(animation.fps),
+                animation.frames.indices.contains(animation.selectedIndex),
+                Set(animation.frames.map(\.id)).count == animation.frames.count,
+                animation.frames.allSatisfy({ (1...600).contains($0.exposure) }),
+                ["LOOP", "PING_PONG", "ONCE"].contains(animation.playbackMode) else {
+                throw DrawingError.message("Invalid animation timeline.")
+            }
+        }
+        if let opacity = backgroundOpacity, !opacity.isFinite || !(0...1).contains(opacity) { throw DrawingError.message("Invalid background opacity.") }
+        guard layers.filter({ $0.reference }).count <= 1 else { throw DrawingError.message("Only one reference layer is supported.") }
         var tileCount = 0
-        for layer in layers {
+        for (index, layer) in layers.enumerated() {
+            if let source = layer.clipSource, !layers.prefix(index).contains(where: { $0.id == source }) { throw DrawingError.message("Invalid clipping source.") }
             guard RasterDocument.blendModes[layer.blendMode] != nil, layer.opacity.isFinite, (0...1).contains(layer.opacity),
                   Set(layer.tiles).count == layer.tiles.count,
                   layer.tiles.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (width + 255) / 256 && $0.y < (height + 255) / 256 }) else {
                 throw DrawingError.message("This drawing has invalid layer metadata.")
             }
             tileCount += layer.tiles.count
+        }
+        if let animation {
+            let layerIDs = Set(layers.map { $0.id.uuidString })
+            for (index, frame) in animation.frames.enumerated() {
+                for (layerID, keys) in frame.tiles {
+                    guard layerIDs.contains(layerID), Set(keys).count == keys.count,
+                          keys.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (width + 255) / 256 && $0.y < (height + 255) / 256 }) else {
+                        throw DrawingError.message("Invalid animation tile metadata.")
+                    }
+                    if index != animation.selectedIndex { tileCount += keys.count }
+                }
+            }
+            let current = animation.frames[animation.selectedIndex]
+            guard layers.allSatisfy({ Set(current.tiles[$0.id.uuidString] ?? []) == Set($0.tiles) }) else {
+                throw DrawingError.message("The selected frame does not match the painting tiles.")
+            }
         }
         guard tileCount <= RasterDocument.maximumTiles else {
             throw DrawingError.message("This drawing exceeds the iOS tile memory budget.")
@@ -89,4 +124,18 @@ enum DrawingError: LocalizedError {
 struct DocumentSnapshot {
     var record: DocumentRecord
     var pixels: [UUID: [TileKey: CGImage]]
+    var frames: [UUID: [UUID: [TileKey: CGImage]]] = [:]
+}
+
+struct AnimationFrameRecord: Codable, Equatable, Identifiable {
+    var id = UUID()
+    var exposure = 1
+    var tiles: [String: [TileKey]] = [:]
+}
+struct AnimationRecord: Codable, Equatable {
+    var frames = [AnimationFrameRecord()]
+    var selectedIndex = 0
+    var fps = 12
+    var playbackMode = "LOOP"
+    var onionSkin = false
 }

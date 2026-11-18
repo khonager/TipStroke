@@ -24,11 +24,14 @@ extension UIViewController {
 
 final class GalleryController: UITableViewController {
     private var drawings: [DocumentRecord] = []
+    private let thumbnails = NSCache<NSUUID, UIImage>()
     private let store = ProjectStore.shared
     private var loading = false
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "TipStroke"
+        thumbnails.countLimit = 80
+        tableView.rowHeight = 100
         navigationController?.navigationBar.prefersLargeTitles = true
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(newDrawing))
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "drawing")
@@ -50,7 +53,7 @@ final class GalleryController: UITableViewController {
             DispatchQueue.main.async {
                 self.refreshControl?.endRefreshing()
                 switch result {
-                case .success(let drawings): self.drawings = drawings; self.tableView.reloadData(); self.tableView.backgroundView?.isHidden = !drawings.isEmpty
+                case .success(let drawings): self.thumbnails.removeAllObjects(); self.drawings = drawings; self.tableView.reloadData(); self.tableView.backgroundView?.isHidden = !drawings.isEmpty
                 case .failure(let error): self.showError(error)
                 }
             }
@@ -90,7 +93,20 @@ final class GalleryController: UITableViewController {
         var content = cell.defaultContentConfiguration()
         content.text = drawing.name
         content.secondaryText = "\(drawing.width) × \(drawing.height) · \(drawing.layers.count) layers"
-        content.image = UIImage(systemName: "scribble.variable")
+        content.image = thumbnails.object(forKey: drawing.id as NSUUID) ?? UIImage(systemName: "scribble.variable")
+        content.imageProperties.maximumSize = CGSize(width: 80, height: 80)
+        if thumbnails.object(forKey: drawing.id as NSUUID) == nil {
+            store.queue.async {
+                let image = try? self.store.thumbnail(drawing.id)
+                DispatchQueue.main.async {
+                    guard let image else { return }; self.thumbnails.setObject(image, forKey: drawing.id as NSUUID)
+                    if let visible = self.tableView.indexPathsForVisibleRows, visible.contains(indexPath),
+                       self.drawings.indices.contains(indexPath.row), self.drawings[indexPath.row].id == drawing.id {
+                        self.tableView.reloadRows(at: [indexPath], with: .none)
+                    }
+                }
+            }
+        }
         cell.contentConfiguration = content; cell.accessoryType = .disclosureIndicator
         return cell
     }
@@ -109,6 +125,38 @@ final class GalleryController: UITableViewController {
                 }
             }
         }
+    }
+    override func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let drawing = drawings[indexPath.row]
+        let duplicate = UIContextualAction(style: .normal, title: "Duplicate") { [weak self] _, _, done in
+            guard let self else { done(false); return }
+            self.store.queue.async {
+                let result = Result { try self.store.duplicate(drawing.id) }
+                DispatchQueue.main.async {
+                    if case .failure(let error) = result { self.showError(error); done(false) }
+                    else { done(true); self.reload() }
+                }
+            }
+        }
+        let rename = UIContextualAction(style: .normal, title: "Rename") { [weak self] _, _, done in
+            guard let self else { done(false); return }
+            let alert = UIAlertController(title: "Rename drawing", message: nil, preferredStyle: .alert)
+            alert.addTextField { $0.text = drawing.name }
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in done(false) })
+            alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak alert] _ in
+                let name = (alert?.textFields?.first?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { done(false); return }
+                self.store.queue.async {
+                    let result = Result { try self.store.rename(drawing.id, name: name) }
+                    DispatchQueue.main.async {
+                        if case .failure(let error) = result { self.showError(error); done(false) }
+                        else { done(true); self.reload() }
+                    }
+                }
+            })
+            self.present(alert, animated: true)
+        }
+        return UISwipeActionsConfiguration(actions: [rename, duplicate])
     }
     override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         let drawing = drawings[indexPath.row]

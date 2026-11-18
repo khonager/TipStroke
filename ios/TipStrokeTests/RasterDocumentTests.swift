@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import ImageIO
 @testable import TipStroke
 
 final class RasterDocumentTests: XCTestCase {
@@ -223,7 +224,7 @@ final class RasterDocumentTests: XCTestCase {
         let store = ProjectStore(root: root)
         try store.save(document.snapshot())
         let restored = try store.load(document.record.id)
-        XCTAssertEqual(restored.record.schemaVersion, 2)
+        XCTAssertEqual(restored.record.schemaVersion, 3)
         XCTAssertEqual(restored.record.layers[1].blendMode, "MULTIPLY")
         XCTAssertEqual(restored.pixels.count, 2)
     }
@@ -253,6 +254,88 @@ final class RasterDocumentTests: XCTestCase {
         let context = try RasterDocument.context(width: 32, height: 32)
         RasterDocument.draw(image, in: context, rect: CGRect(x: 0, y: 0, width: 32, height: 32))
         XCTAssertEqual(context.data!.assumingMemoryBound(to: UInt8.self)[3], 0)
+    }
+
+    func testSelectionFillCrossesTilesAndUndoRestoresEmptyPixels() throws {
+        let document = RasterDocument(name: "Fill", width: 512, height: 256)
+        let selection = CanvasSelection(path: CGPath(rect: CGRect(x: 240, y: 20, width: 40, height: 30), transform: nil))
+        document.selection = selection
+        let tiles = try RasterDocument.floodFill(document.snapshot(), layerID: document.activeLayer, point: .init(x: 250, y: 30), color: .red, tolerance: 0, selection: selection)
+        XCTAssertEqual(tiles.count, 2)
+        try document.replaceTiles(tiles)
+        XCTAssertEqual(try alpha(document, x: 239, y: 30), 0)
+        XCTAssertGreaterThan(try alpha(document, x: 260, y: 30), 250)
+        document.undo(); XCTAssertEqual(try alpha(document, x: 260, y: 30), 0)
+        document.redo(); XCTAssertGreaterThan(try alpha(document, x: 260, y: 30), 250)
+    }
+    func testMoveSelectionDoesNotMoveUnselectedPaint() throws {
+        let document = RasterDocument(name: "Move", width: 512, height: 256)
+        XCTAssertTrue(document.beginStroke())
+        try paint(document, from: .init(x: 20, y: 20), to: .init(x: 30, y: 20))
+        try paint(document, from: .init(x: 100, y: 20), to: .init(x: 110, y: 20))
+        document.endStroke(cancelled: false)
+        document.selection = CanvasSelection(path: CGPath(rect: CGRect(x: 10, y: 10, width: 30, height: 30), transform: nil))
+        try document.transformSelection(CGAffineTransform(translationX: 250, y: 0))
+        XCTAssertEqual(try alpha(document, x: 25, y: 20), 0)
+        XCTAssertGreaterThan(try alpha(document, x: 275, y: 20), 200)
+        XCTAssertGreaterThan(try alpha(document, x: 105, y: 20), 200)
+        document.undo(); XCTAssertGreaterThan(try alpha(document, x: 25, y: 20), 200)
+        XCTAssertEqual(try alpha(document, x: 275, y: 20), 0)
+    }
+    func testPixelDitherUsesDocumentCoordinatesAtTileBoundary() throws {
+        let document = RasterDocument(name: "Pixels", width: 512, height: 256)
+        XCTAssertTrue(document.beginStroke())
+        try document.paintPixelLine(from: .init(x: 254, y: 20), to: .init(x: 259, y: 20), size: 1, color: .black, dither: true)
+        document.endStroke(cancelled: false)
+        for x in 254...259 { XCTAssertEqual(try alpha(document, x: x, y: 20), x % 2 == 0 ? 255 : 0) }
+    }
+    func testAnimationRoundTripAndUndoSelectTheCorrectFrame() throws {
+        let document = RasterDocument(name: "Animation", width: 256, height: 256)
+        document.enableAnimation()
+        XCTAssertTrue(document.beginStroke()); try paint(document, from: .init(x: 20, y: 20), to: .init(x: 30, y: 20)); document.endStroke(cancelled: false)
+        try document.addFrame(copy: false)
+        XCTAssertEqual(try alpha(document, x: 25, y: 20), 0)
+        XCTAssertTrue(document.beginStroke()); try paint(document, from: .init(x: 80, y: 20), to: .init(x: 90, y: 20)); document.endStroke(cancelled: false)
+        document.selectFrame(0)
+        document.undo()
+        XCTAssertEqual(document.record.animation?.selectedIndex, 1)
+        XCTAssertEqual(try alpha(document, x: 85, y: 20), 0)
+        document.redo(); XCTAssertGreaterThan(try alpha(document, x: 85, y: 20), 200)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ProjectStore(root: root)
+        try store.save(document.snapshot())
+        let restored = RasterDocument(snapshot: try store.load(document.record.id))
+        XCTAssertEqual(restored.record.animation?.frames.count, 2)
+        XCTAssertGreaterThan(try alpha(restored, x: 85, y: 20), 200)
+        restored.selectFrame(0); XCTAssertGreaterThan(try alpha(restored, x: 25, y: 20), 200)
+        XCTAssertEqual(try alpha(restored, x: 85, y: 20), 0)
+        let gif = try store.exportGIF(restored.snapshot())
+        defer { try? FileManager.default.removeItem(at: gif) }
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(gif as CFURL, nil))
+        XCTAssertEqual(CGImageSourceGetCount(source), 2)
+    }
+    func testClipSourceMasksWithoutMutatingPaintAndReferenceRestrictsNewStrokes() throws {
+        let document = RasterDocument(name: "Clip", width: 256, height: 256)
+        let base = document.activeLayer
+        XCTAssertTrue(document.beginStroke()); try paint(document, from: .init(x: 20, y: 20), to: .init(x: 30, y: 20)); document.endStroke(cancelled: false)
+        XCTAssertTrue(document.addLayer()); XCTAssertTrue(document.beginStroke())
+        _ = try document.paint(from: .init(x: 10, y: 20), to: .init(x: 100, y: 20), radius: 4, color: .red, erasing: false)
+        document.endStroke(cancelled: false)
+        document.record.layers[1].clipSource = base
+        let snapshot = document.snapshot()
+        let clipped = try XCTUnwrap(RasterDocument.layerTile(snapshot, id: document.activeLayer, key: .init(x: 0, y: 0)))
+        let pixels = TilePixels([TileKey(x: 0, y: 0): clipped])
+        XCTAssertEqual(try pixels.rgba(70, 20) & 255, 0)
+        XCTAssertGreaterThan(try pixels.rgba(25, 20) & 255, 200)
+        XCTAssertGreaterThan(try alpha(document, x: 70, y: 20), 200)
+        document.record.layers[0].reference = true
+        document.record.layers[1].clipSource = nil
+        XCTAssertTrue(document.beginStroke())
+        _ = try document.paint(from: .init(x: 20, y: 50), to: .init(x: 100, y: 50), radius: 4, color: .blue, erasing: false)
+        document.endStroke(cancelled: false)
+        XCTAssertEqual(try alpha(document, x: 70, y: 50), 0)
+        XCTAssertGreaterThan(try alpha(document, x: 70, y: 20), 200)
     }
 
     private func paint(_ document: RasterDocument, from: CGPoint, to: CGPoint) throws {

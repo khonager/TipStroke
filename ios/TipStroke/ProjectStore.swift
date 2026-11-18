@@ -40,21 +40,38 @@ final class ProjectStore {
         let record = try metadata(id)
         let directory = try revision(id)
         var pixels: [UUID: [TileKey: CGImage]] = [:]
+        func readTile(_ url: URL) throws -> CGImage {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  properties[kCGImagePropertyPixelWidth] as? Int == 256,
+                  properties[kCGImagePropertyPixelHeight] as? Int == 256,
+                  let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else {
+                throw DrawingError.message("A saved tile is missing or damaged. The original drawing has been preserved.")
+            }
+            return image
+        }
         for layer in record.layers {
             for key in layer.tiles {
-                let url = directory.appendingPathComponent(layer.id.uuidString).appendingPathComponent(key.fileName)
-                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-                      properties[kCGImagePropertyPixelWidth] as? Int == 256,
-                      properties[kCGImagePropertyPixelHeight] as? Int == 256,
-                      let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else {
-                    throw DrawingError.message("A saved tile is missing or damaged. The original drawing has been preserved.")
-                }
-                pixels[layer.id, default: [:]][key] = image
+                pixels[layer.id, default: [:]][key] = try readTile(directory.appendingPathComponent(layer.id.uuidString).appendingPathComponent(key.fileName))
             }
         }
-        return DocumentSnapshot(record: record, pixels: pixels)
+        var frames: [UUID: [UUID: [TileKey: CGImage]]] = [:]
+        if let animation = record.animation {
+            for frame in animation.frames {
+                if frame.id == animation.frames[animation.selectedIndex].id { frames[frame.id] = pixels; continue }
+                for (layerID, keys) in frame.tiles {
+                    guard let id = UUID(uuidString: layerID) else { throw DrawingError.message("Invalid frame layer.") }
+                    for key in keys {
+                        let url = directory.appendingPathComponent("frames").appendingPathComponent(frame.id.uuidString)
+                            .appendingPathComponent(layerID).appendingPathComponent(key.fileName)
+                        frames[frame.id, default: [:]][id, default: [:]][key] = try readTile(url)
+                    }
+                }
+            }
+        }
+        return DocumentSnapshot(record: record, pixels: pixels, frames: frames)
     }
+
     func save(_ snapshot: DocumentSnapshot) throws {
         try snapshot.record.validate()
         let fm = FileManager.default
@@ -72,6 +89,21 @@ final class ProjectStore {
                 try Self.writePNG(image, to: target.appendingPathComponent(key.fileName))
             }
         }
+        if let animation = snapshot.record.animation {
+            for frame in animation.frames where frame.id != animation.frames[animation.selectedIndex].id {
+                for (layerID, keys) in frame.tiles {
+                    guard let id = UUID(uuidString: layerID) else { throw DrawingError.message("Invalid frame layer.") }
+                    let target = staging.appendingPathComponent("frames").appendingPathComponent(frame.id.uuidString).appendingPathComponent(layerID)
+                    try fm.createDirectory(at: target, withIntermediateDirectories: true)
+                    for key in keys {
+                        guard let image = snapshot.frames[frame.id]?[id]?[key] else { throw DrawingError.message("An animation tile is missing.") }
+                        try Self.writePNG(image, to: target.appendingPathComponent(key.fileName))
+                    }
+                }
+            }
+        }
+        let thumbnail = try Self.thumbnail(snapshot)
+        try Self.writePNG(thumbnail, to: staging.appendingPathComponent("thumbnail.png"))
         try JSONEncoder().encode(snapshot.record).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
         try Data(revisionID.utf8).write(to: directory.appendingPathComponent("current"), options: .atomic)
         published = true
@@ -80,14 +112,33 @@ final class ProjectStore {
             try? fm.removeItem(at: old)
         }
     }
+    static func thumbnail(_ snapshot: DocumentSnapshot) throws -> CGImage {
+        let scale = min(256.0 / Double(snapshot.record.width), 256.0 / Double(snapshot.record.height))
+        let width = max(1, Int(Double(snapshot.record.width) * scale)), height = max(1, Int(Double(snapshot.record.height) * scale))
+        let context = try RasterDocument.context(width: width, height: height)
+        context.scaleBy(x: scale, y: scale)
+        let bounds = CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height)
+        context.setFillColor(snapshot.record.paperColor.cgColor); context.fill(bounds)
+        try RasterDocument.composite(snapshot, in: context, visible: bounds)
+        guard let image = context.makeImage() else { throw DrawingError.message("Could not render the thumbnail.") }; return image
+    }
+    func thumbnail(_ id: UUID) throws -> UIImage? {
+        UIImage(contentsOfFile: try revision(id).appendingPathComponent("thumbnail.png").path)
+    }
+    func rename(_ id: UUID, name: String) throws {
+        var snapshot = try load(id); snapshot.record.name = name; snapshot.record.modified = Date(); try save(snapshot)
+    }
+    func duplicate(_ id: UUID) throws {
+        var snapshot = try load(id); snapshot.record.id = UUID(); snapshot.record.name += " copy"; snapshot.record.modified = Date(); try save(snapshot)
+    }
     func delete(_ id: UUID) throws { try FileManager.default.removeItem(at: folder(id)) }
 
     func exportPNG(_ snapshot: DocumentSnapshot, transparent: Bool = false) throws -> URL {
         let record = snapshot.record
         let context = try RasterDocument.context(width: record.width, height: record.height)
         let bounds = CGRect(x: 0, y: 0, width: record.width, height: record.height)
-        if !transparent { context.setFillColor(UIColor.white.cgColor); context.fill(bounds) }
-        RasterDocument.composite(snapshot, in: context, visible: bounds)
+        if !transparent { context.setFillColor(record.paperColor.cgColor); context.fill(bounds) }
+        try RasterDocument.composite(snapshot, in: context, visible: bounds)
         guard let image = context.makeImage() else { throw DrawingError.message("Could not render the drawing.") }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("TipStrokeExports", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
