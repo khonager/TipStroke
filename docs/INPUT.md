@@ -489,3 +489,10 @@ natively and commit together as one undo operation. Selection/Paint inside clips
 remain in document coordinates. Only copy footprints allocate tiles; recordings
 use exact patches. This session setting applies to raster brushes and lasso fill,
 not imported-image masks or smudge.
+
+**Ribbon** is a tool in the drawing menu. Size controls the trailing-edge distance
+in document pixels; color and opacity control its fill. Turning the pen folds the
+closed band. It is a flat fill, independent of saved tip texture/pressure curves,
+and works with selection clips, Paint inside, and Mirror wheel. Preview is native
+and transient until lift; undo and process recording use one raster edit. Elastic
+line is inactive for Ribbon. The trailing-edge geometry is portable core code.

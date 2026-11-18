@@ -992,7 +992,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
     fun showBrushAdjustmentPreview() {
         gestureHandler.removeCallbacks(hideBrushPreview)
-        if (settings.lassoFill || activeDrawingPointerId != null || width == 0 || height == 0) return
+        if (settings.ribbon || settings.lassoFill || activeDrawingPointerId != null || width == 0 || height == 0) return
         val center = rasterView.screenToDocument(width / 2f, height / 2f)
         val erasing = settings.erasing
         val previewBrush = settings.brush.copy(
@@ -1980,7 +1980,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         (0 until event.pointerCount).any { isStylus(event, it) }
 
     private fun updateStylusHoverPreview(event: MotionEvent, index: Int) {
-        if (settings.lassoFill || !settings.gestures.showStylusHoverPreview || activeDrawingPointerId != null ||
+        if (settings.ribbon || settings.lassoFill || !settings.gestures.showStylusHoverPreview || activeDrawingPointerId != null ||
             selectionMode || selectionMoveMode || isTransformingImage()
         ) {
             rasterView.stylusHoverPreview = null
@@ -2043,8 +2043,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 val style = styleForTarget(baseStyle, target)
                 shapeStyle = style
                 shapeSnapped = false
-                elasticStroke = settings.assists.elasticLine && !style.lassoFill
-                if (style.lassoFill || elasticStroke || style.mirrorWheel != null) {
+                elasticStroke = settings.assists.elasticLine && !style.lassoFill && !style.ribbon
+                if (style.lassoFill || style.ribbon || elasticStroke || style.mirrorWheel != null) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
                 } else if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
@@ -2848,7 +2848,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun updateShapeHold(event: MotionEvent, pointerId: Int) {
         val index = event.findPointerIndex(pointerId)
-        if (index < 0 || shapeStyle?.lassoFill == true || shapeStyle?.pixelTool == PixelTool.LINE || (shapeStyle?.brush?.stamp != null && !elasticStroke)) return
+        if (index < 0 || shapeStyle?.lassoFill == true || shapeStyle?.ribbon == true || shapeStyle?.pixelTool == PixelTool.LINE || (shapeStyle?.brush?.stamp != null && !elasticStroke)) return
         val point = Point(event.getX(index), event.getY(index))
         val anchor = shapeAnchor
         val moved = anchor == null || hypot(point.x - anchor.x, point.y - anchor.y) > 8f * resources.displayMetrics.density
@@ -3000,7 +3000,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private fun smudgeRadius() = (resolvedBrushSize() * .5f).coerceIn(1f, 96f)
 
-    private fun resolvedBrushSize() = if (settings.smudging) settings.sizePx.coerceIn(2f, 192f) else settings.sizeUnit.documentPixels(
+    private fun resolvedBrushSize() = if (settings.ribbon) settings.sizePx else if (settings.smudging) settings.sizePx.coerceIn(2f, 192f) else settings.sizeUnit.documentPixels(
         settings.sizePx, rasterView.transform.scale, resources.displayMetrics.density, settings.pixelTool,
     )
 
@@ -3011,6 +3011,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return StrokeStyle(brush, resolvedBrushSize(), settings.opacity, settings.color,
             if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
             lassoFill = settings.lassoFill && !erasing,
+            ribbon = settings.ribbon && !erasing,
             mirrorWheel = settings.mirrorCopies.takeIf { it in 2..12 && layerStack.selected() is RasterLayerRuntime }?.let {
                 dev.tipstroke.core.drawing.MirrorWheel(it, settings.mirrorCenter ?: Point(canvasWidthPx / 2f, canvasHeightPx / 2f))
             },

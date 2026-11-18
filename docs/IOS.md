@@ -84,6 +84,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | Area | Remaining difference |
 | --- | --- |
 | Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation, complete per-tip preferences/favorites/categories |
+| Brush assists and Ribbon | Android has Paint inside, Elastic line, movable Mirror wheel, and Ribbon; core geometry/contracts are shared, native Apple adapters are pending |
 | Lasso fill | Android has a live, tip-closed polygon fill with pen-up commit; iOS native adapter is not implemented yet |
 | Fill and gestures | Android color-drop/reveal UI, concurrent editing during fill, configurable gesture actions and camera rotation |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
@@ -179,3 +180,5 @@ Elastic line's bounded curve geometry is shared in core; its hold/drag adapter a
 brush-aid toggle are currently Android-only.
 Mirror wheel's point/orientation mapping is shared in core. Its native multi-copy
 preview, center placement, and Tools controls currently ship on Android only.
+Ribbon outline geometry is shared in core; the Ribbon tool and native preview are
+currently Android-only.

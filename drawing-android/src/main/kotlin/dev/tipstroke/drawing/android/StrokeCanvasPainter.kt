@@ -122,7 +122,7 @@ internal object StrokeCanvasPainter {
             alpha = (stroke.style.opacity.coerceIn(0f, 1f) * stroke.style.color.alpha * 255).roundToInt()
             xfermode = if (stroke.style.blend == BlendBehavior.ERASE) PorterDuffXfermode(PorterDuff.Mode.DST_OUT) else null
             val soften = when {
-                stroke.style.lassoFill -> 0f
+                stroke.style.lassoFill || stroke.style.ribbon -> 0f
                 stroke.style.blend == BlendBehavior.ERASE -> 1f - stroke.style.brush.hardness
                 stroke.style.brush.engine == BrushEngine.AIRBRUSH -> 1f - stroke.style.brush.hardness
                 else -> 0f
@@ -137,7 +137,7 @@ internal object StrokeCanvasPainter {
             stroke.mirrorCopies().forEach { draw(canvas, it, preparePaint(it), airbrushBlockSize) }
             return
         }
-        if (!stroke.style.lassoFill && stroke.style.brush.stamp != null && stroke.style.blend == BlendBehavior.PAINT && stroke.style.pixelTool == null) {
+        if (!stroke.style.ribbon && !stroke.style.lassoFill && stroke.style.brush.stamp != null && stroke.style.blend == BlendBehavior.PAINT && stroke.style.pixelTool == null) {
             StampBrushRenderer(stroke.style).use { it.drawClipped(canvas, it.path.append(stroke.samples)) }
             return
         }
@@ -158,13 +158,15 @@ internal object StrokeCanvasPainter {
         }
         val saveCount = canvas.save()
         stroke.style.selection?.let { canvas.clipPath(it.toAndroidPath()) }
-        if (stroke.style.lassoFill) {
-            if (stroke.samples.size >= 3) {
+        if (stroke.style.lassoFill || stroke.style.ribbon) {
+            val points = if (stroke.style.ribbon) dev.tipstroke.core.geometry.RibbonPath.outline(
+                stroke.samples.map { it.position }, stroke.style.sizePx) else stroke.samples.map { it.position }
+            if (points.size >= 3) {
                 val path = Path().apply {
                     fillType = Path.FillType.EVEN_ODD
-                    moveTo(stroke.samples.first().position.x, stroke.samples.first().position.y)
-                    for (i in 1 until stroke.samples.size) {
-                        val point = stroke.samples[i].position
+                    moveTo(points.first().x, points.first().y)
+                    for (i in 1 until points.size) {
+                        val point = points[i]
                         lineTo(point.x, point.y)
                     }
                     close()

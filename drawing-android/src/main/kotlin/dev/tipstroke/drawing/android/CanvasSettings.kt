@@ -15,6 +15,7 @@ class CanvasSettings {
     @Volatile var opacity: Float = 1f
     @Volatile var color: RgbaColor = RgbaColor(0.05f, 0.05f, 0.06f)
     @Volatile var erasing: Boolean = false
+    @Volatile var ribbon: Boolean = false
     @Volatile var lassoFill: Boolean = false
     @Volatile var smudging: Boolean = false
     @Volatile var eraserHardness: Float = .35f
