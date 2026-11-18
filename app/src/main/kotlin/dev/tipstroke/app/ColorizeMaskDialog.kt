@@ -1,6 +1,9 @@
 package dev.tipstroke.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -14,7 +17,7 @@ internal fun ColorizeMaskDialog(surface: DrawingSurface?, onHints: (Boolean) -> 
     var error by remember { mutableStateOf<String?>(null) }
     DisposableEffect(surface) { onDispose { surface?.cancelRasterAdjustment() } }
     AlertDialog(onDismissRequest=onDismiss,title={Text("Colorize mask")},text={
-        Column {
+        Column(Modifier.heightIn(max=360.dp).verticalScroll(rememberScrollState())) {
             Text("Draw color hints, then Preview and Apply. Keep line art on a transparent layer, or use Multiply for paper-white line art.")
             if(mask==null) Text("Create adds editable hints and a generated color layer beneath the active line art. Available for still paint layers.")
             else {

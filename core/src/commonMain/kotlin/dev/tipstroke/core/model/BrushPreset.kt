@@ -105,7 +105,7 @@ data class BrushPreset(
                 baseSizePx = 96f, spacing = .02f,
                 ink = InkBrush(texture = InkTexture.SOFT, particles = true, accumulate = true, flow = .03f)),
         )
-        val libraryBuiltIns = builtIns + jetpackInk + MangaTips.presets
+        val libraryBuiltIns by lazy { builtIns + jetpackInk + MangaTips.presets }
     }
 }
 

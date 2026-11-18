@@ -20,6 +20,16 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PerspectiveRulerInputTest {
+    @Test fun togglingRulerKeepsPlacedVanishingPoints() {
+        val surface=DrawingSurface(RuntimeEnvironment.getApplication())
+        surface.setPerspectiveMode(dev.tipstroke.core.geometry.PerspectiveMode.ONE_POINT)
+        surface.settings.perspective=surface.settings.perspective!!.copy(first=Point(-100f,300f))
+        surface.setPerspectiveMode(dev.tipstroke.core.geometry.PerspectiveMode.OFF)
+        assertNull(surface.settings.perspective)
+        surface.setPerspectiveMode(dev.tipstroke.core.geometry.PerspectiveMode.TWO_POINT)
+        assertEquals(Point(-100f,300f),surface.settings.perspective!!.first)
+    }
+
     private val points = listOf(Point(20f, 20f), Point(400f, 20f), Point(400f, 400f))
     @Test fun magneticSamplesStayOnChosenGuideAndCommitOnRelease() {
         val surface = DrawingSurface(RuntimeEnvironment.getApplication()).apply {

@@ -2052,10 +2052,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     private var rulerStroke: dev.tipstroke.core.geometry.MagneticRuler? = null
     private var placingVanishingPoint: Int? = null
+    private var rememberedPerspective: dev.tipstroke.core.geometry.PerspectiveRuler? = null
     fun setPerspectiveMode(mode: dev.tipstroke.core.geometry.PerspectiveMode) {
         placingVanishingPoint = null
+        rememberedPerspective = settings.perspective ?: rememberedPerspective
         settings.perspective = if (mode == dev.tipstroke.core.geometry.PerspectiveMode.OFF) null else
-            settings.perspective?.copy(mode = mode) ?: dev.tipstroke.core.geometry.PerspectiveRuler(mode,
+            rememberedPerspective?.copy(mode = mode) ?: dev.tipstroke.core.geometry.PerspectiveRuler(mode,
                 Point(canvasWidthPx*.25f,canvasHeightPx*.35f),Point(canvasWidthPx*.85f,canvasHeightPx*.35f))
         rasterView.perspective = settings.perspective
         rasterView.invalidate()
