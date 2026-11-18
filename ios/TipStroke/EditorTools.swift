@@ -182,6 +182,7 @@ extension EditorController {
     func brushAids() {
         viewport.canvas.cancelStroke()
         let menu = UIAlertController(title: "Brush aids", message: "Temporary aids stay active until switched off. Paint inside preserves the active layer’s existing transparency.", preferredStyle: .actionSheet)
+        menu.addAction(UIAlertAction(title: "Elastic line" + (viewport.canvas.elasticLine ? " ✓" : ""), style: .default) { [weak self] _ in self?.viewport.canvas.elasticLine.toggle() })
         menu.addAction(UIAlertAction(title: "Paint inside" + (document.paintInside ? " ✓" : ""), style: .default) { [weak self] _ in self?.document.paintInside.toggle() })
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
     }

@@ -573,3 +573,5 @@ Lifting commits one undo entry; cancellation restores the original tiles.
 iOS Tools → Brush aids exposes temporary Paint inside. It uses source-atop for
 all native brush/stamp paths, preserves soft alpha, and takes priority over the
 reference layer. It is session state, separate from saved layer alpha lock.
+iOS Elastic line fits the shared bounded quadratic after a 650 ms hold. Dragging
+bends it with fixed endpoints; native stamp brushes retain their tip/grain.

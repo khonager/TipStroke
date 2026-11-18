@@ -13,6 +13,9 @@ class NativeShapeTracker {
         }
         points += Point(x, y)
     }
+    fun elastic(): NativeShape = NativeShape("CURVE", dev.tipstroke.core.geometry.ElasticLine.fit(points))
     fun fit(): NativeShape? = QuickShape.recognize(points)?.let { NativeShape(it.kind.name, it.points) }
 }
-class NativeShape(val kind: String, val points: List<Point>)
+class NativeShape(val kind: String, val points: List<Point>) {
+    fun bend(x: Float, y: Float): NativeShape = NativeShape(kind, dev.tipstroke.core.geometry.ElasticLine.bend(points, Point(x, y)))
+}
