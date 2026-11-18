@@ -1,5 +1,8 @@
 package dev.tipstroke.app
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,7 +40,7 @@ fun SettingsScreen(settings: GestureSettings, onChange: (GestureSettings) -> Uni
             Modifier.fillMaxWidth().statusBarsPadding().height(62.dp).border(.5.dp, Color(0xFF34363A)).padding(horizontal = 24.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) { SettingsBackIcon() }
+            TipAction("Back to gallery", Icons.Outlined.ArrowBack, onClick = onBack)
             Spacer(Modifier.width(14.dp))
             Text("Settings", color = Color(0xFFF5F5F2), fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         }
@@ -115,9 +118,7 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
             fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp))
         Text("View crashes, Android process exits, and drawing save/load events. Logs stay on this device.",
             color = Color(0xFFA9ABB1), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-        OutlinedButton(onClick = onDiagnostics, modifier = Modifier.padding(top = 10.dp).navigationBarsPadding()) {
-            Text("Crash and debug log")
-        }
+        ActionIconButton(onClick = onDiagnostics, modifier = Modifier.padding(top = 10.dp).navigationBarsPadding(), label = "Crash and debug log", icon = Icons.Outlined.BugReport)
     }
 }
 
@@ -192,7 +193,7 @@ private fun ActionChoiceDialog(slot: SettingsSlot, settings: GestureSettings, on
                 is SettingsSlot.Stylus -> StylusButtonAction.entries.forEach { action -> StylusActionOption(action, action == stylusActionFor(slot, settings)) { onChange(settings.withStylusAction(slot, action)); onDismiss() } }
             }
         } },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { ActionIconButton(onClick = onDismiss, label = "Close", icon = Icons.Outlined.Close) },
     )
 }
 

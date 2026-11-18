@@ -250,7 +250,7 @@ internal fun BrushLibraryDialog(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TipAction("Import", Icons.Outlined.FileOpen, enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) })
-                                TextButton(enabled = ready && !busy, onClick = { managingCategories = true }) { Text("Categories") }
+                                ActionIconButton(enabled = ready && !busy, onClick = { managingCategories = true }, label = "Categories", icon = Icons.Outlined.Folder)
                                 listOf("All tips", "Jetpack Ink", "My tips", "Favorites").forEach { name ->
                                     FilterChip(section == name, { section = name }, label = { Text(name) })
                                 }
@@ -259,10 +259,10 @@ internal fun BrushLibraryDialog(
                                 categories.forEach { category -> FilterChip(section == category.id, { section = category.id }, label = { Text(category.name) }) }
                             }
                             selectedCategory?.let { category ->
-                                TextButton(enabled = !busy && ready && category.brushIds.any { id -> all.any { it.preset.id.value == id } }, onClick = {
+                                ActionIconButton(enabled = !busy && ready && category.brushIds.any { id -> all.any { it.preset.id.value == id } }, onClick = {
                                     pendingPack = ImportedBrushPack(category.name, category.brushIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } })
                                     packExporter.launch("${category.name.replace(Regex("[^a-zA-Z0-9 _-]"), "_")}.tipbrushpack")
-                                }) { Text("Export ${category.name} pack") }
+                                }, label = "Export ${category.name} pack", icon = Icons.Outlined.IosShare)
                             }
                             if (searchOpen) OutlinedTextField(query, { query = it }, label = { Text("Search tips") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             if (section == "Jetpack Ink") Text(
@@ -362,16 +362,16 @@ internal fun BrushLibraryDialog(
     if (choosingCreator) AlertDialog(
         onDismissRequest = { choosingCreator = false }, title = { Text("Create a tip") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = {
+            ActionIconButton(onClick = {
                 choosingCreator = false; editing = BrushLibrary.copyOf(LibraryBrush(BrushPreset.Blank))
-            }, modifier = Modifier.fillMaxWidth()) { Text("Custom tip") }
+            }, modifier = Modifier.fillMaxWidth(), label = "Custom tip", icon = Icons.Outlined.Gesture)
             Text("Shape and grain, including your own images.", style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(onClick = {
+            ActionIconButton(onClick = {
                 choosingCreator = false; editing = BrushLibrary.copyOf(LibraryBrush(BrushPreset.BlankInk))
-            }, modifier = Modifier.fillMaxWidth()) { Text("Jetpack Ink tip") }
+            }, modifier = Modifier.fillMaxWidth(), label = "Jetpack Ink tip", icon = Icons.Outlined.Brush)
             Text("Native Ink shapes, textures, stamps and dynamics. Drawing requires Android 14 or newer.", style = MaterialTheme.typography.bodySmall)
         } }, confirmButton = {}, dismissButton = {
-            TextButton(onClick = { choosingCreator = false }) { Text("Cancel") }
+            ActionIconButton(onClick = { choosingCreator = false }, label = "Cancel", icon = Icons.Outlined.Close)
         })
     editing?.let { initial ->
         BrushCreatorDialog(initial, busy, message, onSave = { item ->

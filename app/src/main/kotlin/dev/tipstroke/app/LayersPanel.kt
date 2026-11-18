@@ -334,10 +334,12 @@ internal fun LayersPanel(
                     }
                 }
                 item(key = "canvas-background") {
-                    TextButton(onClick = { backgroundPickerOpen = true }, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                        Box(Modifier.size(24.dp).background(Color(backgroundColor), RoundedCornerShape(6.dp)))
-                        Spacer(Modifier.width(12.dp))
-                        Text("Canvas background")
+                    TipHint("Canvas background") {
+                        IconButton(onClick = { backgroundPickerOpen = true },
+                            modifier = Modifier.semantics { contentDescription = "Canvas background" }) {
+                            Box(Modifier.size(24.dp).background(Color(backgroundColor), RoundedCornerShape(4.dp))
+                                .border(1.dp, Color.Gray, RoundedCornerShape(4.dp)))
+                        }
                     }
                 }
             }

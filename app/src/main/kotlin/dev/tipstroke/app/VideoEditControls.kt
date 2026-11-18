@@ -98,8 +98,8 @@ internal fun VideoEditControls(
             val value = parseSeconds(position)?.takeIf { it < clip.durationUs }
             AlertDialog(onDismissRequest = { dialog = null }, title = { Text("Go to clip time") }, text = {
                 DecimalField(position, { position = it }, "Seconds within selected clip")
-            }, confirmButton = { TextButton(onClick = { onSeek(start + requireNotNull(value)); dialog = null }, enabled = value != null) { Text("Seek") } },
-                dismissButton = { TextButton(onClick = { dialog = null }) { Text("Cancel") } })
+            }, confirmButton = { ActionIconButton(onClick = { onSeek(start + requireNotNull(value)); dialog = null }, enabled = value != null, label = "Seek", icon = Icons.Outlined.FastForward) },
+                dismissButton = { ActionIconButton(onClick = { dialog = null }, label = "Cancel", icon = Icons.Outlined.Close) })
         }
         "key" -> ClipKeyframeDialog(clip, keyTime ?: local, { dialog = null }) { replacement -> editSafely { onEdit(edit.replace(index, replacement), null); dialog = null } }
         "trim" -> ClipTrimDialog(clip, clip.assetId in state.photoAssetIds, state.clipSourceDurationsUs[clip.assetId] ?: (clip.sourceInUs + clip.durationUs), { dialog = null }) { replacement -> editSafely { onEdit(edit.replace(index, replacement), start); dialog = null } }
@@ -112,14 +112,14 @@ internal fun VideoEditControls(
                     Text("Overlap the previous clip. Use 0 for a cut. Maximum ${secondsText(maximum)} seconds.")
                     DecimalField(duration, { duration = it }, "Crossfade seconds")
                 }
-            }, confirmButton = { TextButton(onClick = { editSafely {
+            }, confirmButton = { ActionIconButton(onClick = { editSafely {
                 val next = edit.replace(index, clip.copy(transitionUs = requireNotNull(value)))
                 onEdit(next, next.startUs(index)); dialog = null
-            } }, enabled = value != null) { Text("Apply transition") } }, dismissButton = { TextButton(onClick = { dialog = null }) { Text("Cancel") } })
+            } }, enabled = value != null, label = "Apply transition", icon = Icons.Outlined.Check) }, dismissButton = { ActionIconButton(onClick = { dialog = null }, label = "Cancel", icon = Icons.Outlined.Close) })
         }
     }
     error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Cannot edit timeline") },
-        text = { Text(message) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
+        text = { Text(message) }, confirmButton = { ActionIconButton(onClick = { error = null }, label = "OK", icon = Icons.Outlined.Check) }) }
 }
 
 @Composable
@@ -151,8 +151,8 @@ private fun ClipTrimDialog(clip: MediaClip, photo: Boolean, sourceDurationUs: Lo
             if (!photo) DecimalField(from, { from = it }, "Source in (seconds)")
             DecimalField(to, { to = it }, if (photo) "Photo duration (seconds)" else "Source out (seconds)")
         }
-    }, confirmButton = { TextButton(onClick = { apply(requireNotNull(replacement)) }, enabled = replacement != null) { Text("Apply trim") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+    }, confirmButton = { ActionIconButton(onClick = { apply(requireNotNull(replacement)) }, enabled = replacement != null, label = "Apply trim", icon = Icons.Outlined.ContentCut) },
+        dismissButton = { ActionIconButton(onClick = dismiss, label = "Cancel", icon = Icons.Outlined.Close) })
 }
 
 @Composable
@@ -178,11 +178,11 @@ private fun ClipKeyframeDialog(clip: MediaClip, time: Long, dismiss: () -> Unit,
             Row(Modifier.horizontalScroll(rememberScrollState())) { ClipEasing.entries.forEach { option ->
                 FilterChip(easing == option, { easing = option }, label = { Text(option.name.lowercase().replaceFirstChar { it.uppercase() }) })
             } }
-            if (clip.keyframes.any { it.timeUs == time }) TextButton(onClick = {
+            if (clip.keyframes.any { it.timeUs == time }) ActionIconButton(onClick = {
                 apply(clip.copy(keyframes = clip.keyframes.filterNot { it.timeUs == time }))
-            }) { Text("Delete keyframe") }
+            }, label = "Delete keyframe", icon = Icons.Outlined.Delete)
         }
-    }, confirmButton = { TextButton(onClick = { apply(clip.withKeyframe(ClipKeyframe(time, requireNotNull(pose), easing))) },
-        enabled = pose != null && (clip.keyframes.size < 1000 || clip.keyframes.any { it.timeUs == time })) { Text("Save keyframe") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
+    }, confirmButton = { ActionIconButton(onClick = { apply(clip.withKeyframe(ClipKeyframe(time, requireNotNull(pose), easing))) },
+        enabled = pose != null && (clip.keyframes.size < 1000 || clip.keyframes.any { it.timeUs == time }), label = "Save keyframe", icon = Icons.Outlined.Save) },
+        dismissButton = { ActionIconButton(onClick = dismiss, label = "Cancel", icon = Icons.Outlined.Close) })
 }

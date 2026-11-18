@@ -1,5 +1,8 @@
 package dev.tipstroke.app
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -17,20 +20,20 @@ internal fun BrushCategoryManager(categories: List<BrushCategory>, onChange: (Li
             categories.forEachIndexed { index, category ->
                 TextButton(onClick = { renaming = category.id; name = category.name }) { Text(category.name) }
                 Row {
-                    TextButton(enabled = index > 0, onClick = { onChange(categories.toMutableList().apply { add(index - 1, removeAt(index)) }) }) { Text("Earlier") }
-                    TextButton(enabled = index < categories.lastIndex, onClick = { onChange(categories.toMutableList().apply { add(index + 1, removeAt(index)) }) }) { Text("Later") }
-                    TextButton(onClick = { onChange(categories - category); if (renaming == category.id) { renaming = null; name = "" } }) { Text("Remove") }
+                    ActionIconButton(enabled = index > 0, onClick = { onChange(categories.toMutableList().apply { add(index - 1, removeAt(index)) }) }, label = "Earlier", icon = Icons.Outlined.ArrowBack)
+                    ActionIconButton(enabled = index < categories.lastIndex, onClick = { onChange(categories.toMutableList().apply { add(index + 1, removeAt(index)) }) }, label = "Later", icon = Icons.Outlined.ArrowForward)
+                    ActionIconButton(onClick = { onChange(categories - category); if (renaming == category.id) { renaming = null; name = "" } }, label = "Remove", icon = Icons.Outlined.Delete)
                 }
             }
             Text("Removing a category keeps its tips.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(name, { name = it.take(80) }, label = { Text(if (renaming == null) "New category" else "Rename category") }, singleLine = true)
-            TextButton(enabled = name.isNotBlank() && (renaming != null || categories.size < 64) && categories.none { it.id != renaming && it.name.equals(name.trim(), true) }, onClick = {
+            ActionIconButton(enabled = name.isNotBlank() && (renaming != null || categories.size < 64) && categories.none { it.id != renaming && it.name.equals(name.trim(), true) }, onClick = {
                 onChange(if (renaming == null) categories + BrushCategory(name = name.trim()) else categories.map { if (it.id == renaming) it.copy(name = name.trim()) else it })
                 renaming = null; name = ""
-            }) { Text(if (renaming == null) "Create" else "Rename") }
-            if (renaming != null) TextButton(onClick = { renaming = null; name = "" }) { Text("New category") }
+            }, label = if (renaming == null) "Create category" else "Rename category", icon = if (renaming == null) Icons.Outlined.CreateNewFolder else Icons.Outlined.Edit)
+            if (renaming != null) ActionIconButton(onClick = { renaming = null; name = "" }, label = "New category", icon = Icons.Outlined.CreateNewFolder)
         }
-    }, confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } })
+    }, confirmButton = { ActionIconButton(onClick = onDismiss, label = "Done", icon = Icons.Outlined.Check) })
 }
 
 @Composable
@@ -49,5 +52,5 @@ internal fun BrushCategoryMembership(brush: LibraryBrush, categories: List<Brush
                 }
             }
         }
-    }, confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } })
+    }, confirmButton = { ActionIconButton(onClick = onDismiss, label = "Done", icon = Icons.Outlined.Check) })
 }

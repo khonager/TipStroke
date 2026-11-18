@@ -1,5 +1,8 @@
 package dev.tipstroke.app
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import android.content.Intent
 import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -100,7 +103,7 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
             }
         },
         confirmButton = {
-            TextButton(enabled = !busy && (initialIds == null || drawings.any { it.id in selected }), onClick = {
+            ActionIconButton(enabled = !busy && (initialIds == null || drawings.any { it.id in selected }), onClick = {
                 message = null
                 if (initialIds == null) source.launch(arrayOf("*/*")) else {
                     val ids = drawings.filter { it.id in selected }.map { it.id }
@@ -114,8 +117,8 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
                         putExtra(Intent.EXTRA_TITLE, "TipStroke.$extension")
                     })
                 }
-            }) { Text(if (initialIds == null) "Choose file" else "Export") }
+            }, label = if (initialIds == null) "Import project" else "Export drawings", icon = if (initialIds == null) Icons.Outlined.FileOpen else Icons.Outlined.IosShare)
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Close") } },
+        dismissButton = { ActionIconButton(onClick = onDismiss, enabled = !busy, label = "Close", icon = Icons.Outlined.Close) },
     )
 }

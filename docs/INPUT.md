@@ -443,3 +443,7 @@ actions; half/double scale buttons are no longer shown.
 Layer action icons and canvas toolbar actions expose their names after a 650 ms
 mouse/stylus hover. Layer actions also support touch-and-hold hints. Duplicate
 uses a stacked-add symbol to distinguish it from clipboard copy.
+Android action buttons in gallery dialogs, export, brush management, animation,
+transforms and diagnostics follow the same icon/hover-label convention. Format
+choices, category names and numeric values remain text. Hover hints do not
+activate the action; icon-only controls keep descriptive accessibility labels.

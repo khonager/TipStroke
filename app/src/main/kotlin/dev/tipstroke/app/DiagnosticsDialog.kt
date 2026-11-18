@@ -1,5 +1,8 @@
 package dev.tipstroke.app
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.foundation.layout.*
@@ -33,11 +36,11 @@ internal fun DiagnosticsDialog(onDismiss: () -> Unit) {
                 Text("Stored only on this device. Nothing is sent automatically. Copy the log to include it in a bug report.",
                     fontSize = 13.sp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = ::refresh, enabled = !busy) { Text("Refresh") }
-                    TextButton(onClick = {
+                    ActionIconButton(onClick = ::refresh, enabled = !busy, label = "Refresh", icon = Icons.Outlined.Refresh)
+                    ActionIconButton(onClick = {
                         busy = true
                         LocalDiagnostics.clear { refresh() }
-                    }, enabled = !busy) { Text("Clear log") }
+                    }, enabled = !busy, label = "Clear log", icon = Icons.Outlined.DeleteSweep)
                 }
                 SelectionContainer {
                     Text(report, Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
@@ -46,11 +49,11 @@ internal fun DiagnosticsDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            ActionIconButton(onClick = {
                 context.getSystemService(ClipboardManager::class.java)
                     .setPrimaryClip(ClipData.newPlainText("TipStroke diagnostics", report))
-            }, enabled = !busy) { Text("Copy log") }
+            }, enabled = !busy, label = "Copy log", icon = Icons.Outlined.ContentCopy)
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { ActionIconButton(onClick = onDismiss, label = "Close", icon = Icons.Outlined.Close) },
     )
 }

@@ -69,8 +69,8 @@ internal fun SelectionTransformPanel(
         Column(Modifier.padding(horizontal=8.dp,vertical=4.dp).verticalScroll(rememberScrollState())) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Transform selection", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                IconButton(onClick = onCancel) { Icon(Icons.Outlined.Close,"Cancel transform") }
-                IconButton(onClick = onApply, enabled = validSize) { Icon(Icons.Outlined.Check,"Apply transform") }
+                TipHint("Cancel transform") { IconButton(onClick = onCancel) { Icon(Icons.Outlined.Close,"Cancel transform") } }
+                TipHint("Apply transform") { IconButton(onClick = onApply, enabled = validSize) { Icon(Icons.Outlined.Check,"Apply transform") } }
             }
             TransformToolbar(tool,{ tool=it; onTool(it) },filtered,{ filtered=it;onFilter(it) },
                 onAction={ action ->

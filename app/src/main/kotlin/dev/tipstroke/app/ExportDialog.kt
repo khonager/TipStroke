@@ -1,5 +1,8 @@
 package dev.tipstroke.app
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -93,14 +96,12 @@ fun AnimationExportDialog(
                     color = Color(0xFF9EA0A6), fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
                 ExportLabel("Filename")
                 OutlinedTextField(fileName, { fileName = it }, Modifier.fillMaxWidth(), singleLine = true)
-                TextButton(onClick = onStillImage, modifier = Modifier.padding(top = 8.dp)) { Text("Export current frame as an image") }
+                ActionIconButton(onClick = onStillImage, modifier = Modifier.padding(top = 8.dp), label = "Export current frame as an image", icon = Icons.Outlined.Image)
                 Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onDismiss, Modifier.weight(1f)) { Text("Cancel") }
-                    Button(onClick = {
+                    ActionIconButton(onDismiss, Modifier.weight(1f), label = "Cancel", icon = Icons.Outlined.Close)
+                    ActionIconButton(onClick = {
                         onExport(AnimationExportRequest(format, scale, fileName.ifBlank { "TipStroke.${format.extension}" }, timing))
-                    }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A))) {
-                        Text("Export")
-                    }
+                    }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A)), label = "Export", icon = Icons.Outlined.IosShare)
                 }
             }
         }
@@ -163,8 +164,8 @@ internal fun ExportDrawingSheet(drawingName: String, canvasWidth: Int, canvasHei
                 Text("Save to device", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text("Choose a folder after tapping Export.", color = Color(0xFF9EA0A6), fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 18.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onDismiss, Modifier.weight(1f)) { Text("Cancel") }
-                    Button(onClick = { onExport(ExportRequest(format, quality.roundToInt(), scale, transparent, fileName.ifBlank { "TipStroke.${format.extension}" })) }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A))) { Text("Export") }
+                    ActionIconButton(onDismiss, Modifier.weight(1f), label = "Cancel", icon = Icons.Outlined.Close)
+                    ActionIconButton(onClick = { onExport(ExportRequest(format, quality.roundToInt(), scale, transparent, fileName.ifBlank { "TipStroke.${format.extension}" })) }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A)), label = "Export", icon = Icons.Outlined.IosShare)
                 }
             }
     }

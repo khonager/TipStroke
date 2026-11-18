@@ -1,5 +1,8 @@
 package dev.tipstroke.app
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -88,18 +91,16 @@ internal fun ProcessRecordingPlayer(
                     if (actionCount > 1) Slider(index.toFloat(), { playing = false; index = it.toInt() },
                         valueRange = 0f..(actionCount - 1).toFloat())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { playing = false; index = 0 }, enabled = true) { Text("Restart") }
-                        Button(onClick = { if (index == actionCount - 1) index = 0; playing = !playing }, enabled = error == null) {
-                            Text(if (playing) "Pause" else "Play")
-                        }
+                        ActionIconButton(onClick = { playing = false; index = 0 }, enabled = true, label = "Restart", icon = Icons.Outlined.Replay)
+                        ActionIconButton(onClick = { if (index == actionCount - 1) index = 0; playing = !playing }, enabled = error == null, label = if (playing) "Pause" else "Play", icon = if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onExport(AnimationExportFormat.MP4) }, enabled = error == null) { Text("Export MP4") }
-                        OutlinedButton(onClick = { onExport(AnimationExportFormat.GIF) }, enabled = error == null) { Text("Export GIF") }
+                        ActionIconButton(onClick = { onExport(AnimationExportFormat.MP4) }, enabled = error == null, label = "Export MP4", icon = Icons.Outlined.Movie)
+                        ActionIconButton(onClick = { onExport(AnimationExportFormat.GIF) }, enabled = error == null, label = "Export GIF", icon = Icons.Outlined.Gif)
                     }
                     Text("Exports at up to 1280 px, 12 steps per second. Animation and resizing stop recording in this preview version.", style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = onDismiss) { Text("Close") }
+                ActionIconButton(onClick = onDismiss, label = "Close", icon = Icons.Outlined.Close)
             }
         }
     }

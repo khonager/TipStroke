@@ -407,7 +407,7 @@ private fun RenameStackDialog(currentName: String, onDismiss: () -> Unit, onRena
         onDismissRequest = onDismiss,
         title = { Text("Rename stack") },
         text = { OutlinedTextField(name, { name = it }, label = { Text("Stack name") }, singleLine = true) },
-        confirmButton = { Button(onClick = { onRename(name) }) { Text("Rename") } },
+        confirmButton = { ActionIconButton(onClick = { onRename(name) }, label = "Rename", icon = Icons.Outlined.Edit) },
         dismissButton = { TipAction("Cancel", Icons.Outlined.Close, onClick = onDismiss) },
     )
 }
@@ -460,13 +460,13 @@ private fun NewDrawingDialog(onDismiss: () -> Unit, onCreate: (String, Int, Int)
                         CanvasPreset("custom-preview", "Custom", validWidth, validHeight, "Custom") else null,
                 )
                 saved.firstOrNull { it.id == selectedId }?.let { selected ->
-                    TextButton(onClick = {
+                    ActionIconButton(onClick = {
                         preferences.remove(selected.id)
                         saved = preferences.saved()
                         favorites = preferences.favoriteIds()
                         defaultId = preferences.defaultId()
                         select(builtIns.first())
-                    }) { Text("Remove saved preset") }
+                    }, label = "Remove saved preset", icon = Icons.Outlined.Delete)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(width, { width = it.filter(Char::isDigit); selectedId = null }, Modifier.weight(1f), label = { Text("Width px") }, singleLine = true, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -478,23 +478,22 @@ private fun NewDrawingDialog(onDismiss: () -> Unit, onCreate: (String, Int, Int)
                 Text("Each side: $MIN_CANVAS_SIDE–$MAX_CANVAS_SIDE px. Drawings use sparse tiles, so empty areas take little space.", style = MaterialTheme.typography.bodySmall)
                 if (selectedId == null) {
                     OutlinedTextField(presetName, { presetName = it }, Modifier.fillMaxWidth(), label = { Text("Custom preset name") }, singleLine = true)
-                    TextButton(
+                    ActionIconButton(
                         onClick = {
                             val preset = preferences.add(presetName, validWidth!!, validHeight!!)
                             saved = preferences.saved()
                             select(preset)
                             presetName = ""
                         },
-                        enabled = validWidth != null && validHeight != null && presetName.isNotBlank(),
-                    ) { Text("Save custom preset") }
+                        enabled = validWidth != null && validHeight != null && presetName.isNotBlank(), label = "Save custom preset", icon = Icons.Outlined.Save)
                 }
                 selectedId?.let { id ->
-                    if (id != defaultId) TextButton(onClick = { preferences.setDefault(id); defaultId = id }) { Text("Set as default") }
+                    if (id != defaultId) ActionIconButton(onClick = { preferences.setDefault(id); defaultId = id }, label = "Set as default", icon = Icons.Outlined.Star)
                     else Text("★ Default preset", style = MaterialTheme.typography.labelMedium)
                 }
             }
         },
-        confirmButton = { Button(onClick = { onCreate(name.ifBlank { "Untitled drawing" }, validWidth!!, validHeight!!) }, enabled = validWidth != null && validHeight != null) { Text("Create") } },
+        confirmButton = { ActionIconButton(onClick = { onCreate(name.ifBlank { "Untitled drawing" }, validWidth!!, validHeight!!) }, enabled = validWidth != null && validHeight != null, label = "Create", icon = Icons.Outlined.Add) },
         dismissButton = { TipAction("Cancel", Icons.Outlined.Close, onClick = onDismiss) },
     )
 }

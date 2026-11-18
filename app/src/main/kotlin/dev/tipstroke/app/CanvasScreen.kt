@@ -558,11 +558,11 @@ fun CanvasScreen(
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Resize canvas · $resizePreviewWidth × $resizePreviewHeight px", style = MaterialTheme.typography.titleSmall)
                     Text("Drag an edge or corner to add or crop paper", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { resolutionOpen = true }) { Text("Reduce resolution…") }
+                    ActionIconButton(onClick = { resolutionOpen = true }, label = "Reduce resolution…", icon = Icons.Outlined.PhotoSizeSelectSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { surface?.cancelCanvasResize(); resizeOpen = false }) { Text("Cancel") }
-                        TextButton(onClick = { surface?.resetCanvasResizePreview() }) { Text("Reset") }
-                        Button(onClick = {
+                        ActionIconButton(onClick = { surface?.cancelCanvasResize(); resizeOpen = false }, label = "Cancel", icon = Icons.Outlined.Close)
+                        ActionIconButton(onClick = { surface?.resetCanvasResizePreview() }, label = "Reset", icon = Icons.Outlined.RestartAlt)
+                        ActionIconButton(onClick = {
                             surface?.applyCanvasResize { applied ->
                             if (applied) {
                                 editorWidthPx = surface!!.canvasWidthPx
@@ -570,7 +570,7 @@ fun CanvasScreen(
                                 resizeOpen = false
                             } else message = "Canvas could not be resized while drawing."
                             }
-                        }, enabled = resizeChanged) { Text("Apply") }
+                        }, enabled = resizeChanged, label = "Apply", icon = Icons.Outlined.Check)
                     }
                 }
             }
@@ -805,7 +805,7 @@ fun CanvasScreen(
                 var bilinear by remember { mutableStateOf(surface?.photoBilinear() ?: true) }
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     Text("Transform image",Modifier.weight(1f),color=Color.White,style=MaterialTheme.typography.titleSmall)
-                    IconButton(onClick={ imageTransforming=false }) { Icon(Icons.Outlined.Check,"Finish image transform",tint=Color.White) }
+                    TipHint("Finish image transform") { IconButton(onClick={ imageTransforming=false }) { Icon(Icons.Outlined.Check,"Finish image transform",tint=Color.White) } }
                 }
                 TransformToolbar(photoTool,{ photoTool=it },bilinear,{ value ->
                     if(surface?.photoBilinear()!=value) surface?.photoTransformAction("filter")
@@ -1011,7 +1011,7 @@ fun CanvasScreen(
                 shape = RoundedCornerShape(16.dp), color = Color(0xED202125)) {
                 Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Filling paint layer…", color = Color.White)
-                    TextButton(onClick = { surface?.cancelFill() }) { Text("Stop animation") }
+                    ActionIconButton(onClick = { surface?.cancelFill() }, label = "Stop animation", icon = Icons.Outlined.Stop)
                 }
             }
         }
@@ -1123,7 +1123,7 @@ fun CanvasScreen(
         text = {
             Column {
                 Text("Save your artwork or look back on its drawing progress.")
-                if (library != null && documentId != null) TextButton(onClick = {
+                if (library != null && documentId != null) ActionIconButton(onClick = {
                     exportChoiceOpen = false
                     savesInFlight++
                     surface?.saveProject(library, documentId, documentName) { result ->
@@ -1131,11 +1131,11 @@ fun CanvasScreen(
                         result.onSuccess { projectExportOpen = true }
                             .onFailure { message = it.message ?: "Could not save drawing." }
                     }
-                }) { Text("Export editable TipStroke file") }
+                }, label = "Export editable TipStroke file", icon = Icons.Outlined.SaveAlt)
             }
         },
-        confirmButton = { TextButton(onClick = { exportChoiceOpen = false; exportOpen = true }) { Text("Export artwork") } },
-        dismissButton = { TextButton(onClick = { exportChoiceOpen = false; processOpen = true }) { Text("Drawing progress") } },
+        confirmButton = { ActionIconButton(onClick = { exportChoiceOpen = false; exportOpen = true }, label = "Export artwork", icon = Icons.Outlined.IosShare) },
+        dismissButton = { ActionIconButton(onClick = { exportChoiceOpen = false; processOpen = true }, label = "Drawing progress", icon = Icons.Outlined.History) },
     )
     if (projectExportOpen && library != null && documentId != null) {
         GalleryTransfer(library, listOf(documentId), { projectExportOpen = false }, {})
@@ -1208,7 +1208,7 @@ fun CanvasScreen(
                 Text("Light catches only very close alignments. Strong catches from farther away.")
             }
         },
-        confirmButton = { TextButton(onClick = { snapOptionsOpen = false }) { Text("Done") } },
+        confirmButton = { ActionIconButton(onClick = { snapOptionsOpen = false }, label = "Done", icon = Icons.Outlined.Check) },
     )
 
     if (resolutionOpen) {
@@ -1233,8 +1233,8 @@ fun CanvasScreen(
                 }
             },
             confirmButton = {
-                Button(enabled = !reducingResolution && targetWidth >= 16 && targetHeight >= 16, onClick = {
-                    val view = surface ?: return@Button
+                ActionIconButton(enabled = !reducingResolution && targetWidth >= 16 && targetHeight >= 16, onClick = {
+                    val view = surface ?: return@ActionIconButton
                     reducingResolution = true
                     view.reduceResolution(resolutionFactor) { result ->
                         reducingResolution = false
@@ -1244,9 +1244,9 @@ fun CanvasScreen(
                             saveWithoutLeaving()
                         }, onFailure = { message = it.message ?: "Could not reduce resolution." })
                     }
-                }) { Text("Reduce resolution") }
+                }, label = "Reduce resolution", icon = Icons.Outlined.PhotoSizeSelectSmall)
             },
-            dismissButton = { TextButton(enabled = !reducingResolution, onClick = { resolutionOpen = false }) { Text("Cancel") } },
+            dismissButton = { ActionIconButton(enabled = !reducingResolution, onClick = { resolutionOpen = false }, label = "Cancel", icon = Icons.Outlined.Close) },
         )
     }
 
@@ -1254,16 +1254,16 @@ fun CanvasScreen(
         onDismissRequest = { animationActivationOpen = false },
         title = { Text("Start animation") },
         text = { Text("Where should the current artwork go? You can change a layer between shared background and animated cel later.") },
-        confirmButton = { TextButton(onClick = {
+        confirmButton = { ActionIconButton(onClick = {
             surface?.enableAnimation(false)
             animationActivationOpen = false
             animationOpen = true
-        }) { Text("First frame") } },
-        dismissButton = { TextButton(onClick = {
+        }, label = "First frame", icon = Icons.Outlined.FirstPage) },
+        dismissButton = { ActionIconButton(onClick = {
             surface?.enableAnimation(true)
             animationActivationOpen = false
             animationOpen = true
-        }) { Text("Shared background") } },
+        }, label = "Shared background", icon = Icons.Outlined.Layers) },
     )
 
     }
@@ -1295,7 +1295,7 @@ private fun EditorChrome(
 ) {
     Box(modifier) {
         Row(Modifier.align(Alignment.TopStart).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (onBack != null) ChromeGroup { IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Back to gallery" }) { BackIcon() } }
+            if (onBack != null) ChromeGroup { TipHint("Back to gallery") { IconButton(onClick = onBack, modifier = Modifier.semantics { contentDescription = "Back to gallery" }) { BackIcon() } } }
             ChromeGroup {
                 IconAction("Undo", enabled = canUndo, onClick = onUndo) { UndoIcon() }
                 IconAction("Redo", enabled = canRedo, onClick = onRedo) { RedoIcon() }
@@ -1304,7 +1304,7 @@ private fun EditorChrome(
             }
         }
         ChromeGroup(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
-            IconButton(onClick = onLayers, modifier = Modifier.semantics { contentDescription = "Layers" }) { LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White) }
+            TipHint("Layers") { IconButton(onClick = onLayers, modifier = Modifier.semantics { contentDescription = "Layers" }) { LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White) } }
             if (showTopColorSwitcher) {
                 ColorSwitcher(color, frequentColors, onColor, onOpenColorPicker, compact = true, embedded = true)
             }
@@ -1352,20 +1352,12 @@ private fun PhoneEditorChrome(
     ) {
         val actions: @Composable () -> Unit = {
             if (onBack != null) {
-                IconButton(onClick = onBack, modifier = Modifier.size(38.dp).semantics { contentDescription = "Back to gallery" }) { BackIcon() }
+                TipHint("Back to gallery") { IconButton(onClick = onBack, modifier = Modifier.size(38.dp).semantics { contentDescription = "Back to gallery" }) { BackIcon() } }
             }
             PhoneIconAction("Undo", canUndo, onUndo) { UndoIcon() }
             PhoneIconAction("Redo", canRedo, onRedo) { RedoIcon() }
-            TextButton(
-                onClick = { onTouchDrawing(!touchDrawing) },
-                modifier = Modifier.size(width = 46.dp, height = 36.dp).semantics {
-                    contentDescription = if (touchDrawing) "Touch draws; tap for touch navigation" else "Touch navigates; tap for touch drawing"
-                },
-                colors = ButtonDefaults.textButtonColors(contentColor = if (touchDrawing) Color(0xFFED6A5A) else Color.White),
-                contentPadding = PaddingValues(0.dp),
-            ) {
-                Text(if (touchDrawing) "Draw" else "Pan", fontSize = 10.sp, maxLines = 1)
-            }
+            TipAction(if (touchDrawing) "Touch draws; switch to navigation" else "Touch navigates; switch to drawing",
+                if (touchDrawing) Icons.Outlined.Draw else Icons.Outlined.PanTool) { onTouchDrawing(!touchDrawing) }
             Box(
                 Modifier.size(30.dp).clip(CircleShape)
                     .background(Color(color.red, color.green, color.blue, color.alpha))
@@ -1374,14 +1366,14 @@ private fun PhoneEditorChrome(
                     .clickable(onClick = onColorPicker)
                     .semantics { contentDescription = "Open color picker" },
             )
-            IconButton(onClick = onLayers, modifier = Modifier.size(38.dp).semantics { contentDescription = "Layers" }) {
+            TipHint("Layers") { IconButton(onClick = onLayers, modifier = Modifier.size(38.dp).semantics { contentDescription = "Layers" }) {
                 LayersIcon(if (layersOpen) Color(0xFFED6A5A) else Color.White)
-            }
+            } }
             Box {
-                IconButton(
+                TipHint("More canvas actions") { IconButton(
                     onClick = { onMenuOpenChange(true) },
                     modifier = Modifier.size(38.dp).semantics { contentDescription = "More canvas actions" },
-                ) { MoreIcon() }
+                ) { MoreIcon() } }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
                     DropdownMenuItem(text = { Text("Fit canvas") }, onClick = { onMenuOpenChange(false); onReset() })
                     DropdownMenuItem(text = { Text("Export") }, onClick = { onMenuOpenChange(false); onExport() })

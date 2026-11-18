@@ -87,10 +87,8 @@ internal fun MediaTimelinePanel(
                     if (state.videoEdit == null) onEnableVideoEdit()
                     drawingTools = !drawingTools || state.videoEdit == null
                 }, enabled = !state.loading && !state.playing)
-                TextButton(onClick = { nextGap?.let(onSeek) }, enabled = nextGap != null && !state.coveragePending && !state.loading && !state.playing,
-                    contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    Text(if (state.coveragePending) "Checking…" else if (nextGap == null) "All drawn" else "Next undrawn", fontSize = 11.sp)
-                }
+                TipAction(if (state.coveragePending) "Checking undrawn frames" else if (nextGap == null) "All drawn" else "Next undrawn",
+                    Icons.Outlined.SkipNext, enabled = nextGap != null && !state.coveragePending && !state.loading && !state.playing) { nextGap?.let(onSeek) }
                 TipAction(if (drawingTools) "Collapse timeline" else "Expand timeline", if (drawingTools) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess, onClick = { drawingTools = !drawingTools })
                 TipAction("Drawing timing · ${state.fps} FPS", Icons.Outlined.Tune, onClick = { if (state.playing) onPlayPause(); settings = true })
                 TipAction("Close media timeline", Icons.Outlined.Close, onClick = onClose)
@@ -154,15 +152,15 @@ internal fun MediaTimelinePanel(
                     OutlinedTextField(hold, { if (it.length <= 3 && it.all(Char::isDigit)) hold = it }, label = { Text("Hold in drawing frames (1–600)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
                     Text("A new drawing replaces the previous one at its start time.", fontSize = 12.sp)
-                    TextButton(onClick = { onDelete(); settings = false }, enabled = state.frames.size > 1 && !state.playing) { Text("Delete selected drawing") }
+                    ActionIconButton(onClick = { onDelete(); settings = false }, enabled = state.frames.size > 1 && !state.playing, label = "Delete selected drawing", icon = Icons.Outlined.Delete)
                 }
             }
         }, confirmButton = {
-            TextButton(onClick = {
+            ActionIconButton(onClick = {
                 // FPS alone preserves exact existing duration. An edited hold uses the new grid.
                 fps.toIntOrNull()?.takeIf { it in 1..60 }?.let(onFps)
                 if (hold != ticks.toString()) hold.toIntOrNull()?.takeIf { it in 1..600 }?.let(onHold)
                 settings = false
-            }, enabled = fps.toIntOrNull() in 1..60 && (!state.mediaDrawingActive || hold.toIntOrNull() in 1..600)) { Text("Apply") }
-        }, dismissButton = { TextButton(onClick = { settings = false }) { Text("Cancel") } })
+            }, enabled = fps.toIntOrNull() in 1..60 && (!state.mediaDrawingActive || hold.toIntOrNull() in 1..600), label = "Apply", icon = Icons.Outlined.Check)
+        }, dismissButton = { ActionIconButton(onClick = { settings = false }, label = "Cancel", icon = Icons.Outlined.Close) })
 }

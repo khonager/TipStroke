@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -117,9 +118,8 @@ internal fun AnimationPanel(
         Column {
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Row(Modifier.height(58.dp).padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onPlayPause, modifier = Modifier.width(48.dp).semantics {
-                contentDescription = if (state.playing) "Pause animation" else "Play animation"
-            }, contentPadding = PaddingValues(0.dp)) { Text(if (state.playing) "Ⅱ" else "▶", fontSize = 19.sp) }
+            TipAction(if (state.playing) "Pause animation" else "Play animation",
+                if (state.playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, onClick = onPlayPause)
             LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 itemsIndexed(state.frames, key = { _, frame -> frame.id.value }) { index, frame ->
@@ -178,30 +178,25 @@ internal fun AnimationPanel(
                     }
                 }
             }
-            TextButton(onClick = onAddFrame, modifier = Modifier.width(36.dp).semantics {
+            ActionIconButton(onClick = onAddFrame, modifier = Modifier.width(36.dp).semantics {
                 contentDescription = "Add blank animation frame"
-            }, contentPadding = PaddingValues(0.dp)) { Text("+", fontSize = 22.sp) }
-            TextButton(onClick = onDuplicateFrame, modifier = Modifier.width(36.dp).semantics {
+            }, label = "Add blank animation frame", icon = Icons.Outlined.Add)
+            ActionIconButton(onClick = onDuplicateFrame, modifier = Modifier.width(36.dp).semantics {
                 contentDescription = "Duplicate selected animation frame"
-            }, contentPadding = PaddingValues(0.dp)) { Text("⧉", fontSize = 20.sp) }
+            }, label = "Duplicate selected animation frame", icon = Icons.Outlined.LibraryAdd)
             if (!state.hasMedia) Box {
-                TextButton(onClick = {
+                ActionIconButton(onClick = {
                     when {
                         state.recording != null -> onCancelRecording()
                         selectedLayer?.kind == LayerKind.RASTER -> onRecordLine()
                         else -> recordingMenu = true
                     }
-                }, modifier = Modifier.width(44.dp).semantics {
-                    contentDescription = when {
-                        state.recording != null -> "Stop animation recording"
-                        selectedLayer?.kind == LayerKind.RASTER -> "Record drawing live"
-                        else -> "Animation recording"
-                    }
-                }, contentPadding = PaddingValues(0.dp),
-                    colors = ButtonDefaults.textButtonColors(contentColor = if (state.recording != null) accent else Color.White)) {
-                    Text(if (state.recording == AnimationRecordingKind.LIVE_DRAWING) "■" else if (state.recording != null) "●" else "Rec",
-                        fontSize = if (state.recording != null) 17.sp else 11.sp)
-                }
+                }, label = when {
+                    state.recording != null -> "Stop animation recording"
+                    selectedLayer?.kind == LayerKind.RASTER -> "Record drawing live"
+                    else -> "Animation recording"
+                }, icon = if (state.recording != null) Icons.Outlined.Stop else Icons.Outlined.FiberManualRecord,
+                    colors = ButtonDefaults.textButtonColors(contentColor = if (state.recording != null) accent else Color.White))
                 DropdownMenu(expanded = recordingMenu, onDismissRequest = { recordingMenu = false }) {
                     if (state.recording != null) {
                         DropdownMenuItem(text = { Text("Stop recording") }, onClick = {
@@ -223,9 +218,9 @@ internal fun AnimationPanel(
                 }
             }
             Box {
-                TextButton(onClick = { menu = "main" }, modifier = Modifier.width(36.dp).semantics {
+                ActionIconButton(onClick = { menu = "main" }, modifier = Modifier.width(36.dp).semantics {
                     contentDescription = "Animation options"
-                }, contentPadding = PaddingValues(0.dp)) { Text("⋯", fontSize = 21.sp) }
+                }, label = "Animation options", icon = Icons.Outlined.MoreVert)
                 DropdownMenu(expanded = menu != null, onDismissRequest = { menu = null }) {
                     when (menu) {
                         "main" -> {
@@ -273,7 +268,7 @@ internal fun AnimationPanel(
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                                     keyboardActions = KeyboardActions(onDone = { applyFps() }),
                                     modifier = Modifier.weight(1f))
-                                TextButton(onClick = { applyFps() }, enabled = validFps != null) { Text("Set") }
+                                ActionIconButton(onClick = { applyFps() }, enabled = validFps != null, label = "Set", icon = Icons.Outlined.Check)
                             }
                             PlaybackMode.entries.forEach { mode ->
                                 DropdownMenuItem(text = { Text("${if (state.playbackMode == mode) "✓ " else ""}${mode.name.replace('_', ' ')}") },
@@ -304,9 +299,9 @@ internal fun AnimationPanel(
                     }
                 }
             }
-            TextButton(onClick = onClose, modifier = Modifier.width(32.dp).semantics {
+            ActionIconButton(onClick = onClose, modifier = Modifier.width(32.dp).semantics {
                 contentDescription = "Close animation timeline"
-            }, contentPadding = PaddingValues(0.dp)) { Text("×", fontSize = 21.sp) }
+            }, label = "Close animation timeline", icon = Icons.Outlined.Close)
         }
         if (expanded && timeline.totalTicks > 1) {
             Slider(value = if (scrubbing) scrubTick else selectedTick.toFloat(), onValueChange = { tick ->

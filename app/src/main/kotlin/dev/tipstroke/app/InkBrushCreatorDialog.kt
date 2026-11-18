@@ -57,7 +57,7 @@ internal fun InkBrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message
                     if (usesStamps && p.spacing < .1f) {
                         Text("Dense overlapping stamps can lag during fast, broad strokes. Increasing spacing changes the mark but reduces the work.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = { update(p.copy(spacing = .12f)) }) { Text("Try wider spacing") }
+                        ActionIconButton(onClick = { update(p.copy(spacing = .12f)) }, label = "Try wider spacing", icon = Icons.Outlined.SpaceBar)
                     }
                     sampleMillis?.let { elapsed -> Text(
                         "Sample render: ${elapsed.toInt()} ms on this device. This small preview does not test full-canvas drawing latency.",

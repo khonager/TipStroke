@@ -600,7 +600,7 @@ private fun TiltCalibrationPad(
             },
             style = MaterialTheme.typography.bodySmall,
         )
-        TextButton(
+        ActionIconButton(
             enabled = hasStylusSample && measuredTilt >= BrushPreset.MIN_PENCIL_FULL_TILT_RADIANS &&
                 measuredTilt <= BrushPreset.MAX_PENCIL_FULL_TILT_RADIANS,
             onClick = {
@@ -618,16 +618,15 @@ private fun TiltCalibrationPad(
                     onSensitivity(pencilTiltSensitivityForFullAngle(measuredTilt))
                 }
             },
-        ) {
-            Text(
+            icon = Icons.Outlined.Straighten,
+            label =
                 if (!hasStylusSample) "Use measured angle"
                 else if (tiltMode == PencilTiltMode.SHADING_SWITCH) {
                     "Use $measuredDegrees° as shading start"
                 } else {
                     "Use $measuredDegrees° as full shading"
                 },
-            )
-        }
+        )
     }
 }
 
