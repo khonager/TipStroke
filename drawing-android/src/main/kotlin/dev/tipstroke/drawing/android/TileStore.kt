@@ -1,5 +1,7 @@
 package dev.tipstroke.drawing.android
 
+import dev.tipstroke.core.drawing.mirrorCopies
+
 import android.graphics.*
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import androidx.ink.strokes.Stroke
@@ -172,11 +174,11 @@ class TileStore(
 
     override fun commit(stroke: CompletedStroke): Set<TileCoordinate> {
         if (stroke.style.lassoFill && stroke.samples.size < 3) return emptySet()
-        val dirty = TileGrid.intersecting(stroke.bounds, canvasWidth, canvasHeight, tileSize)
+        val dirty = stroke.mirrorCopies().flatMapTo(mutableSetOf()) { TileGrid.intersecting(it.bounds, canvasWidth, canvasHeight, tileSize) }
         if (dirty.isEmpty()) return emptySet()
         val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         val preparedPaint = StrokeCanvasPainter.preparePaint(stroke)
-        val blockAirbrush = stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH &&
+        val blockAirbrush = stroke.style.mirrorWheel == null && stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH &&
             stroke.style.brush.stamp == null && stroke.style.brush.ink == null && stroke.style.pixelTool == null &&
             stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.PAINT && stroke.style.referenceStrokes == null &&
             preparedPaint.maskFilter != null
@@ -216,7 +218,7 @@ class TileStore(
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke),
-            if (blockAirbrush || stroke.style.lassoFill) null else listOf(ReplayPaint(stroke))))
+            if (blockAirbrush || stroke.style.lassoFill || stroke.style.mirrorWheel != null) null else listOf(ReplayPaint(stroke))))
         lastDirtyTiles = dirty
         return dirty
     }

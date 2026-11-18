@@ -1725,6 +1725,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         opacityAdjustmentInProgress = false
         processRecorder?.detach()
         processRecorder = null
+        settings.mirrorCenter = null
         layerStack = createLayerStack(widthPx, heightPx)
         processRecorder = ProcessRecorder(widthPx, heightPx)
         processReadError = null
@@ -1869,6 +1870,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return !mediaSeeking && mediaCelLoading == null && active.mediaDrawingActive
     }
 
+    private var placingMirrorCenter = false
+    fun placeMirrorCenter() { placingMirrorCenter = true }
+    fun setMirrorCopies(copies: Int) {
+        require(copies in 1..12)
+        settings.mirrorCopies = copies
+        if (copies == 1) placingMirrorCenter = false
+        rasterView.mirrorEnabled = copies > 1
+        rasterView.invalidate()
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (!isEnabled || importingClip || pendingAnimationFrame != null) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !mediaSeeking && mediaCelLoading == null &&
@@ -1887,6 +1898,16 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             return true
         }
         resizeOverlay?.let { return it.dispatchTouchEvent(event) }
+        if (placingMirrorCenter && event.pointerCount == 1 && isDrawingPointer(event, event.actionIndex)) {
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                val point = rasterView.screenToDocument(event.x, event.y)
+                settings.mirrorCenter = Point(point.x.coerceIn(0f, canvasWidthPx.toFloat()), point.y.coerceIn(0f, canvasHeightPx.toFloat()))
+                placingMirrorCenter = false
+                rasterView.mirrorCenter = settings.mirrorCenter
+                rasterView.invalidate()
+            } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) placingMirrorCenter = false
+            return true
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             stopAnimationPlayback()
             gestureHandler.removeCallbacks(hideBrushPreview)
@@ -2023,7 +2044,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 shapeStyle = style
                 shapeSnapped = false
                 elasticStroke = settings.assists.elasticLine && !style.lassoFill
-                if (style.lassoFill || elasticStroke) {
+                if (style.lassoFill || elasticStroke || style.mirrorWheel != null) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
                 } else if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
@@ -2990,6 +3011,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         return StrokeStyle(brush, resolvedBrushSize(), settings.opacity, settings.color,
             if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
             lassoFill = settings.lassoFill && !erasing,
+            mirrorWheel = settings.mirrorCopies.takeIf { it in 2..12 && layerStack.selected() is RasterLayerRuntime }?.let {
+                dev.tipstroke.core.drawing.MirrorWheel(it, settings.mirrorCenter ?: Point(canvasWidthPx / 2f, canvasHeightPx / 2f))
+            },
             pixelTool = if (settings.lassoFill && !erasing) null else settings.pixelTool,
             referenceStrokes = if (settings.assists.paintInside) layerStack.selectedStore()?.let { ReferenceStrokes(it, true) } else referenceLayerId?.let { id ->
                 (layerStack.layers.firstOrNull { it.id == id } as? RasterLayerRuntime)?.let { ReferenceStrokes(it.tiles, id == layerStack.selectedId) }

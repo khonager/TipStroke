@@ -39,6 +39,7 @@ data class StrokeStyle(
     val referenceStrokes: StrokeCoverage? = null,
     /** Fill the sampled polygon, closed from the current tip to its start, using even-odd coverage. */
     val lassoFill: Boolean = false,
+    val mirrorWheel: MirrorWheel? = null,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
     /** Exact closure is emitted by fitted shapes and survives ordinary sample serialization. */

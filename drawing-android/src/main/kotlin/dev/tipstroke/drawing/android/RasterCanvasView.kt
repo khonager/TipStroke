@@ -61,6 +61,8 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var showImageTransformBounds = false
         set(value) { field = value; invalidate() }
     private val airbrushPreview = AirbrushPreview()
+    var mirrorCenter: dev.tipstroke.core.geometry.Point? = null
+    var mirrorEnabled = false
     var previewStroke: CompletedStroke? = null
         set(value) {
             field = value
@@ -290,6 +292,13 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                 }
             }
         }
+        if (mirrorEnabled) {
+            val center = mirrorCenter ?: dev.tipstroke.core.geometry.Point(layerStack.canvasWidth / 2f, layerStack.canvasHeight / 2f)
+            val guide = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.GRAY; strokeWidth = 1.5f / transform.scale }
+            val r = 8f / transform.scale
+            canvas.drawLine(center.x-r, center.y, center.x+r, center.y, guide)
+            canvas.drawLine(center.x, center.y-r, center.x, center.y+r, guide)
+        }
         drawFillFeedback(canvas)
         stylusHoverPreview?.let { preview -> drawStylusHoverPreview(canvas, preview) }
         if (showImageTransformBounds) {
@@ -321,7 +330,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     }
 
     private fun drawStrokePreview(canvas: Canvas, stroke: CompletedStroke) {
-        if (!stroke.style.lassoFill && stroke.style.pixelTool == null && stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH) {
+        if (stroke.style.mirrorWheel == null && !stroke.style.lassoFill && stroke.style.pixelTool == null && stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH) {
             airbrushPreview.draw(canvas, stroke, transform.scale)
         } else StrokeCanvasPainter.draw(canvas, stroke)
     }

@@ -481,3 +481,11 @@ Lift to commit; cancellation discards it. Strokes shorter than 24 screen dp rema
 ordinary marks. This replaces shape recognition while enabled, and does not affect
 lasso fill. Geometry fitting and bending live in core; native samples and previews
 stay on Android. Paint inside and selections also constrain elastic strokes.
+
+**Mirror wheel** in Tools offers Off, a two-sided horizontal reflection, or 4/6/8/12
+radial copies. It defaults to the document center; **Place mirror center…** consumes
+the next drawing-pointer tap to reposition the visible crosshair. Copies preview
+natively and commit together as one undo operation. Selection/Paint inside clips
+remain in document coordinates. Only copy footprints allocate tiles; recordings
+use exact patches. This session setting applies to raster brushes and lasso fill,
+not imported-image masks or smudge.

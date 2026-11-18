@@ -34,6 +34,7 @@ internal fun BrushFavoritesDock(
     onLassoFill: () -> Unit = {},
     assists: dev.tipstroke.core.drawing.BrushAssists = dev.tipstroke.core.drawing.BrushAssists(),
     onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
+    mirrorCopies: Int = 1, onMirrorCopies: (Int) -> Unit = {}, onMirrorCenter: () -> Unit = {},
 ) {
     var toolsOpen by remember { mutableStateOf(false) }
     Surface(modifier, color = Color(0xE6202125), shape = MaterialTheme.shapes.large,
@@ -84,6 +85,12 @@ internal fun BrushFavoritesDock(
                         if (assists.elasticLine) Text("Draw, hold, then drag to bend. Lift to finish.",
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.widthIn(max = 260.dp).padding(horizontal = 12.dp, vertical = 4.dp))
+                        listOf(1, 2, 4, 6, 8, 12).forEach { count ->
+                            val label = when (count) { 1 -> "Mirror wheel: Off"; 2 -> "Mirror: 2 sides"; else -> "Mirror wheel: $count copies" }
+                            DropdownMenuItem(text = { Text(label) }, leadingIcon = { RadioButton(mirrorCopies == count, null) },
+                                onClick = { onMirrorCopies(count) })
+                        }
+                        if (mirrorCopies > 1) DropdownMenuItem(text = { Text("Place mirror center…") }, onClick = { action(onMirrorCenter) })
                         Text("Paint inside keeps strokes on existing paint.", style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.widthIn(max = 260.dp).padding(horizontal = 12.dp, vertical = 4.dp))
                         DropdownMenuItem(text = { Text("Adjust tip") }, onClick = { action(onStudio) })

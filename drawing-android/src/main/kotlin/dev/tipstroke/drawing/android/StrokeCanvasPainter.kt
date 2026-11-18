@@ -1,5 +1,6 @@
 package dev.tipstroke.drawing.android
 
+import dev.tipstroke.core.drawing.mirrorCopies
 import android.graphics.BlurMaskFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
@@ -132,6 +133,10 @@ internal object StrokeCanvasPainter {
     }
 
     fun draw(canvas: Canvas, stroke: CompletedStroke, paint: Paint = preparePaint(stroke), airbrushBlockSize: Int = 256) {
+        if (stroke.style.mirrorWheel != null) {
+            stroke.mirrorCopies().forEach { draw(canvas, it, preparePaint(it), airbrushBlockSize) }
+            return
+        }
         if (!stroke.style.lassoFill && stroke.style.brush.stamp != null && stroke.style.blend == BlendBehavior.PAINT && stroke.style.pixelTool == null) {
             StampBrushRenderer(stroke.style).use { it.drawClipped(canvas, it.path.append(stroke.samples)) }
             return
