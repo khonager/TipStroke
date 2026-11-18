@@ -27,8 +27,8 @@ open class ColorShelf(savedData: String = "", initialSlots: Int = 4, initialRece
 }
 fun encodeColors(colors: List<RgbaColor>): String = colors.joinToString(";") { "${it.red},${it.green},${it.blue},${it.alpha}" }
 fun decodeColors(data: String): List<RgbaColor> = data.take(16384).split(';').mapNotNull { value ->
-    val channels = value.split(',').mapNotNull(String::toFloatOrNull)
-    if (channels.size == 4 && channels.all { it.isFinite() && it in 0f..1f }) RgbaColor(channels[0], channels[1], channels[2], channels[3]) else null
+    val channels = value.split(',').map(String::toFloatOrNull)
+    if (channels.size == 4 && channels.all { it != null && it.isFinite() && it in 0f..1f }) RgbaColor(channels[0]!!, channels[1]!!, channels[2]!!, channels[3]!!) else null
 }
 
 @Composable

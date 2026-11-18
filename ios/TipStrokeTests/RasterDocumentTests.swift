@@ -338,6 +338,27 @@ final class RasterDocumentTests: XCTestCase {
         XCTAssertGreaterThan(try alpha(document, x: 70, y: 20), 200)
     }
 
+    func testSmudgeTransportsAlphaInsteadOfDuplicatingPigment() throws {
+        let document = RasterDocument(name: "Smudge", width: 256, height: 256)
+        XCTAssertTrue(document.beginStroke())
+        _ = try document.paint(from: .init(x: 30, y: 30), to: .init(x: 30, y: 30), radius: 5, color: .black, erasing: false)
+        document.endStroke(cancelled: false)
+        func totalAlpha() throws -> Int {
+            let reader = TilePixels(document.pixels[document.activeLayer] ?? [:])
+            var sum = 0
+            for y in 15...45 { for x in 15...85 { sum += Int(try reader.rgba(x, y) & 255) } }
+            return sum
+        }
+        let before = try totalAlpha()
+        XCTAssertTrue(document.beginStroke())
+        try document.smudge(from: .init(x: 30, y: 30), to: .init(x: 70, y: 30), radius: 8, strength: 0.8)
+        document.endStroke(cancelled: false)
+        XCTAssertLessThan(abs(try totalAlpha() - before), 200)
+        XCTAssertGreaterThan(try alpha(document, x: 70, y: 30), 50)
+        XCTAssertLessThan(try alpha(document, x: 30, y: 30), 255)
+        document.undo(); XCTAssertEqual(try totalAlpha(), before)
+    }
+
     private func paint(_ document: RasterDocument, from: CGPoint, to: CGPoint) throws {
         _ = try document.paint(from: from, to: to, radius: 5, color: .black, erasing: false)
     }
