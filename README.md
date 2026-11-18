@@ -26,7 +26,8 @@ channel updates, persistent data, and how this differs from the desktop preview.
 
 ## iPhone and iPad
 
-The first native iOS port supports layered drawing, Apple Pencil and finger input,
+The native iOS port now links shared Kotlin brush rules and Compose color/size/blend
+controls. It supports layered drawing, Apple Pencil pressure/tilt, image import,
 undo/redo, local saves, and PNG sharing on iOS/iPadOS 16+. It is not yet at Android
 feature parity and does not read Android project packages.
 

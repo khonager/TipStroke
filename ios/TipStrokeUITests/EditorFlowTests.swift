@@ -22,6 +22,16 @@ final class EditorFlowTests: XCTestCase {
         app.buttons["Undo"].tap()
         XCTAssertTrue(app.buttons["Redo"].isEnabled)
         app.buttons["Redo"].tap()
+        // These elements come from Kotlin Compose panels, exercising the framework in the real app.
+        app.buttons["Brush size, opacity and finger drawing"].tap()
+        XCTAssertTrue(app.navigationBars["Brush settings"].waitForExistence(timeout: 10))
+        let pressure = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Pressure")).firstMatch
+        XCTAssertTrue(pressure.waitForExistence(timeout: 10))
+        app.navigationBars.buttons["Done"].tap()
+        app.buttons["Brush color"].tap()
+        let wheel = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Wheel color picker")).firstMatch
+        XCTAssertTrue(wheel.waitForExistence(timeout: 10))
+        app.navigationBars.buttons["Done"].tap()
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(app.buttons["Layers"].isHittable)
         app.buttons["Layers"].tap()

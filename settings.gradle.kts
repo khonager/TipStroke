@@ -6,4 +6,8 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "TipStroke"
-include(":app", ":core", ":shared-ui", ":desktop", ":drawing-android")
+include(":core", ":shared-ui")
+// Xcode/Codemagic builds need Java + Xcode, not an Android SDK.
+if (providers.gradleProperty("tipstroke.appleOnly").orNull != "true") {
+    include(":app", ":desktop", ":drawing-android")
+}

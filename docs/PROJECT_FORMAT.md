@@ -56,7 +56,11 @@ Version 5 adds optional `stretchX`, `stretchY` (positive finite floats, default 
 
 ## iOS local projects (separate format)
 
-The first iOS port uses `format: "dev.tipstroke.ios.raster"`, `schemaVersion: 1`.
+iOS writes `format: "dev.tipstroke.ios.raster"`, `schemaVersion: 2`, and continues
+reading version 1. Version 2 adds stable blend-mode names (matching `LayerBlendMode`),
+`locked` and `alphaLocked`; absent fields in version 1 default to NORMAL/false/false.
+Existing documents are upgraded on their next successful save. Unknown schema
+versions and blend modes fail validation rather than being silently flattened.
 This is not Android schema version 1 and is not a `.tipstroke` interchange format.
 It lives under Application Support/TipStroke in the app sandbox:
 
@@ -67,8 +71,8 @@ It lives under Application Support/TipStroke in the app sandbox:
 ```
 
 The manifest stores identity, name, finite dimensions, modified date, selected
-layer ID and back-to-front layer metadata (ID, name, visibility, opacity and tile
-coordinates). Tiles are 256×256 sRGB PNGs; unallocated pixels are transparent over
+layer ID and back-to-front layer metadata (ID, name, visibility, opacity, blend
+mode, lock flags and tile coordinates). Tiles are 256×256 sRGB PNGs; unallocated pixels are transparent over
 white paper. Dimensions are 16–4096 px per side, with at most 32 layers and 512
 allocated tiles across the document. Undo history is transient.
 

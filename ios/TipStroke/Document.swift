@@ -19,18 +19,35 @@ struct TileKey: Hashable, Codable {
     }
 }
 
-struct LayerRecord: Codable, Identifiable {
+struct LayerRecord: Codable, Identifiable, Equatable {
     var id = UUID()
     var name = "Layer 1"
     var visible = true
     var opacity: Double = 1
     var tiles: [TileKey] = []
+    var blendMode = "NORMAL"
+    var locked = false
+    var alphaLocked = false
+
+    init() {}
+    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        visible = try values.decode(Bool.self, forKey: .visible)
+        opacity = try values.decode(Double.self, forKey: .opacity)
+        tiles = try values.decode([TileKey].self, forKey: .tiles)
+        blendMode = try values.decodeIfPresent(String.self, forKey: .blendMode) ?? "NORMAL"
+        locked = try values.decodeIfPresent(Bool.self, forKey: .locked) ?? false
+        alphaLocked = try values.decodeIfPresent(Bool.self, forKey: .alphaLocked) ?? false
+    }
 }
 
-struct DocumentRecord: Codable, Identifiable {
+struct DocumentRecord: Codable, Identifiable, Equatable {
     // Separate format namespace: never interpret Android project manifests as iOS documents.
     var format = "dev.tipstroke.ios.raster"
-    var schemaVersion = 1
+    var schemaVersion = 2
     var id = UUID()
     var name = "Untitled"
     var width = 2048
@@ -40,7 +57,7 @@ struct DocumentRecord: Codable, Identifiable {
     var selectedLayer: UUID?
 
     func validate() throws {
-        guard format == "dev.tipstroke.ios.raster", schemaVersion == 1 else {
+        guard format == "dev.tipstroke.ios.raster", (1...2).contains(schemaVersion) else {
             throw DrawingError.message("This drawing uses an unsupported project format.")
         }
         guard (16...4096).contains(width), (16...4096).contains(height),
@@ -51,7 +68,7 @@ struct DocumentRecord: Codable, Identifiable {
         }
         var tileCount = 0
         for layer in layers {
-            guard layer.opacity.isFinite, (0...1).contains(layer.opacity),
+            guard RasterDocument.blendModes[layer.blendMode] != nil, layer.opacity.isFinite, (0...1).contains(layer.opacity),
                   Set(layer.tiles).count == layer.tiles.count,
                   layer.tiles.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (width + 255) / 256 && $0.y < (height + 255) / 256 }) else {
                 throw DrawingError.message("This drawing has invalid layer metadata.")

@@ -205,3 +205,14 @@ remain native and no Compose state is updated per sample. Sparse painted tiles
 remain the permanent source. Color Harmony suggests five HSV hue relationships
 without changing brush rendering. See [COLOR_FEATURES.md](COLOR_FEATURES.md) for
 usage, Procreate sources, and the explicitly unimplemented color tools.
+
+## Apple adapter
+
+The Apple app now consumes the core built-in presets, pressure curves and pencil
+shading response through `NativeBrush`. The wrapper is immutable for an entire
+stroke. Its UIKit/Core Graphics renderer paints sparse tiles and supplies native
+soft dabs for Airbrush, round Ink/Eraser marks and tilt-sized Pencil marks. This
+shares parameter semantics, not Jetpack Ink/stamp renderer output. Graphite grain,
+speed taper, stabilization and custom/Jetpack tip rendering remain unimplemented
+on Apple. Brush JSON encoding/validation is shared in `core/brush`; iOS uses it for
+local tuning preferences and Android uses it for existing library/pack workflows.

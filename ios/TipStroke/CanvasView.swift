@@ -1,20 +1,29 @@
 import UIKit
+import TipStrokeShared
 
-final class CanvasView: UIView {
-    enum Tool: String, CaseIterable { case pencil = "Pencil", ink = "Ink", eraser = "Eraser" }
+final class CanvasView: UIView, UIGestureRecognizerDelegate {
+    enum Tool: String, CaseIterable {
+        case pencil = "Pencil", ink = "Ink", airbrush = "Airbrush", eraser = "Eraser"
+        var brushID: String {
+            switch self { case .pencil: return "pencil-v1"; case .airbrush: return "airbrush-v1"; default: return "ink-v1" }
+        }
+    }
     let document: RasterDocument
     var tool: Tool = .ink
+    var brush = NativeBrush.companion.builtIn(id: "ink-v1")
     var brushColor: UIColor = .black
     var brushSize: CGFloat = 8
     var brushOpacity: CGFloat = 1
     var fingerDrawing = true
     var onCommit: (() -> Void)?
+    var onPickColor: ((UIColor) -> Void)?
     var onError: ((Error) -> Void)?
     var isDrawing: Bool { pointer != nil }
     private var displayTiles: [TileKey: CALayer] = [:]
     private var pointer: UITouch?
     private var previous: CGPoint?
     private var previousTimestamp: TimeInterval = -1
+    private var strokeBrush = NativeBrush.companion.builtIn(id: "ink-v1")
     private var strokeTool: Tool = .ink
     private var strokeColor = UIColor.black
     private var strokeSize: CGFloat = 8
@@ -28,6 +37,12 @@ final class CanvasView: UIView {
         isOpaque = true
         clipsToBounds = true
         accessibilityLabel = "Drawing canvas"
+        let picker = UILongPressGestureRecognizer(target: self, action: #selector(pickColor(_:)))
+        picker.minimumPressDuration = 0.55
+        picker.cancelsTouchesInView = false
+        picker.delegate = self
+        picker.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        addGestureRecognizer(picker)
         accessibilityHint = "Draw with one finger or Apple Pencil. Use two fingers to pan and pinch to zoom."
     }
     required init?(coder: NSCoder) { fatalError("Use init(document:)") }
@@ -75,6 +90,7 @@ final class CanvasView: UIView {
     private func start(_ touch: UITouch, event: UIEvent?) {
         guard document.beginStroke() else { return }
         pointer = touch; previous = nil; previousTimestamp = -1
+        strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
         consume(touch, event: event)
     }
@@ -102,6 +118,18 @@ final class CanvasView: UIView {
         refresh()
         onCommit?()
     }
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        pointer?.type != .pencil && gestureRecognizer.numberOfTouches == 1
+    }
+    @objc private func pickColor(_ gesture: UILongPressGestureRecognizer) {
+        guard pointer?.type != .pencil, gesture.state == .began || gesture.state == .changed else { return }
+        cancelStroke()
+        do {
+            if let color = try document.color(at: gesture.location(in: self)) {
+                brushColor = color; onPickColor?(color)
+            }
+        } catch { onError?(error) }
+    }
     private func consume(_ touch: UITouch, event: UIEvent?) {
         do {
             var dirty = CGRect.null
@@ -112,11 +140,18 @@ final class CanvasView: UIView {
                 let measured = sample.type == .pencil && sample.maximumPossibleForce > 0 &&
                     !sample.estimatedProperties.contains(.force) && sample.force > 0
                 let pressure = measured ? max(0.05, min(1, sample.force / sample.maximumPossibleForce)) : 0.5
-                let radius = max(0.25, strokeSize * (strokeTool == .eraser ? 0.5 : 0.15 + pressure * 0.7))
-                let alpha = strokeOpacity * (strokeTool == .pencil ? 0.65 : 1)
+                let tilt = sample.type == .pencil ? Float(.pi / 2 - sample.altitudeAngle) : 0
+                let shading = strokeTool == .pencil ? CGFloat(strokeBrush.tiltResponse(radians: tilt)) : 0
+                let response = CGFloat(strokeBrush.sizeResponse(pressure: Float(pressure)))
+                let pencilScale = CGFloat(strokeBrush.pencilPointSize) * (1 + 9 * CGFloat(strokeBrush.pencilShadeSize) * shading) * 0.18
+                let radius = max(0.25, strokeSize * 0.5 * (strokeTool == .eraser ? 1 : response) *
+                    (strokeTool == .pencil ? pencilScale : 1))
+                let alpha = strokeOpacity * (strokeTool == .eraser ? 1 : CGFloat(strokeBrush.opacityResponse(pressure: Float(pressure)))) *
+                    (1 + (CGFloat(strokeBrush.pencilShadeOpacity) - 1) * shading)
                 let color = (strokeTool == .eraser ? UIColor.black : strokeColor).withAlphaComponent(alpha)
                 dirty = dirty.union(try document.paint(from: previous ?? point, to: point, radius: radius,
-                                                       color: color, erasing: strokeTool == .eraser))
+                                                       color: color, erasing: strokeTool == .eraser,
+                                                       softness: strokeTool == .airbrush ? 1 - CGFloat(strokeBrush.hardness) : 0))
                 previous = point; previousTimestamp = sample.timestamp
             }
             if !dirty.isNull { refresh(dirty) }

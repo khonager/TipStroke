@@ -8,7 +8,7 @@
 
 `:app` owns Android lifecycle and normal UI. Compose is used for controls, but no stylus sample enters Compose state.
 
-`:core` is now a Kotlin Multiplatform module: Android/desktop consume its JVM variant; iOS device and simulator targets compile the same common models, geometry, brush math, and timeline logic. `:shared-ui` owns portable Compose controls (precision sliders and the blend-mode picker); Android and desktop consume the same slider implementation. See [Multiplatform migration](MULTIPLATFORM.md) for current integration and remaining parity work.
+`:core` is now a Kotlin Multiplatform module: Android/desktop consume its JVM variant; iOS device and simulator targets compile the same common models, geometry, brush math, and timeline logic. `:shared-ui` owns portable Compose controls (color picker, precision sliders, brush settings and the blend-mode picker); Android and desktop consume the same slider implementation. See [Multiplatform migration](MULTIPLATFORM.md) for current integration and remaining parity work.
 
 `:desktop` is a deliberately smaller Linux/JVM companion. Compose Multiplatform owns its window and controls, while a direct AWT `JComponent` owns input and rasterization so pointer samples never enter Compose state. It reuses `:core` brush defaults, allocates the same 256×256 sparse tile size, repaints only dirty/visible regions, and bounds tile-local undo snapshots to 128 MiB. It can open and export PNGs, but it does not yet implement Android project packages, layers, selections, or Jetpack Ink. The desktop path never changes or abstracts the production Android hot path.
 
@@ -206,11 +206,18 @@ Photo transforms include independent X/Y stretch and an optional normalized 16×
 
 ## Native iOS target
 
-`ios/` is a separate UIKit application targeting iPhone and iPad on iOS 16+.
-It does not convert the JVM `:core` module to Kotlin Multiplatform or change the
-Android drawing pipeline. `DocumentRecord` defines explicitly versioned Swift
+`ios/` is a UIKit application targeting iPhone and iPad on iOS 16+. It links the
+shared Kotlin core and Compose controls through `TipStrokeShared.framework`.
+`AppleEditorBridge` exchanges settings/commands only; native pointer samples never
+enter shared UI state. `NativeBrush` captures shared presets/pressure/tilt rules
+at stroke start. Android's native drawing pipeline is unchanged.
+`DocumentRecord` defines explicitly versioned Swift
 metadata with UUID document/layer identities. `RasterDocument` owns immutable
 256×256 RGBA tile images per paint layer and tile-local before/after stroke history.
+Layer operations retain immutable image references without copying bitmap data;
+history has a 32 MiB retention budget and a 128-operation cap. Image imports decode
+and generate fitted tiles on the project queue, then publish one undoable layer
+on the main thread. Layer blending is applied in both display and PNG composition.
 
 `CanvasView` consumes `UITouch` and coalesced events directly. Each segment changes
 only intersecting tiles; cancellation restores the before images. A native

@@ -18,7 +18,7 @@ TipStroke is an Android-first, local-first drawing app. Optimize for “open can
 - `:shared-ui`: Compose Multiplatform controls using core contracts; no native drawing implementation or per-sample pointer state.
 - `:drawing-android`: stylus routing, Jetpack Ink authoring, sparse Android bitmap tiles, compositing, gestures.
 - `:app`: lifecycle and minimal Compose controls around the native surface.
-- `ios/`: independent native iPhone/iPad app, sparse raster engine, local persistence and Xcode tests. See `docs/IOS.md`; builds run in Codemagic or macOS/Xcode.
+- `ios/`: native iPhone/iPad canvas and platform adapters, linked to `:core`/`:shared-ui` through `TipStrokeShared.framework`, with local persistence and Xcode tests. See `docs/IOS.md`; builds run in Codemagic or macOS/Xcode.
 
 ## Commands
 
@@ -30,3 +30,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Update the relevant document in `docs/` whenever architecture, input behavior, brush semantics, performance constraints, project format, or roadmap changes.
+
+## Shared feature development
+
+- Put portable feature rules/serialization in `:core` and reusable controls in `:shared-ui`; Android and iOS hosts should supply platform adapters. Moving Kotlin targets alone does not provide feature parity.
+- Preserve native input/rendering. Add an Apple adapter or explicitly update the parity table in `docs/IOS.md` when introducing Android-only behavior.
+- Apple CI uses JDK 17, Xcode 26.0 and `-Ptipstroke.appleOnly=true`; no Android SDK is needed for that build path.

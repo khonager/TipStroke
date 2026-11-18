@@ -1,9 +1,13 @@
 import UIKit
+import TipStrokeShared
 
 final class LayersController: UITableViewController {
     let document: RasterDocument
     var onChange: (() -> Void)?
-    init(document: RasterDocument) { self.document = document; super.init(style: .insetGrouped) }
+    let sharedControls: AppleEditorBridge
+    init(document: RasterDocument, sharedControls: AppleEditorBridge) {
+        self.document = document; self.sharedControls = sharedControls; super.init(style: .insetGrouped)
+    }
     required init?(coder: NSCoder) { fatalError("Use init(document:)") }
     override func viewDidLoad() {
         super.viewDidLoad(); title = "Layers"
@@ -21,7 +25,7 @@ final class LayersController: UITableViewController {
     private func changed() { tableView.reloadData(); onChange?() }
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { document.record.layers.count }
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        "Top layers paint above lower layers. Tap a row for settings; drag its handle to reorder. Deleting a layer clears stroke undo history."
+        "Top layers paint above lower layers. Tap a row for settings; drag its handle to reorder. Layer edits can be undone from the canvas."
     }
     override func tableView(_ tableView: UITableView, cellForRowAt path: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "layer", for: path)
@@ -37,15 +41,17 @@ final class LayersController: UITableViewController {
         let offset = index(path)
         document.record.selectedLayer = document.record.layers[offset].id
         changed()
-        let settings = LayerSettingsController(document: document, id: document.activeLayer)
+        let settings = LayerSettingsController(document: document, id: document.activeLayer, sharedControls: sharedControls)
         settings.onChange = { [weak self] in self?.changed() }
         navigationController?.pushViewController(settings, animated: true)
     }
     override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool { true }
     override func tableView(_ tableView: UITableView, moveRowAt source: IndexPath, to destination: IndexPath) {
         let sourceIndex = index(source); let destinationIndex = index(destination)
+        document.beginMetadataEdit()
         let layer = document.record.layers.remove(at: sourceIndex)
         document.record.layers.insert(layer, at: destinationIndex)
+        document.endMetadataEdit()
         changed()
     }
     override func tableView(_ tableView: UITableView, editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
@@ -54,10 +60,12 @@ final class LayersController: UITableViewController {
     override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt path: IndexPath) {
         guard editingStyle == .delete else { return }
         let layer = document.record.layers[index(path)]
-        let alert = UIAlertController(title: "Delete \(layer.name)?", message: "This also clears stroke undo history.", preferredStyle: .alert)
+        let alert = UIAlertController(title: "Delete \(layer.name)?", message: "You can undo this from the canvas.", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            self?.document.deleteLayer(layer.id); self?.changed()
+            guard let self else { return }
+            do { try self.document.deleteLayer(layer.id); self.changed() }
+            catch { self.showError(error) }
         })
         present(alert, animated: true)
     }
@@ -67,11 +75,18 @@ final class LayerSettingsController: UIViewController {
     let document: RasterDocument
     let id: UUID
     var onChange: (() -> Void)?
-    init(document: RasterDocument, id: UUID) { self.document = document; self.id = id; super.init(nibName: nil, bundle: nil) }
+    let sharedControls: AppleEditorBridge
+    private var editingMetadata = false
+    init(document: RasterDocument, id: UUID, sharedControls: AppleEditorBridge) {
+        self.document = document; self.id = id; self.sharedControls = sharedControls; super.init(nibName: nil, bundle: nil)
+    }
     required init?(coder: NSCoder) { fatalError("Use init(document:id:)") }
     private func update(_ change: (inout LayerRecord) -> Void) {
         guard let index = document.record.layers.firstIndex(where: { $0.id == id }) else { return }
-        change(&document.record.layers[index]); onChange?()
+        if !editingMetadata { document.beginMetadataEdit() }
+        change(&document.record.layers[index])
+        if !editingMetadata { document.endMetadataEdit() }
+        onChange?()
     }
     override func viewDidLoad() {
         super.viewDidLoad(); title = "Layer settings"; view.backgroundColor = .systemBackground
@@ -88,10 +103,66 @@ final class LayerSettingsController: UIViewController {
         let opacityLabel = UILabel(); opacityLabel.text = "Opacity"
         let opacity = UISlider(); opacity.minimumValue = 0; opacity.maximumValue = 1; opacity.value = Float(layer.opacity); opacity.accessibilityLabel = "Layer opacity"
         opacity.addAction(UIAction { [weak self, weak opacity] _ in self?.update { $0.opacity = Double(opacity?.value ?? 1) } }, for: .valueChanged)
-        let stack = UIStackView(arrangedSubviews: [name, row, opacityLabel, opacity]); stack.axis = .vertical; stack.spacing = 20
-        stack.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(stack)
-        NSLayoutConstraint.activate([stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
-            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24)])
+        opacity.addAction(UIAction { [weak self] _ in self?.beginAdjustment() }, for: .touchDown)
+        opacity.addAction(UIAction { [weak self] _ in self?.endAdjustment() }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        name.addAction(UIAction { [weak self] _ in self?.beginAdjustment() }, for: .editingDidBegin)
+        name.addAction(UIAction { [weak self] _ in self?.endAdjustment() }, for: .editingDidEnd)
+        func toggle(_ title: String, enabled: Bool, change: @escaping (inout LayerRecord, Bool) -> Void) -> UIView {
+            let label = UILabel(); label.text = title
+            let control = UISwitch(); control.isOn = enabled; control.accessibilityLabel = title
+            control.addAction(UIAction { [weak self, weak control] _ in
+                self?.update { change(&$0, control?.isOn ?? false) }
+            }, for: .valueChanged)
+            let row = UIStackView(arrangedSubviews: [label, control]); row.distribution = .equalSpacing
+            return row
+        }
+        let lock = toggle("Lock layer", enabled: layer.locked) { $0.locked = $1 }
+        let alpha = toggle("Lock transparency", enabled: layer.alphaLocked) { $0.alphaLocked = $1 }
+        let blend = UIButton(type: .system); blend.setTitle("Blend mode", for: .normal)
+        blend.addAction(UIAction { [weak self] _ in
+            guard let self, let layer = self.document.record.layers.first(where: { $0.id == self.id }) else { return }
+            self.beginAdjustment()
+            let controller = self.sharedControls.blendController(layerId: self.id.uuidString, modeName: layer.blendMode) { [weak self] mode in
+                self?.update { $0.blendMode = mode }; return KotlinUnit()
+            }
+            self.navigationController?.pushViewController(controller, animated: true)
+        }, for: .touchUpInside)
+        let duplicate = UIButton(type: .system); duplicate.setTitle("Duplicate layer", for: .normal)
+        duplicate.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            do { try self.document.duplicateLayer(self.id); self.onChange?(); self.navigationController?.popViewController(animated: true) }
+            catch { self.showError(error) }
+        }, for: .touchUpInside)
+        let stack = UIStackView(arrangedSubviews: [name, row, opacityLabel, opacity, lock, alpha, blend, duplicate]); stack.axis = .vertical; stack.spacing = 20
+        let scroll = UIScrollView(); scroll.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scroll); scroll.addSubview(stack); stack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 24),
+            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -24),
+            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -24),
+            stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -48)
+        ])
     }
+    private func beginAdjustment() {
+        guard !editingMetadata else { return }
+        document.beginMetadataEdit(); editingMetadata = true
+    }
+    private func endAdjustment() {
+        guard editingMetadata else { return }
+        document.endMetadataEdit(); editingMetadata = false; onChange?()
+    }
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated); endAdjustment()
+    }
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isMovingFromParent || navigationController?.isBeingDismissed == true { endAdjustment() }
+    }
+    deinit { if editingMetadata { document.endMetadataEdit() } }
+
 }

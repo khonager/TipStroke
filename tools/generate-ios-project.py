@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate the dependency-free Xcode project; usable from Linux and macOS."""
+"""Regenerate the Xcode project with its local Kotlin framework integration; usable from Linux and macOS."""
 import hashlib
 import json
 from pathlib import Path
@@ -40,7 +40,9 @@ main_group = obj("main-group", "PBXGroup", children=groups + [products], sourceT
 
 common = dict(IPHONEOS_DEPLOYMENT_TARGET="16.0", SDKROOT="iphoneos", SWIFT_VERSION="5.0",
               CLANG_ENABLE_MODULES="YES", CLANG_ENABLE_OBJC_ARC="YES", TARGETED_DEVICE_FAMILY="1,2",
-              ENABLE_USER_SCRIPT_SANDBOXING="NO", SWIFT_STRICT_CONCURRENCY="minimal")
+              ENABLE_USER_SCRIPT_SANDBOXING="NO", SWIFT_STRICT_CONCURRENCY="minimal",
+              FRAMEWORK_SEARCH_PATHS=["$(inherited)", "$(SRCROOT)/../shared-ui/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"])
+
 
 def configurations(name, settings):
     configs = []
@@ -59,7 +61,12 @@ app_settings = dict(PRODUCT_BUNDLE_IDENTIFIER="dev.tipstroke.ios", PRODUCT_NAME=
                     MARKETING_VERSION="0.1.0", ASSETCATALOG_COMPILER_APPICON_NAME="AppIcon",
                     SUPPORTED_PLATFORMS="iphoneos iphonesimulator", SUPPORTS_MACCATALYST="NO",
                     SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD="NO", LD_RUNPATH_SEARCH_PATHS="$(inherited) @executable_path/Frameworks")
+app_settings["OTHER_LDFLAGS"] = ["$(inherited)", "-framework", "TipStrokeShared", "-lsqlite3"]
 app_config = configurations("app", app_settings)
+kotlin_phase = obj("compile-kotlin", "PBXShellScriptBuildPhase", buildActionMask=2147483647,
+                   files=[], inputPaths=[], outputPaths=[], alwaysOutOfDate=1,
+                   name="Build shared Kotlin controls and core", runOnlyForDeploymentPostprocessing=0,
+                   shellPath="/bin/sh", shellScript='sh "$SRCROOT/../tools/build-ios-shared.sh"\n')
 asset_phase = obj("prepare-assets", "PBXShellScriptBuildPhase", buildActionMask=2147483647, files=[],
                   inputPaths=["$(SRCROOT)/../app/src/main/res/drawable-nodpi/tipstroke_launcher.png"],
                   outputPaths=["$(SRCROOT)/TipStroke/Assets.xcassets/AppIcon.appiconset/AppIcon.png"],
@@ -71,7 +78,7 @@ def phases(name, include_resources=False):
             obj(name + "frameworks", "PBXFrameworksBuildPhase", buildActionMask=2147483647, files=[], runOnlyForDeploymentPostprocessing=0),
             obj(name + "resources", "PBXResourcesBuildPhase", buildActionMask=2147483647, files=resources if include_resources else [], runOnlyForDeploymentPostprocessing=0)]
 
-app = obj("app-target", "PBXNativeTarget", buildConfigurationList=app_config, buildPhases=[asset_phase] + phases("TipStroke", True), buildRules=[], dependencies=[], name="TipStroke", productName="TipStroke", productReference=app_product, productType="com.apple.product-type.application")
+app = obj("app-target", "PBXNativeTarget", buildConfigurationList=app_config, buildPhases=[kotlin_phase, asset_phase] + phases("TipStroke", True), buildRules=[], dependencies=[], name="TipStroke", productName="TipStroke", productReference=app_product, productType="com.apple.product-type.application")
 targets = [app]
 for name, product, kind in [("TipStrokeTests", unit_product, "unit-test"), ("TipStrokeUITests", ui_product, "ui-testing")]:
     proxy = obj(name + "proxy", "PBXContainerItemProxy", containerPortal=key("project"), proxyType=1, remoteGlobalIDString=app, remoteInfo="TipStroke")

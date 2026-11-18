@@ -394,3 +394,13 @@ center. Done or closing the layer controls retains the current mode. Preview
 changes form one bounded undo transaction, attached to the original layer even
 if selection changes before the picker closes. Process recording and palette
 refresh wait until comparison ends rather than capturing every intermediate mode.
+
+## Apple shared-controls integration
+
+UIKit continues to consume all real/coalesced samples directly. At stroke start,
+`CanvasView` captures an immutable shared `NativeBrush`; pressure curves and tilt
+response use the same core rules as Android. Pencil altitude becomes tilt measured
+from upright. Native rendering remains distinct: no Jetpack Ink texture parity is
+claimed. Compose panels exchange coarse settings and never receive touch samples.
+A finger long-press cancels provisional paint before sampling composite color.
+Command-Z, Shift-Command-Z and Command-0 provide undo, redo and fit on iPad keyboards.

@@ -12,7 +12,7 @@ consolidation only after visual and latency parity; see [Brush engine](BRUSH_ENG
 
 ## Multiplatform migration
 
-Use Kotlin Multiplatform for shared models, editing logic, and Compose controls while preserving native drawing surfaces. The initial migration moves core code/tests to common source sets and shares precision sliders and the blend-mode picker. Android/desktop consume shared sliders; iOS target compilation is configured but the Swift app remains independent. Next: shared editor state, project serialization and compatibility fixtures, library/gallery UI, then replace the legacy desktop preview with the shared editor. Desktop delivery is KMP or emulated Android, not a separately implemented desktop companion. NVIDIA desktop and mixed-DPI testing are required alongside AMD/Intel; see [migration status](MULTIPLATFORM.md).
+Use Kotlin Multiplatform for shared models, editing logic, and Compose controls while preserving native drawing surfaces. The initial migration moves core code/tests to common source sets and shares precision sliders and the blend-mode picker. Android/desktop consume shared sliders; the Swift app links common color/size/blend controls and brush rules through a locally built Kotlin framework. Full editor and rendering parity remain incomplete; see `IOS.md`. Next: shared editor state, project serialization and compatibility fixtures, library/gallery UI, then replace the legacy desktop preview with the shared editor. Desktop delivery is KMP or emulated Android, not a separately implemented desktop companion. NVIDIA desktop and mixed-DPI testing are required alongside AMD/Intel; see [migration status](MULTIPLATFORM.md).
 
 ## NEXT
 

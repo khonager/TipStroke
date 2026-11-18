@@ -141,9 +141,19 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "4E2DE118C918A8A20EDE63AA";
 		};
+		"130C25EBC91DBC0E4C1168C6" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "SharedControlsTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"1E1D144AF33671DAAF24AF3B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "130C25EBC91DBC0E4C1168C6";
+		};
 		"9D7E938B0BFBC2F315A2D5AF" = {
 			"isa" = "PBXGroup";
-			"children" = ("4E2DE118C918A8A20EDE63AA");
+			"children" = ("4E2DE118C918A8A20EDE63AA", "130C25EBC91DBC0E4C1168C6");
 			"path" = "TipStrokeTests";
 			"sourceTree" = "<group>";
 		};
@@ -179,6 +189,7 @@
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "NO";
 				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"FRAMEWORK_SEARCH_PATHS" = ("$(inherited)", "$(SRCROOT)/../shared-ui/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)");
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"ENABLE_TESTABILITY" = "YES";
@@ -197,6 +208,7 @@
 				"TARGETED_DEVICE_FAMILY" = "1,2";
 				"ENABLE_USER_SCRIPT_SANDBOXING" = "NO";
 				"SWIFT_STRICT_CONCURRENCY" = "minimal";
+				"FRAMEWORK_SEARCH_PATHS" = ("$(inherited)", "$(SRCROOT)/../shared-ui/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)");
 				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
 				"SWIFT_COMPILATION_MODE" = "wholemodule";
@@ -223,6 +235,7 @@
 				"SUPPORTS_MACCATALYST" = "NO";
 				"SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD" = "NO";
 				"LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/Frameworks";
+				"OTHER_LDFLAGS" = ("$(inherited)", "-framework", "TipStrokeShared", "-lsqlite3");
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"ENABLE_TESTABILITY" = "YES";
@@ -244,6 +257,7 @@
 				"SUPPORTS_MACCATALYST" = "NO";
 				"SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD" = "NO";
 				"LD_RUNPATH_SEARCH_PATHS" = "$(inherited) @executable_path/Frameworks";
+				"OTHER_LDFLAGS" = ("$(inherited)", "-framework", "TipStrokeShared", "-lsqlite3");
 				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
 				"DEBUG_INFORMATION_FORMAT" = "dwarf-with-dsym";
 				"SWIFT_COMPILATION_MODE" = "wholemodule";
@@ -255,6 +269,18 @@
 			"buildConfigurations" = ("E9B2E96ABC5F6856F2BE79CF", "5A8C91857F674E16E2724F47");
 			"defaultConfigurationIsVisible" = 0;
 			"defaultConfigurationName" = "Release";
+		};
+		"C0E99C5B8727E53B0D02E95C" = {
+			"isa" = "PBXShellScriptBuildPhase";
+			"buildActionMask" = 2147483647;
+			"files" = ();
+			"inputPaths" = ();
+			"outputPaths" = ();
+			"alwaysOutOfDate" = 1;
+			"name" = "Build shared Kotlin controls and core";
+			"runOnlyForDeploymentPostprocessing" = 0;
+			"shellPath" = "/bin/sh";
+			"shellScript" = "sh \"$SRCROOT/../tools/build-ios-shared.sh\"\n";
 		};
 		"7C7B4C5A47EBDC1426108EBB" = {
 			"isa" = "PBXShellScriptBuildPhase";
@@ -288,7 +314,7 @@
 		"F75109BEB4DD8800DA6B45F8" = {
 			"isa" = "PBXNativeTarget";
 			"buildConfigurationList" = "F37922C48DA5978D02C9E50E";
-			"buildPhases" = ("7C7B4C5A47EBDC1426108EBB", "CC6418E32FFEEDDDCB8E3A9C", "FDBF5C6E8E6DAE40F490BB2C", "95BEDE5E2F9DCAF9963ACB58");
+			"buildPhases" = ("C0E99C5B8727E53B0D02E95C", "7C7B4C5A47EBDC1426108EBB", "CC6418E32FFEEDDDCB8E3A9C", "FDBF5C6E8E6DAE40F490BB2C", "95BEDE5E2F9DCAF9963ACB58");
 			"buildRules" = ();
 			"dependencies" = ();
 			"name" = "TipStroke";
@@ -350,7 +376,7 @@
 		"6921661357E7DA17E808327C" = {
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = 2147483647;
-			"files" = ("FBC1E15B93B0F5E567E04F9D");
+			"files" = ("FBC1E15B93B0F5E567E04F9D", "1E1D144AF33671DAAF24AF3B");
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
 		"6ADC6DAC641B890A6FBD8A65" = {

@@ -1,12 +1,15 @@
 plugins {
     kotlin("multiplatform")
-    id("com.android.library")
+    id("com.android.library") apply false
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val appleOnly = providers.gradleProperty("tipstroke.appleOnly").orNull == "true"
+if (!appleOnly) apply(plugin = "com.android.library")
+
 kotlin {
-    androidTarget {
+    if (!appleOnly) androidTarget {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     }
     jvm {
@@ -16,9 +19,16 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
     iosX64()
+    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
+        binaries.framework {
+            baseName = "TipStrokeShared"
+            isStatic = true
+            export(project(":core"))
+        }
+    }
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":core"))
+            api(project(":core"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation("org.jetbrains.compose.material3:material3:1.9.0")
@@ -27,7 +37,7 @@ kotlin {
     }
 }
 
-android {
+if (!appleOnly) extensions.configure<com.android.build.gradle.LibraryExtension> {
     namespace = "dev.tipstroke.ui"
     compileSdk = 36
     defaultConfig { minSdk = 29 }

@@ -1,6 +1,9 @@
 import UIKit
+import TipStrokeShared
+import UniformTypeIdentifiers
+import ImageIO
 
-final class EditorController: UIViewController, UIColorPickerViewControllerDelegate, UIPencilInteractionDelegate {
+final class EditorController: UIViewController, UIPencilInteractionDelegate, UIDocumentPickerDelegate {
     let document: RasterDocument
     let viewport: CanvasViewport
     private let store = ProjectStore.shared
@@ -13,6 +16,7 @@ final class EditorController: UIViewController, UIColorPickerViewControllerDeleg
     private let redoButton = UIButton(type: .system)
     private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
     private let saveLabel = UILabel()
+    lazy var sharedControls = AppleEditorBridge(actions: EditorActions(self))
     private var previousTool: CanvasView.Tool = .ink
 
     init(document: RasterDocument) {
@@ -35,19 +39,29 @@ final class EditorController: UIViewController, UIColorPickerViewControllerDeleg
         let fit = button("Fit canvas", symbol: "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit() }
         let layers = button("Layers", symbol: "square.3.layers.3d") { [weak self] in self?.showLayers() }
         let share = button("Share PNG", symbol: "square.and.arrow.up") { [weak self] in self?.export() }
+        share.showsMenuAsPrimaryAction = true
+        share.menu = UIMenu(children: [
+            UIAction(title: "Share PNG", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.export() },
+            UIAction(title: "Share transparent PNG") { [weak self] _ in self?.export(transparent: true) },
+            UIAction(title: "Import image", image: UIImage(systemName: "photo")) { [weak self] _ in self?.importImage() }
+        ])
         let top = UIStackView(arrangedSubviews: [back, undoButton, redoButton, fit, layers, share])
         top.distribution = .equalSpacing
         let topPanel = panel(top)
+        toolPicker.setTitleTextAttributes([.font: UIFont.systemFont(ofSize: 12)], for: .normal)
+        toolPicker.apportionsSegmentWidthsByContent = true
         toolPicker.selectedSegmentIndex = 1
         toolPicker.addTarget(self, action: #selector(toolChanged), for: .valueChanged)
         toolPicker.accessibilityLabel = "Drawing tool"
         let color = button("Brush color", symbol: "circle.lefthalf.filled") { [weak self] in
             guard let self else { return }; self.viewport.canvas.cancelStroke()
-            let picker = UIColorPickerViewController(); picker.selectedColor = self.viewport.canvas.brushColor
-            picker.supportsAlpha = false; picker.delegate = self; self.present(picker, animated: true)
+            self.showShared(self.sharedControls.colorController(), title: "Colors")
         }
         let settings = button("Brush size, opacity and finger drawing", symbol: "slider.horizontal.3") { [weak self] in self?.brushSettings() }
-        let bottom = UIStackView(arrangedSubviews: [toolPicker, color, settings]); bottom.spacing = 8
+        let bottomActions = UIStackView(arrangedSubviews: [color, settings]); bottomActions.distribution = .equalSpacing
+        let bottom = UIStackView(arrangedSubviews: [toolPicker, bottomActions]); bottom.spacing = 4
+        bottom.axis = .vertical
+        bottom.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
         let bottomPanel = panel(bottom)
         saveLabel.font = .preferredFont(forTextStyle: .caption2)
         saveLabel.textColor = .secondaryLabel; saveLabel.textAlignment = .center
@@ -66,10 +80,22 @@ final class EditorController: UIViewController, UIColorPickerViewControllerDeleg
             bottomPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -4),
             saveLabel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -2), saveLabel.centerXAnchor.constraint(equalTo: safe.centerXAnchor)
         ])
-        viewport.canvas.onCommit = { [weak self] in self?.changed(redraw: false) }
+        viewport.canvas.onCommit = { [weak self] in self?.sharedControls.recordColor(); self?.changed(redraw: false) }
+        viewport.canvas.onPickColor = { [weak self] color in
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            color.getRed(&r, green: &g, blue: &b, alpha: &a)
+            self?.sharedControls.setColor(red: Float(r), green: Float(g), blue: Float(b))
+        }
         viewport.canvas.onError = { [weak self] error in self?.showError(error) }
         let pencil = UIPencilInteraction(); pencil.delegate = self; viewport.addInteraction(pencil)
         NotificationCenter.default.addObserver(self, selector: #selector(backgrounded), name: UIApplication.willResignActiveNotification, object: nil)
+        let defaults = UserDefaults.standard
+        let savedBrush = defaults.string(forKey: "brush.data")
+        sharedControls.restore(id: defaults.string(forKey: "brush.id") ?? "ink-v1",
+            size: defaults.object(forKey: "brush.size") as? Float ?? 18,
+            opacity: defaults.object(forKey: "brush.opacity") as? Float ?? 1,
+            finger: defaults.object(forKey: "fingerDrawing") as? Bool ?? true)
+        if let data = savedBrush { _ = sharedControls.restoreBrush(data: data) }
         updateHistory(); saveLabel.text = "Saved on this device"
     }
     override func viewWillAppear(_ animated: Bool) {
@@ -103,7 +129,11 @@ final class EditorController: UIViewController, UIColorPickerViewControllerDeleg
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
     }
     @objc private func toolChanged() {
-        viewport.canvas.cancelStroke(); viewport.canvas.tool = CanvasView.Tool.allCases[toolPicker.selectedSegmentIndex]
+        viewport.canvas.cancelStroke()
+        let tool = CanvasView.Tool.allCases[toolPicker.selectedSegmentIndex]
+        if tool == .eraser && viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
+        viewport.canvas.tool = tool
+        if tool != .eraser { sharedControls.selectBrush(id: tool.brushID) }
     }
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
         viewport.canvas.cancelStroke()
@@ -111,7 +141,6 @@ final class EditorController: UIViewController, UIColorPickerViewControllerDeleg
         else { previousTool = viewport.canvas.tool; viewport.canvas.tool = .eraser }
         toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
     }
-    func colorPickerViewControllerDidSelectColor(_ viewController: UIColorPickerViewController) { viewport.canvas.brushColor = viewController.selectedColor }
     private func updateHistory() { undoButton.isEnabled = document.canUndo; redoButton.isEnabled = document.canRedo }
     private func changed(redraw: Bool = true) {
         if redraw { viewport.canvas.refresh() }
@@ -167,11 +196,11 @@ final class EditorController: UIViewController, UIColorPickerViewControllerDeleg
     private func close() {
         viewport.canvas.cancelStroke(); closeAfterSave = true; view.isUserInteractionEnabled = false; saveNow()
     }
-    private func export() {
+    private func export(transparent: Bool = false) {
         viewport.canvas.cancelStroke()
         let snapshot = document.snapshot()
         store.queue.async {
-            let result = Result { try self.store.exportPNG(snapshot) }
+            let result = Result { try self.store.exportPNG(snapshot, transparent: transparent) }
             DispatchQueue.main.async {
                 switch result {
                 case .failure(let error): self.showError(error)
@@ -186,7 +215,7 @@ final class EditorController: UIViewController, UIColorPickerViewControllerDeleg
     }
     private func showLayers() {
         viewport.canvas.cancelStroke()
-        let layers = LayersController(document: document)
+        let layers = LayersController(document: document, sharedControls: sharedControls)
         layers.onChange = { [weak self] in self?.changed() }
         let navigation = UINavigationController(rootViewController: layers)
         navigation.modalPresentationStyle = .pageSheet
@@ -195,45 +224,86 @@ final class EditorController: UIViewController, UIColorPickerViewControllerDeleg
     }
     private func brushSettings() {
         viewport.canvas.cancelStroke()
-        let controller = BrushController(canvas: viewport.canvas)
+        showShared(sharedControls.brushController(), title: "Brush settings")
+    }
+    private func showShared(_ controller: UIViewController, title: String) {
+        controller.title = title
+        controller.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
+            primaryAction: UIAction { [weak controller] _ in controller?.dismiss(animated: true) })
         let navigation = UINavigationController(rootViewController: controller)
-        navigation.sheetPresentationController?.detents = [.medium()]
+        navigation.modalPresentationStyle = .pageSheet
+        navigation.sheetPresentationController?.detents = [.large()]
+        navigation.sheetPresentationController?.prefersGrabberVisible = true
         present(navigation, animated: true)
     }
+    func applyBrush(_ brush: NativeBrush) {
+        viewport.canvas.cancelStroke()
+        let keepEraser = viewport.canvas.tool == .eraser && viewport.canvas.brush.id == brush.id
+        viewport.canvas.brush = brush
+        viewport.canvas.brushSize = CGFloat(brush.size)
+        viewport.canvas.brushOpacity = CGFloat(brush.opacity)
+        viewport.canvas.tool = keepEraser ? .eraser : (CanvasView.Tool.allCases.first { $0.brushID == brush.id } ?? .ink)
+        toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
+        if viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
+        let defaults = UserDefaults.standard
+        defaults.set(brush.id, forKey: "brush.id"); defaults.set(brush.size, forKey: "brush.size")
+        defaults.set(brush.opacity, forKey: "brush.opacity"); defaults.set(sharedControls.brushData(), forKey: "brush.data")
+    }
+    private func importImage() {
+        viewport.canvas.cancelStroke()
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first else { return }
+        // Decode and downsample off the input thread. Editing pauses while the new layer is prepared.
+        view.isUserInteractionEnabled = false
+        let width = document.record.width, height = document.record.height
+        store.queue.async {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let result = Result { () -> [TileKey: CGImage] in
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                    let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: max(width, height)
+                    ] as CFDictionary) else { throw DrawingError.message("This image could not be opened.") }
+                return try RasterDocument.imageTiles(image, width: width, height: height)
+            }
+            DispatchQueue.main.async {
+                self.view.isUserInteractionEnabled = true
+                do { try self.document.importTiles(result.get(), name: url.deletingPathExtension().lastPathComponent); self.changed() }
+                catch { self.showError(error) }
+            }
+        }
+    }
+    override var keyCommands: [UIKeyCommand]? {
+        [UIKeyCommand(input: "z", modifierFlags: .command, action: #selector(keyUndo)),
+         UIKeyCommand(input: "z", modifierFlags: [.command, .shift], action: #selector(keyRedo)),
+         UIKeyCommand(input: "0", modifierFlags: .command, action: #selector(keyFit))]
+    }
+    @objc private func keyUndo() { viewport.canvas.cancelStroke(); document.undo(); changed() }
+    @objc private func keyRedo() { viewport.canvas.cancelStroke(); document.redo(); changed() }
+    @objc private func keyFit() { viewport.fit() }
+
 }
 
 private extension NSLayoutConstraint {
     func withPriority(_ priority: UILayoutPriority) -> NSLayoutConstraint { self.priority = priority; return self }
 }
 
-final class BrushController: UIViewController {
-    private let canvas: CanvasView
-    init(canvas: CanvasView) { self.canvas = canvas; super.init(nibName: nil, bundle: nil) }
-    required init?(coder: NSCoder) { fatalError("Use init(canvas:)") }
-    override func viewDidLoad() {
-        super.viewDidLoad(); title = "Brush"; view.backgroundColor = .systemBackground
-        navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
-        let sizeLabel = UILabel(); sizeLabel.text = "Size · \(Int(canvas.brushSize)) px"
-        let size = UISlider(); size.minimumValue = 1; size.maximumValue = 128; size.value = Float(canvas.brushSize)
-        size.accessibilityLabel = "Brush size"
-        size.addAction(UIAction { [weak self, weak size, weak sizeLabel] _ in
-            guard let size else { return }; self?.canvas.brushSize = CGFloat(size.value); sizeLabel?.text = "Size · \(Int(size.value)) px"
-        }, for: .valueChanged)
-        let opacityLabel = UILabel(); opacityLabel.text = "Opacity · \(Int(canvas.brushOpacity * 100))%"
-        let opacity = UISlider(); opacity.minimumValue = 0.05; opacity.maximumValue = 1; opacity.value = Float(canvas.brushOpacity)
-        opacity.accessibilityLabel = "Brush opacity"
-        opacity.addAction(UIAction { [weak self, weak opacity, weak opacityLabel] _ in
-            guard let opacity else { return }; self?.canvas.brushOpacity = CGFloat(opacity.value); opacityLabel?.text = "Opacity · \(Int(opacity.value * 100))%"
-        }, for: .valueChanged)
-        let finger = UISwitch(); finger.isOn = canvas.fingerDrawing; finger.accessibilityLabel = "Draw with finger"
-        finger.addAction(UIAction { [weak self, weak finger] _ in self?.canvas.fingerDrawing = finger?.isOn ?? true }, for: .valueChanged)
-        let label = UILabel(); label.text = "Draw with finger"
-        let row = UIStackView(arrangedSubviews: [label, finger]); row.distribution = .equalSpacing
-        let stack = UIStackView(arrangedSubviews: [sizeLabel, size, opacityLabel, opacity, row])
-        stack.axis = .vertical; stack.spacing = 12; stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
-        NSLayoutConstraint.activate([stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24)])
+// Kotlin retains this adapter; the adapter must not retain the editor in return.
+private final class EditorActions: NSObject, AppleEditorActions {
+    weak var editor: EditorController?
+    init(_ editor: EditorController) { self.editor = editor }
+    func brushChanged(brush: NativeBrush) { editor?.applyBrush(brush) }
+    func colorChanged(red: Float, green: Float, blue: Float) {
+        editor?.viewport.canvas.brushColor = UIColor(red: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: 1)
+    }
+    func fingerDrawingChanged(enabled: Bool) {
+        editor?.viewport.canvas.fingerDrawing = enabled
+        UserDefaults.standard.set(enabled, forKey: "fingerDrawing")
     }
 }

@@ -2,9 +2,15 @@ workflows:
   ios-simulator:
     name: iOS — iPhone and iPad checks
     instance_type: mac_mini_m2
-    max_build_duration: 60
+    max_build_duration: 90
     environment:
-      xcode: latest
+      xcode: "26.0"
+      java: 17
+    cache:
+      cache_paths:
+        - ~/.gradle/caches
+        - ~/.gradle/wrapper
+        - ~/.konan
     triggering:
       events:
         - push
@@ -22,6 +28,9 @@ workflows:
         script: |
           python3 tools/generate-ios-project.py
           git diff --exit-code -- ios/TipStroke.xcodeproj
+      - name: Test shared Kotlin on Apple Silicon
+        script: |
+          ./gradlew -Ptipstroke.appleOnly=true :core:iosSimulatorArm64Test :shared-ui:iosSimulatorArm64Test
       - name: Test on iPhone and iPad
         script: bash tools/ios-test.sh
       - name: Build unsigned device app
@@ -45,10 +54,11 @@ workflows:
   ios-release:
     name: iOS — signed App Store IPA
     instance_type: mac_mini_m2
-    max_build_duration: 60
+    max_build_duration: 90
     # Manual workflow: upload matching certificate and provisioning profile in Codemagic first.
     environment:
-      xcode: latest
+      xcode: "26.0"
+      java: 17
       ios_signing:
         distribution_type: app_store
         bundle_identifier: dev.tipstroke.ios
@@ -57,6 +67,9 @@ workflows:
         script: |
           python3 tools/generate-ios-project.py
           git diff --exit-code -- ios/TipStroke.xcodeproj
+      - name: Test shared Kotlin on Apple Silicon
+        script: |
+          ./gradlew -Ptipstroke.appleOnly=true :core:iosSimulatorArm64Test :shared-ui:iosSimulatorArm64Test
       - name: Test on iPhone and iPad
         script: bash tools/ios-test.sh
       - name: Apply signing profiles

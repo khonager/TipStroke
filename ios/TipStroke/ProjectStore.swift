@@ -82,11 +82,11 @@ final class ProjectStore {
     }
     func delete(_ id: UUID) throws { try FileManager.default.removeItem(at: folder(id)) }
 
-    func exportPNG(_ snapshot: DocumentSnapshot) throws -> URL {
+    func exportPNG(_ snapshot: DocumentSnapshot, transparent: Bool = false) throws -> URL {
         let record = snapshot.record
         let context = try RasterDocument.context(width: record.width, height: record.height)
         let bounds = CGRect(x: 0, y: 0, width: record.width, height: record.height)
-        context.setFillColor(UIColor.white.cgColor); context.fill(bounds)
+        if !transparent { context.setFillColor(UIColor.white.cgColor); context.fill(bounds) }
         RasterDocument.composite(snapshot, in: context, visible: bounds)
         guard let image = context.makeImage() else { throw DrawingError.message("Could not render the drawing.") }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("TipStrokeExports", isDirectory: true)

@@ -532,3 +532,33 @@ selecting a suggestion and saving it in the existing color shelf.
 `BlendModeScrollerTest` verifies drag-to-preview without tapping, initial selection,
 first/last modes, and one finish callback on dismissal. `LayerBlendingTest` also
 checks a comparison's single undo step, selection changes and no-op comparisons.
+
+## Integrated Apple/shared controls checks
+
+Codemagic's `ios-simulator` workflow uses JDK 17 and Xcode 26.0. It runs common
+Kotlin tests on Apple Silicon, then `tools/ios-test.sh` on iPhone and iPad and an
+unsigned device build. The app build invokes the shared Kotlin framework itself.
+The UI test opens the shared brush and color panels, draws, undoes/redoes, rotates,
+adds a layer, saves and reopens. App-hosted tests exercise actual Swift ↔ Kotlin
+callbacks and preference round trips, layer locks, duplication, image import,
+blend composition, version-1 document migration and transparent PNG output.
+
+On Linux, run `:core:jvmTest :shared-ui:jvmTest :app:testDebugUnitTest` and
+`:app:assembleDebug`. The common color and brush package tests are the same sources
+compiled for Apple. `-Ptipstroke.appleOnly=true :core:jvmTest :shared-ui:jvmTest`
+also checks that Apple-only Gradle configuration does not require the Android SDK.
+None of these Linux checks substitutes for the Xcode job or physical iPad testing.
+
+On a physical iPad, check force/tilt shading, Pencil double-tap, finger palm
+rejection, two-finger navigation/cancellation, eyedropper cancellation, a continuous
+airbrush stroke, keyboard shortcuts, Split View/Stage Manager resizing and sheet
+scrolling in landscape. Verify image imports fit the canvas and can be undone,
+all blend modes agree between display and PNG, and alpha lock preserves transparent
+pixels. Review input latency and peak memory on a large multi-layer document.
+
+Local integration check (2026-11-18, Linux, Kotlin 2.2.21): 57 core JVM tests,
+4 shared UI JVM tests and 102 Android app unit tests passed; `:app:assembleDebug`
+passed. The Apple-only Gradle configuration also passed common JVM checks offline
+with Android SDK environment variables unset. Generated project determinism,
+scheme/plist syntax, CI YAML and shell syntax were checked. These results do not
+include an Apple compile, simulator execution or physical-device validation.

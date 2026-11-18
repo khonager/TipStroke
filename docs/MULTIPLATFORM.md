@@ -29,9 +29,19 @@ use standard platform input support rather than brand-specific product logic.
   endpoints, with portable regression tests at 1× through 3× display density.
 - The native desktop renderer is still the smaller Java2D renderer. Shared
   controls do not imply that layers or advanced brushes are implemented there.
-- The Swift app is not yet linked to the shared modules. Core's static
-  `TipStrokeCore.framework` is the initial Apple integration artifact. Shared
-  UI has Apple compilation/test targets, not a replacement iOS app entry point.
+- The Swift app now links `TipStrokeShared.framework` from `:shared-ui`, exporting
+  `:core`. Xcode builds it automatically before Swift compilation. Shared color
+  controls, precision sliders, blend-mode UI and basic brush rules are live iOS
+  integrations; UIKit remains the canvas and gallery host.
+- Android's full color picker and brush-package codec moved to common source sets.
+  Android retains thin palette/persistence/stream adapters. Both applications consume
+  the same package validation, preset curves and color-control implementation.
+- `AppleEditorBridge` sends coarse settings to Swift. It never sees UITouch or
+  pixel buffers. NativeBrush snapshots freeze a stroke's settings while UIKit
+  applies shared pressure/tilt math and native sparse-tile painting.
+- `-Ptipstroke.appleOnly=true` permits Apple builds without an Android SDK. CI
+  checks shared simulator tests and the integrated app; Codemagic runs both iPhone
+  and iPad UI flows and builds device artifacts. See [iOS scope](IOS.md).
 
 ## Next integration boundaries
 
@@ -51,7 +61,7 @@ AWT mouse events are not evidence of full tablet support.
 Android keeps MotionEvent/Jetpack Ink/native tile rendering. iOS keeps UIKit and
 Core Graphics. The shared desktop app may use platform-specific input/rendering adapters.
 Shared UI receives coarse state and commands, never an update for every pointer
-sample. Shared editor integration, renderer compatibility and cross-platform
+sample. Complete shared editor integration, renderer compatibility and cross-platform
 project compatibility remain unfinished work. Until then, use `./tipstroke emulator`
 for the complete Android feature set on a laptop. Its scrcpy flexible virtual
 display resizes Android with the desktop window; the fixed-screen Qt emulator
@@ -64,8 +74,9 @@ window remains an explicit `TIPSTROKE_EMULATOR_WINDOW=tablet` fallback.
 ./gradlew :core:compileCommonMainKotlinMetadata :shared-ui:compileCommonMainKotlinMetadata
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
 # macOS + Xcode (also configured in the Shared Kotlin checks CI workflow):
-./gradlew :core:iosSimulatorArm64Test :shared-ui:iosSimulatorArm64Test
-./gradlew :core:linkReleaseFrameworkIosArm64
+./gradlew -Ptipstroke.appleOnly=true :core:iosSimulatorArm64Test :shared-ui:iosSimulatorArm64Test
+./gradlew -Ptipstroke.appleOnly=true :shared-ui:linkReleaseFrameworkIosArm64
+./tipstroke ios-test
 ```
 
 Apple builds cannot be validated on Linux. The configured macOS CI job must

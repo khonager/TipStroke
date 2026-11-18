@@ -17,6 +17,7 @@ kotlin {
             languageSettings.optIn("kotlin.uuid.ExperimentalUuidApi")
             languageSettings.optIn("kotlin.time.ExperimentalTime")
         }
+        commonMain.dependencies { implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0") }
         commonTest.dependencies { implementation(kotlin("test")) }
     }
 }
