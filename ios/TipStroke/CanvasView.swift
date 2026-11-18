@@ -182,7 +182,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         refresh()
         onCommit?()
     }
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         pointer?.type != .pencil && gestureRecognizer.numberOfTouches == 1
     }
     @objc private func pickColor(_ gesture: UILongPressGestureRecognizer) {
