@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import TipStrokeShared
 
 struct TileKey: Hashable, Codable {
     static let side = 256
@@ -29,10 +30,11 @@ struct LayerRecord: Codable, Identifiable, Equatable {
     var locked = false
     var alphaLocked = false
     var clipSource: UUID?
+    var colorizeMask: String?
     var reference = false
 
     init() {}
-    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked, clipSource, reference }
+    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked, clipSource, reference, colorizeMask }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
@@ -44,6 +46,7 @@ struct LayerRecord: Codable, Identifiable, Equatable {
         locked = try values.decodeIfPresent(Bool.self, forKey: .locked) ?? false
         alphaLocked = try values.decodeIfPresent(Bool.self, forKey: .alphaLocked) ?? false
         clipSource = try values.decodeIfPresent(UUID.self, forKey: .clipSource)
+        colorizeMask = try values.decodeIfPresent(String.self, forKey: .colorizeMask)
         reference = try values.decodeIfPresent(Bool.self, forKey: .reference) ?? false
     }
 }
@@ -51,7 +54,7 @@ struct LayerRecord: Codable, Identifiable, Equatable {
 struct DocumentRecord: Codable, Identifiable, Equatable {
     // Separate format namespace: never interpret Android project manifests as iOS documents.
     var format = "dev.tipstroke.ios.raster"
-    var schemaVersion = 3
+    var schemaVersion = 4
     var id = UUID()
     var name = "Untitled"
     var width = 2048
@@ -64,7 +67,7 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
     var backgroundOpacity: Double?
 
     func validate() throws {
-        guard format == "dev.tipstroke.ios.raster", (1...3).contains(schemaVersion) else {
+        guard format == "dev.tipstroke.ios.raster", (1...4).contains(schemaVersion) else {
             throw DrawingError.message("This drawing uses an unsupported project format.")
         }
         guard (16...4096).contains(width), (16...4096).contains(height),
@@ -86,6 +89,10 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
         guard layers.filter({ $0.reference }).count <= 1 else { throw DrawingError.message("Only one reference layer is supported.") }
         var tileCount = 0
         for (index, layer) in layers.enumerated() {
+            if let mask = layer.colorizeMask {
+                let recipe = try NativeColorizeRecipe.companion.decode(text: mask)
+                guard UUID(uuidString: recipe.lineArtId) != nil, UUID(uuidString: recipe.hintsId) != nil else { throw DrawingError.message("Invalid colorize layer IDs.") }
+            }
             if let source = layer.clipSource, !layers.prefix(index).contains(where: { $0.id == source }) { throw DrawingError.message("Invalid clipping source.") }
             guard RasterDocument.blendModes[layer.blendMode] != nil, layer.opacity.isFinite, (0...1).contains(layer.opacity),
                   Set(layer.tiles).count == layer.tiles.count,

@@ -229,3 +229,10 @@ no colorize metadata. Unknown mask versions fail explicitly. Archive exchange
 preserves metadata. Missing referenced layers disable regeneration without deleting
 existing output. Duplicating a whole set remaps references to duplicated input IDs;
 duplicating only output shares its original inputs.
+
+The separate iOS raster format is now schema 4 (reads 1–4). A layer may store an
+optional `colorizeMask` string encoded by the shared version-1 ColorizeMaskCodec.
+It links stable UUIDs of ordinary saved line-art/hints layers. Generated pixels
+remain authoritative. Missing inputs prevent regeneration without losing output;
+duplicating an output preserves its input links. Apple files remain a distinct
+format namespace from Android project manifests.

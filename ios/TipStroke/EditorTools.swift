@@ -36,6 +36,7 @@ extension EditorController {
             })
         }
         menu.addAction(UIAlertAction(title: viewport.canvas.filledShapes ? "Outline shapes" : "Filled shapes", style: .default) { [weak self] _ in self?.viewport.canvas.filledShapes.toggle() })
+        menu.addAction(UIAlertAction(title: "Colorize mask", style: .default) { [weak self] _ in self?.colorizeMenu() })
         menu.addAction(UIAlertAction(title: "Blur & bloom", style: .default) { [weak self] _ in self?.effectMenu() })
         menu.addAction(UIAlertAction(title: "Brush aids", style: .default) { [weak self] _ in self?.brushAids() })
         menu.addAction(UIAlertAction(title: "Selection actions", style: .default) { [weak self] _ in self?.selectionActions() })

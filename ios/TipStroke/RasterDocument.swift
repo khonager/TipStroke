@@ -74,7 +74,7 @@ final class RasterDocument {
 
     func snapshot() -> DocumentSnapshot {
         var saved = record
-        saved.schemaVersion = 3
+        saved.schemaVersion = 4
         saved.modified = Date()
         for index in saved.layers.indices {
             saved.layers[index].tiles = Array((pixels[saved.layers[index].id] ?? [:]).keys)
@@ -259,10 +259,10 @@ final class RasterDocument {
         guard metadataBefore == nil, strokeLayer == nil else { return }
         metadataBefore = Metadata(record: record, pixels: pixels, frames: framePixels)
     }
-    func endMetadataEdit() {
+    func endMetadataEdit(force: Bool = false) {
         guard let old = metadataBefore else { return }
         metadataBefore = nil
-        guard old.record != record else { return }
+        guard force || old.record != record else { return }
         redoStack = []
         undoStack.append(Edit(layer: activeLayer, before: [:], after: [:], oldMetadata: old,
                               newMetadata: Metadata(record: record, pixels: pixels, frames: framePixels)))

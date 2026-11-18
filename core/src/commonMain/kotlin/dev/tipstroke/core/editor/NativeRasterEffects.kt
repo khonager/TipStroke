@@ -16,3 +16,14 @@ class NativeRasterEffects {
     fun colorize(width: Int, height: Int, ink: ByteArray, hints: IntArray, gap: Int, threshold: Float): IntArray =
         ColorizeSolver.solve(width, height, ink, hints, ColorizeMask(LayerId("line"), LayerId("hints"), gap, threshold))
 }
+
+class NativeColorizeRecipe(val lineArtId: String, val hintsId: String, val gap: Int, val threshold: Float) {
+    fun encode(): String = ColorizeMaskCodec.encode(ColorizeMask(LayerId(lineArtId), LayerId(hintsId), gap, threshold))
+    companion object {
+        @Throws(IllegalArgumentException::class)
+        fun decode(text: String): NativeColorizeRecipe {
+            val mask = try { ColorizeMaskCodec.decode(text) } catch (e: Exception) { throw IllegalArgumentException("Invalid colorize mask", e) }
+            return NativeColorizeRecipe(mask.lineArtId.value, mask.hintsId.value, mask.gap, mask.threshold)
+        }
+    }
+}

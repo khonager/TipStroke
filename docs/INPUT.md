@@ -593,3 +593,8 @@ iOS Blur & bloom runs the shared filter engine on a worker queue with tile halos
 Gaussian, Motion, Perspective and Bloom expose radius and their relevant controls.
 Preview uses an immutable snapshot; Apply commits one bounded transaction and
 Cancel leaves the document untouched. Selection stays in document coordinates.
+iOS Colorize mask creates saved output below line art and editable hints above.
+Tools → Colorize mask can reopen hints, set magenta transparent seeds, preview
+shared bounded region propagation, and apply with a single compound undo entry.
+It supports still drawings, gap 0–4 and ink threshold 0.02–1. Generation runs off
+the input thread and uses at most a 1024×1024 analysis grid.
