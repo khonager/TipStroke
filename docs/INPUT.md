@@ -589,3 +589,7 @@ to the selection, and keeps a single cancellable undo transaction.
 iOS magnetic perspective uses the shared direction-lock solver on native samples
 before raster/stamp painting. One/two-point guides and placement live under Brush
 aids, retain positions when disabled, and override hold-to-fit while active.
+iOS Blur & bloom runs the shared filter engine on a worker queue with tile halos.
+Gaussian, Motion, Perspective and Bloom expose radius and their relevant controls.
+Preview uses an immutable snapshot; Apply commits one bounded transaction and
+Cancel leaves the document untouched. Selection stays in document coordinates.

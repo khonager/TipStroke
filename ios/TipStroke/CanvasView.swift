@@ -8,6 +8,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             switch self { case .pencil: return "pencil-v1"; case .airbrush: return "airbrush-v1"; default: return "ink-v1" }
         }
     }
+    var previewSnapshot: DocumentSnapshot?
     let document: RasterDocument
     var mode: CanvasMode = .paint { didSet { cancelStroke() } }
     var filledShapes = false
@@ -119,12 +120,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         for key in Array(displayTiles.keys) where !keys.contains(key) {
             displayTiles.removeValue(forKey: key)?.removeFromSuperlayer()
         }
-        let snapshot = DocumentSnapshot(record: document.record, pixels: document.pixels)
+        let snapshot = previewSnapshot ?? DocumentSnapshot(record: document.record, pixels: document.pixels)
         for key in keys {
             let existed = displayTiles[key] != nil
             if existed, let dirty, !dirty.intersects(key.rect) { continue }
             let onion = document.record.animation?.onionSkin == true
-            guard onion || document.record.layers.contains(where: { $0.visible && document.pixels[$0.id]?[key] != nil }) else {
+            guard onion || snapshot.record.layers.contains(where: { $0.visible && snapshot.pixels[$0.id]?[key] != nil }) else {
                 displayTiles.removeValue(forKey: key)?.removeFromSuperlayer(); continue
             }
             do {
