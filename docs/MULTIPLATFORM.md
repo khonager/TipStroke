@@ -36,6 +36,11 @@ use standard platform input support rather than brand-specific product logic.
 - Android's full color picker and brush-package codec moved to common source sets.
   Android retains thin palette/persistence/stream adapters. Both applications consume
   the same package validation, preset curves and color-control implementation.
+- Shared `BrushTip` coverage now drives both Android and native iOS stamp rendering.
+  Swift uses core quick-shape recognition and exposure-based timeline playback.
+  The saved-palette state/control implementation is shared; each host supplies storage.
+  Native Apple selection/fill/smudge/pixel/shape tools and frame editing are manual
+  adapters, with their current limitations tracked in `IOS.md`.
 - `AppleEditorBridge` sends coarse settings to Swift. It never sees UITouch or
   pixel buffers. NativeBrush snapshots freeze a stroke's settings while UIKit
   applies shared pressure/tilt math and native sparse-tile painting.

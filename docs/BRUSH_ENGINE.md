@@ -216,3 +216,14 @@ shares parameter semantics, not Jetpack Ink/stamp renderer output. Graphite grai
 speed taper, stabilization and custom/Jetpack tip rendering remain unimplemented
 on Apple. Brush JSON encoding/validation is shared in `core/brush`; iOS uses it for
 local tuning preferences and Android uses it for existing library/pack workflows.
+
+## Native Apple stamp adapter
+
+Android and Apple now generate shape/grain coverage through core `BrushTip` and
+place stamps through core `StampPath`. UIKit prepares native masks outside input,
+then renders each sample batch into affected tiles. Imported source coverage and
+shared dynamics travel in the same brush packages. Apple's adapter for Jetpack Ink
+brush definitions approximates texture/flow/aspect/tilt with native stamps; Jetpack
+roundness, accumulation and particle behavior are not pixel-equivalent. Pencil
+and airbrush remain native approximations pending device comparison. Shared preset
+parameters alone are not evidence of rendering parity.

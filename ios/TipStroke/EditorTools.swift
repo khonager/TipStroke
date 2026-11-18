@@ -1,6 +1,29 @@
 import UIKit
 
 extension EditorController {
+    func refreshDrawingColors() {
+        var snapshot = document.snapshot(); snapshot.record.backgroundOpacity = 0
+        ProjectStore.shared.queue.async {
+            do {
+                let image = try ProjectStore.thumbnail(snapshot)
+                let context = try RasterDocument.context(width: image.width, height: image.height)
+                RasterDocument.draw(image, in: context, rect: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                let bytes = context.data!.assumingMemoryBound(to: UInt8.self)
+                var counts: [Int: Int] = [:]
+                for index in 0..<(image.width * image.height) where bytes[index * 4 + 3] > 32 {
+                    let alpha = Int(bytes[index * 4 + 3])
+                    let r = min(255, Int(bytes[index * 4]) * 255 / alpha) / 16
+                    let g = min(255, Int(bytes[index * 4 + 1]) * 255 / alpha) / 16
+                    let b = min(255, Int(bytes[index * 4 + 2]) * 255 / alpha) / 16
+                    counts[r << 8 | g << 4 | b, default: 0] += 1
+                }
+                let data = counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.prefix(8).map { item in
+                    "\(Double((item.key >> 8) & 15) / 15),\(Double((item.key >> 4) & 15) / 15),\(Double(item.key & 15) / 15),1"
+                }.joined(separator: ";")
+                DispatchQueue.main.async { self.sharedControls.setDrawingColors(data: data) }
+            } catch { DispatchQueue.main.async { self.showError(error) } }
+        }
+    }
     func showTools() {
         viewport.canvas.cancelStroke()
         let menu = UIAlertController(title: "Canvas tools", message: nil, preferredStyle: .actionSheet)

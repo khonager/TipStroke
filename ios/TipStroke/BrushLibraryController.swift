@@ -118,7 +118,7 @@ extension EditorController {
     }
     private func shareBrush(_ data: String) {
         ProjectStore.shared.queue.async {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("TipStroke-tip-\(UUID().uuidString).json")
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("TipStroke-tip-\(UUID().uuidString).tipbrush")
             do {
                 try Data(data.utf8).write(to: url, options: .atomic)
                 DispatchQueue.main.async {

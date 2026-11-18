@@ -1,80 +1,91 @@
 # iPhone and iPad
 
-TipStroke now has a native iOS target in `ios/TipStroke.xcodeproj`, with the shared
-`TipStroke` scheme. It targets iOS/iPadOS 16 or newer and both device families.
-The canvas uses UIKit and Core Graphics. The app links `TipStrokeShared.framework`
-from `:shared-ui`, exporting `:core`, on every Xcode build. It has no account,
-network service, or cross-platform drawing surface.
+TipStroke has a native iOS/iPadOS 16+ target in `ios/TipStroke.xcodeproj`, with the
+`TipStroke` scheme and both device families enabled. UIKit/Core Graphics own input
+and sparse raster painting. Xcode builds and links `TipStrokeShared.framework`
+from `:shared-ui`, exporting `:core`. There is no account or network service.
 
-This is a source integration, **not full Android feature parity**. Apple
-compilation, simulator tests and physical Pencil validation must pass before
-calling this build verified. The feature-by-feature gaps are tracked below.
+**Full Android parity is still incomplete.** The implemented source workflows and
+remaining differences are listed below. Linux JVM tests and Swift syntax parsing
+are not an Apple SDK build, simulator run or physical Pencil validation.
 
 ## Shared implementation
 
-- Android and iOS use the same Compose color picker: wheel, HSV sliders, RGB/HSV
-  values, hex entry, color harmony and recent-color controls. Android injects its
-  persisted palette shelf through a composable slot.
-- Size/opacity precision controls and the blend-mode picker live in `shared-ui`.
-- Built-in brush defaults, pressure curves and pencil tilt response come from
-  `core`. Swift consumes an immutable `NativeBrush` for each stroke; no pointer
-  sample enters Compose state.
-- Brush JSON validation/encoding now lives in `core` and is used by Android's
-  library and iOS brush preferences. iOS currently exposes the three basic
-  brushes; sharing a codec does not imply custom-tip rendering parity.
-- Xcode calls `tools/build-ios-shared.sh` before Swift compilation. Changes to
-  these common implementations reach both applications in their next build.
+- The Compose color picker, saved palette shelf, precision sliders and blend-mode
+  picker are consumed by Android and iOS. Palette storage is platform-specific;
+  colors, validation and palette controls are common code.
+- Built-in presets, pressure/tilt curves, stamp spacing/scatter/dynamics, shape and
+  grain coverage, quick-shape recognition, animation exposures and playback timing
+  come from `core`. Android's stamp renderer now uses the same `BrushTip` coverage
+  generator as UIKit.
+- Brush package/library/pack validation is shared. iOS can import Android custom
+  brushes, create/tune tips, save copies, delete tips and share individual packages.
+  The common settings/library panels are available to platform hosts; Android's
+  existing Tip Studio/library screen has not been replaced by those panels.
+- Native `NativeBrush`, `NativeStampPath`, `NativeShapeTracker` and `NativeTimeline`
+  adapters expose common rules to Swift. Samples may enter a core algorithm but
+  never Compose state. Core Graphics and Jetpack Ink remain different renderers.
 
 ## Included native workflows
 
-- Local gallery, named canvases from 16–4096 px per side, reopening and deletion.
-- Native Pencil/finger drawing with coalesced samples, Pencil/Ink/Airbrush/Eraser,
-  shared pressure/tilt rules, size, opacity and airbrush edge hardness.
-- Two-finger pan/pinch, fit canvas, portrait/landscape layouts, iPad resizing,
-  and keyboard shortcuts (Command-Z, Shift-Command-Z, Command-0).
-- Up to 32 paint layers with stable identities, selection, names, ordering,
-  visibility, opacity, 17 blend modes, layer lock, transparency lock,
-  duplication and deletion. Metadata edits join bounded undo/redo history;
-  continuous opacity/blend adjustments are grouped into one edit. Deleting a layer
-  too large for undo is rejected without changing its pixels.
-- Long-press finger eyedropper; it cancels provisional finger paint before sampling.
-- File-based image import, downsampled and tiled on the project queue, fitted and
-  centered into a new paint layer. The operation must fit the undo/tile budgets.
-- Automatic local saves and flattened PNG sharing with white or transparent paper.
-- Apple Pencil double-tap switches between the current drawing tool and eraser.
-- Local persistence of the selected brush's size, opacity, pressure and tilt tuning,
-  and the finger-drawing preference.
+- Local gallery with thumbnails, creation, rename, duplicate, reopening and delete.
+  Canvas dimensions are 16–4096 px per side.
+- Pencil/finger drawing, Pencil/Ink/Airbrush/Eraser, pressure and tilt, size/opacity,
+  stabilization and speed taper. Native shape-and-grain stamping uses shared tip
+  coverage, arc-length placement and dynamics. Custom Jetpack definitions use an
+  approximate native stamp adaptation, not Jetpack's renderer.
+- Shape/grain sources can be imported from images, captured from a drawn layer,
+  inverted and rotated. Transparent sources use alpha; opaque sources use brightness.
+  Source images are bounded to 256×256 coverage, stored in portable brush packages.
+- Two-finger pan/pinch, fit, portrait/landscape layouts, iPad resizing, Pencil
+  double-tap eraser switching, and Command-Z/Shift-Command-Z/Command-0.
+- Tools menu: fill, smudge, pixel pencil/line/dither, line/rectangle/ellipse/triangle/
+  arrow, filled shapes, and Pencil hold-to-recognize quick shapes. Fill uses a
+  worker snapshot with a bounded scanline flood; smudge exchanges premultiplied
+  color and alpha instead of duplicating pigment.
+- Lasso/rectangle/ellipse selections, select all, invert, clear, move, copy, flip,
+  scale and rotate. Edits clip to the selection and undo as one transaction.
+  Crop/extend canvas applies to all animation frames and participates in undo.
+- Up to 32 layers, names/order/visibility/opacity, 17 blend modes, locks, duplicate,
+  delete, clipping sources, reference-stroke constraints and static-layer merge-down.
+  Reordering clears clipping links that would point upward or create cycles.
+  Reference strokes constrain future paint to the reference's coverage; they do
+  not hide that layer or exclude it from exports.
+- Eyedropper, shared saved palettes, persistent recent colors and a quick-color row.
+  Drawing colors are sampled from a bounded thumbnail after saves and on opening
+  the color picker. Imported images
+  are downsampled/tiled off the input thread into a paint layer.
+- Animation timeline: blank/duplicate/delete/reorder frames, per-frame holds,
+  FPS, loop/ping-pong/once, adjacent onion skins, frame-aware undo, save/reopen,
+  GIF and silent MP4 export. Timing uses Android's shared timeline rules. Current
+  Apple limits are 240 frames and 512 resident tiles across all frames/layers;
+  Android's disk-backed long-timeline implementation is not yet ported.
+- Paper color/opacity, atomic local saves and white/custom-paper or transparent PNG
+  sharing. Thumbnail and encoding work runs away from the input thread.
 
-Finger drawing defaults to enabled so the app works immediately on iPhone.
-Turn off **Draw with finger** in brush settings when drawing with Pencil on iPad.
-A second finger cancels an unfinished finger mark and starts navigation. Pencil
-input takes priority over finger drawing. Supported Pencil hardware supplies force;
-fingers, pressureless pencils and estimated force samples use a constant fallback.
-Pencil altitude is converted to the shared tilt convention (zero is upright).
-Hover, predicted samples, late force corrections, squeeze and barrel roll remain
-unimplemented. Core Graphics marks do not reproduce Jetpack Ink textures, custom
-stamps, graphite grain, speed taper, or stabilization. Airbrush is a native soft-dab
-renderer rather than Android's spray renderer.
+Finger drawing defaults on. Disable **Draw with finger** in brush settings for
+Pencil-only input. A second finger cancels provisional finger paint and starts
+navigation. Pencil takes priority. Pressureless hardware, fingers and estimated
+force use the constant fallback. No predicted or late-corrected samples are baked
+into permanent tiles. Hover, squeeze and barrel roll remain unimplemented.
 
-## Parity still required
+## Remaining parity work
 
-| Area | Current Apple status |
+| Area | Remaining difference |
 | --- | --- |
-| Canvas, layers, basic tools, colors, local saving, PNG | Implemented; Apple CI/device validation required |
-| Shared color controls, brush package schema, presets/pressure/tilt | Integrated with Android's common implementations |
-| Custom stamp/Jetpack brush library, authoring, imported tip textures | Codec shared; UI/rendering not integrated |
-| Fill, smudge, quick shapes and pixel tools | Android only |
-| Selection, transforms, mesh/perspective warp | Android only |
-| Layer clipping, merge, image adjustment/warp and reference layers | Android only |
-| Animation, video timelines/import/export and process recording | Android only |
-| Android `.tipstroke` project exchange | Not implemented; iOS uses a separate versioned format |
-| Gallery thumbnails, saved palettes, persistent recent colors | Not implemented on iOS |
+| Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation, complete per-tip preferences/favorites/categories |
+| Fill and gestures | Android color-drop/reveal UI, concurrent editing during fill, configurable gesture actions and camera rotation |
+| Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
+| Animation | Shared background cels, live motion recording, disk-backed long timelines, resolution reduction and PNG-sequence export |
+| Video | Source-backed GIF/video canvases, media playback/scrubbing, clip editing, keyframes, crossfades and coverage navigation |
+| Process recording | Replay persistence, preview/scrub and process exports |
+| Project exchange | Lossless Android `.tipstroke` import/export; current iOS documents use their own versioned format |
+| Gallery and editor shell | Stacks/drag organization, multi-export, Android's adaptive toolbar layout and matching color-drop interaction |
 
-Future features do **not** automatically appear on iOS merely because they were
-added to `app/` or `drawing-android/`. Put portable rules in `core`, reusable controls
-in `shared-ui`, and implement native input/render/storage adapters for both
-platforms. See [Multiplatform migration](MULTIPLATFORM.md). The remaining Android
-editor/screens have not yet been moved behind those adapters.
+Adding a feature only to `app/` or `drawing-android/` still does not port it to iOS.
+Keep portable rules in `core`, reusable controls in `shared-ui`, and provide both
+native adapters. Do not silently flatten unsupported Android project data.
+See [Multiplatform migration](MULTIPLATFORM.md).
 
 ## Build with Codemagic
 

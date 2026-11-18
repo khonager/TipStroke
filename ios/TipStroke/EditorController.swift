@@ -60,12 +60,17 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         toolPicker.accessibilityLabel = "Drawing tool"
         let color = button("Brush color", symbol: "circle.lefthalf.filled") { [weak self] in
             guard let self else { return }; self.viewport.canvas.cancelStroke()
+            self.refreshDrawingColors()
             self.showShared(self.sharedControls.colorController(), title: "Colors")
         }
         let settings = button("Brush size, opacity and finger drawing", symbol: "slider.horizontal.3") { [weak self] in self?.brushSettings() }
         let tools = button("Tools", symbol: "paintbrush.pointed") { [weak self] in self?.showTools() }
         let bottomActions = UIStackView(arrangedSubviews: [color, tools, settings]); bottomActions.distribution = .equalSpacing
-        let bottom = UIStackView(arrangedSubviews: [toolPicker, bottomActions]); bottom.spacing = 4
+        let quickColors = sharedControls.quickColorsController()
+        addChild(quickColors)
+        quickColors.view.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        let bottom = UIStackView(arrangedSubviews: [toolPicker, quickColors.view, bottomActions]); bottom.spacing = 4
+        quickColors.didMove(toParent: self)
         bottom.axis = .vertical
         bottom.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
         let bottomPanel = panel(bottom)
@@ -109,6 +114,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             opacity: defaults.object(forKey: "brush.opacity") as? Float ?? 1,
             finger: defaults.object(forKey: "fingerDrawing") as? Bool ?? true)
         if let data = savedBrush { _ = sharedControls.restoreBrush(data: data) }
+        refreshDrawingColors()
         updateHistory(); saveLabel.text = "Saved on this device"
     }
     override func viewWillAppear(_ animated: Bool) {
@@ -180,6 +186,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private func saveNow() {
         saveWork?.cancel(); saveWork = nil
         guard !viewport.canvas.isDrawing else { return }
+        refreshDrawingColors()
         // The latest snapshot replaces any pending save, bounding queued artwork retention.
         pending = document.snapshot()
         startSaveIfNeeded()

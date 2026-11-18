@@ -556,9 +556,27 @@ scrolling in landscape. Verify image imports fit the canvas and can be undone,
 all blend modes agree between display and PNG, and alpha lock preserves transparent
 pixels. Review input latency and peak memory on a large multi-layer document.
 
-Local integration check (2026-11-18, Linux, Kotlin 2.2.21): 57 core JVM tests,
-4 shared UI JVM tests and 102 Android app unit tests passed; `:app:assembleDebug`
-passed. The Apple-only Gradle configuration also passed common JVM checks offline
-with Android SDK environment variables unset. Generated project determinism,
-scheme/plist syntax, CI YAML and shell syntax were checked. These results do not
-include an Apple compile, simulator execution or physical-device validation.
+Local parity-port check (2026-11-18, Linux, Kotlin 2.2.21): 62 core JVM tests,
+6 shared UI JVM tests, 102 Android app unit tests and 244 Android drawing unit tests
+passed (414 total). `:app:assembleDebug` and `:app:lintDebug` passed; lint reports
+26 warnings and no errors. Swift 5.10 syntax parsing includes app, unit and UI test
+sources. Generated project determinism and `git diff --check` pass. These results do
+not include an Apple compile, simulator execution or physical-device validation.
+
+New common checks cover imported-tip coverage/borders, grain depth, stamp placement
+across sample batches, Android brush library/pack formats, exposure-based ping-pong
+and saved-palette validation/persistence. New Apple tests cover selected fill across
+a tile boundary, selection move/undo, dither coordinates, frame-aware undo and
+save/reopen, GIF frame count, clipping/reference constraints, pigment-conserving
+smudge, and imported Kotlin brush sources rendered by Core Graphics. They are
+checked in for the Codemagic iPhone/iPad run, not executed on Linux.
+
+Additional physical checks: draw a custom tip across tile boundaries with scatter,
+rotation and grain; compare Android/iOS exports. Test fill cancellation/error limits,
+selection/inversion/clear and transform undo. Create two different animation frames,
+change holds and FPS, play all modes, toggle onion skins, reopen and compare GIF/MP4
+orientation and duration. Verify MP4 encoding on actual supported hardware. Exercise
+palettes, the quick-color row, imported/captured tip sources, clipping, reference
+strokes, merge, gallery thumbnails and document resize in portrait, landscape and
+narrow iPad windows. Native brush quality and all remaining `IOS.md` gaps must be
+resolved before claiming the two apps have full feature or visual parity.

@@ -33,16 +33,16 @@ Implemented: automatic bounded command recording for raster drawing, versioned/f
 
 ## iPhone and iPad port
 
-The initial native iOS source target and Codemagic workflows are implemented:
-local library, sparse raster painting, basic Pencil/finger input, editable paint
-layers, bounded stroke undo, autosave and PNG sharing. Apple SDK builds, simulator
-checks and device validation must pass before distributing the first release.
+The native iOS target links shared Kotlin rules and Compose controls. Manual native
+ports now include fill/smudge, pixel/shape tools, selections and affine transforms,
+layer clipping/reference strokes/merge, editable custom stamps, source import/capture,
+saved palettes, gallery thumbnails, bounded frame animation and GIF/MP4 export.
+Apple SDK compilation, simulator execution and device validation remain required.
 
-Remaining parity work is explicit: lossless Android project import/export;
-Jetpack-Ink-like brush quality and advanced Pencil input; gallery thumbnails and
-organization; image import/editing, selections/fill/smudge; animation and process
-recording. Do not silently flatten or discard unsupported Android document data.
-The existing Android production surface remains native and independent.
+Full parity still requires source-backed image editing and warp sessions, media/video
+editing, process replay, lossless Android project exchange, long disk-backed animation
+and the same adaptive editor shell. `IOS.md` tracks concrete gaps and current limits.
+The existing Android production surface remains native.
 
 ### Source-backed media canvases (Android)
 

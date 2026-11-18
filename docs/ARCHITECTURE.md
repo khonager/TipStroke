@@ -412,3 +412,20 @@ mesh footprints cull invisible sources and bound destination allocation; no
 full-canvas bitmap or per-pointer-sample tile copies are used. Closing a session
 releases its preview snapshots. Mesh foldovers are rejected to preserve inverse
 mapping for image masks. iOS transform parity remains roadmap work.
+
+### Native Apple editing adapters
+
+UIKit owns selection outlines, tools and coalesced pointer input. Commands mutate
+only affected 256 px tiles through one bounded transaction. Fill prepares sparse
+output on the project queue, then publishes on the main thread. Selection transforms
+capture bounded cutout tiles; stamp batches copy each touched tile once per batch.
+Smudge exchanges source/destination premultiplied color and alpha in bounded patches.
+No per-sample Compose state or full-layer stroke snapshot is introduced.
+
+Core owns shape/grain coverage, stamp placement, quick-shape recognition and timeline
+playback rules. Compose owns the shared saved-palette controls. Platform services
+retain file picking, image decoding, UIKit presentation, raster rendering and exports.
+Apple schema 3 stores frame tiles separately and undo entries identify their frame.
+Inactive Apple frames currently stay resident within the global tile limit; Android's
+disk-backed cels, media engine and non-destructive image/mesh adapters remain separate
+migration work. See `IOS.md` for exact implemented and missing workflows.

@@ -294,6 +294,7 @@ final class RasterDocument {
         let x = floor(point.x), y = floor(point.y)
         let context = try Self.context(width: 1, height: 1)
         context.setFillColor(UIColor.white.cgColor); context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        context.setFillColor(record.paperColor.cgColor); context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         context.translateBy(x: -x, y: -y)
         try Self.composite(snapshot(), in: context, visible: CGRect(x: x, y: y, width: 1, height: 1))
         guard let bytes = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }

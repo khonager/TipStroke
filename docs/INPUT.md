@@ -404,3 +404,14 @@ from upright. Native rendering remains distinct: no Jetpack Ink texture parity i
 claimed. Compose panels exchange coarse settings and never receive touch samples.
 A finger long-press cancels provisional paint before sampling composite color.
 Command-Z, Shift-Command-Z and Command-0 provide undo, redo and fit on iPad keyboards.
+
+## Native iOS tool adapters
+
+The Tools sheet selects fill, smudge, pixel pencil/line/dither, geometric shapes,
+selection shapes and move. Pencil hold invokes core quick-shape recognition;
+finger hold retains eyedropper priority. Selections constrain raster edits and
+transforms; shape commits, smudge gestures and transforms each create one bounded
+undo transaction. Fill currently uses a fixed tolerance of 24, prepares on the
+project worker and pauses editing until publication. Android's color-drop gesture,
+progressive reveal and concurrent-fill editing are not yet reproduced on Apple.
+Pencil pressure/tilt and stamping remain outside cross-platform UI state.

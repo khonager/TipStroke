@@ -3,6 +3,13 @@
 package dev.tipstroke.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -34,6 +41,8 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     private var color by mutableStateOf(RgbaColor(0f, 0f, 0f))
     private var fingerDrawing by mutableStateOf(true)
     private var mode by mutableStateOf(ColorPickerMode.HSV_WHEEL)
+    private var drawingColors by mutableStateOf(emptyList<RgbaColor>())
+    private var paletteCount by mutableIntStateOf(4)
     private val defaults = NSUserDefaults.standardUserDefaults
     private var history by mutableStateOf(decodeColors(defaults.stringForKey("colors.recent").orEmpty()).take(10))
     private val shelf = ColorShelf(defaults.stringForKey("colors.saved").orEmpty(),
@@ -53,6 +62,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     private fun updateBrush(value: BrushPreset) { brush = value; actions.brushChanged(NativeBrush(value)) }
     fun setColor(red: Float, green: Float, blue: Float) { color = RgbaColor(red, green, blue) }
+    fun setDrawingColors(data: String) { drawingColors = decodeColors(data).take(8) }
     fun recordColor() {
         history = (listOf(color) + history).distinct().take(10)
         defaults.setObject(encodeColors(history), forKey = "colors.recent")
@@ -66,6 +76,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     fun restoreLibrary(data: String): Boolean {
         val decoded = runCatching { BrushCollection.decode(data) }.getOrNull() ?: return false
+        if (decoded.any { item -> BrushPreset.libraryBuiltIns.any { it.id == item.preset.id } }) return false
         library = decoded; return true
     }
     fun importBrushes(data: String): Boolean {
@@ -112,13 +123,27 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             }
         }
     }
+    fun quickColorsController(): UIViewController = ComposeUIViewController {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            Surface(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val quick = (listOf(color) + shelf.saved + if (shelf.recent) history else drawingColors).distinct().take(shelf.slots)
+                    quick.forEachIndexed { index, value ->
+                        Box(Modifier.size(32.dp).background(Color(value.red, value.green, value.blue, value.alpha), CircleShape)
+                            .semantics { contentDescription = "Quick color ${index + 1}" }
+                            .clickable { color = value; actions.colorChanged(value.red, value.green, value.blue) })
+                    }
+                }
+            }
+        }
+    }
     fun colorController(): UIViewController = ComposeUIViewController {
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-                    ColorPickerPanel(color, mode, emptyList(), 4, colorHistory = history,
+                    ColorPickerPanel(color, mode, drawingColors, paletteCount, colorHistory = history,
                         onColorSelected = { color = it; actions.colorChanged(it.red, it.green, it.blue) },
-                        onModeChanged = { mode = it }, onPaletteColorCountChanged = {},
+                        onModeChanged = { mode = it }, onPaletteColorCountChanged = { paletteCount = it.coerceIn(1, 8) },
                         onClearHistory = { history = emptyList(); defaults.removeObjectForKey("colors.recent") }, showOriginalImageColors = false,
                         shelf = { selected, choose -> ColorShelfEditor(shelf, selected, choose) },
                         modifier = Modifier.fillMaxWidth())
