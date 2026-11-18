@@ -1,4 +1,5 @@
 import UIKit
+import TipStrokeShared
 
 /// Transient selection in document coordinates. It never becomes painting data.
 struct CanvasSelection {
@@ -256,6 +257,35 @@ extension RasterDocument {
             for (key, image) in source where key.rect.applying(t).intersects(context.boundingBoxOfClipPath) {
                 Self.draw(image, in: context, rect: key.rect.applying(t))
             }
+        }
+    }
+}
+
+extension RasterDocument {
+    func pushColor(from: CGPoint, to: CGPoint, radius: CGFloat, strength: CGFloat) throws {
+        guard from != to, strength > 0 else { return }
+        let radius = min(96, max(1, radius))
+        let area = CGRect(x: floor(to.x - radius), y: floor(to.y - radius), width: ceil(radius * 2) + 2, height: ceil(radius * 2) + 2).intersection(bounds)
+        guard !area.isNull else { return }
+        let reader = TilePixels(pixels[activeLayer] ?? [:])
+        let output = try Self.context(width: Int(area.width), height: Int(area.height))
+        let bytes = output.data!.assumingMemoryBound(to: UInt8.self)
+        let warp = NativeColorPush(x: Float(to.x), y: Float(to.y), dx: Float(to.x - from.x), dy: Float(to.y - from.y), radius: Float(radius), strength: Float(strength))
+        for y in 0..<Int(area.height) { for x in 0..<Int(area.width) {
+            let source = warp.source(x: Float(area.minX) + Float(x), y: Float(area.minY) + Float(y))
+            let sx = Int(floor(source.x)), sy = Int(floor(source.y))
+            let fx = source.x - Float(sx), fy = source.y - Float(sy)
+            let samples = try [reader.rgba(sx, sy), reader.rgba(sx + 1, sy), reader.rgba(sx, sy + 1), reader.rgba(sx + 1, sy + 1)]
+            let weights = [(1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy]
+            for channel in 0..<4 {
+                var value: Float = 0
+                for i in 0..<4 { value += Float((samples[i] >> (24 - channel * 8)) & 255) * weights[i] }
+                bytes[(y * Int(area.width) + x) * 4 + channel] = UInt8(max(0, min(255, value)).rounded())
+            }
+        } }
+        guard let image = output.makeImage() else { throw DrawingError.message("Could not prepare Color push.") }
+        try editTiles(in: area) { context in
+            context.setBlendMode(.copy); Self.draw(image, in: context, rect: area)
         }
     }
 }

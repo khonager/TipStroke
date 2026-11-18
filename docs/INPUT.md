@@ -583,3 +583,6 @@ uses brush size; color/opacity are flat. Mirror transforms preserve handedness.
 iOS Selection actions → Shadow pull captures selected sparse pixels once. Drag
 previews a current-color shadow behind pixels on the same layer. Lift commits;
 Cancel/Undo restores the transaction. Opaque paint on that layer hides shadows.
+iOS Color push runs once per display frame with a maximum 96 px radius. It uses
+the shared inverse-warp falloff and premultiplied bilinear samples, clips writes
+to the selection, and keeps a single cancellable undo transaction.

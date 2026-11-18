@@ -30,9 +30,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     @objc private func renderLivePreview() {
         guard previewPending, pointer != nil else { return }
         previewPending = false
-        document.resetStrokePreview()
+        if mode != .colorPush { document.resetStrokePreview() }
         do {
-            if shadowPull {
+            if mode == .colorPush, let p = pointer?.location(in: self) {
+                try document.pushColor(from: previous ?? gesturePoints[0], to: p, radius: strokeSize / 2, strength: strokeOpacity)
+                previous = p
+            } else if shadowPull {
                 let p = pointer?.location(in: self) ?? gesturePoints[0]
                 try document.paintShadow(shadowTiles, offset: CGPoint(x: p.x - gesturePoints[0].x, y: p.y - gesturePoints[0].y))
             } else if let elasticShape {
@@ -163,13 +166,13 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             do { shadowTiles = try document.shadowSource(color: brushColor.withAlphaComponent(brushOpacity)) }
             catch { shadowPull = false; onError?(error); return }
         }
-        if (mode.streamsPaint || liveFill || shadowPull) && !document.beginStroke(mirrored: mode != .smudge && !shadowPull) { return }
+        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull) { return }
         pointer = touch; previous = nil; previousTimestamp = -1
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
         stampPath = brush.usesStamps ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
         strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
-        if liveFill || shadowPull {
+        if liveFill || shadowPull || mode == .colorPush {
             previewLink = CADisplayLink(target: self, selector: #selector(renderLivePreview))
             previewLink?.add(to: .main, forMode: .common)
         }
@@ -177,7 +180,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let pointer, touches.contains(pointer) else { return }
-        if shadowPull || elasticShape != nil { previewPending = true; return }
+        if shadowPull || mode == .colorPush || elasticShape != nil { previewPending = true; return }
         if mode.streamsPaint { if !fitted { consume(pointer, event: event) }; return }
         let point = pointer.location(in: self)
         if liveFill {
@@ -196,12 +199,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         guard let pointer, touches.contains(pointer) else { return }
         holdWork?.cancel()
         let point = pointer.location(in: self)
-        if liveFill || shadowPull {
+        if liveFill || shadowPull || mode == .colorPush {
             gesturePoints.append(point); previewPending = true; renderLivePreview()
             guard self.pointer != nil else { return }
             document.endStroke(cancelled: false)
         } else if mode.streamsPaint {
-            if shadowPull || elasticShape != nil { previewPending = true; renderLivePreview() }
+            if shadowPull || mode == .colorPush || elasticShape != nil { previewPending = true; renderLivePreview() }
             if !fitted { consume(pointer, event: event) }
             guard self.pointer != nil else { return }
             document.endStroke(cancelled: false)

@@ -20,3 +20,9 @@ class NativeShapeTracker {
 class NativeShape(val kind: String, val points: List<Point>) {
     fun bend(x: Float, y: Float): NativeShape = NativeShape(kind, dev.tipstroke.core.geometry.ElasticLine.bend(points, Point(x, y)))
 }
+
+class NativeColorPush(x: Float, y: Float, dx: Float, dy: Float, private val radius: Float, private val strength: Float) {
+    private val center = Point(x, y)
+    private val delta = Point(dx, dy)
+    fun source(x: Float, y: Float): Point = dev.tipstroke.core.geometry.ColorPush.source(Point(x, y), center, delta, radius, strength)
+}
