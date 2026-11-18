@@ -170,6 +170,7 @@ internal fun BrushLibraryDialog(
                 val all = (BrushPreset.libraryBuiltIns.map { LibraryBrush(it, "TipStroke") } + brushes)
                     .sortedBy { libraryOrder.indexOf(it.preset.id.value).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
                 val shown = (when (section) {
+                    "Manga" -> all.filter { it.preset.id.value.startsWith("manga-") }
                     "Jetpack Ink" -> all.filter { it.preset.ink != null }
                     "My tips" -> all.filter { entry -> brushes.any { it.preset.id == entry.preset.id } }
                     "Favorites" -> favoriteIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } }
@@ -251,7 +252,7 @@ internal fun BrushLibraryDialog(
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TipAction("Import", Icons.Outlined.FileOpen, enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) })
                                 ActionIconButton(enabled = ready && !busy, onClick = { managingCategories = true }, label = "Categories", icon = Icons.Outlined.Folder)
-                                listOf("All tips", "Jetpack Ink", "My tips", "Favorites").forEach { name ->
+                                listOf("All tips", "Manga", "Jetpack Ink", "My tips", "Favorites").forEach { name ->
                                     FilterChip(section == name, { section = name }, label = { Text(name) })
                                 }
                             }
@@ -269,6 +270,7 @@ internal fun BrushLibraryDialog(
                                 if (android.os.Build.VERSION.SDK_INT < 34) "Jetpack Ink drawing requires Android 14 or newer. Existing custom tips are still available."
                                 else "Compare native Ink tips with your existing brushes. Soft is a spray-style brush; erasing keeps the current raster eraser.",
                                 style = MaterialTheme.typography.bodySmall)
+                            if (section == "Manga") Text("Use a selection or Paint inside to shade cleanly. Size changes the painted area; Grain scale changes pattern spacing. Keep opacity at 100% for crisp tones.", style = MaterialTheme.typography.bodySmall)
                             if (section == "Favorites") Text("${favoriteIds.size.coerceAtMost(favoriteCapacity)} / $favoriteCapacity canvas slots. Extra pins return when there is more room.", style = MaterialTheme.typography.bodySmall)
                             if (busy || !ready && message == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                             message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }

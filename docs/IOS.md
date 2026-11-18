@@ -184,3 +184,7 @@ Mirror wheel's point/orientation mapping is shared in core. Its native multi-cop
 preview, center placement, and Tools controls currently ship on Android only.
 Ribbon outline geometry is shared in core; the Ribbon tool and native preview are
 currently Android-only.
+
+Manga screentone presets are defined in core and available through the existing
+shared preset list and stamp adapter. Android additionally has a dedicated Manga
+library filter and inline usage guidance; that shelf presentation is pending on iOS.

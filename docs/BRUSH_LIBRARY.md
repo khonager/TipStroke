@@ -203,3 +203,12 @@ The library's **Categories** control creates, renames, removes, and orders named
 Tips can be held and dragged to reorder. A floating stroke preview follows the pointer, with an insertion marker at the destination and edge scrolling for longer libraries. All tips, Ink and My tips share a persisted library order; categories and Favorites keep their own persisted order. Search filters preserve the relative order of hidden tips.
 
 Library cards show edit, category, export, share and (for custom tips) duplicate/delete actions directly below the stroke preview. Cards do not expand; actions wrap on narrow screens. Tap the preview to use a tip.
+
+## Manga tips
+
+The Manga shelf includes 10/30/50% dot tones, hatching, crosshatching, and parallel
+shading. These are ordinary shared stamp presets with embedded canvas-anchored grain
+textures, so export/import needs no new schema. Use a selection or Paint inside to
+limit shading; keep opacity at 100% for crisp dots. Size controls brush coverage,
+while Grain scale controls pattern spacing. Scaling finished tone artwork can cause
+moiré; choose tone spacing at the intended output resolution.
