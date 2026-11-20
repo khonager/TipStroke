@@ -224,8 +224,10 @@ extension EditorController {
                           tiles.keys.allSatisfy({ current.pixels[layer]?[$0] === snapshot.pixels[layer]?[$0] }) else {
                         throw DrawingError.message("The fill area changed. Drop the color again to fill it.")
                     }
+                    let previous = self.viewport.canvas.captureFillTiles(tiles.keys)
                     try current.replaceTiles(tiles)
                     self.changed()
+                    self.viewport.canvas.revealFill(tiles.keys, from: point, previous: previous)
                 } catch { self.showError(error) }
             }
         }

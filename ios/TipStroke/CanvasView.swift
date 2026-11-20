@@ -171,6 +171,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     // One native layer per visible tile; never allocate a document-sized UIView backing bitmap.
     func refresh(_ dirty: CGRect? = nil) {
         mediaBackdrop.update(document.record.media, bounds: bounds)
+        if dirty?.isNull != true { finishFillReveal() }
         backgroundColor = document.record.paperColor
         isOpaque = (document.record.backgroundOpacity ?? 1) == 1
         let visible = viewport.map { convert($0.bounds, from: $0) } ?? bounds
@@ -209,8 +210,58 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             } catch { onError?(error); return }
         }
     }
+    private var fillRevealID = UUID()
+    private var revealLayers: [(current: CALayer, old: CALayer)] = []
+
+    func captureFillTiles(_ keys: Dictionary<TileKey, CGImage>.Keys) -> [TileKey: CGImage] {
+        finishFillReveal()
+        return keys.reduce(into: [:]) { result, key in
+            if let contents = displayTiles[key]?.contents { result[key] = (contents as! CGImage) }
+        }
+    }
+    private func finishFillReveal() {
+        guard !revealLayers.isEmpty else { return }
+        fillRevealID = UUID()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for pair in revealLayers { pair.current.mask = nil; pair.old.removeFromSuperlayer() }
+        revealLayers.removeAll()
+        CATransaction.commit()
+    }
+    func revealFill(_ keys: Dictionary<TileKey, CGImage>.Keys, from point: CGPoint, previous: [TileKey: CGImage]) {
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        let visible = keys.compactMap { key in displayTiles[key].map { (key, $0) } }
+        guard !visible.isEmpty else { return }
+        let area = visible.reduce(CGRect.null) { $0.union($1.0.rect) }
+        let radius = hypot(max(abs(point.x - area.minX), abs(point.x - area.maxX)), max(abs(point.y - area.minY), abs(point.y - area.maxY))) + 2
+        let id = UUID(); fillRevealID = id
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak self] in if self?.fillRevealID == id { self?.finishFillReveal() } }
+        for (key, current) in visible {
+            let old = CALayer(); old.frame = current.frame; old.contents = previous[key]; old.magnificationFilter = .nearest
+            layer.insertSublayer(old, below: current)
+            revealLayers.append((current, old))
+            let center = CGPoint(x: point.x - key.rect.minX, y: point.y - key.rect.minY)
+            for (target, inverse) in [(old, true), (current, false)] {
+                func path(_ radius: CGFloat) -> CGPath {
+                    let shape = CGMutablePath()
+                    if inverse { shape.addRect(current.bounds) }
+                    shape.addEllipse(in: CGRect(x: center.x-radius, y: center.y-radius, width: radius*2, height: radius*2))
+                    return shape
+                }
+                let mask = CAShapeLayer(); mask.frame = current.bounds; mask.fillRule = .evenOdd
+                mask.path = path(radius); target.mask = mask
+                let animation = CABasicAnimation(keyPath: "path")
+                animation.fromValue = path(0.01); animation.toValue = mask.path
+                animation.duration = 0.5
+                mask.add(animation, forKey: "fill")
+            }
+        }
+        CATransaction.commit()
+    }
     func updateVisibleTiles() { refresh(.null) }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        finishFillReveal()
         hoverLayer.path = nil
         let all = event?.allTouches?.filter { $0.phase != .ended && $0.phase != .cancelled } ?? []
         if let pointer, pointer.type == .pencil { return }

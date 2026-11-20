@@ -90,7 +90,6 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | --- | --- |
 | Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation |
 | Creative tools added in this port | Native implementations present; Apple SDK compilation, iPhone/iPad simulator tests and physical Pencil checks still required |
-| Fill and gestures | Animated fill reveal |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
 | Animation | Shared background cels, live motion recording, disk-backed long timelines and resolution reduction |
 | Video | Source-backed GIF/video canvases, media playback/scrubbing, clip editing, keyframes, crossfades and coverage navigation |
@@ -219,3 +218,4 @@ outside the grid to cancel. **More tools** opens the full editor menu. Turn off
 
 Drag the iOS brush-color button onto a canvas region to fill it. The worker keeps
 the editor responsive and discards a stale result if the destination has changed.
+A radial reveal uses visible tile layers and respects Reduce Motion.
