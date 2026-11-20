@@ -7,6 +7,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     let document: RasterDocument
     let viewport: CanvasViewport
     private let store = ProjectStore.shared
+    private lazy var recorder = ProcessRecorder(store: store, id: document.record.id)
     private var saveWork: DispatchWorkItem?
     private var saving = false
     private var pending: DocumentSnapshot?
@@ -48,6 +49,11 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         share.showsMenuAsPrimaryAction = true
         share.menu = UIMenu(children: [
             UIAction(title: "Share PNG", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.export() },
+            UIAction(title: "Drawing progress", image: UIImage(systemName: "play.rectangle")) { [weak self] _ in
+                guard let self else { return }
+                self.viewport.canvas.cancelStroke()
+                self.present(UINavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
+            },
             UIAction(title: "Share transparent PNG") { [weak self] _ in self?.export(transparent: true) },
             UIAction(title: "Share animation MP4") { [weak self] _ in self?.exportAnimationVideo() },
             UIAction(title: "Share PNG sequence") { [weak self] _ in self?.exportAnimation(pngSequence: true) },
@@ -142,6 +148,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             finger: defaults.object(forKey: "fingerDrawing") as? Bool ?? true)
         if let data = savedBrush { _ = sharedControls.restoreBrush(data: data) }
         refreshDrawingColors()
+        recorder.capture(document)
         updateHistory(); saveLabel.text = "Saved on this device"
     }
     override func viewWillAppear(_ animated: Bool) {
@@ -279,6 +286,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     private func updateHistory() { undoButton.isEnabled = document.canUndo; redoButton.isEnabled = document.canRedo }
     func changed(redraw: Bool = true) {
+        recorder.capture(document)
         if viewport.canvas.bounds.size != document.bounds.size {
             viewport.setZoomScale(1, animated: false)
             viewport.canvas.bounds = document.bounds; viewport.contentSize = document.bounds.size; viewport.fit()

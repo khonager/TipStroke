@@ -216,6 +216,11 @@ extension ProjectStore {
         }
         let snapshot = RasterDocument(snapshot: DocumentSnapshot(record: state, pixels: pixels, frames: frames)).snapshot()
         try save(snapshot)
+        let replay = directory.appendingPathComponent("ios-progress")
+        if FileManager.default.fileExists(atPath: replay.path) {
+            _ = try ProcessReplay(folder: replay)
+            try FileManager.default.moveItem(at: replay, to: replayFolder(state.id))
+        }
         let base = packageBase(state.id)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         // Keep ancillary files and platform metadata. Native revisions own the editable tile content.
@@ -326,6 +331,10 @@ extension ProjectStore {
             }
             manifest["animation"] = raw
         } else { manifest.removeValue(forKey: "animation") }
+        let replay = replayFolder(state.id)
+        if fm.fileExists(atPath: replay.appendingPathComponent("index.json").path) {
+            try fm.copyItem(at: replay, to: target.appendingPathComponent("ios-progress"))
+        }
         try PackageIO.write(manifest, at: target.appendingPathComponent("manifest.json"))
         try Self.writePNG(Self.thumbnail(snapshot), to: target.appendingPathComponent("thumbnail.png"))
     }
