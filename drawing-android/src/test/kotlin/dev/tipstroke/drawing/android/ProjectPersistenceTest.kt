@@ -18,6 +18,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.json.JSONObject
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -37,6 +38,26 @@ class ProjectPersistenceTest {
             ProjectPersistence.save(context.contentResolver, library, id, "Grouped", snapshot).getOrThrow()
             val loaded = ProjectPersistence.load(library.projectDirectory(id)).getOrThrow()
             assertEquals(listOf("group-1", "group-1"), loaded.layers.map { it.groupId })
+        } finally { snapshot.recycle(); library.delete(id) }
+    }
+
+    @Test fun retainsPortableLayerSettingsAndFrameMasksAcrossSaves() {
+        val context = RuntimeEnvironment.getApplication()
+        val library = DrawingLibrary(context)
+        val id = library.newId()
+        val layer = LayerId("paint")
+        val snapshot = DrawingSnapshot(16, 16, layer, listOf(SavedRasterSnapshot(layer, "Paint", true, 1f, emptyMap())))
+        try {
+            ProjectPersistence.save(context.contentResolver, library, id, "Exchange", snapshot).getOrThrow()
+            val dir = library.projectDirectory(id)
+            val settings = File(dir, "ios-layer-settings.json")
+            val frame = File(dir, "ios-photo-masks/frames.json")
+            settings.writeText("""{"paint":{"iosLocked":true}}""")
+            frame.parentFile!!.mkdirs()
+            frame.writeText("""{"frames":["first"]}""")
+            ProjectPersistence.save(context.contentResolver, library, id, "Edited", snapshot).getOrThrow()
+            assertTrue(JSONObject(settings.readText()).getJSONObject("paint").getBoolean("iosLocked"))
+            assertEquals("first", JSONObject(frame.readText()).getJSONArray("frames").getString(0))
         } finally { snapshot.recycle(); library.delete(id) }
     }
 

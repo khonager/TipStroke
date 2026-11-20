@@ -211,7 +211,7 @@ final class ProcessReplay {
             guard length > 0, length <= ReplayFiles.limit - bytes else { throw DrawingError.message("Invalid recording step size.") }
             bytes += length
             let step = try PropertyListDecoder().decode(ReplayStep.self, from: Data(contentsOf: file))
-            guard step.opacity.isFinite, (0...1).contains(step.opacity), step.patches.count <= 256,
+            guard step.opacity.isFinite, (0...1).contains(step.opacity), step.patches.count <= 1024,
                   step.patches.allSatisfy({ patch in
                       patch.tile.x >= 0 && patch.tile.y >= 0 && patch.tile.x < (index.width + 255) / 256 && patch.tile.y < (index.height + 255) / 256
                   }) else { throw DrawingError.message("Invalid recording tile.") }

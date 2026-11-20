@@ -564,6 +564,19 @@ internal object ProjectPersistence {
                 if (thumbnail !== rendered) rendered.recycle()
                 thumbnail.recycle()
             }
+            // Keep the native iOS layer flags and per-frame image masks across Android saves.
+            // Their stable layer/frame IDs let the importer ignore removed layers and frames.
+            for (name in listOf("ios-layer-settings.json", "ios-photo-masks")) {
+                val original = File(target, name)
+                if (!original.exists()) continue
+                original.walkTopDown().forEach { source ->
+                    val output = File(temporary, name).resolve(source.relativeTo(original))
+                    if (source.isDirectory) output.mkdirs() else {
+                        try { Files.createLink(output.toPath(), source.toPath()) }
+                        catch (_: java.io.IOException) { source.copyTo(output) }
+                    }
+                }
+            }
             snapshot.processRecording?.write(File(temporary, "process.tsr"))
                 ?: File(target, "process.tsr").takeIf { it.exists() }?.copyTo(File(temporary, "process.tsr"))
             replaceDirectoryAtomically(temporary, target)

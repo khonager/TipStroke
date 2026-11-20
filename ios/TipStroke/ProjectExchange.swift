@@ -176,15 +176,18 @@ extension ProjectStore {
             return try files.mapValues(CelStorage.read)
         }
         var pixels: [UUID: [TileKey: CGImage]] = [:]
+        let settingsFile = directory.appendingPathComponent("ios-layer-settings.json")
+        let settings = FileManager.default.fileExists(atPath: settingsFile.path) ? try PackageIO.json(settingsFile) : [:]
         state.layers = try layers.map { raw in
             let key = try identifier(raw)
             var layer = LayerRecord()
             guard let native = ids.layers[key], let name = raw["name"] as? String else { throw PackageIO.invalid }
             layer.id = native; layer.name = name; layer.visible = raw["visible"] as? Bool ?? true
             layer.opacity = raw["opacity"] as? Double ?? 1; layer.blendMode = raw["blendMode"] as? String ?? "NORMAL"
-            layer.locked = raw["iosLocked"] as? Bool ?? false
-            layer.alphaLocked = raw["iosAlphaLocked"] as? Bool ?? false
-            layer.reference = raw["iosReference"] as? Bool ?? false
+            let flags = settings[key] as? JSONObject ?? raw
+            layer.locked = flags["iosLocked"] as? Bool ?? false
+            layer.alphaLocked = flags["iosAlphaLocked"] as? Bool ?? false
+            layer.reference = flags["iosReference"] as? Bool ?? false
             if let group = raw["groupId"] as? String {
                 guard PackageIO.safeID(group) else { throw PackageIO.invalid }
                 var groups = ids.layerGroups ?? [:]
@@ -249,6 +252,40 @@ extension ProjectStore {
                 return frame
             }
             guard Set(ids.frames.values).count == ids.frames.count else { throw PackageIO.invalid }
+            let maskRoot = directory.appendingPathComponent("ios-photo-masks")
+            let flagsURL = maskRoot.appendingPathComponent("frames.json")
+            var nativeMaskFrames = Set<String>()
+            if FileManager.default.fileExists(atPath: flagsURL.path) {
+                guard let frameKeys = try PackageIO.json(flagsURL)["frames"] as? [String], frameKeys.count <= 10_000 else { throw PackageIO.invalid }
+                nativeMaskFrames = Set(frameKeys)
+            }
+            var maskReferences = 0
+            for (layerKey, id) in ids.layers {
+                guard let photo = state.layers.first(where: { $0.id == id })?.photo else { continue }
+                let shared = try tileURLs(directory.appendingPathComponent("layers/\(layerKey)/mask"), width: photo.width, height: photo.height)
+                    .mapValues { try LocalMediaFile($0) }
+                for (frameKey, frameID) in ids.frames {
+                    let selected = frameID == timeline.frames[timeline.selectedIndex].id
+                    if selected && !timeline.sharedLayerIDs.contains(id) { continue }
+                    if nativeMaskFrames.contains(frameKey) {
+                        let path = maskRoot.appendingPathComponent(layerKey).appendingPathComponent(frameKey)
+                        if selected {
+                            frames[frameID, default: [:]][id] = try readTiles(path, width: photo.width, height: photo.height)
+                        } else {
+                            let files = try tileURLs(path, width: photo.width, height: photo.height)
+                            if !files.isEmpty {
+                                coldFrames[frameID, default: [:]][id] = try files.mapValues { url in
+                                    try autoreleasepool { _ = try CelStorage.read(url); return try LocalMediaFile(url) }
+                                }
+                            }
+                        }
+                    } else if !selected && !timeline.sharedLayerIDs.contains(id) && !shared.isEmpty {
+                        maskReferences += shared.count
+                        guard maskReferences <= 100_000 else { throw DrawingError.message("This shared animation mask exceeds the iOS cel storage limit.") }
+                        coldFrames[frameID, default: [:]][id] = shared
+                    }
+                }
+            }
             let celRoot = directory.appendingPathComponent("animation/cels")
             if FileManager.default.fileExists(atPath: celRoot.path) {
                 let selected = timeline.frames[timeline.selectedIndex].id
@@ -385,7 +422,7 @@ extension ProjectStore {
         }
         let previous = manifest["layers"] as? [JSONObject] ?? []
         // The current native snapshot is authoritative for raster pixels, including erased tiles.
-        for path in ["layers", "animation/cels"] {
+        for path in ["layers", "animation/cels", "ios-photo-masks"] {
             let dir = target.appendingPathComponent(path)
             if fm.fileExists(atPath: dir.path) { try fm.removeItem(at: dir) }
         }
@@ -423,12 +460,25 @@ extension ProjectStore {
             } else { try writeTiles(snapshot.pixels[layer.id] ?? [:], "layers/\(id)/tiles") }
             return raw
         }
+        let flags = state.layers.reduce(into: JSONObject()) { result, layer in
+            if layer.locked || layer.alphaLocked || layer.reference {
+                result[layerID(layer.id)] = ["iosLocked": layer.locked, "iosAlphaLocked": layer.alphaLocked, "iosReference": layer.reference]
+            }
+        }
+        let settings = target.appendingPathComponent("ios-layer-settings.json")
+        if !flags.isEmpty { try PackageIO.write(flags, at: settings) }
+        else if fm.fileExists(atPath: settings.path) { try fm.removeItem(at: settings) }
         if let timeline = state.animation {
             var raw = manifest["animation"] as? JSONObject ?? [:]
             let priorFrames = (raw["frames"] as? [JSONObject] ?? []).reduce(into: [String: JSONObject]()) { result, item in
                 if let id = item["id"] as? String { result[id] = item }
             }
             let rasterIDs = Set(state.layers.filter { $0.photo == nil }.map(\.id))
+            let masks = target.appendingPathComponent("ios-photo-masks")
+            if state.layers.contains(where: { $0.photo != nil }) {
+                try fm.createDirectory(at: masks, withIntermediateDirectories: true)
+                try PackageIO.write(["frames": timeline.frames.map { frameID($0.id) }], at: masks.appendingPathComponent("frames.json"))
+            }
             raw["imageCels"] = state.layers.compactMap { layer -> JSONObject? in
                 guard let original = layer.photo else { return nil }
                 let poses = timeline.frames.compactMap { frame -> JSONObject? in
@@ -456,8 +506,9 @@ extension ProjectStore {
                 item["id"] = id; item["exposure"] = frame.exposure
                 item["sourceTimeUs"] = frame.sourceTimeUs; item["durationUs"] = frame.durationUs
                 if let files = snapshot.coldFrames[frame.id] {
-                    for (layer, tiles) in files where rasterIDs.contains(layer) && !tiles.isEmpty {
-                        let dir = target.appendingPathComponent("animation/cels/\(layerID(layer))/\(id)")
+                    for (layer, tiles) in files where !tiles.isEmpty {
+                        let base = rasterIDs.contains(layer) ? "animation/cels" : "ios-photo-masks"
+                        let dir = target.appendingPathComponent("\(base)/\(layerID(layer))/\(id)")
                         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
                         for (key, file) in tiles {
                             let output = dir.appendingPathComponent(key.fileName)
@@ -466,8 +517,9 @@ extension ProjectStore {
                         }
                     }
                 } else {
-                    for (layer, tiles) in snapshot.frames[frame.id] ?? [:] where rasterIDs.contains(layer) {
-                        try writeTiles(tiles, "animation/cels/\(layerID(layer))/\(id)")
+                    for (layer, tiles) in snapshot.frames[frame.id] ?? [:] {
+                        let base = rasterIDs.contains(layer) ? "animation/cels" : "ios-photo-masks"
+                        try writeTiles(tiles, "\(base)/\(layerID(layer))/\(id)")
                     }
                 }
                 return item
@@ -654,9 +706,12 @@ private extension ProjectStore {
             let target = id == "original" ? movieDir.appendingPathComponent("timeline.source") : clipsDir.appendingPathComponent(id + ".source")
             do { try PackageIO.fm.linkItem(at: file, to: target) } catch { try PackageIO.fm.copyItem(at: file, to: target) }
             let size = try mediaSize(asset)
-            assets[id] = ["kind": asset.kind, "width": Int(size.width), "height": Int(size.height),
-                          "durationUs": asset.durationUs, "frameRate": min(120, max(1, asset.frameRate)), "canvasScale": 1,
-                          "iosExtension": asset.fileExtension, "iosName": asset.name]
+            let originalInfo = (prior?["assets"] as? [String: JSONObject])?[id] ?? (id == "original" && prior?["kind"] as? String != "sequence" ? prior : nil) ?? [:]
+            var info = originalInfo
+            info.merge(["kind": asset.kind, "width": Int(size.width), "height": Int(size.height),
+                          "durationUs": asset.durationUs, "frameRate": min(120, max(1, asset.frameRate)), "canvasScale": originalInfo["canvasScale"] as? Double ?? 1,
+                        "iosExtension": asset.fileExtension, "iosName": asset.name]) { _, new in new }
+            assets[id] = info
         }
         let oldClips = Dictionary(uniqueKeysWithValues: (ids.clips ?? [:]).map { ($1, $0) })
         let clips = try track.clips.map { clip -> JSONObject in

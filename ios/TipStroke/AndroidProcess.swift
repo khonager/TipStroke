@@ -168,7 +168,7 @@ enum AndroidProcess {
         var stream = ReplayBytes(data: try Data(contentsOf: file, options: .mappedIfSafe))
         guard ["TipStroke-process-1", "TipStroke-process-2", "TipStroke-process-3"].contains(try stream.text()) else { throw invalid }
         let width = try stream.integer(), height = try stream.integer(), reason = try stream.text(), count = try stream.integer()
-        guard (16...4096).contains(width), (16...4096).contains(height), (1...ReplayFiles.maxSteps).contains(count) else { throw invalid }
+        guard (16...8192).contains(width), (16...8192).contains(height), (1...ReplayFiles.maxSteps).contains(count) else { throw invalid }
         var index = ReplayIndex(width: width, height: height)
         try ReplayFiles.fm.createDirectory(at: folder, withIntermediateDirectories: true)
         let scene = AndroidReplayScene(width: width, height: height)

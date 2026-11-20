@@ -240,3 +240,5 @@ format namespace from Android project manifests.
 Android project archives can include `process-portable.tsr`. It carries the same committed steps as `process.tsr`, with Android brush commands rendered to lossless PNG tile patches for offline replay on iOS. The original command stream stays in the archive. Both use the existing recording size limit. Projects with older brush commands can still be exchanged when the companion is unavailable.
 
 The iOS exporter includes its native journal in `ios-progress/` and, when it fits the Android recording limits, exports visual steps in the Android recording format. After importing an iOS recording, the Android recorder can start a new native recording from the current drawing.
+
+The standard image-layer mask represents the current frame when exporting an iOS drawing. Optional `ios-photo-masks/` retains distinct native masks by layer and frame. Android saves preserve these files and `ios-layer-settings.json` for subsequent transfer. Shared Android masks initialize the corresponding native frame masks during import.
