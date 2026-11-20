@@ -268,6 +268,7 @@ extension DocumentRecord {
 final class TimelineController: UITableViewController {
     let document: RasterDocument
     var onChange: (() -> Void)?
+    var onRecordMotion: (() -> Void)?
     var onRecordDrawing: (() -> Void)?
     private var timer: Timer?
     private var playbackTick: Int64 = 0
@@ -287,11 +288,11 @@ final class TimelineController: UITableViewController {
     deinit { timer?.invalidate() }
     private func changed() { tableView.reloadData(); onChange?() }
     override func numberOfSections(in tableView: UITableView) -> Int { 2 }
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { section == 0 ? (document.record.media == nil ? 3 : 2) : document.record.animation?.frames.count ?? 0 }
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { section == 0 ? (document.record.media == nil ? 4 : 2) : document.record.animation?.frames.count ?? 0 }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "frame", for: indexPath)
         var content = cell.defaultContentConfiguration()
-        if indexPath.section == 0 { content.text = ["Add blank frame", "Duplicate current frame", "Record drawing live"][indexPath.row] }
+        if indexPath.section == 0 { content.text = ["Add blank frame", "Duplicate current frame", "Record drawing live", "Record photo motion"][indexPath.row] }
         else if let animation = document.record.animation {
             content.text = "Frame \(indexPath.row + 1) · \(animation.frames[indexPath.row].exposure) ticks"
             content.image = UIImage(systemName: animation.selectedIndex == indexPath.row ? "checkmark.circle.fill" : "circle")
@@ -302,7 +303,7 @@ final class TimelineController: UITableViewController {
         stopPlayback()
         do {
             if indexPath.section == 0 && indexPath.row >= 2 {
-                let record = onRecordDrawing
+                let record = indexPath.row == 2 ? onRecordDrawing : onRecordMotion
                 dismiss(animated: true) { record?() }; return
             }
             if indexPath.section == 0 { try document.addFrame(copy: indexPath.row == 1) }

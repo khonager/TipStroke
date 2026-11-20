@@ -56,6 +56,7 @@ extension EditorController {
         viewport.canvas.cancelStroke(); document.enableAnimation(); changed()
         viewport.canvas.stopLiveDrawing()
         let controller = TimelineController(document: document)
+        controller.onRecordMotion = { [weak self] in self?.configurePhotoMotion() }
         controller.onRecordDrawing = { [weak self] in
             guard let self else { return }
             do { self.activateMode(.paint); try self.viewport.canvas.startLiveDrawing(); self.changed() }
