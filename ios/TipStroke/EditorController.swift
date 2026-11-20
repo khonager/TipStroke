@@ -48,6 +48,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             UIAction(title: "Share PNG", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.export() },
             UIAction(title: "Share transparent PNG") { [weak self] _ in self?.export(transparent: true) },
             UIAction(title: "Share animation MP4") { [weak self] _ in self?.exportAnimationVideo() },
+            UIAction(title: "Share PNG sequence") { [weak self] _ in self?.exportAnimation(pngSequence: true) },
             UIAction(title: "Share animation GIF") { [weak self] _ in self?.exportAnimation() },
             UIAction(title: "Import image", image: UIImage(systemName: "photo")) { [weak self] _ in self?.importImage() }
         ])

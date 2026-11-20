@@ -57,7 +57,7 @@ are not an Apple SDK build, simulator run or physical Pencil validation.
   are downsampled/tiled off the input thread into a paint layer.
 - Animation timeline: blank/duplicate/delete/reorder frames, per-frame holds,
   FPS, loop/ping-pong/once, adjacent onion skins, frame-aware undo, save/reopen,
-  GIF and silent MP4 export. Timing uses Android's shared timeline rules. Current
+  GIF, silent MP4, and zipped PNG-sequence export with playback timing. Timing uses Android's shared timeline rules. Current
   Apple limits are 240 frames and 512 resident tiles across all frames/layers;
   Android's disk-backed long-timeline implementation is not yet ported.
 - Paper color/opacity, atomic local saves and white/custom-paper or transparent PNG
@@ -87,7 +87,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | Creative tools added in this port | Native implementations present; Apple SDK compilation, iPhone/iPad simulator tests and physical Pencil checks still required |
 | Fill and gestures | Android color-drop/reveal UI, concurrent editing during fill, configurable gesture actions and camera rotation |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
-| Animation | Shared background cels, live motion recording, disk-backed long timelines, resolution reduction and PNG-sequence export |
+| Animation | Shared background cels, live motion recording, disk-backed long timelines and resolution reduction |
 | Video | Source-backed GIF/video canvases, media playback/scrubbing, clip editing, keyframes, crossfades and coverage navigation |
 | Process recording | Replay persistence, preview/scrub and process exports |
 | Project exchange | Lossless Android `.tipstroke` import/export; current iOS documents use their own versioned format |

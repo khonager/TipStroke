@@ -88,15 +88,19 @@ extension EditorController {
             }
         }
     }
-    func exportAnimation() {
+    func exportAnimation(pngSequence: Bool = false) {
         guard !exporting else { return }; exporting = true
         viewport.canvas.cancelStroke(); let snapshot = document.snapshot()
         ProjectStore.shared.queue.async {
-            let result = Result { try ProjectStore.shared.exportGIF(snapshot) }
+            let result = Result {
+                try pngSequence ? ProjectStore.shared.exportPNGSequence(snapshot) : ProjectStore.shared.exportGIF(snapshot)
+            }
             DispatchQueue.main.async {
                 self.exporting = false
                 do {
-                    let sheet = UIActivityViewController(activityItems: [try result.get()], applicationActivities: nil)
+                    let url = try result.get()
+                    let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                    sheet.completionWithItemsHandler = { _, _, _, _ in try? FileManager.default.removeItem(at: url) }
                     sheet.popoverPresentationController?.sourceView = self.view
                     sheet.popoverPresentationController?.sourceRect = CGRect(x: self.view.bounds.midX, y: 60, width: 1, height: 1)
                     self.present(sheet, animated: true)

@@ -75,6 +75,49 @@ extension ProjectStore {
         guard let image = context.makeImage() else { throw DrawingError.message("Could not render the drawing.") }
         return image
     }
+    func exportPNGSequence(_ snapshot: DocumentSnapshot) throws -> URL {
+        guard let animation = snapshot.record.animation else { throw DrawingError.message("Create an animation first.") }
+        let segments = animation.shared.segments()
+        let count = segments.reduce(0) { $0 + Int($1.ticks) }
+        guard (1...36000).contains(count) else { throw DrawingError.message("Animation is too long to export.") }
+        let files = FileManager.default
+        let folder = files.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try files.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? files.removeItem(at: folder) }
+        let timing: [String: Any] = ["fps": animation.fps, "durationUs": Int64(count) * 1_000_000 / Int64(animation.fps),
+            "playbackMode": animation.playbackMode, "frameCount": count]
+        try JSONSerialization.data(withJSONObject: timing).write(to: folder.appendingPathComponent("timing.json"))
+        var tick = 1
+        for segment in segments {
+            try autoreleasepool {
+                var drawing = snapshot
+                drawing.pixels = snapshot.frames[animation.frames[Int(segment.index)].id] ?? [:]
+                let image = try Self.render(drawing)
+                var first: URL?
+                for _ in 0..<Int(segment.ticks) {
+                    let url = folder.appendingPathComponent(String(format: "frame_%05d.png", tick))
+                    if let first { try files.linkItem(at: first, to: url) }
+                    else { try Self.writePNG(image, to: url); first = url }
+                    tick += 1
+                }
+            }
+        }
+        let output = files.temporaryDirectory.appendingPathComponent("TipStroke-\(UUID().uuidString).zip")
+        var coordinationError: NSError?
+        var copyResult: Result<Void, Error>?
+        NSFileCoordinator().coordinate(readingItemAt: folder, options: .forUploading, error: &coordinationError) { archive in
+            copyResult = Result { try files.copyItem(at: archive, to: output) }
+        }
+        do {
+            if let coordinationError { throw coordinationError }
+            guard let copyResult else { throw DrawingError.message("Could not package animation frames.") }
+            try copyResult.get()
+            return output
+        } catch {
+            try? files.removeItem(at: output)
+            throw error
+        }
+    }
     func exportGIF(_ snapshot: DocumentSnapshot) throws -> URL {
         guard let animation = snapshot.record.animation else { throw DrawingError.message("Create an animation first.") }
         let order = animation.shared.segments()
