@@ -20,6 +20,7 @@ for family in ('iPhone', 'iPad'):
         raise SystemExit(f'No available {family} simulator. Install an iOS Simulator runtime in Xcode.')
     print(f"{family}\t{candidates[0]['udid']}")
 PY
+result=0
 while IFS=$'\t' read -r family device; do
     xcodebuild test \
       -project ios/TipStroke.xcodeproj -scheme TipStroke \
@@ -27,6 +28,7 @@ while IFS=$'\t' read -r family device; do
       -parallel-testing-enabled NO \
       -derivedDataPath build/ios/DerivedData \
       -resultBundlePath "build/ios/${family}-$(date +%s).xcresult" \
-      CODE_SIGNING_ALLOWED=NO
+      CODE_SIGNING_ALLOWED=NO || result=1
     xcrun simctl shutdown "$device" || true
 done < build/ios/test-devices.tsv
+exit "$result"
