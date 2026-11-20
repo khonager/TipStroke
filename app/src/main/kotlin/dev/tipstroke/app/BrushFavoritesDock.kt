@@ -23,11 +23,13 @@ import androidx.compose.ui.unit.dp
 import dev.tipstroke.core.drawing.PixelTool
 import dev.tipstroke.core.model.BrushPreset
 
+internal data class DockTipGroup(val id: String, val name: String, val tips: List<BrushPreset>)
+
 /** Fixed cells only: the library owns scrolling, never the canvas favorites dock. */
 @Composable
 internal fun BrushFavoritesDock(
     selected: BrushPreset, favorites: List<BrushPreset>, horizontal: Boolean,
-    onCapacity: (Int) -> Unit, onLibrary: () -> Unit, onBrush: (BrushPreset) -> Unit,
+    onLibrary: () -> Unit, onBrush: (BrushPreset) -> Unit,
     onSelect: () -> Unit, onEraser: () -> Unit, onSmudge: () -> Unit,
     pixelToolsAvailable: Boolean, onPixelTool: (PixelTool) -> Unit,
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
@@ -38,6 +40,7 @@ internal fun BrushFavoritesDock(
     onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
     perspectiveMode: dev.tipstroke.core.geometry.PerspectiveMode = dev.tipstroke.core.geometry.PerspectiveMode.OFF,
     onPerspectiveMode: (dev.tipstroke.core.geometry.PerspectiveMode) -> Unit = {}, onVanishingPoint: (Int) -> Unit = {},
+    groups: List<DockTipGroup> = emptyList(),
     mirrorCopies: Int = 1, onMirrorCopies: (Int) -> Unit = {}, onMirrorCenter: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -51,10 +54,43 @@ internal fun BrushFavoritesDock(
             // Even extremely narrow split windows keep all three fixed actions reachable.
             val slot = minOf(48f, ((available - 12f) / 3f).coerceAtLeast(1f))
             val capacity = brushFavoriteCapacity(available, slot)
-            SideEffect { onCapacity(capacity) }
             val buttons: @Composable () -> Unit = {
-                DockCell("Tips", brushActive && favorites.take(capacity).none { it.id == selected.id }, slot, !horizontal, onLibrary, icon = Icons.Outlined.GridView)
-                favorites.take(capacity).forEach { preset ->
+                if (groups.isEmpty()) {
+                    DockCell("Tips", brushActive && favorites.take(capacity).none { it.id == selected.id }, slot, !horizontal, onLibrary, icon = Icons.Outlined.GridView)
+                } else {
+                    // Holding Tips also reaches groups beyond the available dock slots.
+                    var browsing by remember { mutableStateOf<DockTipGroup?>(null) }
+                    var reopen by remember { mutableIntStateOf(0) }
+                    val group = browsing
+                    dev.tipstroke.ui.HoldToolPicker(
+                        labels = group?.tips?.map { it.displayName } ?: groups.map { it.name },
+                        horizontal = horizontal, holdEnabled = true, extent = slot.dp, reopen = reopen,
+                        description = "Tips", stateLabel = group?.name ?: "Tip groups", selected = false,
+                        onTap = onLibrary, onLegacyHold = {}, onClosed = { browsing = null },
+                        onChoose = { index ->
+                            if (group == null) { browsing = groups[index]; reopen++ }
+                            else onBrush(group.tips[index])
+                        },
+                        anchorIcon = { Icon(Icons.Outlined.GridView, null) },
+                        toolIcon = { index -> TipStrokeThumbnail(group?.tips?.get(index) ?: groups[index].tips.first(), Modifier.size(42.dp)) },
+                    )
+                }
+                groups.take(capacity).forEach { group ->
+                    key(group.id) {
+                        var last by remember { mutableStateOf<String?>(null) }
+                        val active = group.tips.find { it.id == selected.id }
+                        val tip = active ?: group.tips.find { it.id.value == last } ?: group.tips.first()
+                        dev.tipstroke.ui.HoldToolPicker(
+                            labels = group.tips.map { it.displayName }, horizontal = horizontal, holdEnabled = true,
+                            extent = slot.dp, reopen = 0, stateLabel = tip.displayName, description = group.name,
+                            selected = brushActive && active != null, onTap = { onBrush(tip) }, onLegacyHold = {},
+                            onChoose = { index -> val chosen = group.tips[index]; last = chosen.id.value; onBrush(chosen) },
+                            anchorIcon = { TipStrokeThumbnail(tip, Modifier.size(slot.dp).padding(2.dp)) },
+                            toolIcon = { TipStrokeThumbnail(group.tips[it], Modifier.size(42.dp)) },
+                        )
+                    }
+                }
+                favorites.take((capacity - groups.size).coerceAtLeast(0)).forEach { preset ->
                     key(preset.id.value) { DockCell(preset.displayName, brushActive && preset.id == selected.id, slot, !horizontal, { onBrush(preset) }, preset = preset) }
                 }
                 Box {
@@ -83,12 +119,12 @@ internal fun BrushFavoritesDock(
                         selected = !brushActive || aidsActive, onTap = onEraser, onLegacyHold = onReselect,
                         onChoose = { tools[it].action() },
                         anchorIcon = {
-                            val icon = if (holdPicker) tools.first().icon else tools.find { it.label == toolLabel }?.icon ?: Icons.Outlined.Build
+                            val icon = tools.find { !brushActive && it.label == toolLabel }?.icon ?: EraserIcon
                             Icon(icon, null)
                         },
                         toolIcon = { Icon(tools[it].icon, null) },
                     )
-                    DropdownMenu(aidsOpen, { aidsOpen = false }) {
+                    DropdownMenu(aidsOpen, { aidsOpen = false }, containerColor = Color(0xFF202125)) {
                         DropdownMenuItem(text = { Text("Back to tools") }, onClick = { aidsOpen = false; reopen++ })
                         dev.tipstroke.ui.DrawingAssistsMenu(assists, onAssists, mirrorCopies, onMirrorCopies,
                             { aidsOpen = false; onMirrorCenter() }, perspectiveMode, onPerspectiveMode,

@@ -2258,7 +2258,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
                 } else if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
-                    style.brush.stamp != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
+                    style.brush.stamp?.let { it.grain != StampGrain.IMAGE || it.grainPlacement != GrainPlacement.CANVAS } == true &&
+                    style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
                     style.referenceStrokes == null && strokeRecording == null) {
                     gpuStampPreview = GpuStampPreview(style, target.store.canvasWidth, target.store.canvasHeight).also {
                         rasterView.gpuStampPreview = it; rasterView.gpuStampLayerId = layerStack.selectedId

@@ -9,7 +9,6 @@ final class ToolPalette: UIView {
     private var buttons: [UIButton] = []
     private var actions: [() -> Void] = []
     private var hovered: Int?
-    private var dwell: DispatchWorkItem?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -20,7 +19,9 @@ final class ToolPalette: UIView {
         backdrop.accessibilityLabel = "Close drawing tools"
         backdrop.addAction(UIAction { [weak self] _ in self?.onClose?() }, for: .touchUpInside)
         addSubview(backdrop)
-        panel.backgroundColor = .secondarySystemBackground
+        panel.backgroundColor = UIColor(red: 32/255, green: 33/255, blue: 37/255, alpha: 1)
+        panel.tintColor = .white
+        caption.textColor = .white
         panel.layer.cornerRadius = 12
         addSubview(panel)
         caption.font = .preferredFont(forTextStyle: .caption1)
@@ -54,9 +55,9 @@ final class ToolPalette: UIView {
         let y = max(safe.minY, min(preferredY, safe.maxY - height))
         panel.frame = CGRect(x: x, y: y, width: width, height: height)
         for (index, button) in buttons.enumerated() {
-            button.frame = CGRect(x: CGFloat(index % 4) * cell, y: CGFloat(index / 4) * cell, width: cell, height: cell)
+            button.frame = CGRect(x: CGFloat(index % 4) * cell, y: 24 + CGFloat(index / 4) * cell, width: cell, height: cell)
         }
-        caption.frame = CGRect(x: 0, y: height - 24, width: width, height: 24)
+        caption.frame = CGRect(x: 0, y: 0, width: width, height: 24)
     }
 
     private func hit(_ point: CGPoint) -> Int? {
@@ -68,16 +69,10 @@ final class ToolPalette: UIView {
         guard index != hovered else { return }
         if let hovered { buttons[hovered].backgroundColor = .clear }
         hovered = index
-        dwell?.cancel()
         caption.text = nil
         guard let index else { return }
-        buttons[index].backgroundColor = .tertiarySystemFill
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.hovered == index else { return }
-            self.caption.text = self.buttons[index].accessibilityLabel
-        }
-        dwell = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+        buttons[index].backgroundColor = UIColor(white: 0.32, alpha: 1)
+        caption.text = buttons[index].accessibilityLabel
     }
     func finish(_ point: CGPoint) {
         let index = hit(point)
@@ -92,5 +87,4 @@ final class ToolPalette: UIView {
         if gesture.state == .began { caption.text = gesture.view?.accessibilityLabel }
     }
     override func accessibilityPerformEscape() -> Bool { onClose?(); return true }
-    deinit { dwell?.cancel() }
 }

@@ -66,6 +66,7 @@ internal fun SelectionControls(
                 FlowRow(maxItemsInEachRow = if (wide) 5 else 3,
                     horizontalArrangement = Arrangement.Center) {
                     SelectionAction("Select all", Icons.Outlined.SelectAll, onLongClick = onReselect, onClick = onSelectAll)
+                    SelectionAction("Repeat last selection", Icons.Outlined.History, onClick = onReselect)
                     SelectionAction("Invert selection", Icons.Outlined.FlipToBack, onClick = onInvert)
                     SelectionAction("Deselect", Icons.Outlined.Deselect, enabled = hasSelection, onClick = onClear)
                     SelectionAction("Move selected pixels", Icons.Outlined.OpenWith, moving, hasSelection && canMove, onClick = onMove)

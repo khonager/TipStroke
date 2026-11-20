@@ -30,6 +30,7 @@ class SelectionToolControlsTest {
         compose.onNodeWithContentDescription("Select all").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription("Pencil").performClick()
         compose.onNodeWithContentDescription("Select all").assertDoesNotExist()
+        compose.onNodeWithText("Deselect").performClick().assertDoesNotExist()
         compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
         compose.onNodeWithContentDescription("Select").performClick()
         compose.onNodeWithContentDescription("Select all").assertIsDisplayed()
@@ -50,7 +51,7 @@ class SelectionToolControlsTest {
         }
         compose.onNodeWithContentDescription("Select all").performClick()
         compose.onNodeWithContentDescription("Deselect").performClick().assertIsNotEnabled()
-        choose("Reselect previous area")
+        compose.onNodeWithContentDescription("Repeat last selection").performClick()
         compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
         repeat(2) {
             choose("Eraser"); toolIs("Eraser")

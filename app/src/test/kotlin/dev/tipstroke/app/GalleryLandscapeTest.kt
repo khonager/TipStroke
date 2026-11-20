@@ -29,6 +29,39 @@ class GalleryLandscapeTest {
     private var activity: ActivityController<ComponentActivity>? = null
     @After fun closeActivity() { activity?.close() }
 
+    @Test fun successiveDropsIntoStackKeepWorkingWithoutOpeningIt() {
+        val library = DrawingLibrary(ApplicationProvider.getApplicationContext())
+        repeat(4) { index ->
+            val id = "drag-$index"
+            val directory = library.projectDirectory(id).apply { mkdirs() }
+            File(directory, "manifest.json").writeText(JSONObject()
+                .put("schemaVersion", 2).put("id", id).put("name", "Drawing $index")
+                .put("widthPx", 128).put("heightPx", 128).put("modifiedAtMillis", 100L - index)
+                .put("selectedLayerId", "paint").put("layers", JSONArray()).toString())
+        }
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { GalleryScreen(library, {}, {}, {}) }
+        }
+        fun drop(name: String, onto: String) {
+            val source = compose.onNodeWithText(name)
+            val target = compose.onNodeWithText(onto).fetchSemanticsNode().boundsInRoot.center
+            val origin = source.fetchSemanticsNode().boundsInRoot.topLeft
+            source.performTouchInput {
+                down(center)
+                advanceEventTime(700)
+                moveTo(target - origin, delayMillis = 50)
+                up()
+            }
+            compose.waitForIdle()
+        }
+        drop("Drawing 1", "Drawing 0")
+        compose.onNodeWithText("2 drawings").assertIsDisplayed()
+        drop("Drawing 2", "Stack")
+        compose.onNodeWithText("3 drawings").assertIsDisplayed()
+        drop("Drawing 3", "Stack")
+        compose.onNodeWithText("4 drawings").assertIsDisplayed()
+    }
+
     @Test fun tallDrawingPreviewsAreBoundedAndGalleryScrollsToLastCard() {
         val library = DrawingLibrary(ApplicationProvider.getApplicationContext())
         repeat(12) { index ->

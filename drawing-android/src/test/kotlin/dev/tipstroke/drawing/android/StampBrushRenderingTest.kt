@@ -86,12 +86,14 @@ class StampBrushRenderingTest {
         assertFalse(blank.sameAs(grain))
     }
 
-    @Test fun drawingSurfacePaintsCustomBrushWhileDownAndCommitsWithoutChangingPixels() {
+    @Test fun mangaStrokeKeepsEarlierTilesVisibleBeforeLiftOnGpuEligibleDevices() {
         val surface = DrawingSurface(org.robolectric.RuntimeEnvironment.getApplication()).apply {
             layout(0, 0, 800, 800); configureBlank(512, 512)
-            settings.brush = BrushPreset.Blank.copy(stamp = StampBrush(grain = StampGrain.PAPER))
+            settings.brush = MangaTips.presets.first()
             settings.sizePx = 32f
         }
+        // Exercise device stroke routing after setup, which prewarms native Ink on hardware.
+        org.robolectric.shadows.ShadowBuild.setFingerprint("test-device")
         val raster = surface.getChildAt(0) as RasterCanvasView
         var canUndo = false
         surface.historyListener = { undo, _ -> canUndo = undo }
@@ -105,11 +107,13 @@ class StampBrushRenderingTest {
         event(android.view.MotionEvent.ACTION_DOWN, 280f, 0)
         event(android.view.MotionEvent.ACTION_MOVE, 480f, 10)
         val store = requireNotNull(raster.layerStack.selectedStore())
+        val firstTile = store.snapshotTiles().entries.first { it.key.x == 0 }
+        event(android.view.MotionEvent.ACTION_MOVE, 550f, 15)
         val wet = store.snapshotTiles()
-        assertTrue(wet.isNotEmpty())
+        assertTrue(firstTile.value.sameAs(wet.getValue(firstTile.key)))
         assertFalse(canUndo)
         assertNull(raster.previewStroke)
-        event(android.view.MotionEvent.ACTION_UP, 480f, 20)
+        event(android.view.MotionEvent.ACTION_UP, 550f, 20)
         val dry = store.snapshotTiles()
         assertTrue(dry.isNotEmpty())
         wet.forEach { (key, bitmap) ->

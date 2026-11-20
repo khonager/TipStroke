@@ -103,7 +103,7 @@ fun GalleryScreen(
     var autoScrollJob by remember { mutableStateOf<Job?>(null) }
     val openStack = items.filterIsInstance<GalleryStack>().firstOrNull { it.id == openStackId }
     val visibleItems: List<GalleryItem> = openStack?.drawings?.map(::GalleryDrawing) ?: items
-    LaunchedEffect(openStackId) { cardBounds.clear() }
+
 
     fun refreshGallery() {
         items = library.galleryItems()
@@ -181,15 +181,8 @@ fun GalleryScreen(
     fun dragModifier(item: GalleryItem) = Modifier
         .onGloballyPositioned { cardBounds[item.key] = it.boundsInRoot() }
         .zIndex(if (draggedKey == item.key) 2f else 0f)
-        .graphicsLayer {
-            alpha = if (draggedKey == item.key) .72f else 1f
-            if (draggedKey == item.key) {
-                translationX = dragTranslation.x
-                translationY = dragTranslation.y
-            }
-        }
         .then(if (dropTargetKey == item.key) Modifier.border(2.dp, Color(0xFFED6A5A), RoundedCornerShape(14.dp)) else Modifier)
-        .pointerInput(item.key, openStackId) {
+        .pointerInput(item.key, visibleItems, openStackId) {
             detectDragGesturesAfterLongPress(
                 onDragStart = { local ->
                     draggedKey = item.key
@@ -219,6 +212,11 @@ fun GalleryScreen(
                     draggedKey = null; dropTargetKey = null; dragPoint = Offset.Unspecified; dragTranslation = Offset.Zero
                 },
             )
+        }
+        .graphicsLayer {
+            alpha = if (draggedKey == item.key) .72f else 1f
+            translationX = if (draggedKey == item.key) dragTranslation.x else 0f
+            translationY = if (draggedKey == item.key) dragTranslation.y else 0f
         }
 
     CompositionLocalProvider(LocalContentColor provides Color(0xFFF5F5F2)) {
@@ -266,6 +264,7 @@ fun GalleryScreen(
                     }
                 }
                 items(visibleItems, key = GalleryItem::key) { item ->
+                    DisposableEffect(item.key) { onDispose { cardBounds.remove(item.key) } }
                     Column {
                     if (reordering) Row {
                         TipAction("Move earlier", Icons.Outlined.ArrowBack, enabled = visibleItems.firstOrNull()?.key != item.key, onClick = { moveItem(item, -1) })

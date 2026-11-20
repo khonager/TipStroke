@@ -36,7 +36,7 @@ class BrushFavoritesDockTest {
         var push = false
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme {
-                BrushFavoritesDock(BrushPreset.Ink, emptyList(), true, {}, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                BrushFavoritesDock(BrushPreset.Ink, emptyList(), true, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
                     Modifier.width(400.dp), assists = assists, onAssists = { assists = it },
                     mirrorCopies = copies, onMirrorCopies = { copies = it }, onRibbon = { ribbon = true }, onColorPush = { push = true })
             }
@@ -66,7 +66,7 @@ class BrushFavoritesDockTest {
         var smudges = 0
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             Box(Modifier.fillMaxSize()) {
-                BrushFavoritesDock(BrushPreset.Ink, emptyList(), false, {}, {}, {}, {}, { erases++ }, { smudges++ },
+                BrushFavoritesDock(BrushPreset.Ink, emptyList(), false, {}, {}, {}, { erases++ }, { smudges++ },
                     false, {}, {}, {}, "Adjust tip", true, Modifier.height(300.dp))
             }
         }
@@ -81,7 +81,6 @@ class BrushFavoritesDockTest {
         val local = dock.fetchSemanticsNode().layoutInfo.coordinates.screenToLocal(target)
         dock.performTouchInput { moveTo(local) }
         compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(600)
         compose.onNodeWithText("Smudge").assertIsDisplayed()
         assertEquals(0, smudges)
         dock.performTouchInput { up() }
@@ -94,24 +93,34 @@ class BrushFavoritesDockTest {
         assertEquals(1, smudges)
     }
 
+    @Test fun holdTipsReachesGroupsWithoutDockSlots() {
+        val tips = dev.tipstroke.core.model.MangaTips.presets
+        var chosen: BrushPreset? = null
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            BrushFavoritesDock(tips.first(), emptyList(), true, {}, { chosen = it }, {}, {}, {}, false, {}, {}, {},
+                "Adjust tip", true, Modifier.width(150.dp), groups = listOf(DockTipGroup("manga", "Manga", tips)))
+        }
+        compose.onNodeWithContentDescription("Tips").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Manga").performClick()
+        compose.onNodeWithContentDescription(tips.last().displayName).performClick()
+        compose.runOnIdle { assertEquals(tips.last(), chosen) }
+    }
+
     @Test fun dockFitsMeasuredWidthAndShrinksWithoutScrolling() {
         var width by mutableStateOf(420)
-        var capacity = -1
         val favorites = List(20) { BrushPreset.Blank.copy(id = BrushId("pin-$it"), displayName = "Pinned $it") }
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme {
-                BrushFavoritesDock(favorites.first(), favorites, true, { capacity = it }, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                BrushFavoritesDock(favorites.first(), favorites, true, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
                     Modifier.width(width.dp))
             }
         }
         compose.waitForIdle()
-        assertEquals(5, capacity)
         compose.onNodeWithContentDescription("Pinned 4").assertIsDisplayed()
         compose.onNodeWithContentDescription("Pinned 5").assertDoesNotExist()
         compose.onAllNodes(hasScrollAction()).assertCountEquals(0)
         compose.runOnIdle { width = 220 }
         compose.waitForIdle()
-        assertEquals(1, capacity)
         compose.onNodeWithContentDescription("Pinned 0").assertIsDisplayed()
         compose.onNodeWithContentDescription("Pinned 1").assertDoesNotExist()
         compose.onNodeWithContentDescription("Tips").assertIsDisplayed()
@@ -126,7 +135,7 @@ class BrushFavoritesDockTest {
         screen.setContent {
             MaterialTheme {
                 Box(Modifier.fillMaxSize()) {
-                    BrushFavoritesDock(tip, listOf(tip), false, {}, {}, { selected++ }, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                    BrushFavoritesDock(tip, listOf(tip), false, {}, { selected++ }, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
                         Modifier.height(300.dp))
                 }
             }
@@ -181,7 +190,7 @@ class BrushFavoritesDockTest {
         screen.setContent {
             TipStrokeTheme {
                 CompositionLocalProvider(LocalTipPreviewColor provides color) {
-                    BrushFavoritesDock(tips.first(), tips, true, {}, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                    BrushFavoritesDock(tips.first(), tips, true, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
                         Modifier.width(400.dp))
                 }
             }

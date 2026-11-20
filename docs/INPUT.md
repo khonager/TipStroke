@@ -185,9 +185,11 @@ supports Undo. Selecting Select clears the eraser state, keeping the active icon
 and native drawing mode consistent.
 
 On Android, tap the eraser icon in the dock to toggle Eraser. Hold it to open the
-icon grid, slide onto a tool, and lift to choose it. Pausing over an icon shows
-its name. Lift outside the grid to cancel. In Settings, turn off **Hold for
+icon grid, slide onto a tool, and lift to choose it. The name appears immediately at the top center of the grid. The dock
+shows the active tool icon and returns to the eraser icon when a tip is selected. Lift outside the grid to cancel. In Settings, turn off **Hold for
 drawing tools** to open the grid with a tap instead.
+
+While painting with a selection, tap **Deselect** or press Android Back to clear its boundary. In the selection panel, tap **Repeat last selection** to restore it.
 
 Choose **Reselect previous area** in the grid or hold a selection shape icon to recall the last area, including after deselecting and switching to
 a new layer. One document-space region is retained; changing documents or

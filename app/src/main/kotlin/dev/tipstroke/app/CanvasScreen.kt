@@ -63,12 +63,19 @@ fun CanvasScreen(
     val shelfPreferences = remember { BrushShelfPreferences(context) }
     var favoriteIds by remember { mutableStateOf(shelfPreferences.load()) }
     var libraryBrushes by remember { mutableStateOf<List<LibraryBrush>>(emptyList()) }
-    var favoriteCapacity by remember { mutableIntStateOf(0) }
+    val categoryStore = remember { BrushCategories(context) }
+    var categories by remember { mutableStateOf(categoryStore.load()) }
     LaunchedEffect(Unit) {
         libraryBrushes = withContext(Dispatchers.IO) { runCatching { BrushLibrary(context).load() }.getOrDefault(emptyList()) }
+        categories = categoryStore.load(libraryBrushes)
     }
-    val favoriteBrushes = favoriteIds.mapNotNull { id ->
-        (BrushPreset.libraryBuiltIns + libraryBrushes.map { it.preset }).firstOrNull { it.id.value == id }
+    val presetsById = remember(libraryBrushes) { (BrushPreset.libraryBuiltIns + libraryBrushes.map { it.preset }).associateBy { it.id.value } }
+    val favoriteBrushes = favoriteIds.mapNotNull(presetsById::get)
+    val tipGroups = remember(categories, favoriteIds, presetsById) {
+        (categories + BrushCategory("favorites", "Favorites", favoriteIds)).mapNotNull { group ->
+            val tips = group.brushIds.mapNotNull(presetsById::get).filter { it.ink == null || android.os.Build.VERSION.SDK_INT >= 34 }
+            if (tips.isEmpty()) null else DockTipGroup(group.id, group.name, tips)
+        }
     }
     val drawingUiPreferences = remember { DrawingUiPreferences(context) }
     val colorShelf = remember { ColorShelf(context) }
@@ -460,6 +467,10 @@ fun CanvasScreen(
         onDispose { onStylusButtonHandlerChanged?.invoke(null) }
     }
     BackHandler(enabled = onBackToGallery != null, onBack = leaveEditor)
+    BackHandler(enabled = hasSelection && !selectionTransformOpen) {
+        movingSelection = false
+        surface?.clearSelection()
+    }
     BackHandler(enabled = colorPickerOpen) { colorPickerOpen = false }
     BackHandler(enabled = layersOpen) { layersOpen = false }
     BackHandler(enabled = animationOpen) { animationOpen = false }
@@ -682,10 +693,10 @@ fun CanvasScreen(
             Modifier.fillMaxSize().safeDrawingPadding().then(if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp)),
         ) {
             BrushFavoritesDock(
-                selected = brush, favorites = favoriteBrushes,
+                selected = brush, favorites = favoriteBrushes, groups = tipGroups,
                 brushActive = !colorPushing && !ribbon && !lassoFill && !erasing && !smudging && !selectToolActive && pixelTool == null,
                 toolLabel = when { colorPushing -> "Color push"; ribbon -> "Ribbon"; lassoFill -> "Lasso fill"; erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
-                onCapacity = { favoriteCapacity = it }, onLibrary = { brushToEdit = null; brushLibraryOpen = true },
+                onLibrary = { brushToEdit = null; brushLibraryOpen = true },
                 onBrush = ::selectRegularBrush, onSelect = ::selectSelectionTool,
                 onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
                 onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
@@ -757,10 +768,10 @@ fun CanvasScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 BrushFavoritesDock(
-                    selected = brush, favorites = favoriteBrushes, horizontal = !landscapeDock,
+                    selected = brush, favorites = favoriteBrushes, groups = tipGroups, horizontal = !landscapeDock,
                     brushActive = !colorPushing && !ribbon && !lassoFill && !erasing && !smudging && !selectToolActive && pixelTool == null,
                     toolLabel = when { colorPushing -> "Color push"; ribbon -> "Ribbon"; lassoFill -> "Lasso fill"; erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
-                    onCapacity = { favoriteCapacity = it }, onLibrary = { brushToEdit = null; brushLibraryOpen = true },
+                    onLibrary = { brushToEdit = null; brushLibraryOpen = true },
                     onBrush = ::selectRegularBrush, onSelect = ::selectSelectionTool,
                     onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
                     onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
@@ -819,6 +830,13 @@ fun CanvasScreen(
                     .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp + timelineClearance)
                     .widthIn(max = 390.dp).fillMaxWidth(),
             )
+        }
+
+        if (hasSelection && !selectToolActive && !resizeOpen && !selectionTransformOpen) {
+            Surface(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 56.dp),
+                color = Color(0xED202125), contentColor = Color.White, shape = MaterialTheme.shapes.small) {
+                TextButton(onClick = { surface?.clearSelection() }) { Text("Deselect", color = Color.White) }
+            }
         }
 
         if (!resizeOpen && !selectionTransformOpen && selectToolActive && (!compactPhone || phoneChromeVisible)) SelectionControls(
@@ -1106,7 +1124,7 @@ fun CanvasScreen(
     } // Color-drop callbacks shared by portrait and landscape color circles.
 
     if (brushLibraryOpen) BrushLibraryDialog(
-        favoriteIds = favoriteIds, favoriteCapacity = favoriteCapacity, editBrushId = brushToEdit,
+        favoriteIds = favoriteIds, onCategoriesChanged = { categories = it }, editBrushId = brushToEdit,
         onFavorites = { favoriteIds = it; shelfPreferences.save(it) },
         onLibraryChanged = { libraryBrushes = it },
         current = brush.copy(
@@ -1498,9 +1516,9 @@ private fun PhoneChromeHandle(onClick: () -> Unit, modifier: Modifier = Modifier
 }
 
 private val PixelTool.displayName: String get() = when (this) {
-    PixelTool.PENCIL -> "Pixel"
-    PixelTool.LINE -> "Line"
-    PixelTool.DITHER -> "Shade"
+    PixelTool.PENCIL -> "Pixel pencil"
+    PixelTool.LINE -> "Pixel line"
+    PixelTool.DITHER -> "Dither"
 }
 
 @Composable private fun IconAction(label: String, enabled: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit) { TipHint(label) { IconButton(onClick, enabled = enabled, modifier = Modifier.semantics { contentDescription = label }) { icon() } } }

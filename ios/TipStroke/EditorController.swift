@@ -316,7 +316,12 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             cancelled: gesture.state == .cancelled || gesture.state == .failed)
     }
     private weak var toolsButton: UIButton?
+    private let paletteModes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
+            (.ribbon, "scribble.variable"), (.colorPush, "arrow.up.and.down.and.arrow.left.and.right"),
+            (.pixel, "pencil"), (.pixelLine, "line.diagonal"), (.dither, "circle.grid.3x3.fill"), (.fill, "paintbrush")]
     private func updateToolValue() {
+        let symbol = paletteModes.first { $0.0 == viewport.canvas.mode }?.1 ?? (viewport.canvas.mode.isSelection ? "lasso" : "eraser")
+        toolsButton?.setImage(UIImage(systemName: symbol), for: .normal)
         toolsButton?.accessibilityValue = viewport.canvas.mode == .paint ? viewport.canvas.tool.rawValue : viewport.canvas.mode.rawValue
     }
     private var holdTools: Bool { UserDefaults.standard.object(forKey: "holdDrawingTools") as? Bool ?? true }
@@ -337,10 +342,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             if self.viewport.canvas.tool != .eraser { self.toggleEraser() }
             else { self.viewport.canvas.mode = .paint }
         }
-        let modes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
-            (.ribbon, "scribble.variable"), (.colorPush, "arrow.up.and.down.and.arrow.left.and.right"),
-            (.pixel, "pencil"), (.pixelLine, "line.diagonal"), (.dither, "circle.grid.3x3.fill"), (.fill, "paintbrush")]
-        for (mode, icon) in modes {
+        for (mode, icon) in paletteModes {
             palette.add(mode.rawValue, icon) { [weak self] in self?.activateMode(mode) }
         }
         palette.add("Colorize mask", "paintpalette") { [weak self] in self?.colorizeMenu() }
@@ -481,6 +483,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     func applyBrush(_ brush: NativeBrush) {
         finishCanvasInteraction()
         let keepEraser = viewport.canvas.tool == .eraser && viewport.canvas.brush.id == brush.id
+        viewport.canvas.mode = .paint
         viewport.canvas.brush = brush
         viewport.canvas.brushSize = CGFloat(brush.size)
         viewport.canvas.brushOpacity = CGFloat(brush.opacity)

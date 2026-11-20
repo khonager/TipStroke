@@ -1,6 +1,8 @@
 package dev.tipstroke.app
 
 import android.content.Context
+import dev.tipstroke.core.model.BrushPreset
+import dev.tipstroke.core.model.MangaTips
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.InputStream
@@ -10,17 +12,25 @@ internal data class BrushCategory(val id: String = UUID.randomUUID().toString(),
 
 internal class BrushCategories(context: Context) {
     private val prefs = context.getSharedPreferences("brush-categories", Context.MODE_PRIVATE)
-    fun load(): List<BrushCategory> = runCatching {
+    fun load(library: List<LibraryBrush> = emptyList()): List<BrushCategory> = runCatching {
         val array = JSONArray(prefs.getString("categories", "[]"))
-        List(array.length()) { index -> array.getJSONObject(index).let { item ->
+        val saved = List(array.length()) { index -> array.getJSONObject(index).let { item ->
             val ids = item.getJSONArray("tips")
             BrushCategory(item.getString("id"), item.getString("name"), List(ids.length()) { ids.getString(it) })
         } }
+        if (prefs.getBoolean("defaultGroupsAdded", false)) saved else {
+            val ink = BrushPreset.jetpackInk + library.map { it.preset }.filter { it.ink != null }
+            val defaults = listOf(
+                BrushCategory("builtin-manga", "Manga", MangaTips.presets.map { it.id.value }),
+                BrushCategory("builtin-ink", "Jetpack Ink", ink.map { it.id.value }.distinct().take(200)),
+            )
+            saved + defaults.filter { group -> saved.none { it.name.equals(group.name, true) } }.take(64 - saved.size)
+        }
     }.getOrDefault(emptyList())
     fun save(categories: List<BrushCategory>) {
         require(categories.size <= 64 && categories.map { it.id }.distinct().size == categories.size)
         require(categories.all { it.name.isNotBlank() && it.name.length <= 80 && it.brushIds.size <= 200 && it.brushIds.distinct() == it.brushIds })
-        prefs.edit().putString("categories", JSONArray().apply {
+        prefs.edit().putBoolean("defaultGroupsAdded", true).putString("categories", JSONArray().apply {
             categories.forEach { put(JSONObject().put("id", it.id).put("name", it.name).put("tips", JSONArray(it.brushIds))) }
         }.toString()).apply()
     }

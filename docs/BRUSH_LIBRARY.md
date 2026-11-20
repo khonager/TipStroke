@@ -89,13 +89,9 @@ menu, and Adjust. Tools contains Select, Eraser, Smudge, eligible pixel tools, a
 Tip Studio; the adjustment action retains the phone size/opacity toggle.
 There is no scrolling container in the dock.
 
-Favorite capacity is computed from the dock's measured available width or height,
-48 dp cells, 2 dp gaps, padding, and three reserved actions. Small split windows
-can have zero favorite slots; the full library is always reachable. The library
-disables additional pins when the available slots are filled. Favorites persist
-in order; **Move to front** in Favorites controls priority. When a window shrinks
-or rotates, only the first fitting favorites appear. Extra pins remain saved and
-return with more room. Selecting a nonfavorite does not displace a favorite.
+The dock fits group buttons first, then individual favorites, using 48 dp cells,
+2 dp gaps and three reserved actions. Every pinned tip remains available in the
+Favorites group even when the window has no room for individual shortcuts.
 
 ## Visual controls and endpoint previews
 
@@ -203,6 +199,15 @@ The library's **Categories** control creates, renames, removes, and orders named
 Tips can be held and dragged to reorder. A floating stroke preview follows the pointer, with an insertion marker at the destination and edge scrolling for longer libraries. All tips, Ink and My tips share a persisted library order; categories and Favorites keep their own persisted order. Search filters preserve the relative order of hidden tips.
 
 Library cards show edit, category, export, share and (for custom tips) duplicate/delete actions directly below the stroke preview. Cards do not expand; actions wrap on narrow screens. Tap the preview to use a tip.
+
+## Android dock groups
+
+Tap a group to use its current tip. Hold, slide onto a tip, and lift to select it.
+Manga, Jetpack Ink (Android 14 and newer), and Favorites are provided by default.
+Hold **Tips** to reach every nonempty group when dock space is limited. A tap opens
+the library. Use **Categories** to create, rename, reorder, or remove groups.
+Use a tip’s **Categories** action to change membership, or pin it for Favorites.
+The library section supports dragging tips into the desired order.
 
 ## Manga tips
 

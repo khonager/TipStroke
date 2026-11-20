@@ -46,7 +46,8 @@ import kotlin.math.roundToInt
 @Composable
 internal fun BrushLibraryDialog(
     current: BrushPreset, onUse: (BrushPreset) -> Unit, onDismiss: () -> Unit,
-    favoriteIds: List<String> = emptyList(), favoriteCapacity: Int = 3, editBrushId: BrushId? = null,
+    favoriteIds: List<String> = emptyList(), editBrushId: BrushId? = null,
+    onCategoriesChanged: (List<BrushCategory>) -> Unit = {},
     onFavorites: (List<String>) -> Unit = {}, onLibraryChanged: (List<LibraryBrush>) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -76,11 +77,12 @@ internal fun BrushLibraryDialog(
     var managingCategories by remember { mutableStateOf(false) }
     var categorizing by remember { mutableStateOf<LibraryBrush?>(null) }
     var pendingPack by remember { mutableStateOf<ImportedBrushPack?>(null) }
-    fun updateCategories(next: List<BrushCategory>) { categoryStore.save(next); categories = next }
+    fun updateCategories(next: List<BrushCategory>) { categoryStore.save(next); categories = next; onCategoriesChanged(next) }
     val selectedCategory = categories.firstOrNull { it.id == section }
     LaunchedEffect(library) {
         val result = withContext(Dispatchers.IO) { runCatching { library.load() } }
         result.onSuccess {
+            categories = categoryStore.load(it)
             brushes = it; ready = true; onLibraryChanged(it)
             if (editBrushId != null) editing = it.firstOrNull { entry -> entry.preset.id == editBrushId }
                 ?: LibraryBrush(current).let { draft ->
@@ -170,8 +172,6 @@ internal fun BrushLibraryDialog(
                 val all = (BrushPreset.libraryBuiltIns.map { LibraryBrush(it, "TipStroke") } + brushes)
                     .sortedBy { libraryOrder.indexOf(it.preset.id.value).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
                 val shown = (when (section) {
-                    "Manga" -> all.filter { it.preset.id.value.startsWith("manga-") }
-                    "Jetpack Ink" -> all.filter { it.preset.ink != null }
                     "My tips" -> all.filter { entry -> brushes.any { it.preset.id == entry.preset.id } }
                     "Favorites" -> favoriteIds.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } }
                     else -> selectedCategory?.brushIds?.mapNotNull { id -> all.firstOrNull { it.preset.id.value == id } } ?: all
@@ -252,12 +252,11 @@ internal fun BrushLibraryDialog(
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TipAction("Import", Icons.Outlined.FileOpen, enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) })
                                 ActionIconButton(enabled = ready && !busy, onClick = { managingCategories = true }, label = "Categories", icon = Icons.Outlined.Folder)
-                                listOf("All tips", "Manga", "Jetpack Ink", "My tips", "Favorites").forEach { name ->
-                                    FilterChip(section == name, { section = name }, label = { Text(name) })
+                                val sections = listOf("All tips" to "All tips") + categories.map { it.id to it.name } +
+                                    listOf("My tips" to "My tips", "Favorites" to "Favorites")
+                                sections.forEach { (id, name) ->
+                                    FilterChip(section == id, { section = id }, label = { Text(name) })
                                 }
-                            }
-                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                categories.forEach { category -> FilterChip(section == category.id, { section = category.id }, label = { Text(category.name) }) }
                             }
                             selectedCategory?.let { category ->
                                 ActionIconButton(enabled = !busy && ready && category.brushIds.any { id -> all.any { it.preset.id.value == id } }, onClick = {
@@ -266,12 +265,11 @@ internal fun BrushLibraryDialog(
                                 }, label = "Export ${category.name} pack", icon = Icons.Outlined.IosShare)
                             }
                             if (searchOpen) OutlinedTextField(query, { query = it }, label = { Text("Search tips") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                            if (section == "Jetpack Ink") Text(
+                            if (section == "builtin-ink") Text(
                                 if (android.os.Build.VERSION.SDK_INT < 34) "Jetpack Ink drawing requires Android 14 or newer. Existing custom tips are still available."
                                 else "Compare native Ink tips with your existing brushes. Soft is a spray-style brush; erasing keeps the current raster eraser.",
                                 style = MaterialTheme.typography.bodySmall)
-                            if (section == "Manga") Text("Use a selection or Paint inside to shade cleanly. Size changes the painted area; Grain scale changes pattern spacing. Keep opacity at 100% for crisp tones.", style = MaterialTheme.typography.bodySmall)
-                            if (section == "Favorites") Text("${favoriteIds.size.coerceAtMost(favoriteCapacity)} / $favoriteCapacity canvas slots. Extra pins return when there is more room.", style = MaterialTheme.typography.bodySmall)
+                            if (section == "builtin-manga") Text("Use a selection or Paint inside to shade cleanly. Size changes the painted area; Grain scale changes pattern spacing. Keep opacity at 100% for crisp tones.", style = MaterialTheme.typography.bodySmall)
                             if (busy || !ready && message == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                             message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                         }
@@ -298,7 +296,7 @@ internal fun BrushLibraryDialog(
                                         Text(if (item.preset.id == current.id) "Selected" else if (item.author.isNotBlank()) item.author else if (item.preset.ink != null) "Jetpack Ink" else "Custom tip",
                                             style = MaterialTheme.typography.bodySmall)
                                     }
-                                    TipAction(if (favorite) "Unpin favorite" else if (favoriteIds.size >= favoriteCapacity) "Favorite bar is full" else "Pin favorite", if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, enabled = !busy && (favorite || favoriteIds.size < favoriteCapacity), onClick = {
+                                    TipAction(if (favorite) "Unpin favorite" else if (favoriteIds.size >= 200) "Favorites full" else "Pin favorite", if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, enabled = !busy && (favorite || favoriteIds.size < 200), onClick = {
                                         onFavorites(if (favorite) favoriteIds - item.preset.id.value else favoriteIds + item.preset.id.value)
                                     })
                                 }
@@ -377,10 +375,18 @@ internal fun BrushLibraryDialog(
         })
     editing?.let { initial ->
         BrushCreatorDialog(initial, busy, message, onSave = { item ->
-            val next = if (brushes.any { it.preset.id == item.preset.id }) brushes.map { if (it.preset.id == item.preset.id) item else it } else brushes + item
+            val existing = brushes.any { it.preset.id == item.preset.id }
+            val next = if (existing) brushes.map { if (it.preset.id == item.preset.id) item else it } else brushes + item
             save(next) {
                 editing = null
-                section = if (item.preset.ink != null) "Jetpack Ink" else "My tips"
+                val inkGroup = categories.find { it.id == "builtin-ink" }
+                if (item.preset.ink != null && inkGroup != null &&
+                    (item.preset.id.value in inkGroup.brushIds || (!existing && inkGroup.brushIds.size < 200))) {
+                    if (item.preset.id.value !in inkGroup.brushIds) updateCategories(categories.map {
+                        if (it.id == inkGroup.id) it.copy(brushIds = it.brushIds + item.preset.id.value) else it
+                    })
+                    section = inkGroup.id
+                } else section = "My tips"
                 if (item.preset.ink == null || android.os.Build.VERSION.SDK_INT >= 34) {
                     onUse(item.preset); message = "Tip saved and selected."
                 } else message = "Tip saved. Drawing with it requires Android 14 or newer."

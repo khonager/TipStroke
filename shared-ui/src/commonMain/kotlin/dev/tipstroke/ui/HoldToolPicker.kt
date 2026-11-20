@@ -1,5 +1,6 @@
 package dev.tipstroke.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -21,13 +22,13 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import kotlinx.coroutines.delay
 
 /** Keeps the original pointer on the dock while its menu is in a separate popup window. */
 @Composable
 fun HoldToolPicker(
     labels: List<String>, horizontal: Boolean, holdEnabled: Boolean, extent: Dp, reopen: Int,
     stateLabel: String, selected: Boolean, onTap: () -> Unit, onLegacyHold: () -> Unit,
+    description: String = "Drawing tools", onClosed: () -> Unit = {},
     onChoose: (Int) -> Unit, anchorIcon: @Composable () -> Unit, toolIcon: @Composable (Int) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -38,12 +39,24 @@ fun HoldToolPicker(
     val choose by rememberUpdatedState(onChoose)
     val columns = 4
     val cell = 48.dp
-    fun close() { open = false; hovered = null; hint = null }
-    LaunchedEffect(reopen) { if (reopen > 0) open = true }
-    LaunchedEffect(hovered) {
-        hint = null
-        if (hovered != null) { delay(450); hint = hovered }
+    var page by remember(labels) { mutableIntStateOf(0) }
+    // Leave space for the caption and navigation in landscape windows.
+    val paged = labels.size > 16
+    val indices = if (paged) labels.indices.drop(page * 12).take(12) else labels.indices.toList()
+    val cells = buildList {
+        addAll(indices)
+        if (paged && page > 0) add(-1)
+        if (paged && indices.last() < labels.lastIndex) add(-2)
     }
+    fun label(index: Int) = when (index) { -1 -> "Previous page"; -2 -> "Next page"; else -> labels[index] }
+    fun close() { open = false; hovered = null; hint = null; page = 0; onClosed() }
+    LaunchedEffect(reopen) { if (reopen > 0) open = true }
+    fun activate(index: Int) {
+        if (index >= 0) { close(); choose(index) }
+        else { page += if (index == -1) -1 else 1; hovered = null; hint = null }
+    }
+    val currentCells by rememberUpdatedState(cells)
+    val currentActivate by rememberUpdatedState(::activate)
     Box {
         val active = selected || open
         Surface(shape = MaterialTheme.shapes.small,
@@ -55,60 +68,63 @@ fun HoldToolPicker(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     pointerDown = true
+                    var released = false
                     try {
                         do {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (event.changes.size != 1 || change.isConsumed) break
                             if (open) {
-                                val local = change.position - position.relativeOrigin
+                                val local = change.position - position.relativeOrigin - Offset(0f, 24.dp.roundToPx().toFloat())
                                 hovered = if (local.x >= 0 && local.x < columns * cellPx && local.y >= 0)
-                                    ((local.y / cellPx).toInt() * columns + (local.x / cellPx).toInt()).takeIf { it in labels.indices }
+                                    currentCells.getOrNull((local.y / cellPx).toInt() * columns + (local.x / cellPx).toInt())
                                 else null
                                 if (!change.pressed) {
+                                    released = true
                                     val target = hovered
                                     change.consume()
-                                    close()
-                                    if (target != null) choose(target)
+                                    if (target == null) close() else currentActivate(target)
                                 }
                             }
                         } while (change.pressed)
                     } finally {
                         pointerDown = false
-                        if (open) close()
+                        if (open && !released) close()
                     }
                 }
             }.combinedClickable(role = Role.Button,
                 onClick = { if (holdEnabled) onTap() else open = true },
-                onLongClickLabel = if (holdEnabled) "Open drawing tools" else "Reselect previous area",
+                onLongClickLabel = if (holdEnabled) "Open ${description.lowercase()}" else "Reselect previous area",
                 onLongClick = { if (holdEnabled) open = true else onLegacyHold() })
-                .semantics { contentDescription = "Drawing tools"; stateDescription = stateLabel; this.selected = active },
+                .semantics { contentDescription = description; stateDescription = stateLabel; this.selected = active },
                 contentAlignment = Alignment.Center) { anchorIcon() }
         }
         if (open) Popup(position, onDismissRequest = { close() }, properties = PopupProperties(focusable = !pointerDown)) {
-            Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 4.dp) {
+            Surface(shape = MaterialTheme.shapes.medium, color = Color(0xFF202125), contentColor = Color.White,
+                border = BorderStroke(1.dp, Color(0xFF45474D))) {
                 Column {
-                    labels.indices.chunked(columns).forEach { row ->
+                    Box(Modifier.width(cell * columns).height(24.dp), contentAlignment = Alignment.Center) {
+                        Text((hovered ?: hint)?.let(::label) ?: description, maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                    }
+                    cells.chunked(columns).forEach { row ->
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr) { Row {
                             row.forEach { index ->
                                 val interaction = remember { MutableInteractionSource() }
                                 val pointerOver by interaction.collectIsHoveredAsState()
                                 LaunchedEffect(pointerOver) {
-                                    if (pointerOver) { delay(450); hint = index }
+                                    if (pointerOver) hint = index
                                     else if (hint == index && hovered != index) hint = null
                                 }
                                 Box(Modifier.size(cell).hoverable(interaction)
-                                    .background(if (hovered == index) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                                    .background(if (hovered == index || pointerOver) Color(0xFF834337) else Color.Transparent)
                                     .combinedClickable(role = Role.Button, onLongClick = { hint = index },
-                                        onClick = { close(); choose(index) })
-                                    .semantics { contentDescription = labels[index] },
-                                    contentAlignment = Alignment.Center) { toolIcon(index) }
+                                        onClick = { activate(index) })
+                                    .semantics { contentDescription = label(index) },
+                                    contentAlignment = Alignment.Center) { if (index < 0) Text(if (index == -1) "‹" else "›") else toolIcon(index) }
                             }
                         } }
                     }
-                    // Reserve the caption line so dwelling never moves the targets under the pointer.
-                    Text(hint?.let(labels::get) ?: "", Modifier.width(cell * columns).padding(horizontal = 6.dp),
-                        maxLines = 1, style = MaterialTheme.typography.labelMedium)
+
                 }
             }
         }
