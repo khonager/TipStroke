@@ -48,7 +48,7 @@ extension RasterDocument {
     /// A single worker evicts immutable inactive cels. Compare identity before publishing so
     /// revisiting or editing a cel during compression cannot replace newer paint.
     func archiveInactiveCels() {
-        guard !archivingCel, let animation = record.animation, framePixels.count > 2 else { return }
+        guard !archivingCel, !loadingCel, let animation = record.animation, framePixels.count > 2 else { return }
         let keep = Set([animation.selectedIndex - 1, animation.selectedIndex, animation.selectedIndex + 1]
             .filter { animation.frames.indices.contains($0) }.map { animation.frames[$0].id })
         guard let (id, pixels) = framePixels.first(where: { !keep.contains($0.key) && !$0.value.values.allSatisfy(\.isEmpty) }) else { return }
@@ -72,12 +72,19 @@ extension RasterDocument {
     /// Recording needs upcoming pixels without changing the selected cel or the active stroke.
     func prefetchRecordingFrame(_ id: UUID, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let files = coldFrames[id] else { completion(.success(())); return }
+        let cost = files.values.reduce(0) { $0 + $1.count }
+        guard residentTileCount + cost <= Self.maximumTiles else {
+            completion(.failure(DrawingError.message("The next recording cel exceeds the painting memory budget."))); return
+        }
         CelStorage.queue.async {
             let result = Result { try CelStorage.decode(files) }
             DispatchQueue.main.async {
                 do {
                     let decoded = try result.get()
                     if CelStorage.identical(self.coldFrames[id], files) {
+                        guard self.residentTileCount + cost <= Self.maximumTiles else {
+                            throw DrawingError.message("The drawing changed and the next cel no longer fits in memory.")
+                        }
                         self.framePixels[id] = decoded; self.coldFrames[id] = nil
                     }
                     completion(.success(()))
@@ -89,32 +96,86 @@ extension RasterDocument {
     func prepareFrame(_ index: Int, then action: @escaping () -> Void) {
         guard let a = record.animation, a.frames.indices.contains(index) else { return }
         let currentID = a.frames[index].id
-        let indices = a.onionSkin ? [index-1, index, index+1] : [index]
-        let requests = indices.filter { a.frames.indices.contains($0) }.compactMap { i -> (UUID, CelFiles)? in
-            let id = a.frames[i].id
-            return coldFrames[id].map { (id, $0) }
+        let activeID = a.frames[a.selectedIndex].id
+        var available = Self.maximumTiles - residentTileCount
+        let targetCost = coldFrames[currentID]?.values.reduce(0) { $0 + $1.count } ?? 0
+        var evictions: [UUID: CelPixels] = [:]
+        if targetCost > available {
+            // Prepare inactive cels for eviction before reading a large destination.
+            // Archive the outgoing cel too if these two frames cannot coexist.
+            let candidates = framePixels.keys.filter { $0 != activeID && $0 != currentID }
+            for id in candidates where available < targetCost {
+                guard let layers = framePixels[id] else { continue }
+                evictions[id] = layers
+                available += layers.values.reduce(0) { $0 + $1.count }
+            }
+            if available < targetCost, activeID != currentID {
+                let hidden = (framePixels[activeID] ?? [:]).filter { a.sharedLayerIDs.contains($0.key) }
+                let outgoing = hidden.merging(pixels.filter { !a.sharedLayerIDs.contains($0.key) }) { _, current in current }
+                evictions[activeID] = outgoing
+                available += outgoing.values.reduce(0) { $0 + $1.count }
+            }
+        }
+        guard targetCost <= available else {
+            pendingCelSelection = nil
+            onCelError?(DrawingError.message("The destination cel and shared artwork exceed the painting memory budget."))
+            return
+        }
+
+        var requests: [(UUID, CelFiles)] = []
+        if let files = coldFrames[currentID] { requests.append((currentID, files)); available -= targetCost }
+        if a.onionSkin {
+            for i in [index - 1, index + 1] where a.frames.indices.contains(i) {
+                let id = a.frames[i].id
+                guard let files = coldFrames[id] else { continue }
+                let cost = files.values.reduce(0) { $0 + $1.count }
+                if cost <= available { requests.append((id, files)); available -= cost }
+            }
         }
         if requests.isEmpty { pendingCelSelection = nil; action(); return }
         pendingCelSelection = (currentID, action)
         guard !loadingCel else { return }
         loadingCel = true
+        let startingRevision = revision
+        let loads = requests, archives = evictions
         CelStorage.queue.async {
-            let result = Result { try requests.map { ($0.0, try CelStorage.decode($0.1)) } }
+            let result = Result { () -> ([UUID: CelFiles], [CelPixels]) in
+                let backups = try archives.mapValues(CelStorage.encode)
+                return (backups, try loads.map { try CelStorage.decode($0.1) })
+            }
             DispatchQueue.main.async {
                 self.loadingCel = false
                 guard let next = self.pendingCelSelection else { return }
                 self.pendingCelSelection = nil
+                guard let timeline = self.record.animation, let target = timeline.frames.firstIndex(where: { $0.id == next.0 }) else { return }
+                guard next.0 == currentID, self.revision == startingRevision, timeline.frames[timeline.selectedIndex].id == activeID,
+                      loads.allSatisfy({ CelStorage.identical(self.coldFrames[$0.0], $0.1) }) else {
+                    self.prepareFrame(target, then: next.1); return
+                }
                 do {
-                    let decoded = try result.get()
-                    if next.0 == currentID {
-                        for ((id, pixels), (_, inputs)) in zip(decoded, requests) {
-                            guard CelStorage.identical(self.coldFrames[id], inputs) else { continue }
-                            self.framePixels[id] = pixels; self.coldFrames[id] = nil
+                    let (backups, decoded) = try result.get()
+                    func evict(_ id: UUID) {
+                        guard let layers = archives[id], let files = backups[id],
+                              CelStorage.identical(self.framePixels[id], layers) else { return }
+                        self.coldFrames[id] = files; self.framePixels[id] = nil
+                        self.archiveHistoryFrame(id, matching: layers, files: files)
+                    }
+                    for id in archives.keys where id != activeID { evict(id) }
+                    for ((id, _), layers) in zip(loads, decoded) {
+                        self.framePixels[id] = layers; self.coldFrames[id] = nil
+                    }
+                    next.1()
+                    if let current = self.record.animation {
+                        let selected = current.frames[current.selectedIndex].id
+                        if selected != activeID { evict(activeID) }
+                        // A canceled action may leave the original heavy frame active.
+                        for ((id, files), layers) in zip(loads, decoded) where id != selected && self.residentTileCount > Self.maximumTiles {
+                            if CelStorage.identical(self.framePixels[id], layers) {
+                                self.framePixels[id] = nil; self.coldFrames[id] = files
+                            }
                         }
                     }
-                    if let target = self.record.animation?.frames.firstIndex(where: { $0.id == next.0 }) {
-                        self.prepareFrame(target, then: next.1)
-                    }
+                    self.archiveInactiveCels()
                 } catch { self.onCelError?(error) }
             }
         }

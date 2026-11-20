@@ -47,7 +47,13 @@ final class ProjectStore {
             record.media = media
         }
         var sources: [UUID: PhotoSource] = [:]
-        let activeTiles = record.layers.reduce(0) { $0 + $1.tiles.count }
+        let hiddenTiles = record.animation.map { animation in
+            animation.frames[animation.selectedIndex].tiles.reduce(0) { sum, item in
+                sum + (UUID(uuidString: item.key).map(animation.sharedLayerIDs.contains) == true ? item.value.count : 0)
+            }
+        } ?? 0
+        let activeTiles = record.layers.reduce(hiddenTiles) { $0 + $1.tiles.count }
+        guard activeTiles <= RasterDocument.maximumTiles else { throw DrawingError.message("The selected cel exceeds the painting memory budget.") }
         let otherTiles = record.animation.map { animation in
             animation.frames.enumerated().filter { $0.offset != animation.selectedIndex }.reduce(0) { result, item in
                 result + item.element.tiles.values.reduce(0) { $0 + $1.count }

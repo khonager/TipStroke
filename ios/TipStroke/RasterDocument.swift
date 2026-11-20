@@ -684,9 +684,13 @@ final class RasterDocument {
     var residentTileCount: Int {
         let selectedFrame = record.animation.map { $0.frames[$0.selectedIndex].id }
         let photoTiles = record.photoSources.values.reduce(0) { $0 + ($1.bytes + Self.tileBytes - 1) / Self.tileBytes }
-        return photoTiles + pixels.values.reduce(0) { $0 + $1.count } + framePixels.filter { $0.key != selectedFrame }.values.reduce(0) { count, layers in
-            count + layers.values.reduce(0) { $0 + $1.count }
+        let shared = record.animation?.sharedLayerIDs ?? []
+        let celTiles = framePixels.reduce(0) { sum, frame in
+            sum + frame.value.reduce(0) { count, layer in
+                count + (frame.key != selectedFrame || shared.contains(layer.key) ? layer.value.count : 0)
+            }
         }
+        return photoTiles + pixels.values.reduce(celTiles) { $0 + $1.count }
     }
     func mergeDown(_ id: UUID) throws {
         guard let index = record.layers.firstIndex(where: { $0.id == id }), index > 0, record.animation == nil else { return }
