@@ -98,6 +98,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         updateToolValue()
         let bottomActions = UIStackView(arrangedSubviews: [color, tools, settings]); bottomActions.distribution = .equalSpacing
         let quickColors = sharedControls.quickColorsController()
+        quickShelf = quickColors.view
         addChild(quickColors)
         quickColors.view.heightAnchor.constraint(equalToConstant: 44).isActive = true
         let bottom = UIStackView(arrangedSubviews: [toolPicker, quickColors.view, bottomActions]); bottom.spacing = 4
@@ -251,25 +252,31 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         updateToolValue()
     }
     private let dropSwatch = UIView()
-    @objc private func dropColor(_ gesture: UIPanGestureRecognizer) {
-        switch gesture.state {
-        case .began:
-            dropSwatch.frame.size = CGSize(width: 28, height: 28)
-            dropSwatch.layer.cornerRadius = 14
-            dropSwatch.layer.borderColor = UIColor.white.cgColor
-            dropSwatch.layer.borderWidth = 2
-            dropSwatch.isUserInteractionEnabled = false
-            dropSwatch.backgroundColor = viewport.canvas.brushColor
-            view.addSubview(dropSwatch)
-            fallthrough
-        case .changed: dropSwatch.center = gesture.location(in: view)
-        case .ended:
+    private weak var quickShelf: UIView?
+    func dragSwatch(_ point: CGPoint, color: UIColor, ended: Bool, cancelled: Bool) {
+        guard let quickShelf else { return }
+        showDrop(at: quickShelf.convert(point, to: view), color: color, ended: ended, cancelled: cancelled)
+    }
+    private func showDrop(at point: CGPoint, color: UIColor, ended: Bool, cancelled: Bool) {
+        if cancelled || ended {
             dropSwatch.removeFromSuperview()
-            let point = gesture.location(in: viewport.canvas)
-            if viewport.bounds.contains(gesture.location(in: viewport)), document.bounds.contains(point) { fill(at: point) }
-        case .cancelled, .failed: dropSwatch.removeFromSuperview()
-        default: break
+            if ended && !cancelled && viewport.bounds.contains(viewport.convert(point, from: view)) {
+                let local = viewport.canvas.convert(point, from: view)
+                if document.bounds.contains(local) { fill(at: local, swatch: color) }
+            }
+            return
         }
+        if dropSwatch.superview == nil {
+            dropSwatch.frame.size = CGSize(width: 28, height: 28)
+            dropSwatch.layer.cornerRadius = 14; dropSwatch.layer.borderColor = UIColor.white.cgColor
+            dropSwatch.layer.borderWidth = 2; dropSwatch.isUserInteractionEnabled = false
+            dropSwatch.backgroundColor = color; view.addSubview(dropSwatch)
+        }
+        dropSwatch.center = point
+    }
+    @objc private func dropColor(_ gesture: UIPanGestureRecognizer) {
+        showDrop(at: gesture.location(in: view), color: viewport.canvas.brushColor, ended: gesture.state == .ended,
+            cancelled: gesture.state == .cancelled || gesture.state == .failed)
     }
     private weak var toolsButton: UIButton?
     private func updateToolValue() {
@@ -507,6 +514,10 @@ private final class EditorActions: NSObject, AppleEditorActions {
     func brushChanged(brush: NativeBrush) { editor?.applyBrush(brush) }
     func colorChanged(red: Float, green: Float, blue: Float) {
         editor?.viewport.canvas.brushColor = UIColor(red: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: 1)
+    }
+    func swatchDrag(x: Float, y: Float, red: Float, green: Float, blue: Float, ended: Bool, cancelled: Bool) {
+        let color = UIColor(red: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: 1)
+        editor?.dragSwatch(CGPoint(x: CGFloat(x), y: CGFloat(y)), color: color, ended: ended, cancelled: cancelled)
     }
     func fingerDrawingChanged(enabled: Bool) {
         editor?.viewport.canvas.fingerDrawing = enabled

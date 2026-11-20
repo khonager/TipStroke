@@ -217,12 +217,12 @@ extension EditorController {
         })
         present(alert, animated: true)
     }
-    func fill(at point: CGPoint) {
+    func fill(at point: CGPoint, swatch: UIColor? = nil) {
         guard !fillPending else { return }
         guard document.activePhoto == nil else { showError(DrawingError.message("Select a paint layer for fill.")); return }
         let snapshot = document.snapshot(), layer = document.activeLayer
         guard let record = snapshot.record.layers.first(where: { $0.id == layer }), record.visible, !record.locked else { return }
-        let selection = document.selection, color = viewport.canvas.brushColor.withAlphaComponent(viewport.canvas.brushOpacity)
+        let selection = document.selection, color = (swatch ?? viewport.canvas.brushColor).withAlphaComponent(viewport.canvas.brushOpacity)
         fillPending = true
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try RasterDocument.floodFill(snapshot, layerID: layer, point: point, color: color, tolerance: 24, selection: selection) }

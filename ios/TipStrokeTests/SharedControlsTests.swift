@@ -9,6 +9,7 @@ final class SharedControlsTests: XCTestCase {
         var finger = false
         func brushChanged(brush: NativeBrush) { self.brush = brush }
         func colorChanged(red: Float, green: Float, blue: Float) {}
+        func swatchDrag(x: Float, y: Float, red: Float, green: Float, blue: Float, ended: Bool, cancelled: Bool) {}
         func fingerDrawingChanged(enabled: Bool) { finger = enabled }
     }
 

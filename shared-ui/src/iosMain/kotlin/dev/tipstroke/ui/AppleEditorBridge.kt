@@ -5,6 +5,7 @@ package dev.tipstroke.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
@@ -15,6 +16,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import dev.tipstroke.core.editor.NativeBrush
@@ -42,6 +47,7 @@ interface AppleEditorActions {
     fun brushChanged(brush: NativeBrush)
     fun colorChanged(red: Float, green: Float, blue: Float)
     fun fingerDrawingChanged(enabled: Boolean)
+    fun swatchDrag(x: Float, y: Float, red: Float, green: Float, blue: Float, ended: Boolean, cancelled: Boolean)
 }
 
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
@@ -179,7 +185,19 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                     }
                     val quick = (listOf(color) + shelf.saved + if (shelf.recent) history else drawingColors).distinct().take(shelf.slots)
                     quick.forEachIndexed { index, value ->
-                        Box(Modifier.size(32.dp).background(Color(value.red, value.green, value.blue, value.alpha), CircleShape)
+                        var origin by remember { mutableStateOf(Offset.Zero) }
+                        Box(Modifier.size(32.dp).onGloballyPositioned { origin = it.positionInRoot() }
+                            .pointerInput(value) {
+                                var position = Offset.Zero
+                                fun send(ended: Boolean = false, cancelled: Boolean = false) {
+                                    val point = (origin + position) / density
+                                    actions.swatchDrag(point.x, point.y, value.red, value.green, value.blue, ended, cancelled)
+                                }
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { position = it; send() },
+                                    onDrag = { change, _ -> change.consume(); position = change.position; send() },
+                                    onDragEnd = { send(ended = true) }, onDragCancel = { send(cancelled = true) })
+                            }.background(Color(value.red, value.green, value.blue, value.alpha), CircleShape)
                             .semantics { contentDescription = "Quick color ${index + 1}" }
                             .clickable { color = value; actions.colorChanged(value.red, value.green, value.blue) })
                     }
