@@ -12,7 +12,10 @@ final class LocalMediaFile {
         do { try FileManager.default.linkItem(at: input, to: url) }
         catch { try FileManager.default.copyItem(at: input, to: url) }
     }
-    deinit { try? FileManager.default.removeItem(at: url) }
+    deinit {
+        let file = url
+        DispatchQueue.global(qos: .utility).async { try? FileManager.default.removeItem(at: file) }
+    }
 }
 
 struct MediaAssetRecord: Codable, Equatable {
@@ -278,8 +281,10 @@ extension EditorController {
 
 extension AnimationRecord {
     func coverageIndex(at time: Int64) -> Int? {
-        let index = frames.indices.filter { (frames[$0].sourceTimeUs ?? .max) <= time }
-            .max { (frames[$0].sourceTimeUs ?? 0) < (frames[$1].sourceTimeUs ?? 0) }
+        var index: Int?, latest = Int64.min
+        for i in frames.indices {
+            if let start = frames[i].sourceTimeUs, start <= time, start >= latest { index = i; latest = start }
+        }
         guard let index, let start = frames[index].sourceTimeUs else { return nil }
         let duration = frames[index].durationUs ?? Int64(frames[index].exposure) * 1_000_000 / Int64(fps)
         return time - start < duration ? index : nil

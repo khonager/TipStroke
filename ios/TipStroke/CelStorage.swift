@@ -29,6 +29,12 @@ enum CelStorage {
             }
         } }
     }
+    static func identical(_ lhs: CelFiles?, _ rhs: CelFiles) -> Bool {
+        guard let lhs, lhs.count == rhs.count else { return false }
+        return rhs.allSatisfy { layer, files in
+            lhs[layer]?.count == files.count && files.allSatisfy { key, file in lhs[layer]?[key] === file }
+        }
+    }
     static func identical(_ lhs: CelPixels?, _ rhs: CelPixels) -> Bool {
         guard let lhs, lhs.count == rhs.count else { return false }
         return rhs.allSatisfy { id, tiles in
@@ -63,6 +69,22 @@ extension RasterDocument {
             }
         }
     }
+    /// Recording needs upcoming pixels without changing the selected cel or the active stroke.
+    func prefetchRecordingFrame(_ id: UUID, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let files = coldFrames[id] else { completion(.success(())); return }
+        CelStorage.queue.async {
+            let result = Result { try CelStorage.decode(files) }
+            DispatchQueue.main.async {
+                do {
+                    let decoded = try result.get()
+                    if CelStorage.identical(self.coldFrames[id], files) {
+                        self.framePixels[id] = decoded; self.coldFrames[id] = nil
+                    }
+                    completion(.success(()))
+                } catch { completion(.failure(error)) }
+            }
+        }
+    }
     /// Decode only the requested cel and visible onion neighbors, with one outstanding request.
     func prepareFrame(_ index: Int, then action: @escaping () -> Void) {
         guard let a = record.animation, a.frames.indices.contains(index) else { return }
@@ -86,10 +108,7 @@ extension RasterDocument {
                     let decoded = try result.get()
                     if next.0 == currentID {
                         for ((id, pixels), (_, inputs)) in zip(decoded, requests) {
-                            guard let current = self.coldFrames[id], current.count == inputs.count,
-                                  inputs.allSatisfy({ layer, tiles in
-                                      current[layer]?.count == tiles.count && tiles.allSatisfy { current[layer]?[$0.key] === $0.value }
-                                  }) else { continue }
+                            guard CelStorage.identical(self.coldFrames[id], inputs) else { continue }
                             self.framePixels[id] = pixels; self.coldFrames[id] = nil
                         }
                     }

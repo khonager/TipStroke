@@ -46,6 +46,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private let outlineLayer = CAShapeLayer()
     private var gesturePoints: [CGPoint] = []
     private var shapeTracker = NativeShapeTracker()
+    private var prefetchingID: UUID?
+    private var waitingForCelSince: TimeInterval?
     private var recordingLink: CADisplayLink?
     private var liveDrawing: (start: TimeInterval, index: Int, layer: UUID)?
     func startLiveDrawing() throws {
@@ -54,6 +56,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         guard document.addLayer() else { throw DrawingError.message("The drawing has reached its layer limit.") }
         document.record.layers[document.record.layers.count - 1].name = "Live drawing"
         liveDrawing = (ProcessInfo.processInfo.systemUptime, a.selectedIndex, document.activeLayer)
+        prefetchNextRecordingCel()
         recordingLink?.invalidate()
         let link = CADisplayLink(target: self, selector: #selector(advanceIdleRecording))
         link.preferredFramesPerSecond = a.fps
@@ -61,7 +64,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     func stopLiveDrawing() {
         guard liveDrawing != nil else { return }
-        recordingLink?.invalidate(); recordingLink = nil; liveDrawing = nil
+        recordingLink?.invalidate(); recordingLink = nil; liveDrawing = nil; waitingForCelSince = nil; prefetchingID = nil
         if pointer != nil {
             document.endStroke(cancelled: false); document.finishRecordingGesture(cancelled: false)
             pointer = nil; previous = nil
@@ -73,27 +76,46 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         do { try advanceRecording(at: ProcessInfo.processInfo.systemUptime, resumeStroke: false) }
         catch { stopLiveDrawing(); onError?(error) }
     }
+    private func prefetchNextRecordingCel() {
+        guard let session = liveDrawing, let a = document.record.animation,
+              a.frames.indices.contains(a.selectedIndex + 1) else { return }
+        let id = a.frames[a.selectedIndex + 1].id
+        guard document.coldFrames[id] != nil, prefetchingID != id else { return }
+        prefetchingID = id
+        document.prefetchRecordingFrame(id) { [weak self] result in
+            guard let self, self.liveDrawing?.layer == session.layer, self.prefetchingID == id else { return }
+            self.prefetchingID = nil
+            if case .failure(let error) = result { self.stopLiveDrawing(); self.onError?(error); return }
+            if let paused = self.waitingForCelSince {
+                self.liveDrawing?.start += max(0, ProcessInfo.processInfo.systemUptime - paused)
+                self.waitingForCelSince = nil
+            }
+        }
+    }
     private func advanceRecording(at time: TimeInterval, resumeStroke: Bool) throws {
         guard let session = liveDrawing, let a = document.record.animation else { return }
         guard document.activeLayer == session.layer, mode == .paint else { stopLiveDrawing(); return }
         let target = session.index + Int(max(0, time - session.start) * Double(a.fps))
         guard target > a.selectedIndex else { return }
+        var readyTarget = target
+        let lastExisting = min(target, a.frames.count - 1)
+        if lastExisting > a.selectedIndex,
+           let cold = ((a.selectedIndex+1)...lastExisting).first(where: { document.coldFrames[a.frames[$0].id] != nil }) {
+            readyTarget = cold - 1
+            if waitingForCelSince == nil { waitingForCelSince = ProcessInfo.processInfo.systemUptime }
+        }
+        guard readyTarget > a.selectedIndex else { prefetchNextRecordingCel(); return }
         if resumeStroke { document.endStroke(cancelled: false) }
-        for i in (a.selectedIndex+1)...target {
+        for i in (a.selectedIndex+1)...readyTarget {
             let carry = document.pixels[session.layer]
             if i < (document.record.animation?.frames.count ?? 0) {
-                guard let id = document.record.animation?.frames[i].id, document.coldFrames[id] == nil else {
-                    throw DrawingError.message("The next cel is loading. Resume live recording when it is ready.")
-                }
                 document.installFrame(i)
             } else { try document.addFrame(copy: false) }
             document.pixels[session.layer] = carry
         }
         if resumeStroke && !document.beginStroke() { throw DrawingError.message("Cannot continue recording on this layer.") }
         refresh()
-        if let a = document.record.animation, a.frames.indices.contains(target + 1) {
-            document.prepareFrame(target + 1) {}
-        }
+        prefetchNextRecordingCel()
     }
     private var holdWork: DispatchWorkItem?
     private var fitted = false

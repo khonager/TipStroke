@@ -385,7 +385,7 @@ final class TimelineController: UITableViewController {
             let elapsed = ProcessInfo.processInfo.systemUptime - self.playbackStart
             let tick = self.playbackTick + Int64(elapsed * Double(animation.fps))
             let next = Int(timeline.frameAt(tick: tick))
-            if self.document.record.animation?.selectedIndex != next { self.document.selectFrame(next); self.changed() }
+            if !self.document.loadingCel, self.document.record.animation?.selectedIndex != next { self.document.selectFrame(next); self.changed() }
             if animation.playbackMode == "ONCE" && tick >= Int64(timeline.totalTicks) { self.stopPlayback() }
         }
     }
