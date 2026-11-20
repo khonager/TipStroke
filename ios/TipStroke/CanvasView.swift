@@ -138,6 +138,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
     }
     private let graphite = GraphiteRenderer()
+    private let airbrush = AirbrushCoverage()
     private var stampRenderer: NativeStampRenderer?
     private var stampPath: NativeStampPath?
     var brushColor: UIColor = .black
@@ -357,7 +358,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         magneticRuler = mode == .paint && perspectiveMode > 0 ? NativePerspectiveRuler(mode: Int32(perspectiveMode), x1: Float(first.x), y1: Float(first.y), x2: Float(second.x), y2: Float(second.y), threshold: Float(4 / scale)) : nil
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
         stampPath = brush.usesStamps && !(tool == .eraser && document.activePhoto != nil) ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
-        graphite.begin()
+        airbrush.reset(); graphite.begin()
         strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
         if liveFill || shadowPull || mode == .colorPush {
@@ -411,6 +412,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
         document.finishRecordingGesture(cancelled: false)
         previewLink?.invalidate(); previewLink = nil
+        airbrush.reset()
         let endedMode = mode
         self.pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
         refresh(); refreshSelection(); onCommit?()
@@ -453,6 +455,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         holdWork?.cancel(); previewLink?.invalidate(); previewLink = nil
         document.endStroke(cancelled: true)
         document.finishRecordingGesture(cancelled: true)
+        airbrush.reset()
         pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
         refreshSelection()
         refresh()
@@ -568,6 +571,9 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                     if #available(iOS 17.5, *), sample.type == .pencil { roll = sample.rollAngle } else { roll = 0 }
                     dirty = dirty.union(try stampRenderer.paint(stamps, color: strokeColor, document: document,
                         erasing: strokeTool == .eraser, roll: roll))
+                } else if mode == .paint && strokeTool == .airbrush {
+                    dirty = dirty.union(try airbrush.paint(document: document, from: previous ?? point, to: point, radius: radius,
+                        alpha: alpha, hardness: CGFloat(strokeBrush.hardness), color: strokeColor))
                 } else if mode == .smudge { try document.smudge(from: previous ?? point, to: point, radius: strokeSize / 2, strength: strokeOpacity) }
                 else if mode == .pixel || mode == .dither {
                     try document.paintPixelLine(from: previous ?? point, to: point, size: Int(strokeSize), color: strokeColor.withAlphaComponent(strokeOpacity), dither: mode == .dither)

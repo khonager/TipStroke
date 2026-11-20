@@ -58,6 +58,19 @@ final class CreativeToolsTests: XCTestCase {
         doc.endStroke(cancelled: true)
         for x in [20, 492] { XCTAssertNotEqual(try rgba(doc, x, 40), 0) }
     }
+    func testAirbrushCoverageDoesNotBuildUpAtEventBoundaries() throws {
+        let doc = RasterDocument(name: "Airbrush", width: 512, height: 64)
+        let brush = AirbrushCoverage()
+        XCTAssertTrue(doc.beginStroke())
+        let start = CGPoint(x: 240, y: 32), end = CGPoint(x: 270, y: 32)
+        _ = try brush.paint(document: doc, from: start, to: end, radius: 8, alpha: 0.5, hardness: 0.5, color: .red)
+        let initial = try rgba(doc, 256, 32)
+        _ = try brush.paint(document: doc, from: end, to: start, radius: 8, alpha: 0.5, hardness: 0.5, color: .red)
+        XCTAssertEqual(initial & 255, 128)
+        XCTAssertEqual(try rgba(doc, 256, 32), initial)
+        doc.endStroke(cancelled: true)
+        XCTAssertEqual(try rgba(doc, 256, 32), 0)
+    }
     func testShadowPullUsesSelectionAsSourceAndCancelRestores() throws {
         let doc = RasterDocument(name: "Shadow", width: 512, height: 256)
         XCTAssertTrue(doc.beginStroke()); try dot(doc, 250, 30); doc.endStroke(cancelled: false)
