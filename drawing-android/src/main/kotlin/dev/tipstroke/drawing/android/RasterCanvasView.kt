@@ -10,6 +10,7 @@ import dev.tipstroke.core.geometry.TileGrid
 import dev.tipstroke.core.geometry.transformed
 import dev.tipstroke.core.geometry.Point
 import dev.tipstroke.core.geometry.SelectionRegion
+import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.LayerId
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -277,7 +278,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                         } else if (preview == null && gpu == null && strokePreview == null) {
                             bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
                             layer.tiles.draw(canvas, bitmapPaint)
-                        } else if (layer.opacity >= .999f) {
+                        } else if (layer.opacity >= .999f && strokePreview?.style?.blend != BlendBehavior.ERASE) {
                             bitmapPaint.alpha = 255
                             layer.tiles.draw(canvas, bitmapPaint)
                             preview?.draw(canvas, bitmapPaint)
@@ -361,7 +362,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     }
 
     private fun drawStrokePreview(canvas: Canvas, stroke: CompletedStroke) {
-        if (!stroke.style.ribbon && stroke.style.mirrorWheel == null && !stroke.style.lassoFill && stroke.style.pixelTool == null && stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH) {
+        if (stroke.style.blend == BlendBehavior.PAINT && !stroke.style.ribbon && stroke.style.mirrorWheel == null && !stroke.style.lassoFill && stroke.style.pixelTool == null && stroke.style.brush.engine == dev.tipstroke.core.model.BrushEngine.AIRBRUSH) {
             airbrushPreview.draw(canvas, stroke, transform.scale)
         } else StrokeCanvasPainter.draw(canvas, stroke)
     }
