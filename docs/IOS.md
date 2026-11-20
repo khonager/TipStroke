@@ -39,7 +39,7 @@ are not an Apple SDK build, simulator run or physical Pencil validation.
 - Shape/grain sources can be imported from images, captured from a drawn layer,
   inverted and rotated. Transparent sources use alpha; opaque sources use brightness.
   Source images are bounded to 256×256 coverage, stored in portable brush packages.
-- Two-finger pan/pinch, fit, portrait/landscape layouts, iPad resizing, Pencil
+- Two-finger pan/pinch/rotate, rotation lock, fit, portrait/landscape layouts, iPad resizing, Pencil
   double-tap eraser switching, and Command-Z/Shift-Command-Z/Command-0.
 - Tools menu: fill, smudge, pixel pencil/line/dither, line/rectangle/ellipse/triangle/
   arrow, filled shapes, and Pencil hold-to-recognize quick shapes. Fill uses a
@@ -89,7 +89,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | --- | --- |
 | Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation |
 | Creative tools added in this port | Native implementations present; Apple SDK compilation, iPhone/iPad simulator tests and physical Pencil checks still required |
-| Fill and gestures | Animated fill reveal, configurable gesture actions and camera rotation |
+| Fill and gestures | Animated fill reveal and configurable gesture actions |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
 | Animation | Shared background cels, live motion recording, disk-backed long timelines and resolution reduction |
 | Video | Source-backed GIF/video canvases, media playback/scrubbing, clip editing, keyframes, crossfades and coverage navigation |
@@ -148,7 +148,7 @@ No Codemagic build or Apple submission is performed merely by adding these files
 Install JDK 17 and Xcode 26.0 (Kotlin 2.2.21), then open
 `ios/TipStroke.xcodeproj`, choose **TipStroke**, and run
 an iPhone or iPad simulator. For a physical device, select your Apple development
-team in Signing & Capabilities. There is no CocoaPods or Swift Package resolution. Gradle downloads Kotlin/Compose
+team in Signing & Capabilities. Xcode resolves the pinned ZIPFoundation package for project exchange. Gradle downloads Kotlin/Compose
 dependencies during builds; the installed application remains fully offline.
 The `tipstroke.appleOnly=true` Gradle property excludes Android/desktop modules
 and disables the shared UI Android target, so an Android SDK is not needed.

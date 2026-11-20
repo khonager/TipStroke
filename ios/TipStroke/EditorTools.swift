@@ -214,6 +214,11 @@ extension EditorController {
     func brushAids() {
         viewport.canvas.cancelStroke()
         let menu = UIAlertController(title: "Brush aids", message: "Temporary aids stay active until switched off. Paint inside preserves the active layer’s existing transparency.", preferredStyle: .actionSheet)
+        menu.addAction(UIAlertAction(title: viewport.rotationLocked ? "Unlock canvas rotation" : "Lock canvas rotation", style: .default) { [weak self] _ in
+            guard let self else { return }
+            self.viewport.rotationLocked.toggle()
+            UserDefaults.standard.set(self.viewport.rotationLocked, forKey: "canvas.rotationLocked")
+        })
         menu.addAction(UIAlertAction(title: "Perspective rulers", style: .default) { [weak self] _ in self?.perspectiveSettings() })
         menu.addAction(UIAlertAction(title: "Mirror wheel", style: .default) { [weak self] _ in self?.mirrorSettings() })
         menu.addAction(UIAlertAction(title: "Elastic line" + (viewport.canvas.elasticLine ? " ✓" : ""), style: .default) { [weak self] _ in self?.viewport.canvas.elasticLine.toggle() })

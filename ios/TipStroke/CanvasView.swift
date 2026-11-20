@@ -9,6 +9,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
     }
     var previewSnapshot: DocumentSnapshot?
+    weak var viewport: CanvasViewport?
     let document: RasterDocument
     var mode: CanvasMode = .paint { didSet { cancelStroke() } }
     var filledShapes = false
@@ -139,14 +140,14 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         var pose = CGAffineTransform(translationX: point.x, y: point.y)
         if #available(iOS 17.5, *) { pose = pose.rotated(by: gesture.rollAngle) }
         oval.apply(pose)
-        hoverLayer.lineWidth = 1 / max(0.01, (superview as? UIScrollView)?.zoomScale ?? 1)
+        hoverLayer.lineWidth = 1 / max(0.01, viewport?.zoomScale ?? 1)
         hoverLayer.path = oval.cgPath
     }
     // One native layer per visible tile; never allocate a document-sized UIView backing bitmap.
     func refresh(_ dirty: CGRect? = nil) {
         backgroundColor = document.record.paperColor
         isOpaque = (document.record.backgroundOpacity ?? 1) == 1
-        let visible = superview.map { convert($0.bounds, from: $0) } ?? bounds
+        let visible = viewport.map { convert($0.bounds, from: $0) } ?? bounds
         let keys = Set(TileKey.intersecting(visible, width: document.record.width, height: document.record.height))
         CATransaction.begin(); CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
@@ -215,7 +216,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         pointer = touch; previous = nil; previousTimestamp = -1
         let first = vanishingPoint1 ?? CGPoint(x: bounds.width * 0.25, y: bounds.height * 0.35)
         let second = vanishingPoint2 ?? CGPoint(x: bounds.width * 0.75, y: bounds.height * 0.35)
-        let scale = (superview as? UIScrollView)?.zoomScale ?? 1
+        let scale = viewport?.zoomScale ?? 1
         magneticRuler = mode == .paint && perspectiveMode > 0 ? NativePerspectiveRuler(mode: Int32(perspectiveMode), x1: Float(first.x), y1: Float(first.y), x2: Float(second.x), y2: Float(second.y), threshold: Float(4 / scale)) : nil
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
         stampPath = brush.usesStamps && !(tool == .eraser && document.activePhoto != nil) ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
@@ -346,7 +347,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             let shape = shapeTracker.elastic()
             let points = shape.points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
             let path = CGMutablePath(); path.addLines(between: points)
-            let scale = (superview as? UIScrollView)?.zoomScale ?? 1
+            let scale = viewport?.zoomScale ?? 1
             guard max(path.boundingBoxOfPath.width, path.boundingBoxOfPath.height) * scale >= 24 else { return }
             elasticShape = shape; bendAnchor = pointer.location(in: self); fitted = true
             previewLink = CADisplayLink(target: self, selector: #selector(renderLivePreview))
@@ -421,7 +422,14 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
 }
 
-final class CanvasViewport: UIScrollView, UIScrollViewDelegate {
+final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    private let page = UIView()
+    private var angle: CGFloat = 0
+    private var turn: UIRotationGestureRecognizer!
+    var rotationLocked: Bool {
+        get { !turn.isEnabled }
+        set { turn.isEnabled = !newValue }
+    }
     let canvas: CanvasView
     private var fittedSize = CGSize.zero
     init(document: RasterDocument) {
@@ -430,7 +438,15 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate {
         delegate = self
         backgroundColor = .secondarySystemBackground
         contentSize = canvas.bounds.size
-        addSubview(canvas)
+        canvas.viewport = self
+        page.frame = canvas.bounds
+        addSubview(page)
+        page.addSubview(canvas)
+        turn = UIRotationGestureRecognizer(target: self, action: #selector(rotatePage(_:)))
+        turn.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+        turn.delegate = self
+        addGestureRecognizer(turn)
+        rotationLocked = UserDefaults.standard.bool(forKey: "canvas.rotationLocked")
         delaysContentTouches = false
         panGestureRecognizer.minimumNumberOfTouches = 2
         panGestureRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
@@ -439,7 +455,30 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate {
         pinchGestureRecognizer?.addTarget(self, action: #selector(navigationStarted(_:)))
     }
     required init?(coder: NSCoder) { fatalError("Use init(document:)") }
-    func viewForZooming(in scrollView: UIScrollView) -> UIView? { canvas }
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { page }
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        gestureRecognizer == turn && (other == panGestureRecognizer || other == pinchGestureRecognizer)
+    }
+    private func layoutPage() {
+        let transform = CGAffineTransform(rotationAngle: angle)
+        let box = canvas.bounds.applying(transform).standardized
+        page.bounds = CGRect(origin: .zero, size: box.size)
+        canvas.transform = transform
+        canvas.center = CGPoint(x: box.width / 2, y: box.height / 2)
+        contentSize = CGSize(width: box.width * zoomScale, height: box.height * zoomScale)
+        centerCanvas()
+    }
+    @objc private func rotatePage(_ gesture: UIRotationGestureRecognizer) {
+        guard gesture.state == .began || gesture.state == .changed else { return }
+        if gesture.state == .began { canvas.cancelFingerStroke() }
+        let focus = gesture.location(in: self)
+        let point = canvas.convert(focus, from: self)
+        angle += gesture.rotation; gesture.rotation = 0
+        layoutPage()
+        let moved = canvas.convert(point, to: self)
+        contentOffset = CGPoint(x: contentOffset.x + moved.x - focus.x, y: contentOffset.y + moved.y - focus.y)
+        canvas.updateVisibleTiles()
+    }
     override func layoutSubviews() {
         super.layoutSubviews()
         if bounds.size != fittedSize, bounds.width > 0, bounds.height > 0 {
@@ -451,6 +490,7 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate {
     }
     func fit() {
         canvas.cancelStroke()
+        angle = 0; layoutPage()
         let scale = min(bounds.width / canvas.bounds.width, bounds.height / canvas.bounds.height) * 0.95
         minimumZoomScale = min(scale, 1)
         maximumZoomScale = max(8, scale)
@@ -461,7 +501,7 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate {
     func scrollViewDidZoom(_ scrollView: UIScrollView) { centerCanvas(); canvas.updateVisibleTiles() }
     func scrollViewDidScroll(_ scrollView: UIScrollView) { canvas.updateVisibleTiles() }
     private func centerCanvas() {
-        canvas.center = CGPoint(x: max(contentSize.width, bounds.width) / 2, y: max(contentSize.height, bounds.height) / 2)
+        page.center = CGPoint(x: max(contentSize.width, bounds.width) / 2, y: max(contentSize.height, bounds.height) / 2)
     }
     @objc private func navigationStarted(_ gesture: UIGestureRecognizer) {
         if gesture.state == .began { canvas.cancelFingerStroke() }
