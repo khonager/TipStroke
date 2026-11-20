@@ -3,6 +3,29 @@ import UIKit
 @testable import TipStroke
 
 final class PhotoLayerTests: XCTestCase {
+    func testUndoOnWarmCelWithColdOnionNeighbor() throws {
+        let doc = RasterDocument(name: "Undo", width: 128, height: 128)
+        doc.enableAnimation()
+        try doc.addFrame(copy: false)
+        try doc.addFrame(copy: false)
+        doc.selectFrame(1)
+        XCTAssertTrue(doc.beginStroke())
+        try doc.paintPath(CGPath(rect: doc.bounds, transform: nil), color: .red, width: 0, filled: true)
+        doc.endStroke(cancelled: false)
+        doc.selectFrame(2)
+        let neighbor = try XCTUnwrap(doc.record.animation?.frames.first?.id)
+        doc.framePixels[neighbor] = nil
+        doc.coldFrames[neighbor] = [:]
+        doc.record.animation?.onionSkin = true
+        doc.undo()
+        XCTAssertEqual(doc.record.animation?.selectedIndex, 1)
+        XCTAssertTrue(doc.pixels[doc.activeLayer]?.isEmpty ?? true)
+        doc.redo()
+        XCTAssertEqual(doc.pixels[doc.activeLayer]?.count, 1)
+        doc.selectFrame(2)
+        XCTAssertTrue(doc.pixels[doc.activeLayer]?.isEmpty ?? true)
+    }
+
     func testTransformDraftIsolatedUntilApplyAndUndoRestoresPixels() throws {
         let doc = RasterDocument(name: "Selection", width: 256, height: 256)
         XCTAssertTrue(doc.beginStroke())

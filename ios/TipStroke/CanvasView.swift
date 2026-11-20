@@ -266,11 +266,15 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
                 if let animation = document.record.animation, animation.onionSkin {
                     for index in [animation.selectedIndex - 1, animation.selectedIndex + 1] where animation.frames.indices.contains(index) {
+                        let frame = animation.frames[index].id
+                        guard document.coldFrames[frame] == nil else { continue }
                         var ghost = snapshot
                         ghost.record.installPhotoCels(animation, at: index)
-                        ghost.pixels = (document.framePixels[animation.frames[index].id] ?? [:]).filter { !animation.sharedLayerIDs.contains($0.key) }
+                        ghost.pixels = (document.framePixels[frame] ?? [:]).merging(snapshot.pixels.filter {
+                            animation.sharedLayerIDs.contains($0.key)
+                        }) { _, shared in shared }
                         context.saveGState(); context.setAlpha(0.18); context.beginTransparencyLayer(auxiliaryInfo: nil)
-                        try RasterDocument.composite(ghost, in: context, visible: key.rect)
+                        try RasterDocument.composite(ghost, in: context, visible: key.rect, excluding: animation.sharedLayerIDs)
                         context.endTransparencyLayer(); context.restoreGState()
                     }
                 }

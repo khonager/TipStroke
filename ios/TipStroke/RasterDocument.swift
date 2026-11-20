@@ -386,7 +386,12 @@ final class RasterDocument {
     func undo() {
         guard strokeLayer == nil, metadataBefore == nil else { return }
         if let id = undoStack.last?.frame, coldFrames[id] != nil, let i = record.animation?.frames.firstIndex(where: { $0.id == id }) {
-            prepareFrame(i) { [weak self] in self?.undo(); self?.onCelReady?() }; return
+            let requestedRevision = revision
+            prepareFrame(i) { [weak self] in
+                guard let self, self.revision == requestedRevision else { return }
+                self.undo(); self.onCelReady?()
+            }
+            return
         }
         guard let edit = undoStack.popLast() else { return }
         revision &+= 1
@@ -399,7 +404,12 @@ final class RasterDocument {
     func redo() {
         guard strokeLayer == nil, metadataBefore == nil else { return }
         if let id = redoStack.last?.frame, coldFrames[id] != nil, let i = record.animation?.frames.firstIndex(where: { $0.id == id }) {
-            prepareFrame(i) { [weak self] in self?.redo(); self?.onCelReady?() }; return
+            let requestedRevision = revision
+            prepareFrame(i) { [weak self] in
+                guard let self, self.revision == requestedRevision else { return }
+                self.redo(); self.onCelReady?()
+            }
+            return
         }
         guard let edit = redoStack.popLast() else { return }
         revision &+= 1
@@ -637,12 +647,12 @@ final class RasterDocument {
         context.setAlpha(snapshot.record.layers.first(where: { $0.id == source })?.opacity ?? 1)
         draw(mask, in: context, rect: rect); return context.makeImage()
     }
-    static func composite(_ snapshot: DocumentSnapshot, in context: CGContext, visible: CGRect) throws {
+    static func composite(_ snapshot: DocumentSnapshot, in context: CGContext, visible: CGRect, excluding: Set<UUID> = []) throws {
         context.saveGState()
         defer { context.restoreGState() }
         context.clip(to: CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height))
         let gap = snapshot.record.media.map { media in snapshot.record.animation?.coverageIndex(at: media.positionUs) == nil } ?? false
-        for layer in snapshot.record.layers where layer.visible && layer.opacity > 0 && (!gap || snapshot.record.animation?.sharedLayerIDs.contains(layer.id) == true) {
+        for layer in snapshot.record.layers where !excluding.contains(layer.id) && layer.visible && layer.opacity > 0 && (!gap || snapshot.record.animation?.sharedLayerIDs.contains(layer.id) == true) {
             context.setAlpha(layer.opacity); context.setBlendMode(blendModes[layer.blendMode] ?? .normal)
             for key in TileKey.intersecting(visible, width: snapshot.record.width, height: snapshot.record.height) {
                 if let image = try layerTile(snapshot, id: layer.id, key: key) { draw(image, in: context, rect: key.rect) }

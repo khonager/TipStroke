@@ -72,7 +72,13 @@ extension RasterDocument {
     }
     func restoreFrameForHistory(_ id: UUID?) {
         guard let id, let index = record.animation?.frames.firstIndex(where: { $0.id == id }) else { return }
-        selectFrame(index)
+        // The history caller warmed the target before removing the entry. Apply its
+        // pixel delta synchronously even if onion neighbors still need reading.
+        if index != record.animation?.selectedIndex { installFrame(index) }
+        if let animation = record.animation, animation.onionSkin,
+           [index - 1, index + 1].contains(where: { animation.frames.indices.contains($0) && coldFrames[animation.frames[$0].id] != nil }) {
+            prepareFrame(index) { [weak self] in self?.onCelReady?() }
+        }
     }
     func addFrame(copy: Bool, sourceTimeUs: Int64? = nil) throws {
         enableAnimation()
