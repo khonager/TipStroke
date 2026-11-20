@@ -54,7 +54,7 @@ final class GraphiteRenderer {
         try document.editTiles(in: dirty) { context in
             context.addPath(path); context.clip()
             context.setAlpha(CGFloat(tip.alpha) / 255)
-            context.drawTiledImage(in: CGRect(x: 0, y: 0, width: CGFloat(texture.width) * 0.38, height: CGFloat(texture.height) * 0.38), image: texture)
+            context.draw(texture, in: CGRect(x: 0, y: 0, width: CGFloat(texture.width) * 0.38, height: CGFloat(texture.height) * 0.38), byTiling: true)
         }
         return dirty
     }
@@ -81,5 +81,5 @@ final class GraphiteRenderer {
 }
 
 private extension CGFloat {
-    var clampedByte: CGFloat { min(255, max(0, self)) }
+    var clampedByte: CGFloat { Swift.min(255, Swift.max(0, self)) }
 }
