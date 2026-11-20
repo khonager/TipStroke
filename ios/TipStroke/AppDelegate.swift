@@ -61,12 +61,17 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         title = openStack.flatMap { layout.stacks[$0]?.name } ?? "TipStroke"
         if pickingExports {
             navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.setPicking(false) })
-            let share = UIBarButtonItem(systemItem: .action, primaryAction: UIAction { [weak self] _ in self?.shareSelected() })
+            let share = UIBarButtonItem(image: UIImage(systemName: "square.and.arrow.up"), menu: UIMenu(children: [
+                UIAction(title: "Share PNG") { [weak self] _ in self?.shareSelected() },
+                UIAction(title: "Share TipStroke project") { [weak self] _ in self?.shareSelected(asProject: true) }
+            ]))
             share.isEnabled = !(tableView.indexPathsForSelectedRows ?? []).isEmpty && !exportingDrawings
             share.accessibilityLabel = "Share selected drawings"
             navigationItem.rightBarButtonItems = [share]
         } else {
-            navigationItem.leftBarButtonItem = openStack == nil ? nil : UIBarButtonItem(title: "Gallery", primaryAction: UIAction { [weak self] _ in
+            let open = UIBarButtonItem(image: UIImage(systemName: "doc.badge.plus"), primaryAction: UIAction { [weak self] _ in self?.chooseProjectPackage() })
+            open.accessibilityLabel = "Import TipStroke project"
+            navigationItem.leftBarButtonItem = openStack == nil ? open : UIBarButtonItem(title: "Gallery", primaryAction: UIAction { [weak self] _ in
                 self?.openStack = nil; self?.saveLayout()
             })
             let select = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), primaryAction: UIAction { [weak self] _ in self?.setPicking(true) })
@@ -81,7 +86,7 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         refreshControl?.isEnabled = !enabled
         updateGalleryActions()
     }
-    private func shareSelected() {
+    private func shareSelected(asProject: Bool = false) {
         let ids = (tableView.indexPathsForSelectedRows ?? []).sorted().flatMap { path -> [UUID] in
             let id = displayed[path.row]
             return layout.stacks[id]?.members ?? [id]
@@ -91,8 +96,9 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         store.queue.async {
             var urls: [URL] = []
             do {
-                for id in ids {
-                    try autoreleasepool { urls.append(try self.store.exportPNG(self.store.load(id))) }
+                if asProject { urls = [try self.store.exportPackage(ids)] }
+                else {
+                    for id in ids { try autoreleasepool { urls.append(try self.store.exportPNG(self.store.load(id))) } }
                 }
                 let files = urls
                 DispatchQueue.main.async {
@@ -116,7 +122,7 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         navigationController?.setNavigationBarHidden(false, animated: animated)
         reload()
     }
-    @objc private func reload() {
+    @objc func reload() {
         store.queue.async {
             let result = Result { try self.store.list() }
             DispatchQueue.main.async {

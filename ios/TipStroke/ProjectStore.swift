@@ -166,7 +166,11 @@ final class ProjectStore {
         var snapshot = try load(id); snapshot.record.name = name; snapshot.record.modified = Date(); try save(snapshot)
     }
     func duplicate(_ id: UUID) throws {
-        var snapshot = try load(id); snapshot.record.id = UUID(); snapshot.record.name += " copy"; snapshot.record.modified = Date(); try save(snapshot)
+        var snapshot = try load(id)
+        let copy = UUID()
+        snapshot.record.id = copy; snapshot.record.name += " copy"; snapshot.record.modified = Date()
+        do { try save(snapshot); try copyPackageBase(from: id, to: copy) }
+        catch { try? delete(copy); throw error }
     }
     func delete(_ id: UUID) throws { try FileManager.default.removeItem(at: folder(id)) }
 

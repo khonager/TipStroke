@@ -73,12 +73,18 @@ asset_phase = obj("prepare-assets", "PBXShellScriptBuildPhase", buildActionMask=
                   name="Prepare app icon", runOnlyForDeploymentPostprocessing=0, shellPath="/bin/sh",
                   shellScript='sh "$SRCROOT/../tools/prepare-ios-assets.sh"\n')
 
+zip_package = obj("zip-package", "XCRemoteSwiftPackageReference",
+                  repositoryURL="https://github.com/weichsel/ZIPFoundation.git",
+                  requirement={"kind": "exactVersion", "version": "0.9.20"})
+zip_product = obj("zip-product", "XCSwiftPackageProductDependency", package=zip_package, productName="ZIPFoundation")
+zip_build = obj("zip-build", "PBXBuildFile", productRef=zip_product)
+
 def phases(name, include_resources=False):
     return [obj(name + "sources", "PBXSourcesBuildPhase", buildActionMask=2147483647, files=sources[name], runOnlyForDeploymentPostprocessing=0),
-            obj(name + "frameworks", "PBXFrameworksBuildPhase", buildActionMask=2147483647, files=[], runOnlyForDeploymentPostprocessing=0),
+            obj(name + "frameworks", "PBXFrameworksBuildPhase", buildActionMask=2147483647, files=[zip_build] if name == "TipStroke" else [], runOnlyForDeploymentPostprocessing=0),
             obj(name + "resources", "PBXResourcesBuildPhase", buildActionMask=2147483647, files=resources if include_resources else [], runOnlyForDeploymentPostprocessing=0)]
 
-app = obj("app-target", "PBXNativeTarget", buildConfigurationList=app_config, buildPhases=[kotlin_phase, asset_phase] + phases("TipStroke", True), buildRules=[], dependencies=[], name="TipStroke", productName="TipStroke", productReference=app_product, productType="com.apple.product-type.application")
+app = obj("app-target", "PBXNativeTarget", buildConfigurationList=app_config, buildPhases=[kotlin_phase, asset_phase] + phases("TipStroke", True), buildRules=[], dependencies=[], name="TipStroke", productName="TipStroke", packageProductDependencies=[zip_product], productReference=app_product, productType="com.apple.product-type.application")
 targets = [app]
 for name, product, kind in [("TipStrokeTests", unit_product, "unit-test"), ("TipStrokeUITests", ui_product, "ui-testing")]:
     proxy = obj(name + "proxy", "PBXContainerItemProxy", containerPortal=key("project"), proxyType=1, remoteGlobalIDString=app, remoteInfo="TipStroke")
@@ -89,7 +95,7 @@ for name, product, kind in [("TipStrokeTests", unit_product, "unit-test"), ("Tip
     else:
         settings.update(TEST_TARGET_NAME="TipStroke")
     targets.append(obj(name + "target", "PBXNativeTarget", buildConfigurationList=configurations(name, settings), buildPhases=phases(name), buildRules=[], dependencies=[dependency], name=name, productName=name, productReference=product, productType="com.apple.product-type.bundle." + kind))
-project = obj("project", "PBXProject", attributes={"LastUpgradeCheck": "1600", "TargetAttributes": {app: {"CreatedOnToolsVersion": "16.0"}}}, buildConfigurationList=project_config, compatibilityVersion="Xcode 14.0", developmentRegion="en", hasScannedForEncodings=0, knownRegions=["en", "Base"], mainGroup=main_group, productRefGroup=products, projectDirPath="", projectRoot="", targets=targets)
+project = obj("project", "PBXProject", attributes={"LastUpgradeCheck": "1600", "TargetAttributes": {app: {"CreatedOnToolsVersion": "16.0"}}}, buildConfigurationList=project_config, compatibilityVersion="Xcode 14.0", developmentRegion="en", hasScannedForEncodings=0, knownRegions=["en", "Base"], mainGroup=main_group, packageReferences=[zip_package], productRefGroup=products, projectDirPath="", projectRoot="", targets=targets)
 
 def serialize(value, level=0):
     tab = "\t" * level
