@@ -289,6 +289,29 @@ final class RasterDocumentTests: XCTestCase {
         document.endStroke(cancelled: false)
         for x in 254...259 { XCTAssertEqual(try alpha(document, x: x, y: 20), x % 2 == 0 ? 255 : 0) }
     }
+    func testRetimeMediaDrawingPreservesSelectionAndExportGaps() throws {
+        let document = RasterDocument(name: "Retime", width: 64, height: 64)
+        document.enableAnimation()
+        let asset = MediaAssetRecord(id: UUID(), name: "Source", kind: "image", durationUs: 2_000_000,
+            frameRate: 10, fileExtension: "png")
+        document.record.media = MediaTrack(assets: [asset], clips: [MediaClipRecord(assetID: asset.id, name: "Source", durationUs: asset.durationUs)])
+        document.record.animation?.fps = 10
+        document.record.animation?.frames[0].sourceTimeUs = 0
+        try document.addFrame(copy: false, sourceTimeUs: 500_000)
+        let drawing = try XCTUnwrap(document.record.animation?.frames.last?.id)
+        try document.retimeDrawing(id: drawing, start: 1_000_000, duration: 250_000)
+        XCTAssertEqual(document.record.media?.positionUs, 1_000_000)
+        let plan = try AnimationRenderPlan(document.snapshot(), smooth: false)
+        XCTAssertEqual(plan.samples[0].frame, 0)
+        XCTAssertNil(plan.samples[5].frame)
+        XCTAssertEqual(plan.samples[12].frame, 1)
+        XCTAssertNil(plan.samples[13].frame)
+        XCTAssertThrowsError(try document.retimeDrawing(id: drawing, start: 0, duration: 100_000))
+        XCTAssertThrowsError(try document.retimeDrawing(id: drawing, start: 1_999_999, duration: 2))
+        document.selectTimelineFrame(0)
+        XCTAssertEqual(document.record.media?.positionUs, 0)
+    }
+
     func testGIFSourcePersistsAcrossRevisionReplacementAndGalleryCopy() throws {
         let doc = RasterDocument(name: "GIF", width: 64, height: 64)
         doc.enableAnimation()
