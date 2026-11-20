@@ -609,3 +609,19 @@ finger input to check lasso backtracking, Ribbon loops, Elastic hold/bend/lift,
 mirror placement, off-canvas ruler coordinates, Shadow pull Cancel, and effect /
 colorize Preview → Cancel/Apply → Undo/Redo. Test at tile boundaries and zoomed in.
 Swift syntax parsing and JVM success on Linux do not execute these UIKit tests.
+
+### Mirror eraser and sliding picker
+
+On a fresh Android API 35 emulator installation, create a 1200×800 white canvas.
+Hold the sidebar eraser, slide to **Adjust tip**, pause for its name, then slide
+to **Brush aids** and release. Enable four-copy Mirror wheel, paint with a
+contrasting color, then erase across one copy. Check all four positions while
+the finger is still down and again after release. On a second layer, repeat with
+colored paint underneath to check that both the preview and saved stroke expose
+the lower layer.
+
+On 2026-11-20 the clean-install emulator run opened the icon grid, displayed
+the dwell label and selected Brush aids on release. All four sampled locations
+changed from coral to white during erasure and stayed white after release.
+The app process survived and the crash buffer stayed empty. The Android raster
+regression test separately checks the live preview over a colored lower layer.
