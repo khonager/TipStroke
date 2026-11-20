@@ -54,6 +54,8 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     private var drawingColors by mutableStateOf(emptyList<RgbaColor>())
     private var paletteCount by mutableIntStateOf(4)
     private val defaults = NSUserDefaults.standardUserDefaults
+    private var pins by mutableStateOf(defaults.stringArrayForKey("tip.pins")?.filterIsInstance<String>().orEmpty())
+    private var brushInitialized = false
     private var history by mutableStateOf(decodeColors(defaults.stringForKey("colors.recent").orEmpty()).take(10))
     private val shelf = ColorShelf(defaults.stringForKey("colors.saved").orEmpty(),
         defaults.integerForKey("colors.slots").toInt().takeIf { it in 2..16 } ?: 4, defaults.boolForKey("colors.sourceRecent")) { data, slots, recent ->
@@ -68,9 +70,20 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         return true
     }
     fun selectBrush(id: String) {
-        updateBrush((BrushPreset.libraryBuiltIns + library.map { it.preset }).firstOrNull { it.id.value == id } ?: BrushPreset.Ink)
+        val preset = (BrushPreset.libraryBuiltIns + library.map { it.preset }).firstOrNull { it.id.value == id } ?: BrushPreset.Ink
+        selectPreset(preset)
     }
-    private fun updateBrush(value: BrushPreset) { brush = value; actions.brushChanged(NativeBrush(value)) }
+    private fun selectPreset(preset: BrushPreset) {
+        val saved = defaults.stringForKey("tip.tuning." + preset.id.value)
+        val tuned = saved?.let { runCatching { BrushPackage.decode(it).preset }.getOrNull() }
+        updateBrush(tuned?.takeIf { it.id == preset.id } ?: preset)
+    }
+    private fun updateBrush(value: BrushPreset) {
+        if (brushInitialized && brush.id != value.id) defaults.setObject(brushData(), forKey = "tip.tuning." + brush.id.value)
+        brushInitialized = true
+        brush = value
+        actions.brushChanged(NativeBrush(value))
+    }
     fun setColor(red: Float, green: Float, blue: Float) { color = RgbaColor(red, green, blue) }
     fun setDrawingColors(data: String) { drawingColors = decodeColors(data).take(8) }
     fun recordColor() {
@@ -114,13 +127,28 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     fun libraryController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
-                BrushCollectionPanel(library, brush, ::updateBrush,
+                val groups = remember { defaults.dictionaryForKey("tip.groups").orEmpty().entries.mapNotNull { (name, values) ->
+                    (name as? String)?.let { it to (values as? List<*>)?.filterIsInstance<String>().orEmpty() }
+                }.toMutableStateMap() }
+                BrushCollectionPanel(library, brush, ::selectPreset,
                     onSave = { preset, name ->
                         if (library.size >= 200) return@BrushCollectionPanel
                         val saved = preset.copy(id = BrushId("custom-${Uuid.random()}"), displayName = name)
                         library = library + LibraryBrush(saved); updateBrush(saved); callbacks.librarySaved(libraryData())
-                    }, onDelete = { preset -> library = library.filterNot { it.preset.id == preset.id }; callbacks.librarySaved(libraryData()) },
-                    onImport = callbacks::importFromFile, onExport = { callbacks.exportToFile(BrushPackage.encode(LibraryBrush(it))) })
+                    }, onDelete = { preset ->
+                        val id = preset.id.value
+                        library = library.filterNot { it.preset.id == preset.id }
+                        if (brush.id == preset.id) selectBrush(BrushPreset.Ink.id.value)
+                        defaults.removeObjectForKey("tip.tuning." + id)
+                        pins = pins - id
+                        defaults.setObject(pins, forKey = "tip.pins")
+                        for (name in groups.keys.toList()) groups[name] = groups.getValue(name) - id
+                        defaults.setObject(groups.toMap(), forKey = "tip.groups")
+                        callbacks.librarySaved(libraryData())
+                    },
+                    onImport = callbacks::importFromFile, onExport = { callbacks.exportToFile(BrushPackage.encode(LibraryBrush(it))) },
+                    pins = pins, onPins = { pins = it; defaults.setObject(it, forKey = "tip.pins") },
+                    groups = groups.toMap(), onGroups = { groups.clear(); groups.putAll(it); defaults.setObject(it, forKey = "tip.groups") })
             }
         }
     }
@@ -133,7 +161,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                         Text("Hold for drawing tools", Modifier.weight(1f))
                         Switch(hold, { hold = it; defaults.setBool(it, forKey = "holdDrawingTools") })
                     }
-                    BrushSettingsPanel(brush, ::updateBrush, fingerDrawing) {
+                    BrushSettingsPanel(brush, { if (it.id == brush.id) updateBrush(it) else selectPreset(it) }, fingerDrawing) {
                         fingerDrawing = it; actions.fingerDrawingChanged(it)
                     }
                 }
@@ -144,6 +172,11 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val choices = BrushPreset.libraryBuiltIns + library.map { it.preset }
+                    for (id in pins) {
+                        val preset = choices.firstOrNull { it.id.value == id } ?: continue
+                        TextButton(onClick = { selectPreset(preset) }) { Text(preset.displayName) }
+                    }
                     val quick = (listOf(color) + shelf.saved + if (shelf.recent) history else drawingColors).distinct().take(shelf.slots)
                     quick.forEachIndexed { index, value ->
                         Box(Modifier.size(32.dp).background(Color(value.red, value.green, value.blue, value.alpha), CircleShape)

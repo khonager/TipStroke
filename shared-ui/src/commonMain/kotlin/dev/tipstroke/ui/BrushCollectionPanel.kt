@@ -1,6 +1,8 @@
 package dev.tipstroke.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -12,16 +14,62 @@ import dev.tipstroke.core.model.*
 
 @Composable
 fun BrushCollectionPanel(brushes: List<LibraryBrush>, current: BrushPreset, onSelect: (BrushPreset) -> Unit,
-    onSave: (BrushPreset, String) -> Unit, onDelete: (BrushPreset) -> Unit, onImport: () -> Unit, onExport: (BrushPreset) -> Unit) {
+    onSave: (BrushPreset, String) -> Unit, onDelete: (BrushPreset) -> Unit, onImport: () -> Unit, onExport: (BrushPreset) -> Unit,
+    pins: List<String> = emptyList(), onPins: ((List<String>) -> Unit)? = null,
+    groups: Map<String, List<String>> = emptyMap(), onGroups: ((Map<String, List<String>>) -> Unit)? = null) {
     var name by remember(current.id) { mutableStateOf(current.displayName) }
+    var favoritesOnly by remember { mutableStateOf(false) }
+    var group by remember { mutableStateOf<String?>(null) }
+    var organize by remember { mutableStateOf(false) }
+    var newGroup by remember { mutableStateOf("") }
+    val presets = BrushPreset.libraryBuiltIns + brushes.map { it.preset }
+    val visible = when {
+        favoritesOnly -> pins.mapNotNull { id -> presets.find { it.id.value == id } }
+        group != null -> presets.filter { it.id.value in groups[group].orEmpty() }
+        else -> presets
+    }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Tip library", style = MaterialTheme.typography.headlineSmall)
         Row { TextButton(onClick = onImport) { Text("Import") }; TextButton(onClick = { onExport(current) }) { Text("Share tip") } }
         Row { TextButton(onClick = { onSelect(BrushPreset.Blank) }) { Text("New stamp tip") }; TextButton(onClick = { onSelect(BrushPreset.BlankInk) }) { Text("New Ink tip") } }
         OutlinedTextField(name, { name = it.take(60) }, label = { Text("Tip name") }, singleLine = true)
         TextButton(onClick = { onSave(current, name) }, enabled = name.isNotBlank() && brushes.size < 200) { Text("Save a copy of current tip") }
+        if (onPins != null && onGroups != null) {
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                FilterChip(!favoritesOnly && group == null, { favoritesOnly = false; group = null }, { Text("All") })
+                FilterChip(favoritesOnly, { favoritesOnly = true; group = null }, { Text("Favorites") })
+                groups.keys.sorted().forEach { title ->
+                    FilterChip(group == title, { group = title; favoritesOnly = false }, { Text(title) })
+                }
+                TextButton(onClick = { organize = true }) { Text("Organize tip") }
+            }
+            if (organize) AlertDialog(onDismissRequest = { organize = false }, title = { Text(current.displayName) },
+                text = {
+                    LazyColumn {
+                        item {
+                            val pinned = current.id.value in pins
+                            TextButton(onClick = { onPins(if (pinned) pins - current.id.value else pins + current.id.value) }) {
+                                Text(if (pinned) "Remove from favorites" else "Add to favorites")
+                            }
+                        }
+                        items(groups.keys.sorted()) { title ->
+                            val ids = groups.getValue(title)
+                            val included = current.id.value in ids
+                            TextButton(onClick = { onGroups(groups + (title to if (included) ids - current.id.value else ids + current.id.value)) }) {
+                                Text((if (included) "✓ " else "") + title)
+                            }
+                        }
+                        item {
+                            OutlinedTextField(newGroup, { newGroup = it.take(80) }, label = { Text("New category") }, singleLine = true)
+                            TextButton(enabled = newGroup.isNotBlank() && newGroup.trim() !in groups && groups.size < 64, onClick = {
+                                onGroups(groups + (newGroup.trim() to listOf(current.id.value))); newGroup = ""
+                            }) { Text("Create with current tip") }
+                        }
+                    }
+                }, confirmButton = { TextButton(onClick = { organize = false }) { Text("Done") } })
+        }
         LazyColumn(Modifier.weight(1f)) {
-            items(BrushPreset.libraryBuiltIns + brushes.map { it.preset }, key = { it.id.value }) { preset ->
+            items(visible, key = { it.id.value }) { preset ->
                 Row(Modifier.fillMaxWidth()) {
                     TextButton(onClick = { onSelect(preset) }, modifier = Modifier.weight(1f)) { Text(preset.displayName + if (preset.id == current.id) " ✓" else "") }
                     if (brushes.any { it.preset.id == preset.id }) TextButton(onClick = { onDelete(preset) }) { Text("Delete") }

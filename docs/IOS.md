@@ -20,6 +20,8 @@ are not an Apple SDK build, simulator run or physical Pencil validation.
   generator as UIKit.
 - Brush package/library/pack validation is shared. iOS can import Android custom
   brushes, create/tune tips, save copies, delete tips and share individual packages.
+  The tip library saves per-tip tuning, named categories and favorites. Favorite
+  tips are available in the editor’s quick shelf.
   The common settings/library panels are available to platform hosts; Android's
   existing Tip Studio/library screen has not been replaced by those panels.
 - Native `NativeBrush`, `NativeStampPath`, `NativeShapeTracker` and `NativeTimeline`
@@ -85,7 +87,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 
 | Area | Remaining difference |
 | --- | --- |
-| Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation, complete per-tip preferences/favorites/categories |
+| Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation |
 | Creative tools added in this port | Native implementations present; Apple SDK compilation, iPhone/iPad simulator tests and physical Pencil checks still required |
 | Fill and gestures | Animated fill reveal, configurable gesture actions and camera rotation |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
