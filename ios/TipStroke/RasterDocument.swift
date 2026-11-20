@@ -22,7 +22,16 @@ final class RasterDocument {
             return t.translatedBy(x: -center.x, y: -center.y)
         }
     }
-    var selection: CanvasSelection?
+    var selection: CanvasSelection? {
+        didSet { if let selection { previousSelection = (selection, bounds.size) } }
+    }
+    private var previousSelection: (CanvasSelection, CGSize)?
+    var selectionOperation: SelectionOperation = .replace
+    func restoreSelection() -> Bool {
+        guard let (saved, size) = previousSelection, size == bounds.size else { return false }
+        selection = saved
+        return true
+    }
     var record: DocumentRecord
     var framePixels: [UUID: [UUID: [TileKey: CGImage]]] = [:]
     var pixels: [UUID: [TileKey: CGImage]]
@@ -41,6 +50,7 @@ final class RasterDocument {
         var frame: UUID? = nil
         var before: [TileKey: TileState]
         var after: [TileKey: TileState]
+        var movedSelection: (CanvasSelection, CanvasSelection)? = nil
         var oldMetadata: Metadata? = nil
         var newMetadata: Metadata? = nil
         var cost: Int {
@@ -250,7 +260,7 @@ final class RasterDocument {
     }
 
     // Worker outputs already include selection/constraints. Publish the exact preview atomically.
-    func replacePreparedTiles(_ tiles: [TileKey: CGImage]) throws {
+    func replacePreparedTiles(_ tiles: [TileKey: CGImage], movedSelection: (CanvasSelection, CanvasSelection)? = nil) throws {
         guard tiles.count * Self.tileBytes * 2 <= Self.historyBudget,
               residentTileCount + tiles.keys.filter({ pixels[activeLayer]?[$0] == nil }).count <= Self.maximumTiles else {
             throw DrawingError.message("This effect exceeds the painting or undo budget.")
@@ -260,7 +270,7 @@ final class RasterDocument {
             before[key] = pixels[activeLayer]?[key].map(TileState.image) ?? .empty
             pixels[activeLayer, default: [:]][key] = image
         }
-        endStroke(cancelled: false)
+        endStroke(cancelled: false, movedSelection: movedSelection)
     }
 
     // Restore only tiles reached by this provisional stroke; retain their original undo states.
@@ -270,14 +280,15 @@ final class RasterDocument {
         apply(before, layer: layer)
     }
 
-    func endStroke(cancelled: Bool) {
+    func endStroke(cancelled: Bool, movedSelection: (CanvasSelection, CanvasSelection)? = nil) {
         guard let layer = strokeLayer else { return }
         if cancelled { apply(before, layer: layer) }
         else if !before.isEmpty {
             revision &+= 1
             let after = before.keys.reduce(into: [TileKey: TileState]()) { $0[$1] = pixels[layer]?[$1].map(TileState.image) ?? .empty }
             redoStack = []
-            undoStack.append(Edit(layer: layer, frame: record.animation.flatMap { $0.sharedLayerIDs.contains(layer) ? nil : $0.frames[$0.selectedIndex].id }, before: before, after: after))
+            undoStack.append(Edit(layer: layer, frame: record.animation.flatMap { $0.sharedLayerIDs.contains(layer) ? nil : $0.frames[$0.selectedIndex].id }, before: before, after: after, movedSelection: movedSelection))
+            if let movedSelection { selection = movedSelection.1 }
             trimHistory()
         }
         before = [:]; strokeLayer = nil
@@ -288,6 +299,7 @@ final class RasterDocument {
         revision &+= 1
         if let state = edit.oldMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames }
         else { restoreFrameForHistory(edit.frame); apply(edit.before, layer: edit.layer) }
+        if let moved = edit.movedSelection { selection = moved.0 }
         redoStack.append(edit)
     }
     func redo() {
@@ -295,6 +307,7 @@ final class RasterDocument {
         revision &+= 1
         if let state = edit.newMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames }
         else { restoreFrameForHistory(edit.frame); apply(edit.after, layer: edit.layer) }
+        if let moved = edit.movedSelection { selection = moved.1 }
         undoStack.append(edit)
     }
     func clearHistory() { undoStack = []; redoStack = [] }
@@ -444,7 +457,7 @@ final class RasterDocument {
         for id in Array(frames.keys) where id != selected { frames[id] = try cropped(frames[id] ?? [:]) }
         if let selected { frames[selected] = replacement }
         beginMetadataEdit(); pixels = replacement; framePixels = frames
-        record.width = width; record.height = height; selection = nil; endMetadataEdit()
+        record.width = width; record.height = height; selection = nil; previousSelection = nil; endMetadataEdit()
     }
 
     static func context(width: Int, height: Int) throws -> CGContext {

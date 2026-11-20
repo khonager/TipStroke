@@ -121,11 +121,23 @@ extension EditorController {
                 catch { self?.showError(error) }
             })
         }
+        menu.addAction(UIAlertAction(title: "Selection operation · " + document.selectionOperation.rawValue, style: .default) { [weak self] _ in
+            guard let self else { return }
+            let choices = UIAlertController(title: "Selection operation", message: nil, preferredStyle: .actionSheet)
+            for op in SelectionOperation.allCases {
+                choices.addAction(UIAlertAction(title: op.rawValue, style: .default) { _ in self.document.selectionOperation = op })
+            }
+            choices.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            self.anchor(choices); self.present(choices, animated: true)
+        })
+        action("Reselect previous area") {
+            guard self.document.restoreSelection() else { throw DrawingError.message("Make a selection in this drawing first.") }
+        }
         action("Select all") { self.document.selection = CanvasSelection(path: CGPath(rect: self.document.bounds, transform: nil)) }
         action("Deselect") { self.document.selection = nil }
         action("Invert") { self.document.selection?.inverted.toggle() }
         action("Clear selected pixels") {
-            if self.document.beginStroke() {
+            if self.document.beginStroke(mirrored: false, brushAids: false, photoErase: true) {
                 do { try self.document.editTiles(in: self.document.bounds, erasing: true) { $0.fill(self.document.bounds) }; self.document.endStroke(cancelled: false) }
                 catch { self.document.endStroke(cancelled: true); throw error }
             }
@@ -139,6 +151,8 @@ extension EditorController {
             self.viewport.canvas.mode = .paint; self.viewport.canvas.shadowPull = true
         }
         menu.addAction(UIAlertAction(title: "Transform…", style: .default) { [weak self] _ in self?.showTransformEditor() })
+        action("Copy to layer") { try self.document.transferSelection(cut: false) }
+        action("Cut to layer") { try self.document.transferSelection(cut: true) }
         action("Copy and offset") { try self.document.transformSelection(CGAffineTransform(translationX: 24, y: 24), copy: true) }
         action("Flip horizontal") { try self.document.transformSelection(centered(CGAffineTransform(scaleX: -1, y: 1))) }
         action("Flip vertical") { try self.document.transformSelection(centered(CGAffineTransform(scaleX: 1, y: -1))) }

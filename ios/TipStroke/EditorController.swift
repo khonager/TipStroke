@@ -262,6 +262,12 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         palette.add("Blur & bloom", "sun.max") { [weak self] in self?.effectMenu() }
         palette.add("Brush aids", "ruler") { [weak self] in self?.brushAids() }
         palette.add("Adjust tip", "slider.horizontal.3") { [weak self] in self?.brushSettings() }
+        palette.add("Reselect previous area", "arrow.uturn.backward.circle") { [weak self] in
+            guard let self else { return }
+            guard self.document.restoreSelection() else { self.showError(DrawingError.message("Make a selection in this drawing first.")); return }
+            self.activateMode(.lasso)
+            self.viewport.canvas.refreshSelection()
+        }
         palette.add("Transform", "perspective") { [weak self] in self?.showTransformEditor() }
         palette.add("More tools", "ellipsis") { [weak self] in self?.showTools() }
         palette.layoutIfNeeded()

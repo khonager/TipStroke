@@ -287,7 +287,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         } else {
             do {
                 if mode == .lasso { gesturePoints.append(point) } else { gesturePoints = [gesturePoints[0], point] }
-                if mode.isSelection { document.selection = CanvasSelection(path: mode.outline(gesturePoints)) }
+                if mode.isSelection { document.combineSelection(mode.outline(gesturePoints)) }
                 else if mode.isShape, document.beginStroke() {
                     if mode == .pixelLine { try document.paintPixelLine(from: gesturePoints[0], to: point, size: Int(brushSize), color: brushColor.withAlphaComponent(brushOpacity), dither: false) }
                     else { try document.paintPath(mode.outline(gesturePoints), color: brushColor.withAlphaComponent(brushOpacity), width: brushSize, filled: filledShapes && [.rectangle, .ellipse, .triangle].contains(mode)) }

@@ -89,13 +89,14 @@ final class SelectionTransformSession {
             guard let image = ctx.makeImage() else { throw DrawingError.message("Could not render transformed pixels.") }
             result[key] = image
         }
-        try document.replacePreparedTiles(result)
+        var changedSelection: (CanvasSelection, CanvasSelection)?
         if let sourceSelection {
             let path = CGMutablePath()
             if sourceSelection.inverted { path.addRect(bounds) }
             path.addPath(sourceSelection.path)
-            document.selection = CanvasSelection(path: geometry.mapPath(path))
+            changedSelection = (sourceSelection, CanvasSelection(path: geometry.mapPath(path)))
         }
+        try document.replacePreparedTiles(result, movedSelection: changedSelection)
     }
 }
 
