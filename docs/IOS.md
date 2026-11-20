@@ -95,7 +95,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | Video | Source-backed GIF/video canvases, media playback/scrubbing, clip editing, keyframes, crossfades and coverage navigation |
 | Process recording | Replay persistence, preview/scrub and process exports |
 | Project exchange | Lossless Android `.tipstroke` import/export; current iOS documents use their own versioned format |
-| Gallery and editor shell | Stacks/drag organization, Android's adaptive toolbar layout and matching quick-color shelf interactions |
+| Gallery and editor shell | Android's adaptive toolbar layout and matching quick-color shelf interactions |
 
 Adding a feature only to `app/` or `drawing-android/` still does not port it to iOS.
 Keep portable rules in `core`, reusable controls in `shared-ui`, and provide both
@@ -173,7 +173,9 @@ Android control-layout parity: Android now offers inline layer-row renaming and
 compact expanded settings. UIKit currently retains its separate layer-settings
 screen and name field. Native input/rendering and document semantics are unchanged.
 On iOS the compact gallery heading contains New and Select drawings. Select multiple
-drawings and use Share to export their PNGs together.
+drawings and use Share to export their PNGs together. Drag into the center of a
+drawing or stack to group it, or near an edge to reorder. Swipe a stack to rename
+or unstack it. Swipe a drawing inside a stack to move it back to the gallery.
 Android action buttons now use icons with delayed mouse/stylus hover labels;
 UIKit retains its existing native action presentation.
 
