@@ -7,7 +7,7 @@ import ZIPFoundation
 /// Android project packages contain independent PNG tiles and the original manifest.
 /// Keep platform-specific manifest fields with imported drawings so exporting an edit
 /// preserves metadata (group IDs, color usage, gallery orientation and process history).
-private typealias JSONObject = [String: Any]
+typealias JSONObject = [String: Any]
 
 private enum PackageIO {
     static let fm = FileManager.default
@@ -279,12 +279,26 @@ extension ProjectStore {
         if FileManager.default.fileExists(atPath: replay.path) {
             _ = try ProcessReplay(folder: replay)
             try FileManager.default.moveItem(at: replay, to: replayFolder(state.id))
+        } else {
+            let annotated = directory.appendingPathComponent("process-portable.tsr")
+            let native = directory.appendingPathComponent("process.tsr")
+            let source = FileManager.default.fileExists(atPath: annotated.path) ? annotated : native
+            if FileManager.default.fileExists(atPath: source.path) {
+                // Preserve the original recording independently even when a legacy native
+                // brush command requires re-exporting the package on Android.
+                do { try AndroidProcess.importRecording(source, to: replayFolder(state.id)) }
+                catch { try AndroidProcess.noteUnavailable(error, in: replayFolder(state.id)) }
+            }
         }
         let base = packageBase(state.id)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         // Keep ancillary files and platform metadata. Native revisions own the editable tile content.
         try FileManager.default.moveItem(at: directory, to: base.appendingPathComponent("original"))
         try JSONEncoder().encode(ids).write(to: base.appendingPathComponent("ids.json"))
+        let progress = replayFolder(state.id)
+        if FileManager.default.fileExists(atPath: ReplayFiles.indexURL(progress).path) {
+            try PackageIO.write(["count": try ReplayFiles.index(progress).count], at: base.appendingPathComponent("process-anchor.json"))
+        }
         if let group = (gallery["items"] as? [JSONObject])?.first(where: {
             $0["kind"] as? String == "stack" && ($0["drawingIds"] as? [String])?.contains(original) == true
         }) { try PackageIO.write(group, at: base.appendingPathComponent("group.json")) }
@@ -433,6 +447,14 @@ extension ProjectStore {
         let replay = replayFolder(state.id)
         if fm.fileExists(atPath: replay.appendingPathComponent("index.json").path) {
             try fm.copyItem(at: replay, to: target.appendingPathComponent("ios-progress"))
+            let tsr = target.appendingPathComponent("process.tsr")
+            if fm.fileExists(atPath: tsr.path) {
+                let anchor = base.appendingPathComponent("process-anchor.json")
+                let count = fm.fileExists(atPath: anchor.path) ? try PackageIO.json(anchor)["count"] as? Int ?? 0 : 0
+                // Conversion of an optional future or damaged replay must not block artwork transfer.
+                // Its original bytes still occupy the destination unless conversion completes atomically.
+                try? AndroidProcess.exportRecording(replay, to: tsr, original: tsr, after: count)
+            } else { try AndroidProcess.exportRecording(replay, to: tsr) }
         }
         try PackageIO.write(manifest, at: target.appendingPathComponent("manifest.json"))
         try Self.writePNG(Self.thumbnail(snapshot), to: target.appendingPathComponent("thumbnail.png"))
@@ -464,7 +486,7 @@ extension GalleryController: UIDocumentPickerDelegate {
     }
 }
 
-private extension ProjectStore {
+extension ProjectStore {
     static func importPhoto(_ raw: JSONObject, width: Int, height: Int, source: PhotoSource) throws -> PhotoLayerRecord {
         guard let x = raw["centerX"] as? Double, let y = raw["centerY"] as? Double,
               let scale = raw["scale"] as? Double, scale.isFinite, scale > 0 else { throw PackageIO.invalid }

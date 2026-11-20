@@ -53,6 +53,26 @@ class ProcessRecordingTest {
         val bad=bytes.toByteArray(); bad[3]=99
         assertThrows(IllegalArgumentException::class.java) { ReplayCodec.readPaint(DataInputStream(ByteArrayInputStream(bad))) }
     }
+    @Test fun archiveBrushCompanionPreservesEveryCommittedFrame() {
+        val stack = stack()
+        val recorder = ProcessRecorder(512, 512)
+        recorder.sync(stack, false)
+        val paint = stroke(BrushPreset.Ink).let { it.copy(style = it.style.copy(pixelTool = PixelTool.LINE)) }
+        stack.selectedRaster()!!.tiles.commit(paint)
+        val recording = recorder.snapshot()
+        val portable = ProcessReplay(recording).use { requireNotNull(it.portableRecording()) }
+        ProcessReplay(recording).use { original ->
+            ProcessReplay(portable).use { patches ->
+                recording.actions.indices.forEach { position ->
+                    val before = original.frame(position)
+                    val after = patches.frame(position)
+                    try { assertPixels(before, after) } finally { before.recycle(); after.recycle() }
+                }
+            }
+        }
+        recorder.detach()
+    }
+
     @Test fun airbrushAndPixelToolsReplayExactlyAcrossTiles() {
         for (pixel in listOf(null,PixelTool.PENCIL,PixelTool.LINE,PixelTool.DITHER)) {
             val stack=stack(); val recorder=ProcessRecorder(512,512); recorder.sync(stack,false)

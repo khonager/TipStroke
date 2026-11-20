@@ -3,17 +3,17 @@ import ImageIO
 import UniformTypeIdentifiers
 import AVFoundation
 
-private struct ReplayPatch: Codable {
+struct ReplayPatch: Codable {
     let tile: TileKey
     let png: Data?
 }
-private struct ReplayStep: Codable {
+struct ReplayStep: Codable {
     let reset: Bool
     let paper: UInt32
     let opacity: Double
     let patches: [ReplayPatch]
 }
-private struct ReplayIndex: Codable {
+struct ReplayIndex: Codable {
     var version = 1
     let width: Int
     let height: Int
@@ -22,7 +22,7 @@ private struct ReplayIndex: Codable {
     var stopped: String?
 }
 
-private enum ReplayFiles {
+enum ReplayFiles {
     static let limit = 32 * 1024 * 1024
     static let maxSteps = 30_000
     static let fm = FileManager.default
@@ -193,9 +193,16 @@ final class ProcessReplay {
     private var steps: [ReplayStep] = []
     let folder: URL
     var count: Int { steps.count }
-    var stopped: String? { index.stopped }
+    private let importedNote: String?
+    var stopped: String? {
+        let notes = [importedNote, index.stopped].compactMap { $0 }
+        return notes.isEmpty ? nil : notes.joined(separator: "\n")
+    }
     init(folder: URL) throws {
         self.folder = folder
+        let note = folder.appendingPathComponent("import-note.txt")
+        let noteSize = (try? note.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? Int.max
+        importedNote = noteSize <= 2048 ? try? String(contentsOf: note, encoding: .utf8) : nil
         index = try ReplayFiles.index(folder)
         var bytes = 0
         for i in 0..<index.count {

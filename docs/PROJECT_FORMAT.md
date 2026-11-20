@@ -236,3 +236,7 @@ It links stable UUIDs of ordinary saved line-art/hints layers. Generated pixels
 remain authoritative. Missing inputs prevent regeneration without losing output;
 duplicating an output preserves its input links. Apple files remain a distinct
 format namespace from Android project manifests.
+
+Android project archives can include `process-portable.tsr`. It carries the same committed steps as `process.tsr`, with Android brush commands rendered to lossless PNG tile patches for offline replay on iOS. The original command stream stays in the archive. Both use the existing recording size limit. Projects with older brush commands can still be exchanged when the companion is unavailable.
+
+The iOS exporter includes its native journal in `ios-progress/` and, when it fits the Android recording limits, exports visual steps in the Android recording format. After importing an iOS recording, the Android recorder can start a new native recording from the current drawing.

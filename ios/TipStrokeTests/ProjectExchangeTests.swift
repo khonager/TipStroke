@@ -13,7 +13,7 @@ final class ProjectExchangeTests: XCTestCase {
         let source = try PhotoSource(image: XCTUnwrap(ctx.makeImage()))
         try doc.importPhoto(source, name: "Photo")
         let id = doc.activeLayer
-        XCTAssertTrue(doc.beginStroke())
+        XCTAssertTrue(doc.beginStroke(photoErase: true))
         _ = try doc.paint(from: CGPoint(x: 35, y: 32), to: CGPoint(x: 35, y: 32), radius: 6, color: .black, erasing: true)
         doc.endStroke(cancelled: false)
         try store.save(doc.snapshot())

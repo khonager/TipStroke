@@ -79,7 +79,7 @@ internal class ProcessRecorder(val width: Int, val height: Int, saved: ProcessRe
     private val queued = AtomicLong()
     private var metadata: String? = null
     private var legacyImageStop = saved?.stoppedReason in setOf("Recording stopped: image layers, animation and canvas resizing are not supported yet.",
-        "Recording stopped: animation and canvas resizing are not supported yet.") && saved?.width == width && saved.height == height
+        "Recording stopped: animation and canvas resizing are not supported yet.", "iOS portable replay") && saved?.width == width && saved.height == height
     private val known = mutableSetOf<String>()
     private val initializedStores = mutableSetOf<String>()
     private val boundStores = mutableMapOf<String, TileStore>()
@@ -375,7 +375,49 @@ class ProcessReplay internal constructor(
         ordered.forEach { drawLayer(it) }
         return output
     }
-    private fun apply(bytes: ByteArray, cancelled: () -> Boolean) = DataInputStream(GZIPInputStream(ByteArrayInputStream(bytes))).use { input ->
+    /** Portable companions retain metadata, assets and patches verbatim. Only frozen native brush
+     * commands need a replacement raster action, using the same renderer as Android playback. */
+    internal fun portableRecording(): ProcessRecording? {
+        if (recording.actions.none { bytes ->
+                DataInputStream(GZIPInputStream(ByteArrayInputStream(bytes))).use { it.readUnsignedByte() == 1 }
+            }) return null
+        val portable = ArrayList<ByteArray>(recording.actions.size)
+        var bytesUsed = 0L
+        recording.actions.forEach { encoded ->
+            val changed = mutableSetOf<TileCoordinate>()
+            var layerId: String? = null
+            apply(encoded, { false }) { id, key -> layerId = id; changed += key }
+            if (layerId == null) {
+                DataInputStream(GZIPInputStream(ByteArrayInputStream(encoded))).use {
+                    if (it.readUnsignedByte() == 1) layerId = it.readUTF()
+                }
+            }
+            val converted = layerId?.let { id ->
+                val buffer = ByteArrayOutputStream()
+                DataOutputStream(GZIPOutputStream(buffer)).use { out ->
+                    out.writeByte(2); out.writeUTF(id); out.writeInt(changed.size)
+                    val layer = layers.getValue(id)
+                    changed.forEach { key ->
+                        out.writeInt(key.x); out.writeInt(key.y)
+                        val pixels = layer.read(key)
+                        if (pixels == null) out.writeInt(0) else {
+                            val png = ByteArrayOutputStream()
+                            check(pixels.compress(Bitmap.CompressFormat.PNG, 100, png)) { "Cannot export a playback tile" }
+                            out.writeInt(png.size()); png.writeTo(out)
+                        }
+                    }
+                }
+                buffer.toByteArray()
+            } ?: encoded
+            bytesUsed += converted.size
+            // Artwork and the original TSR still travel if a second representation cannot fit.
+            if (bytesUsed > ProcessRecording.MAX_BYTES) return null
+            portable += converted
+        }
+        return ProcessRecording(recording.width, recording.height, portable, recording.stoppedReason)
+    }
+
+    private fun apply(bytes: ByteArray, cancelled: () -> Boolean, changed: ((String, TileCoordinate) -> Unit)? = null) = DataInputStream(GZIPInputStream(ByteArrayInputStream(bytes))).use { input ->
         when (input.readUnsignedByte()) {
             0 -> {
                 metadata=JSONObject(input.readUTF())
@@ -399,6 +441,7 @@ class ProcessReplay internal constructor(
                             if (cancelled()) throw java.util.concurrent.CancellationException()
                             // Erasing empty space must not allocate transparent tiles.
                             if (op.stroke.style.blend == BlendBehavior.ERASE && !target.contains(xy)) return@forEach
+                            changed?.invoke(id, xy)
                             val bitmap=target.edit(xy)
                             val canvas=Canvas(bitmap); canvas.translate(-xy.x*256f,-xy.y*256f)
                             if (op.ink != null) {

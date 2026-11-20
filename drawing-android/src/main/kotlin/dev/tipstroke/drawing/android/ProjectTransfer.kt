@@ -44,7 +44,20 @@ object ProjectTransfer {
             selected.forEach { id ->
                 val directory = library.projectDirectory(id)
                 require(File(directory, "manifest.json").isFile) { "Drawing is missing" }
-                directory.walkTopDown().filter { it.isFile }.forEach { file ->
+                val process = File(directory, "process.tsr")
+                if (process.exists()) {
+                    val recording = runCatching { ProcessRecording.read(process) }.getOrNull()
+                    // A corrupt or unsupported optional recording must never prevent artwork transfer.
+                    val portable = recording?.let { runCatching { ProcessReplay(it).use(ProcessReplay::portableRecording) }.getOrNull() }
+                    if (portable != null) {
+                        val temporary = File.createTempFile("tipstroke-portable", ".tsr", library.root)
+                        try {
+                            portable.write(temporary)
+                            addFile(zip, "drawings/$id/process-portable.tsr", temporary)
+                        } finally { temporary.delete() }
+                    }
+                }
+                directory.walkTopDown().filter { it.isFile && it != File(directory, "process-portable.tsr") }.forEach { file ->
                     addFile(zip, "drawings/$id/${file.relativeTo(directory).invariantSeparatorsPath}", file)
                 }
             }

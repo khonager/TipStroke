@@ -69,6 +69,7 @@ internal class ReplayTileCache(
 
     inner class Layer internal constructor(private val id: String) {
         fun edit(coordinate: TileCoordinate): Bitmap = tile(Key(id, coordinate), true)
+        fun read(coordinate: TileCoordinate): Bitmap? = if (contains(coordinate)) tile(Key(id, coordinate), false) else null
         fun contains(coordinate: TileCoordinate): Boolean = Key(id, coordinate) in entries
         fun remove(coordinate: TileCoordinate) {
             val key = Key(id, coordinate)

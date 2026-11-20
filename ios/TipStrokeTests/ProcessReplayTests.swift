@@ -28,6 +28,12 @@ final class ProcessReplayTests: XCTestCase {
         XCTAssertEqual(try pixel(1), 0xff0000ff)
         XCTAssertEqual(try pixel(2), 0xffffffff)
         XCTAssertEqual(try pixel(0), 0xffffffff)
+        let portable = root.appendingPathComponent("test.tsr")
+        try AndroidProcess.exportRecording(store.replayFolder(document.record.id), to: portable)
+        let playback = root.appendingPathComponent("imported-progress")
+        try AndroidProcess.importRecording(portable, to: playback)
+        let imported = try ProcessReplay(folder: playback)
+        XCTAssertEqual(try imported.render(imported.count - 1, maxEdge: 32).width, 32)
         let gif = try replay.exportGIF()
         defer { try? FileManager.default.removeItem(at: gif) }
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(gif as CFURL, nil))
