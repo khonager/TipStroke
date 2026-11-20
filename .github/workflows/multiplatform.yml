@@ -4,12 +4,13 @@ on:
   push:
     branches: [stable, unstable]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: multiplatform-${{ github.ref }}
+  group: multiplatform-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[test-ios]') }}
   cancel-in-progress: true
 
 jobs:
@@ -40,3 +41,6 @@ jobs:
           git diff --exit-code -- ios/TipStroke.xcodeproj
       - name: Build integrated iOS app
         run: xcodebuild build -project ios/TipStroke.xcodeproj -scheme TipStroke -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios/DerivedData CODE_SIGNING_ALLOWED=NO
+      - name: Run iPhone and iPad simulator suites when requested
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[test-ios]')
+        run: tools/ios-test.sh

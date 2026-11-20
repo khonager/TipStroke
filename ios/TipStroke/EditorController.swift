@@ -93,6 +93,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }]
         tools.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(trackTools(_:))))
         toolsButton = tools
+        updateToolValue()
         let bottomActions = UIStackView(arrangedSubviews: [color, tools, settings]); bottomActions.distribution = .equalSpacing
         let quickColors = sharedControls.quickColorsController()
         addChild(quickColors)
@@ -220,6 +221,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.tool = tool
         viewport.canvas.mode = .paint
         if tool != .eraser { sharedControls.selectBrush(id: tool.brushID) }
+        updateToolValue()
     }
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
         toggleEraser()
@@ -243,6 +245,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if viewport.canvas.tool == .eraser { viewport.canvas.tool = previousTool }
         else { previousTool = viewport.canvas.tool; viewport.canvas.tool = .eraser }
         toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
+        updateToolValue()
     }
     private let dropSwatch = UIView()
     @objc private func dropColor(_ gesture: UIPanGestureRecognizer) {
@@ -266,6 +269,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
     }
     private weak var toolsButton: UIButton?
+    private func updateToolValue() {
+        toolsButton?.accessibilityValue = viewport.canvas.mode == .paint ? viewport.canvas.tool.rawValue : viewport.canvas.mode.rawValue
+    }
     private var holdTools: Bool { UserDefaults.standard.object(forKey: "holdDrawingTools") as? Bool ?? true }
 
     private func openPalette() {
@@ -310,6 +316,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.cancelStroke()
         if viewport.canvas.tool == .eraser { toggleEraser() }
         viewport.canvas.mode = mode
+        updateToolValue()
         if [.pixel, .pixelLine, .dither].contains(mode) { viewport.canvas.brushSize = 1 }
     }
 
@@ -431,6 +438,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.brushOpacity = CGFloat(brush.opacity)
         viewport.canvas.tool = keepEraser ? .eraser : (CanvasView.Tool.allCases.first { $0.brushID == brush.id } ?? .ink)
         toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
+        updateToolValue()
         if viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
         let defaults = UserDefaults.standard
         defaults.set(brush.id, forKey: "brush.id"); defaults.set(brush.size, forKey: "brush.size")
