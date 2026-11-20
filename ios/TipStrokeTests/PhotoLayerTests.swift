@@ -71,6 +71,30 @@ final class PhotoLayerTests: XCTestCase {
         }
         doc.redo(); XCTAssertEqual(try alpha(photo),0); XCTAssertEqual(try alpha(paint),0)
     }
+    func testPhotoCelPoseAndPresenceRoundTripAndExportByFrame() throws {
+        let doc = RasterDocument(name: "Photo cels", width: 128, height: 128)
+        let ctx = try RasterDocument.context(width: 32, height: 32)
+        ctx.setFillColor(UIColor.red.cgColor); ctx.fill(CGRect(x:0,y:0,width:32,height:32))
+        try doc.importPhoto(PhotoSource(image:XCTUnwrap(ctx.makeImage())),name:"Photo")
+        let layer = doc.activeLayer, initial = try XCTUnwrap(doc.activePhoto).transform
+        doc.enableAnimation(); try doc.addFrame(copy:true)
+        let moved = initial.concatenating(CGAffineTransform(translationX:5,y:8))
+        try doc.transformPhoto(moved)
+        try doc.addFrame(copy:false)
+        XCTAssertFalse(try XCTUnwrap(doc.record.layers.last).photoCelActive)
+        let snapshot = doc.snapshot()
+        let frames = try XCTUnwrap(snapshot.record.animation).frames
+        XCTAssertEqual(try snapshot.atFrame(frames[0].id).record.layers.last?.photo?.transform,initial)
+        XCTAssertEqual(try snapshot.atFrame(frames[1].id).record.layers.last?.photo?.transform,moved)
+        XCTAssertNil(try RasterDocument.layerTile(snapshot.atFrame(frames[2].id), id:layer, key:TileKey(x:0,y:0)))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at:root) }
+        let store = ProjectStore(root:root)
+        try store.save(snapshot)
+        let restored = RasterDocument(snapshot:try store.load(doc.record.id))
+        restored.selectFrame(1); XCTAssertEqual(restored.activePhoto?.transform,moved)
+        restored.selectFrame(0); XCTAssertEqual(restored.activePhoto?.transform,initial)
+    }
     func testFitAndSnapRespectCanvasCoordinates() {
         let canvas = CGRect(x:0,y:0,width:200,height:100)
         let shape = TransformGeometry(rect:CGRect(x:0,y:0,width:50,height:50))

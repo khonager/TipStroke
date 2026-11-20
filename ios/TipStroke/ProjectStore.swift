@@ -105,6 +105,7 @@ final class ProjectStore {
                 }
             }
         }
+        if let animation = record.animation { record.installPhotoCels(animation, at: animation.selectedIndex) }
         return DocumentSnapshot(record: record, pixels: pixels, frames: frames, coldFrames: coldFrames)
     }
 

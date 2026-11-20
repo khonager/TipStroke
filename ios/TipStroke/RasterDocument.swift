@@ -117,6 +117,7 @@ final class RasterDocument {
         record = snapshot.record
         pixels = snapshot.pixels
         framePixels = snapshot.frames; coldFrames = snapshot.coldFrames
+        restoreLegacyPhotoCels()
     }
     convenience init(name: String, width: Int, height: Int) {
         var record = DocumentRecord()
@@ -135,6 +136,8 @@ final class RasterDocument {
         }
         var frames = framePixels
         if var animation = saved.animation {
+            saved.capturePhotoCels(&animation)
+            if saved.layers.contains(where: { $0.photo != nil }) { saved.schemaVersion = max(7, saved.schemaVersion) }
             let selected = animation.frames[animation.selectedIndex].id
             let hidden = frames[selected]?.filter { animation.sharedLayerIDs.contains($0.key) } ?? [:]
             frames[selected] = hidden.merging(pixels.filter { !animation.sharedLayerIDs.contains($0.key) }) { _, current in current }
@@ -156,7 +159,7 @@ final class RasterDocument {
     func beginStroke(mirrored: Bool = true, brushAids: Bool = true, photoErase: Bool = false) -> Bool {
         pendingCelSelection = nil
         guard strokeLayer == nil, metadataBefore == nil,
-              let layer = record.layers.first(where: { $0.id == activeLayer }), layer.visible, !layer.locked, layer.opacity > 0, layer.photo == nil || photoErase else { return false }
+              let layer = record.layers.first(where: { $0.id == activeLayer }), layer.visible, layer.photoCelActive, !layer.locked, layer.opacity > 0, layer.photo == nil || photoErase else { return false }
         strokePaintInside = paintInside && brushAids
         let paintingColorHints = record.layers.contains { candidate in
             guard let text = candidate.colorizeMask, let recipe = try? NativeColorizeRecipe.companion.decode(text: text) else { return false }
@@ -166,7 +169,7 @@ final class RasterDocument {
         strokeLayer = activeLayer; strokeMirroring = mirrored
         let selected = editingLayerIDs
         extraEraseLayers = photoErase ? record.layers.filter {
-            $0.id != activeLayer && selected.contains($0.id) && $0.visible && !$0.locked && $0.opacity > 0
+            $0.id != activeLayer && selected.contains($0.id) && $0.visible && $0.photoCelActive && !$0.locked && $0.opacity > 0
         }.map(\.id) : []
         extraBefore = [:]
         before = [:]
@@ -423,6 +426,10 @@ final class RasterDocument {
         beginMetadataEdit()
         record.animation?.backgroundLayers?.remove(id)
         record.layers.removeAll { $0.id == id }; pixels[id] = nil
+        if var animation = record.animation {
+            for i in animation.frames.indices { animation.frames[i].photoCels?[id.uuidString] = nil }
+            record.animation = animation
+        }
         for index in record.layers.indices where record.layers[index].clipSource == id { record.layers[index].clipSource = nil }
         for frame in Array(framePixels.keys) { framePixels[frame]?[id] = nil }
         for frame in Array(coldFrames.keys) { coldFrames[frame]?[id] = nil }
@@ -457,6 +464,13 @@ final class RasterDocument {
         pixels[copy.id] = tiles // immutable images; new paint replaces only touched tiles
         for frame in Array(framePixels.keys) { framePixels[frame]?[copy.id] = framePixels[frame]?[id] }
         for frame in Array(coldFrames.keys) { coldFrames[frame]?[copy.id] = coldFrames[frame]?[id] }
+        if copy.photo != nil, var animation = record.animation {
+            for i in animation.frames.indices {
+                let cel = animation.frames[i].photoCels?[id.uuidString]
+                animation.frames[i].photoCels?[copy.id.uuidString] = cel
+            }
+            record.animation = animation
+        }
         record.layers.insert(copy, at: index + 1); record.selectedLayer = copy.id
         endMetadataEdit()
     }
@@ -589,7 +603,7 @@ final class RasterDocument {
         context.restoreGState()
     }
     static func layerTile(_ snapshot: DocumentSnapshot, id: UUID, key: TileKey, depth: Int = 0) throws -> CGImage? {
-        guard depth < 32, let layer = snapshot.record.layers.first(where: { $0.id == id }), layer.visible else { return nil }
+        guard depth < 32, let layer = snapshot.record.layers.first(where: { $0.id == id }), layer.visible, layer.photoCelActive else { return nil }
         let image: CGImage?
         if let photo = layer.photo { image = try photo.tile(key, masks: snapshot.pixels[id] ?? [:]) }
         else { image = snapshot.pixels[id]?[key] }

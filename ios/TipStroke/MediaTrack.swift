@@ -473,7 +473,7 @@ struct AnimationRenderPlan {
     }
     func draw(_ sample: ExportSample, in context: CGContext) throws {
         var drawing = snapshot
-        if let i = sample.frame, let frame = snapshot.record.animation?.frames[i] { drawing.pixels = try snapshot.pixelsForFrame(frame.id) }
+        if let i = sample.frame, let frame = snapshot.record.animation?.frames[i] { drawing = try snapshot.atFrame(frame.id) }
         drawing.record.media?.positionUs = sample.startUs
         let rect = CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height)
         try reader?.draw(time: sample.startUs, canvas: rect, in: context)

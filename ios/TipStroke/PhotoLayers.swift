@@ -97,3 +97,64 @@ extension DocumentRecord {
         }
     }
 }
+
+/// Each drawing step may position an immutable photo independently. Absence represents a blank cel.
+struct PhotoCelRecord: Codable, Equatable {
+    var transform: CGAffineTransform
+    var mesh: [CGPoint]?
+    var filtered: Bool?
+    init(transform: CGAffineTransform, mesh: [CGPoint]? = nil, filtered: Bool? = nil) {
+        self.transform = transform; self.mesh = mesh; self.filtered = filtered
+    }
+    init(photo: PhotoLayerRecord) { self.init(transform: photo.transform, mesh: photo.mesh, filtered: photo.filtered) }
+    func applying(to photo: PhotoLayerRecord) -> PhotoLayerRecord {
+        var copy = photo; copy.transform = transform; copy.mesh = mesh; copy.filtered = filtered
+        return copy
+    }
+}
+
+extension DocumentRecord {
+    mutating func installPhotoCels(_ animation: AnimationRecord, at index: Int) {
+        guard let cels = animation.frames[index].photoCels else { return }
+        for i in layers.indices {
+            guard let photo = layers[i].photo, !animation.sharedLayerIDs.contains(layers[i].id) else { continue }
+            let cel = cels[layers[i].id.uuidString]
+            layers[i].photoCelActive = cel != nil
+            if let cel { layers[i].photo = cel.applying(to: photo) }
+        }
+    }
+    func capturePhotoCels(_ animation: inout AnimationRecord) {
+        let index = animation.selectedIndex
+        var current = animation.frames[index].photoCels ?? [:]
+        for layer in layers where !animation.sharedLayerIDs.contains(layer.id) {
+            if let photo = layer.photo { current[layer.id.uuidString] = layer.photoCelActive ? PhotoCelRecord(photo: photo) : nil }
+        }
+        animation.frames[index].photoCels = current
+    }
+}
+
+extension RasterDocument {
+    func installPhotoCels(_ animation: AnimationRecord) { record.installPhotoCels(animation, at: animation.selectedIndex) }
+    func restoreLegacyPhotoCels() {
+        guard var animation = record.animation else { return }
+        let defaults = record.layers.reduce(into: [String: PhotoCelRecord]()) { cels, layer in
+            if let photo = layer.photo { cels[layer.id.uuidString] = PhotoCelRecord(photo: photo) }
+        }
+        for index in animation.frames.indices where animation.frames[index].photoCels == nil {
+            animation.frames[index].photoCels = defaults
+        }
+        record.animation = animation; installPhotoCels(animation)
+    }
+}
+
+extension DocumentSnapshot {
+    func atFrame(_ id: UUID) throws -> Self {
+        var frame = self
+        guard var animation = record.animation, let index = animation.frames.firstIndex(where: { $0.id == id }) else { return frame }
+        frame.pixels = try pixelsForFrame(id)
+        animation.selectedIndex = index
+        frame.record.animation = animation
+        frame.record.installPhotoCels(animation, at: index)
+        return frame
+    }
+}

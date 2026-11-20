@@ -17,12 +17,14 @@ extension DocumentSnapshot {
 }
 
 extension RasterDocument {
-    private func storeCurrentCel(_ animation: AnimationRecord) {
+    private func storeCurrentCel(_ animation: inout AnimationRecord) {
+        record.capturePhotoCels(&animation)
         let id = animation.frames[animation.selectedIndex].id
         let hidden = framePixels[id]?.filter { animation.sharedLayerIDs.contains($0.key) } ?? [:]
         framePixels[id] = hidden.merging(pixels.filter { !animation.sharedLayerIDs.contains($0.key) }) { _, current in current }
     }
     private func installCel(_ animation: AnimationRecord) {
+        installPhotoCels(animation)
         let id = animation.frames[animation.selectedIndex].id
         let shared = pixels.filter { animation.sharedLayerIDs.contains($0.key) }
         pixels = (framePixels[id] ?? [:]).filter { !animation.sharedLayerIDs.contains($0.key) }.merging(shared) { _, current in current }
@@ -30,10 +32,14 @@ extension RasterDocument {
     func toggleSharedBackground() {
         guard var animation = record.animation else { return }
         beginMetadataEdit()
-        storeCurrentCel(animation)
+        storeCurrentCel(&animation)
         var ids = animation.sharedLayerIDs
         if ids.contains(activeLayer) { ids.remove(activeLayer) } else { ids.insert(activeLayer) }
         animation.backgroundLayers = ids
+        if let i = record.layers.firstIndex(where: { $0.id == activeLayer }), record.layers[i].photo != nil {
+            if ids.contains(activeLayer) { record.layers[i].photoCelActive = true }
+            else { installPhotoCels(animation) }
+        }
         record.animation = animation
         endMetadataEdit()
     }
@@ -41,7 +47,8 @@ extension RasterDocument {
     func enableAnimation() {
         guard record.animation == nil else { return }
         beginMetadataEdit()
-        let animation = AnimationRecord()
+        var animation = AnimationRecord()
+        record.capturePhotoCels(&animation)
         record.animation = animation
         framePixels[animation.frames[0].id] = pixels
         endMetadataEdit()
@@ -57,7 +64,7 @@ extension RasterDocument {
     private func installFrame(_ index: Int) {
         guard var animation = record.animation, animation.frames.indices.contains(index) else { return }
         endStroke(cancelled: true)
-        storeCurrentCel(animation)
+        storeCurrentCel(&animation)
         animation.selectedIndex = index
         installCel(animation)
         record.animation = animation; selection = nil
@@ -76,8 +83,9 @@ extension RasterDocument {
             throw DrawingError.message("This frame copy exceeds the painting memory budget.")
         }
         beginMetadataEdit()
-        storeCurrentCel(animation)
+        storeCurrentCel(&animation)
         var frame = AnimationFrameRecord()
+        frame.photoCels = copy ? (animation.frames[animation.selectedIndex].photoCels ?? [:]) : [:]
         if let track = record.media { frame.sourceTimeUs = sourceTimeUs ?? track.positionUs }
         let next = copy ? pixels.filter { !animation.sharedLayerIDs.contains($0.key) } : [:]
         animation.selectedIndex += 1
@@ -155,6 +163,15 @@ extension ProjectStore {
                 photo.transform = photo.transform.concatenating(scale)
                 result.record.layers[i].photo = photo
             }
+        }
+        if var animation = result.record.animation {
+            for i in animation.frames.indices {
+                animation.frames[i].photoCels = animation.frames[i].photoCels?.mapValues { cel in
+                    var reduced = cel; reduced.transform = reduced.transform.concatenating(scale)
+                    return reduced
+                }
+            }
+            result.record.animation = animation
         }
         result.pixels = try reduce(source.pixels)
         result.frames = try source.frames.mapValues(reduce)

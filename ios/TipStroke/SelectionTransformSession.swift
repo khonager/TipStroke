@@ -12,7 +12,7 @@ final class SelectionTransformSession {
     var geometry: TransformGeometry
     init(document: RasterDocument) throws {
         guard let layer = document.record.layers.first(where: { $0.id == document.activeLayer }),
-              layer.visible, !layer.locked else { throw DrawingError.message("Select an unlocked, visible layer.") }
+              layer.visible, layer.photoCelActive, !layer.locked else { throw DrawingError.message("Select an unlocked, visible layer.") }
         revision = document.revision; layerID = layer.id; sourceSelection = document.selection; photo = layer.photo
         var cutouts: [TileKey: CGImage] = [:]
         let g: TransformGeometry

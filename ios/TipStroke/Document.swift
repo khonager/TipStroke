@@ -31,6 +31,7 @@ struct LayerRecord: Codable, Identifiable, Equatable {
     var alphaLocked = false
     var clipSource: UUID?
     var editGroup: UUID?
+    var photoCelActive = true
     var photo: PhotoLayerRecord?
     var colorizeMask: String?
     var reference = false
@@ -72,7 +73,7 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
     var backgroundOpacity: Double?
 
     func validate() throws {
-        guard format == "dev.tipstroke.ios.raster", (1...6).contains(schemaVersion) else {
+        guard format == "dev.tipstroke.ios.raster", (1...7).contains(schemaVersion) else {
             throw DrawingError.message("This drawing uses an unsupported project format.")
         }
         guard (16...4096).contains(width), (16...4096).contains(height),
@@ -120,6 +121,12 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
             let layerIDs = Set(layers.map { $0.id.uuidString })
             for frame in animation.frames {
                 guard frame.tiles.values.reduce(0, { $0 + $1.count }) <= RasterDocument.maximumTiles else { throw DrawingError.message("A cel exceeds the iOS tile budget.") }
+                for (id, cel) in frame.photoCels ?? [:] {
+                    guard let photo = layers.first(where: { $0.id.uuidString == id })?.photo else {
+                        throw DrawingError.message("Photo cel refers to a missing source layer.")
+                    }
+                    try cel.applying(to: photo).validate()
+                }
                 for (layerID, keys) in frame.tiles {
                     let photo = layers.first(where: { $0.id.uuidString == layerID })?.photo
                     let tileWidth = photo?.width ?? width, tileHeight = photo?.height ?? height
@@ -157,6 +164,7 @@ struct AnimationFrameRecord: Codable, Equatable, Identifiable {
     var sourceTimeUs: Int64?
     var durationUs: Int64?
     var id = UUID()
+    var photoCels: [String: PhotoCelRecord]?
     var exposure = 1
     var tiles: [String: [TileKey]] = [:]
 }
