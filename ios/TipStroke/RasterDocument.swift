@@ -514,8 +514,12 @@ final class RasterDocument {
         var copy = record.layers[index]; copy.id = UUID(); copy.name += " copy"
         copy.locked = false; copy.reference = false
         pixels[copy.id] = tiles // immutable images; new paint replaces only touched tiles
-        for frame in Array(framePixels.keys) { framePixels[frame]?[copy.id] = framePixels[frame]?[id] }
-        for frame in Array(coldFrames.keys) { coldFrames[frame]?[copy.id] = coldFrames[frame]?[id] }
+        for frame in Array(framePixels.keys) {
+            if let source = framePixels[frame]?[id] { framePixels[frame]?[copy.id] = source }
+        }
+        for frame in Array(coldFrames.keys) {
+            if let source = coldFrames[frame]?[id] { coldFrames[frame]?[copy.id] = source }
+        }
         if copy.photo != nil, var animation = record.animation {
             for i in animation.frames.indices {
                 let cel = animation.frames[i].photoCels?[id.uuidString]
