@@ -5,10 +5,6 @@ TipStroke has a native iOS/iPadOS 16+ target in `ios/TipStroke.xcodeproj`, with 
 and sparse raster painting. Xcode builds and links `TipStrokeShared.framework`
 from `:shared-ui`, exporting `:core`. There is no account or network service.
 
-**Full Android parity is still incomplete.** The implemented source workflows and
-remaining differences are listed below. Linux JVM tests and Swift syntax parsing
-are not an Apple SDK build, simulator run or physical Pencil validation.
-
 ## Shared implementation
 
 - The Compose color picker, saved palette shelf, precision sliders and blend-mode
@@ -55,13 +51,11 @@ are not an Apple SDK build, simulator run or physical Pencil validation.
   not hide that layer or exclude it from exports.
 - Eyedropper, shared saved palettes, persistent recent colors and a quick-color row.
   Drawing colors are sampled from a bounded thumbnail after saves and on opening
-  the color picker. Imported images
-  are downsampled/tiled off the input thread into a paint layer.
-- Animation timeline: blank/duplicate/delete/reorder frames, per-frame holds,
-  FPS, loop/ping-pong/once, adjacent onion skins, frame-aware undo, save/reopen,
-  GIF, silent MP4, and zipped PNG-sequence export with playback timing. Timing uses Android's shared timeline rules. Current
-  Apple limits are 240 frames and 512 resident tiles across all frames/layers;
-  Android's disk-backed long-timeline implementation is not yet ported.
+  the color picker. Photo layers retain the imported original, transform and mask.
+- Animation supports per-frame holds, loop/ping-pong/once playback, onion skins,
+  shared backgrounds, motion recording and frame-aware undo. Inactive drawings
+  move to disk. The timeline supports up to 10,000 frames within storage limits.
+  Export GIF, MP4 or a zipped PNG sequence with exposure timing.
 - Paper color/opacity, atomic local saves and white/custom-paper or transparent PNG
   sharing. Thumbnail and encoding work runs away from the input thread.
 
@@ -84,18 +78,16 @@ Portable presets and preference serialization live in `:core`; native canvas
 input and rendering are unchanged. Both platforms support up to 8192 px per side. The maximum one-layer square
 preset uses the iOS resident tile budget or Android’s app heap budget.
 
-## Remaining parity work
+## Android workflows on iPhone and iPad
 
-| Area | Remaining difference |
+| Workflow | iOS behavior |
 | --- | --- |
-| Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation |
-| Creative tools added in this port | Native implementations present; Apple SDK compilation, iPhone/iPad simulator tests and physical Pencil checks still required |
-| Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
-| Animation | Shared background cels, live motion recording, disk-backed long timelines and resolution reduction |
-| Video | Source-backed GIF/video canvases, media playback/scrubbing, clip editing, keyframes, crossfades and coverage navigation |
-| Process recording | Replay persistence, preview/scrub and process exports |
-| Project exchange | Lossless Android `.tipstroke` import/export; current iOS documents use their own versioned format |
-| Gallery and editor shell | Android's adaptive toolbar layout and matching quick-color shelf interactions |
+| Brush input | Core Graphics uses shared contact, grain and stamp rules for graphite, airbrush and imported tips. Jetpack Ink brushes use native approximations. Wet-stroke appearance, latency and Pencil sensor behavior need physical-device comparison. |
+| Selection and images | Preview and apply or cancel transforms, edit source-backed photos and masks, and use freeform, perspective, mesh and local deformation. PNG export samples the original within a bounded decode budget. |
+| Animation and video | Work with disk-backed cels, change resolution, record motion, scrub GIF and video sources, edit clips and crossfades, and navigate drawing coverage. Photo motion uses keyframes. |
+| Process recording | Preview, scrub and export saved replay. Native Android command streams from older files are preserved for Android playback. New portable recordings include raster updates. |
+| Project exchange | Import and export Android project archives. Native metadata preserves iOS-specific locks and frame masks through an Android save. The local gallery also keeps its versioned native format. |
+| Gallery and editor | Named stacks, batch sharing, adaptive controls and quick-color drag-to-fill. Tool categories support tap, hold, slide, dwell for a name and release to select. |
 
 Adding a feature only to `app/` or `drawing-android/` still does not port it to iOS.
 Keep portable rules in `core`, reusable controls in `shared-ui`, and provide both
@@ -175,8 +167,7 @@ On iOS the compact gallery heading contains New and Select drawings. Select mult
 drawings and use Share to export their PNGs together. Drag into the center of a
 drawing or stack to group it, or near an edge to reorder. Swipe a stack to rename
 or unstack it. Swipe a drawing inside a stack to move it back to the gallery.
-Android action buttons now use icons with delayed mouse/stylus hover labels;
-UIKit retains its existing native action presentation.
+The editor shows tool and control names on pointer dwell.
 
 ## Creative tools on iOS
 
