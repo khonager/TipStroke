@@ -1,4 +1,6 @@
 package dev.tipstroke.app
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -78,6 +80,17 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
             "Smudge strength", "${(settings.smudgeStrength * 100).roundToInt()}%", settings.smudgeStrength, .05f..1f,
             { onChange(settings.copy(smudgeStrength = it)) },
         )
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val ui = remember(context) { DrawingUiPreferences(context) }
+        var holdPicker by remember { mutableStateOf(ui.holdToolPicker) }
+        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Hold for drawing tools", color = Color.White)
+                Text("Tap for Eraser. Hold and slide to choose another tool.", color = Color(0xFFA9ABB1), fontSize = 12.sp)
+            }
+            Switch(holdPicker, { holdPicker = it; ui.holdToolPicker = it },
+                modifier = Modifier.semantics { contentDescription = "Hold for drawing tools" })
+        }
         Text("Pen buttons", color = Color(0xFFF5F5F2), fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp))
         Text("Primary is normally nearest the tip. Xiaomi Pad 6 button key events are also supported.", color = Color(0xFFA9ABB1), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
         StylusButtonRow("Primary pen button", "Usually the lower button", settings.stylusPrimaryButton) { onSelect(SettingsSlot.Stylus(true)) }

@@ -30,8 +30,8 @@ class SelectionToolControlsTest {
         compose.onNodeWithContentDescription("Select all").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription("Pencil").performClick()
         compose.onNodeWithContentDescription("Select all").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Drawing tools").performClick()
-        compose.onNodeWithText("Select").performClick()
+        compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Select").performClick()
         compose.onNodeWithContentDescription("Select all").assertIsDisplayed()
         compose.onNodeWithText("Selection active").assertDoesNotExist()
     }
@@ -41,8 +41,8 @@ class SelectionToolControlsTest {
             MaterialTheme { CanvasScreen(initialSelectionOpen = true) }
         }
         fun choose(label: String) {
-            compose.onNodeWithContentDescription("Drawing tools").performClick()
-            compose.onNodeWithText(label).performClick()
+            compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+            compose.onNodeWithContentDescription(label).performClick()
         }
         fun toolIs(label: String) {
             compose.onNodeWithContentDescription("Drawing tools").assert(
@@ -50,7 +50,7 @@ class SelectionToolControlsTest {
         }
         compose.onNodeWithContentDescription("Select all").performClick()
         compose.onNodeWithContentDescription("Deselect").performClick().assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Drawing tools").performTouchInput { longClick() }
+        choose("Reselect previous area")
         compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
         repeat(2) {
             choose("Eraser"); toolIs("Eraser")
@@ -59,8 +59,8 @@ class SelectionToolControlsTest {
             compose.onNodeWithContentDescription("Select all").assertIsDisplayed()
         }
         compose.onNodeWithContentDescription("Deselect").performClick()
-        compose.onNodeWithContentDescription("Drawing tools").performClick()
-        compose.onNodeWithContentDescription("Select").performTouchInput { longClick() }
+        compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Reselect previous area").performClick()
         compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
     }
     @Test fun transformPanelExposesMeshAndSharedActions() {

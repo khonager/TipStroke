@@ -5,6 +5,10 @@ import android.content.Context
 /** Per-document local editor chrome; never changes the artwork or project schema. */
 internal class DrawingUiPreferences(context: Context) {
     private val preferences = context.getSharedPreferences("drawing-ui", Context.MODE_PRIVATE)
+    var holdToolPicker: Boolean
+        get() = preferences.getBoolean("hold-tool-picker", true)
+        set(value) { preferences.edit().putBoolean("hold-tool-picker", value).apply() }
+
     fun animationOpen(documentId: String?): Boolean =
         documentId?.let { preferences.getBoolean("animation:$it", true) } ?: true
     fun saveAnimationOpen(documentId: String?, open: Boolean) {

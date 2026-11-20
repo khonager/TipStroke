@@ -41,24 +41,57 @@ class BrushFavoritesDockTest {
                     mirrorCopies = copies, onMirrorCopies = { copies = it }, onRibbon = { ribbon = true }, onColorPush = { push = true })
             }
         }
-        compose.onNodeWithContentDescription("Drawing tools").performClick()
-        compose.onNodeWithText("Brush aids").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Brush aids").performClick()
         compose.onNodeWithText("Paint inside").performClick()
         compose.onNodeWithText("Elastic line").performClick()
         compose.onNodeWithText("Mirror wheel: 6 copies").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(assists.paintInside); assertTrue(assists.elasticLine); assertEquals(6, copies) }
         compose.onNodeWithText("Back to tools").performScrollTo().performClick()
-        compose.onNodeWithText("Ribbon").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Ribbon").performClick()
         compose.runOnIdle { assertTrue(ribbon) }
-        compose.onNodeWithContentDescription("Drawing tools").performClick()
-        compose.onNodeWithText("Color push").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Color push").performClick()
         compose.runOnIdle { assertTrue(push) }
-        compose.onNodeWithContentDescription("Drawing tools").performClick()
-        compose.onNodeWithText("Brush aids").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Brush aids").performClick()
         compose.onNodeWithText("Paint inside").performClick()
         compose.onNodeWithText("Elastic line").performClick()
         compose.onNodeWithText("Mirror wheel: Off").performClick()
         compose.runOnIdle { assertFalse(assists.paintInside); assertFalse(assists.elasticLine); assertEquals(1, copies) }
+    }
+
+    @Test fun holdSlidesToSmudgeAndOnlySelectsOnRelease() {
+        var erases = 0
+        var smudges = 0
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            Box(Modifier.fillMaxSize()) {
+                BrushFavoritesDock(BrushPreset.Ink, emptyList(), false, {}, {}, {}, {}, { erases++ }, { smudges++ },
+                    false, {}, {}, {}, "Adjust tip", true, Modifier.height(300.dp))
+            }
+        }
+        val dock = compose.onNodeWithContentDescription("Drawing tools")
+        dock.performTouchInput { click() }
+        assertEquals(1, erases)
+        dock.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(750)
+        compose.onNodeWithContentDescription("Smudge").assertIsDisplayed()
+        // In this left dock the grid opens immediately to the right, clamped to the window top.
+        val target = compose.onNodeWithContentDescription("Smudge").fetchSemanticsNode().layoutInfo.coordinates.localToScreen(androidx.compose.ui.geometry.Offset(24f, 24f))
+        val local = dock.fetchSemanticsNode().layoutInfo.coordinates.screenToLocal(target)
+        dock.performTouchInput { moveTo(local) }
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onNodeWithText("Smudge").assertIsDisplayed()
+        assertEquals(0, smudges)
+        dock.performTouchInput { up() }
+        assertEquals(1, smudges)
+        compose.onNodeWithContentDescription("Smudge").assertDoesNotExist()
+        dock.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(750)
+        dock.performTouchInput { up() }
+        assertEquals(1, erases)
+        assertEquals(1, smudges)
     }
 
     @Test fun dockFitsMeasuredWidthAndShrinksWithoutScrolling() {
@@ -82,8 +115,8 @@ class BrushFavoritesDockTest {
         compose.onNodeWithContentDescription("Pinned 0").assertIsDisplayed()
         compose.onNodeWithContentDescription("Pinned 1").assertDoesNotExist()
         compose.onNodeWithContentDescription("Tips").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Drawing tools").performClick()
-        compose.onNodeWithText("Eraser").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Eraser").assertIsDisplayed()
     }
 
     @Test fun stylusHoverWaitsCancelsOnExitAndStillAllowsSelection() {

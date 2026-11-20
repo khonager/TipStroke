@@ -184,8 +184,12 @@ Deselect removes only the boundary; Erase selected pixels removes artwork and
 supports Undo. Selecting Select clears the eraser state, keeping the active icon
 and native drawing mode consistent.
 
-Hold Select in the tools menu, the drawing-tools dock button, or a selection
-shape icon to recall the last area, including after deselecting and switching to
+On Android, tap the eraser icon in the dock to toggle Eraser. Hold it to open the
+icon grid, slide onto a tool, and lift to choose it. Pausing over an icon shows
+its name. Lift outside the grid to cancel. In Settings, turn off **Hold for
+drawing tools** to open the grid with a tap instead.
+
+Choose **Reselect previous area** in the grid or hold a selection shape icon to recall the last area, including after deselecting and switching to
 a new layer. One document-space region is retained; changing documents or
 resizing the canvas resets recall. A normal brush/eraser switch keeps the current
 selection boundary.

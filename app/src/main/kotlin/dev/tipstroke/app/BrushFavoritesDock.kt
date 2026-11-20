@@ -38,7 +38,8 @@ internal fun BrushFavoritesDock(
     onPerspectiveMode: (dev.tipstroke.core.geometry.PerspectiveMode) -> Unit = {}, onVanishingPoint: (Int) -> Unit = {},
     mirrorCopies: Int = 1, onMirrorCopies: (Int) -> Unit = {}, onMirrorCenter: () -> Unit = {},
 ) {
-    var toolsOpen by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val holdPicker = remember(context) { DrawingUiPreferences(context).holdToolPicker }
     var aidsOpen by remember { mutableStateOf(false) }
     val aidsActive = perspectiveMode != dev.tipstroke.core.geometry.PerspectiveMode.OFF || assists.paintInside || assists.elasticLine || mirrorCopies > 1
     Surface(modifier, color = Color(0xE6202125), shape = MaterialTheme.shapes.large,
@@ -55,48 +56,41 @@ internal fun BrushFavoritesDock(
                     key(preset.id.value) { DockCell(preset.displayName, brushActive && preset.id == selected.id, slot, !horizontal, { onBrush(preset) }, preset = preset) }
                 }
                 Box {
-                    DockCell("Drawing tools", !brushActive || aidsActive || toolsOpen, slot, !horizontal, { aidsOpen = false; toolsOpen = true }, icon = when (toolLabel) {
-                        "Eraser" -> Icons.Outlined.AutoFixNormal
-                        "Color push" -> Icons.Outlined.OpenWith
-                        "Ribbon" -> Icons.Outlined.Gesture
-                        "Lasso fill" -> Icons.Outlined.FormatColorFill
-                        "Smudge" -> Icons.Outlined.BlurOn
-                        "Select" -> Icons.Outlined.SelectAll
-                        else -> Icons.Outlined.Build
-                    }, onLongClick = onReselect, stateLabel = if (aidsActive) "$toolLabel; brush aids active" else toolLabel)
-                    val menuScroll = androidx.compose.foundation.rememberScrollState()
-                    LaunchedEffect(toolsOpen, aidsOpen) { menuScroll.scrollTo(0) }
-                    DropdownMenu(toolsOpen, { toolsOpen = false }, scrollState = menuScroll) {
-                        fun action(callback: () -> Unit) { toolsOpen = false; callback() }
-                        if (aidsOpen) {
-                            DropdownMenuItem(text = { Text("Back to tools") }, onClick = { aidsOpen = false })
-                            dev.tipstroke.ui.DrawingAssistsMenu(assists, onAssists, mirrorCopies, onMirrorCopies, { action(onMirrorCenter) },
-                                perspectiveMode, onPerspectiveMode, { index -> action { onVanishingPoint(index) } })
-                        } else {
-                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                                .combinedClickable(role = Role.Button, onClick = { action(onSelect) },
-                                    onLongClick = { action(onReselect) }, onLongClickLabel = "Reselect previous area")
-                                .semantics { contentDescription = "Select" }.padding(horizontal = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.SelectAll, null)
-                                Spacer(Modifier.width(12.dp))
-                                Text("Select")
-                            }
-                            DropdownMenuItem(text = { Text("Eraser") }, onClick = { action(onEraser) }, modifier = Modifier.semantics { contentDescription = "Eraser" })
-                            DropdownMenuItem(text = { Text("Smudge") }, onClick = { action(onSmudge) }, modifier = Modifier.semantics { contentDescription = "Smudge" })
-                            DropdownMenuItem(text = { Text("Lasso fill") }, onClick = { action(onLassoFill) })
-                            DropdownMenuItem(text = { Text("Ribbon") }, onClick = { action(onRibbon) })
-                            DropdownMenuItem(text = { Text("Color push") }, onClick = { action(onColorPush) })
-                            if (pixelToolsAvailable) PixelTool.entries.forEach { tool ->
-                                DropdownMenuItem(text = { Text(when (tool) { PixelTool.PENCIL -> "Pixel pencil"; PixelTool.LINE -> "Pixel line"; PixelTool.DITHER -> "Dither" }) }, onClick = { action { onPixelTool(tool) } })
-                            }
-                            DropdownMenuItem(text={Text("Colorize mask…")},onClick={action(onColorizeMask)})
-                            DropdownMenuItem(text={Text("Blur & bloom…")},onClick={action(onAdjustments)})
-                            HorizontalDivider()
-                            DropdownMenuItem(text = { Text("Brush aids") }, trailingIcon = { Text(if (aidsActive) "On ›" else "›") },
-                                onClick = { aidsOpen = true })
-                            DropdownMenuItem(text = { Text("Adjust tip") }, onClick = { action(onStudio) })
+                    val tools = buildList {
+                        add(DockTool("Eraser", Icons.Outlined.AutoFixNormal, onEraser))
+                        add(DockTool("Select", Icons.Outlined.SelectAll, onSelect))
+                        add(DockTool("Smudge", Icons.Outlined.BlurOn, onSmudge))
+                        add(DockTool("Lasso fill", Icons.Outlined.FormatColorFill, onLassoFill))
+                        add(DockTool("Ribbon", Icons.Outlined.Gesture, onRibbon))
+                        add(DockTool("Color push", Icons.Outlined.OpenWith, onColorPush))
+                        if (pixelToolsAvailable) {
+                            add(DockTool("Pixel pencil", Icons.Outlined.Edit) { onPixelTool(PixelTool.PENCIL) })
+                            add(DockTool("Pixel line", Icons.Outlined.ShowChart) { onPixelTool(PixelTool.LINE) })
+                            add(DockTool("Dither", Icons.Outlined.Grain) { onPixelTool(PixelTool.DITHER) })
                         }
+                        add(DockTool("Reselect previous area", Icons.Outlined.History, onReselect))
+                        add(DockTool("Colorize mask", Icons.Outlined.Palette, onColorizeMask))
+                        add(DockTool("Blur & bloom", Icons.Outlined.Flare, onAdjustments))
+                        add(DockTool("Brush aids", Icons.Outlined.Architecture) { aidsOpen = true })
+                        add(DockTool("Adjust tip", Icons.Outlined.Tune, onStudio))
+                    }
+                    var reopen by remember { mutableIntStateOf(0) }
+                    dev.tipstroke.ui.HoldToolPicker(
+                        labels = tools.map { it.label }, horizontal = horizontal, holdEnabled = holdPicker,
+                        extent = slot.dp, reopen = reopen, stateLabel = if (aidsActive) "$toolLabel; brush aids active" else toolLabel,
+                        selected = !brushActive || aidsActive, onTap = onEraser, onLegacyHold = onReselect,
+                        onChoose = { tools[it].action() },
+                        anchorIcon = {
+                            val icon = if (holdPicker) tools.first().icon else tools.find { it.label == toolLabel }?.icon ?: Icons.Outlined.Build
+                            Icon(icon, null)
+                        },
+                        toolIcon = { Icon(tools[it].icon, null) },
+                    )
+                    DropdownMenu(aidsOpen, { aidsOpen = false }) {
+                        DropdownMenuItem(text = { Text("Back to tools") }, onClick = { aidsOpen = false; reopen++ })
+                        dev.tipstroke.ui.DrawingAssistsMenu(assists, onAssists, mirrorCopies, onMirrorCopies,
+                            { aidsOpen = false; onMirrorCenter() }, perspectiveMode, onPerspectiveMode,
+                            { index -> aidsOpen = false; onVanishingPoint(index) })
                     }
                 }
                 DockCell(tuneDescription, false, slot, !horizontal, onTune, icon = Icons.Outlined.Tune)
@@ -122,3 +116,5 @@ private fun DockCell(description: String, selected: Boolean, extent: Float, besi
         }
     }
 }
+
+private data class DockTool(val label: String, val icon: ImageVector, val action: () -> Unit)
