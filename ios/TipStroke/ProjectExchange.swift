@@ -1,5 +1,6 @@
 import UIKit
 import ImageIO
+import AVFoundation
 import UniformTypeIdentifiers
 import ZIPFoundation
 
@@ -71,6 +72,8 @@ private enum PackageIO {
 private struct PackageIDs: Codable {
     var layers: [String: UUID] = [:]
     var frames: [String: UUID] = [:]
+    var mediaAssets: [String: UUID]?
+    var clips: [String: UUID]?
 }
 
 extension ProjectStore {
@@ -200,8 +203,11 @@ extension ProjectStore {
         state.selectedLayer = (manifest["selectedLayerId"] as? String).flatMap { ids.layers[$0] } ?? state.layers.last?.id
         var frames: [UUID: [UUID: [TileKey: CGImage]]] = [:]
         if let raw = manifest["animation"] as? JSONObject {
-            guard raw["media"] == nil || raw["media"] is NSNull,
-                  (raw["imageCels"] as? [JSONObject] ?? []).allSatisfy({ ($0["frames"] as? [JSONObject])?.isEmpty == true }) else {
+            if let media = raw["media"] as? JSONObject {
+                state.media = try Self.importMedia(media, position: (raw["mediaPositionUs"] as? NSNumber)?.int64Value ?? 0,
+                                                  from: directory, ids: &ids)
+            }
+            guard (raw["imageCels"] as? [JSONObject] ?? []).allSatisfy({ ($0["frames"] as? [JSONObject])?.isEmpty == true }) else {
                 throw DrawingError.message("This animation contains media or animated image poses that cannot yet be exchanged losslessly.")
             }
             guard let list = raw["frames"] as? [JSONObject], (1...240).contains(list.count) else { throw PackageIO.invalid }
@@ -219,6 +225,8 @@ extension ProjectStore {
                 guard ids.frames[key] == nil else { throw PackageIO.invalid }
                 var frame = AnimationFrameRecord(); frame.id = UUID(uuidString: key) ?? UUID()
                 frame.exposure = item["exposure"] as? Int ?? 1; ids.frames[key] = frame.id
+                frame.sourceTimeUs = (item["sourceTimeUs"] as? NSNumber)?.int64Value
+                frame.durationUs = (item["durationUs"] as? NSNumber)?.int64Value
                 for (layer, native) in ids.layers {
                     // The selected frame's visible pixels live in layers/<id>/tiles; a
                     // promoted background can also have an inactive cel at that frame.
@@ -354,10 +362,16 @@ extension ProjectStore {
                 let id = frameID(frame.id)
                 var item = priorFrames.first(where: { $0["id"] as? String == id }) ?? [:]
                 item["id"] = id; item["exposure"] = frame.exposure
+                item["sourceTimeUs"] = frame.sourceTimeUs; item["durationUs"] = frame.durationUs
                 let cels = snapshot.frames[frame.id] ?? [:]
                 for (layer, tiles) in cels where state.layers.contains(where: { $0.id == layer && $0.photo == nil }) { try writeTiles(tiles, "animation/cels/\(layerID(layer))/\(id)") }
                 return item
             }
+            if let media = state.media {
+                raw["media"] = try Self.exportMedia(media, prior: raw["media"] as? JSONObject,
+                    canvas: CGSize(width: state.width, height: state.height), to: target, ids: ids)
+                raw["mediaPositionUs"] = media.positionUs
+            } else { raw.removeValue(forKey: "media"); raw.removeValue(forKey: "mediaPositionUs") }
             manifest["animation"] = raw
         } else { manifest.removeValue(forKey: "animation") }
         let replay = replayFolder(state.id)
@@ -425,5 +439,118 @@ private extension ProjectStore {
             }
         }
         return raw
+    }
+}
+
+private extension ProjectStore {
+    static func importMedia(_ media: JSONObject, position: Int64, from directory: URL, ids: inout PackageIDs) throws -> MediaTrack {
+        let sequence = media["kind"] as? String == "sequence"
+        let assets = sequence ? media["assets"] as? [String: JSONObject] : ["original": media]
+        guard let assets, (1...1000).contains(assets.count) else { throw PackageIO.invalid }
+        var assetMap: [String: UUID] = [:], clipMap: [String: UUID] = [:]
+        var records: [MediaAssetRecord] = []
+        let typed = try PackageIO.temporaryFolder()
+        defer { try? PackageIO.fm.removeItem(at: typed) }
+        for (id, info) in assets {
+            guard PackageIO.safeID(id), id.utf8.count <= 100,
+                  let kind = info["kind"] as? String, ["video", "gif", "image"].contains(kind),
+                  let duration = (info["durationUs"] as? NSNumber)?.int64Value, (1...86_400_000_000).contains(duration) else { throw PackageIO.invalid }
+            let mapped = UUID(uuidString: id) ?? UUID()
+            assetMap[id] = mapped
+            var file = directory.appendingPathComponent(id == "original" ? "assets/media/timeline.source" : "assets/media/clips/\(id).source")
+            if id == "original", !PackageIO.fm.fileExists(atPath: file.path) { file = directory.appendingPathComponent("assets/timeline.source") }
+            let ext = info["iosExtension"] as? String ?? (kind == "video" ? "mp4" : kind == "gif" ? "gif" : "png")
+            guard ext.range(of: "^[a-z0-9]{1,10}$", options: .regularExpression) != nil else { throw PackageIO.invalid }
+            let input = typed.appendingPathComponent(mapped.uuidString).appendingPathExtension(ext)
+            try PackageIO.fm.linkItem(at: file, to: input)
+            let source = try LocalMediaFile(input)
+            let record = MediaAssetRecord(id: mapped, name: info["iosName"] as? String ?? id,
+                kind: kind, durationUs: duration, frameRate: info["frameRate"] as? Double ?? (kind == "gif" ? 50 : 30),
+                fileExtension: ext, source: source)
+            // Reject unplayable assets before publishing any part of the package.
+            _ = try mediaSize(record)
+            records.append(record)
+        }
+        let clips: [MediaClipRecord]
+        if sequence {
+            guard let list = media["edit"] as? [JSONObject], (1...1000).contains(list.count) else { throw PackageIO.invalid }
+            clips = try list.map { raw in
+                guard let key = raw["id"] as? String, PackageIO.safeID(key), clipMap[key] == nil,
+                      let assetID = raw["assetId"] as? String, let mapped = assetMap[assetID],
+                      let name = raw["name"] as? String, let start = (raw["sourceInUs"] as? NSNumber)?.int64Value,
+                      let duration = (raw["durationUs"] as? NSNumber)?.int64Value, let keys = raw["keyframes"] as? [JSONObject],
+                      keys.count <= 1000 else { throw PackageIO.invalid }
+                let id = UUID(uuidString: key) ?? UUID(); clipMap[key] = id
+                return MediaClipRecord(id: id, assetID: mapped, name: name, sourceInUs: start,
+                    durationUs: duration, transitionUs: (raw["transitionUs"] as? NSNumber)?.int64Value ?? 0,
+                    keyframes: try JSONDecoder().decode([MediaPoseKey].self, from: JSONSerialization.data(withJSONObject: keys)))
+            }
+        } else {
+            guard let first = records.first else { throw PackageIO.invalid }
+            clips = [MediaClipRecord(assetID: first.id, name: first.name, durationUs: first.durationUs)]
+        }
+        let track = MediaTrack(assets: records, clips: clips, positionUs: position)
+        let plan = try track.plan()
+        guard position >= 0, position < plan.durationUs,
+              (media["durationUs"] as? NSNumber)?.int64Value == plan.durationUs,
+              Set(assetMap.values).count == assetMap.count, Set(clipMap.values).count == clipMap.count else { throw PackageIO.invalid }
+        ids.mediaAssets = assetMap; ids.clips = clipMap
+        return track
+    }
+
+    static func mediaSize(_ asset: MediaAssetRecord) throws -> CGSize {
+        guard let url = asset.source?.url else { throw PackageIO.invalid }
+        let size: CGSize
+        if asset.kind == "video" {
+            guard let track = AVURLAsset(url: url).tracks(withMediaType: .video).first else {
+                throw DrawingError.message("This video codec cannot be opened on this device.")
+            }
+            let rect = CGRect(origin: .zero, size: track.naturalSize).applying(track.preferredTransform)
+            size = rect.size
+        } else {
+            guard let reader = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let props = CGImageSourceCopyPropertiesAtIndex(reader, 0, nil) as? [CFString: Any],
+                  let width = props[kCGImagePropertyPixelWidth] as? Int,
+                  let height = props[kCGImagePropertyPixelHeight] as? Int else { throw PackageIO.invalid }
+            size = CGSize(width: width, height: height)
+        }
+        guard size.width >= 1, size.width <= 8192, size.height >= 1, size.height <= 8192, size.width * size.height <= 16_777_216 else {
+            throw DrawingError.message("This clip exceeds the portable video dimensions.")
+        }
+        return size
+    }
+
+    static func exportMedia(_ track: MediaTrack, prior: JSONObject?, canvas: CGSize, to directory: URL, ids: PackageIDs) throws -> JSONObject {
+        let plan = try track.plan()
+        var assetMap: [UUID: String] = [:]
+        for (key, id) in ids.mediaAssets ?? [:] { assetMap[id] = key }
+        let original = track.assets.first?.id
+        var assets: [String: JSONObject] = [:]
+        let movieDir = directory.appendingPathComponent("assets/media")
+        if PackageIO.fm.fileExists(atPath: movieDir.path) { try PackageIO.fm.removeItem(at: movieDir) }
+        let clipsDir = movieDir.appendingPathComponent("clips")
+        try PackageIO.fm.createDirectory(at: clipsDir, withIntermediateDirectories: true)
+        for asset in track.assets {
+            let id = assetMap[asset.id] ?? ((asset.id == original && !assetMap.values.contains("original")) ? "original" : asset.id.uuidString)
+            assetMap[asset.id] = id
+            guard let file = asset.source?.url else { throw PackageIO.invalid }
+            let target = id == "original" ? movieDir.appendingPathComponent("timeline.source") : clipsDir.appendingPathComponent(id + ".source")
+            do { try PackageIO.fm.linkItem(at: file, to: target) } catch { try PackageIO.fm.copyItem(at: file, to: target) }
+            let size = try mediaSize(asset)
+            assets[id] = ["kind": asset.kind, "width": Int(size.width), "height": Int(size.height),
+                          "durationUs": asset.durationUs, "frameRate": min(120, max(1, asset.frameRate)), "canvasScale": 1,
+                          "iosExtension": asset.fileExtension, "iosName": asset.name]
+        }
+        let oldClips = Dictionary(uniqueKeysWithValues: (ids.clips ?? [:]).map { ($1, $0) })
+        let clips = try track.clips.map { clip -> JSONObject in
+            guard let asset = assetMap[clip.assetID] else { throw PackageIO.invalid }
+            return ["id": oldClips[clip.id] ?? clip.id.uuidString, "assetId": asset, "name": clip.name,
+                    "sourceInUs": clip.sourceInUs, "durationUs": clip.durationUs, "transitionUs": clip.transitionUs,
+                    "keyframes": try JSONSerialization.jsonObject(with: JSONEncoder().encode(clip.keyframes))]
+        }
+        return ["kind": "sequence", "width": prior?["width"] as? Int ?? Int(canvas.width),
+                "height": prior?["height"] as? Int ?? Int(canvas.height), "durationUs": plan.durationUs,
+                "frameRate": prior?["frameRate"] as? Double ?? (track.assets.first?.frameRate ?? 30),
+                "canvasScale": prior?["canvasScale"] as? Double ?? 1, "assets": assets, "edit": clips]
     }
 }
