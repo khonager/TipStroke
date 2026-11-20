@@ -229,9 +229,6 @@ extension ProjectStore {
                 state.media = try Self.importMedia(media, position: (raw["mediaPositionUs"] as? NSNumber)?.int64Value ?? 0,
                                                   from: directory, ids: &ids)
             }
-            guard (raw["imageCels"] as? [JSONObject] ?? []).allSatisfy({ ($0["frames"] as? [JSONObject])?.isEmpty == true }) else {
-                throw DrawingError.message("This animation contains media or animated image poses that cannot yet be exchanged losslessly.")
-            }
             guard let list = raw["frames"] as? [JSONObject], (1...240).contains(list.count) else { throw PackageIO.invalid }
             var timeline = AnimationRecord()
             timeline.backgroundLayers = try Set((raw["backgroundLayerIds"] as? [String] ?? []).map {
@@ -260,6 +257,19 @@ extension ProjectStore {
                 return frame
             }
             guard Set(ids.frames.values).count == ids.frames.count else { throw PackageIO.invalid }
+            let frameIndices = Dictionary(uniqueKeysWithValues: timeline.frames.enumerated().map { ($1.id, $0) })
+            for index in timeline.frames.indices { timeline.frames[index].photoCels = [:] }
+            for layerEntry in raw["imageCels"] as? [JSONObject] ?? [] {
+                guard let layerKey = layerEntry["layerId"] as? String, let id = ids.layers[layerKey],
+                      let photo = state.layers.first(where: { $0.id == id })?.photo, let source = photo.source,
+                      let poses = layerEntry["frames"] as? [JSONObject] else { throw PackageIO.invalid }
+                for value in poses {
+                    guard let key = value["frameId"] as? String, let frameID = ids.frames[key], let index = frameIndices[frameID],
+                          timeline.frames[index].photoCels?[id.uuidString] == nil else { throw PackageIO.invalid }
+                    let pose = try Self.importPhoto(value, width: photo.width, height: photo.height, source: source)
+                    timeline.frames[index].photoCels?[id.uuidString] = PhotoCelRecord(transform: pose.transform, mesh: pose.mesh, filtered: pose.filtered)
+                }
+            }
             state.animation = timeline
         }
         guard Set(ids.layers.values).count == ids.layers.count else { throw PackageIO.invalid }
@@ -383,6 +393,19 @@ extension ProjectStore {
         if let timeline = state.animation {
             var raw = manifest["animation"] as? JSONObject ?? [:]
             let priorFrames = raw["frames"] as? [JSONObject] ?? []
+            raw["imageCels"] = state.layers.compactMap { layer -> JSONObject? in
+                guard let original = layer.photo else { return nil }
+                let poses = timeline.frames.compactMap { frame -> JSONObject? in
+                    var photo = original
+                    if let cels = frame.photoCels {
+                        guard let cel = cels[layer.id.uuidString] else { return nil }
+                        photo.transform = cel.transform; photo.mesh = cel.mesh; photo.filtered = cel.filtered
+                    }
+                    var value = Self.exportPhoto(photo); value["frameId"] = frameID(frame.id)
+                    return value
+                }
+                return ["layerId": layerID(layer.id), "frames": poses]
+            }
             raw["backgroundLayerIds"] = (timeline.backgroundLayers ?? []).map(layerID).sorted()
             raw["fps"] = timeline.fps; raw["playbackMode"] = timeline.playbackMode; raw["selectedIndex"] = timeline.selectedIndex
             let wasOn = (raw["onionBefore"] as? Int ?? 0) > 0 || (raw["onionAfter"] as? Int ?? 0) > 0
