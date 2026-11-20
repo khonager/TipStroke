@@ -6,6 +6,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -57,7 +59,7 @@ internal fun BrushFavoritesDock(
                 }
                 Box {
                     val tools = buildList {
-                        add(DockTool("Eraser", Icons.Outlined.AutoFixNormal, onEraser))
+                        add(DockTool("Eraser", EraserIcon) { if (toolLabel != "Eraser") onEraser() })
                         add(DockTool("Select", Icons.Outlined.SelectAll, onSelect))
                         add(DockTool("Smudge", Icons.Outlined.BlurOn, onSmudge))
                         add(DockTool("Lasso fill", Icons.Outlined.FormatColorFill, onLassoFill))
@@ -118,3 +120,16 @@ private fun DockCell(description: String, selected: Boolean, extent: Float, besi
 }
 
 private data class DockTool(val label: String, val icon: ImageVector, val action: () -> Unit)
+
+
+private val EraserIcon by lazy {
+    ImageVector.Builder("Eraser", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.8f,
+            strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round) {
+            moveTo(3f, 14f); lineTo(14f, 3f); lineTo(21f, 10f)
+            lineTo(11f, 20f); lineTo(9f, 20f); close()
+            moveTo(7f, 10f); lineTo(14f, 17f)
+            moveTo(10f, 20f); lineTo(21f, 20f)
+        }
+    }.build()
+}

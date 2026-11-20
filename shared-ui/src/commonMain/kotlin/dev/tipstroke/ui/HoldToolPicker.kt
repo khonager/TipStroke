@@ -86,7 +86,7 @@ fun HoldToolPicker(
             Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 4.dp) {
                 Column {
                     labels.indices.chunked(columns).forEach { row ->
-                        Row {
+                        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr) { Row {
                             row.forEach { index ->
                                 Box(Modifier.size(cell)
                                     .background(if (hovered == index) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
@@ -95,7 +95,7 @@ fun HoldToolPicker(
                                     .semantics { contentDescription = labels[index] },
                                     contentAlignment = Alignment.Center) { toolIcon(index) }
                             }
-                        }
+                        } }
                     }
                     // Reserve the caption line so dwelling never moves the targets under the pointer.
                     Text(hint?.let(labels::get) ?: "", Modifier.width(cell * columns).padding(horizontal = 6.dp),

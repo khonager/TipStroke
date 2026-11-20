@@ -239,7 +239,11 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         view.addSubview(palette)
         palette.anchor = anchor
         palette.onClose = { [weak self] in self?.palette?.removeFromSuperview(); self?.palette = nil }
-        palette.add("Eraser", "eraser") { [weak self] in self?.toggleEraser() }
+        palette.add("Eraser", "eraser") { [weak self] in
+            guard let self else { return }
+            if self.viewport.canvas.tool != .eraser { self.toggleEraser() }
+            else { self.viewport.canvas.mode = .paint }
+        }
         let modes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
             (.ribbon, "scribble.variable"), (.colorPush, "arrow.up.and.down.and.arrow.left.and.right"),
             (.pixel, "pencil"), (.pixelLine, "line.diagonal"), (.dither, "circle.grid.3x3.fill"), (.fill, "paintbrush")]
