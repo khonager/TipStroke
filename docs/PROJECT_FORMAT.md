@@ -56,13 +56,13 @@ Version 5 adds optional `stretchX`, `stretchY` (positive finite floats, default 
 
 ## iOS local projects (separate format)
 
-iOS writes `format: "dev.tipstroke.ios.raster"`, `schemaVersion: 3`, and continues
-reading versions 1 and 2. Version 2 adds stable blend-mode names (matching `LayerBlendMode`),
+iOS writes `format: "dev.tipstroke.ios.raster"` and selects schema 4–7 according
+to the document contents. The reader accepts versions 1–7. Version 2 adds stable blend-mode names (matching `LayerBlendMode`),
 `locked` and `alphaLocked`; absent fields in version 1 default to NORMAL/false/false.
 Existing documents are upgraded on their next successful save. Unknown schema
 versions and blend modes fail validation rather than being silently flattened.
-This is not Android schema version 1 and is not a `.tipstroke` interchange format.
-It lives under Application Support/TipStroke in the app sandbox:
+The editable Android archive is generated on export. The local revision lives
+under Application Support/TipStroke in the app sandbox.
 
 ```text
 <document UUID>/current                       # atomic revision UUID pointer
@@ -75,8 +75,8 @@ It lives under Application Support/TipStroke in the app sandbox:
 The manifest stores identity, name, finite dimensions, modified date, selected
 layer ID and back-to-front layer metadata (ID, name, visibility, opacity, blend
 mode, lock flags and tile coordinates). Tiles are 256×256 sRGB PNGs; unallocated pixels are transparent over
-configurable paper. Dimensions are 16–4096 px per side, with at most 32 layers and
-512 allocated tile references across all frames. Undo history is transient.
+configurable paper. Dimensions are 16–8192 px per side, with at most 32 layers and
+512 resident tiles. Other cels can use private disk-backed tile files. Undo history is transient.
 
 Apple schema 3 adds clipping-source IDs, a reference-strokes flag, optional paper
 color/opacity and an optional animation record. Animation stores stable frame IDs,
@@ -85,7 +85,7 @@ and layer tile keys. The selected frame uses the ordinary layer directories;
 other frames use `frames/`. The selected frame's manifest tile lists must match
 its ordinary layer lists. Loading validates every frame and all tile budgets,
 rejecting missing pixels instead of opening a partial animation. Animated documents
-currently have at most 240 frames. Reference-stroke coverage constrains subsequent
+support up to 10,000 frames. Reference-stroke coverage constrains subsequent
 painting without changing export visibility. At most one reference is allowed;
 clipping sources must precede their dependent layers.
 
@@ -95,8 +95,8 @@ after publication; unpublished initial revisions are excluded from the gallery.
 Open validates versions, dimensions, IDs, opacity, coordinate ranges, counts and
 PNG dimensions, and fails explicitly on missing/corrupt tiles. An unreadable
 project is preserved rather than overwritten with blank artwork. Process death
-can still lose edits whose save has not completed. iOS project transfer is not
-implemented; PNG, GIF and MP4 exports are flattened media, not editable projects.
+can still lose edits whose save has not completed. Both hosts exchange editable `.tipstroke` archives. PNG, GIF and MP4 exports
+contain the rendered artwork.
 
 Process version 2 adds action 5 to clear an individual raster store before a replacement baseline. Layer metadata may name a separate raster `store`, and `stores` retains inactive animation drawings in the bounded replay cache. Layer IDs and clipping relationships remain unchanged. Animated projects establish a fresh exact baseline when reopened so runtime store aliases need not be persisted.
 
@@ -230,7 +230,7 @@ preserves metadata. Missing referenced layers disable regeneration without delet
 existing output. Duplicating a whole set remaps references to duplicated input IDs;
 duplicating only output shares its original inputs.
 
-The separate iOS raster format is now schema 4 (reads 1–4). A layer may store an
+The iOS raster format introduced colorize masks in schema 4. A layer may store an
 optional `colorizeMask` string encoded by the shared version-1 ColorizeMaskCodec.
 It links stable UUIDs of ordinary saved line-art/hints layers. Generated pixels
 remain authoritative. Missing inputs prevent regeneration without losing output;
