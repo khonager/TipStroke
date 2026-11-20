@@ -158,7 +158,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             let existed = displayTiles[key] != nil
             if existed, let dirty, !document.mirrorTransforms.contains(where: { dirty.applying($0).intersects(key.rect) }) { continue }
             let onion = document.record.animation?.onionSkin == true
-            guard onion || snapshot.record.layers.contains(where: { $0.visible && snapshot.pixels[$0.id]?[key] != nil }) else {
+            guard onion || snapshot.record.layers.contains(where: { $0.visible && (snapshot.pixels[$0.id]?[key] != nil || $0.photo?.bounds.intersects(key.rect) == true) }) else {
                 displayTiles.removeValue(forKey: key)?.removeFromSuperlayer(); continue
             }
             do {
@@ -211,14 +211,14 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             do { shadowTiles = try document.shadowSource(color: brushColor.withAlphaComponent(brushOpacity)) }
             catch { shadowPull = false; onError?(error); return }
         }
-        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull, brushAids: mode != .colorPush && !shadowPull) { return }
+        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull, brushAids: mode != .colorPush && !shadowPull, photoErase: mode == .paint && tool == .eraser && !shadowPull) { return }
         pointer = touch; previous = nil; previousTimestamp = -1
         let first = vanishingPoint1 ?? CGPoint(x: bounds.width * 0.25, y: bounds.height * 0.35)
         let second = vanishingPoint2 ?? CGPoint(x: bounds.width * 0.75, y: bounds.height * 0.35)
         let scale = (superview as? UIScrollView)?.zoomScale ?? 1
         magneticRuler = mode == .paint && perspectiveMode > 0 ? NativePerspectiveRuler(mode: Int32(perspectiveMode), x1: Float(first.x), y1: Float(first.y), x2: Float(second.x), y2: Float(second.y), threshold: Float(4 / scale)) : nil
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
-        stampPath = brush.usesStamps ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
+        stampPath = brush.usesStamps && !(tool == .eraser && document.activePhoto != nil) ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
         strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
         if liveFill || shadowPull || mode == .colorPush {

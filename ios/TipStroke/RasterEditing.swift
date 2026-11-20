@@ -183,6 +183,11 @@ extension RasterDocument {
     func transformSelection(_ transform: CGAffineTransform, copy: Bool = false) throws {
         guard abs(transform.determinant) > 0.00001, transform.a.isFinite, transform.b.isFinite,
               transform.c.isFinite, transform.d.isFinite, transform.tx.isFinite, transform.ty.isFinite else { return }
+        if let photo = activePhoto {
+            guard !copy else { throw DrawingError.message("Duplicate the photo layer to make a copy.") }
+            try transformPhoto(photo.transform.concatenating(transform))
+            return
+        }
         let selected = selection
         let sourceBounds = selected?.inverted == true ? bounds : (selected?.path.boundingBoxOfPath ?? bounds).intersection(bounds)
         let sourceKeys = TileKey.intersecting(sourceBounds, width: record.width, height: record.height).filter { pixels[activeLayer]?[$0] != nil }
@@ -202,7 +207,7 @@ extension RasterDocument {
             Self.draw(pixels[activeLayer]![key]!, in: context, rect: key.rect)
             cutouts[key] = context.makeImage()
         }
-        guard beginStroke() else { return }
+        guard beginStroke(mirrored: false, brushAids: false) else { return }
         do {
             if !copy {
                 try editTiles(in: sourceBounds, erasing: true) { context in context.fill(sourceBounds) }

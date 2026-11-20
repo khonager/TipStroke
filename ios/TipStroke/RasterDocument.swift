@@ -50,7 +50,12 @@ final class RasterDocument {
             }
             // Metadata copies dictionaries and retains immutable images, never copies bitmap bytes.
             let retained = images(oldMetadata).symmetricDifference(images(newMetadata)).count
-            return (before.count + after.count + retained) * RasterDocument.tileBytes + (oldMetadata == nil ? 0 : 256)
+            let oldSources = oldMetadata?.record.photoSources ?? [:]
+            let newSources = newMetadata?.record.photoSources ?? [:]
+            let retainedSources = Set(oldSources.keys).symmetricDifference(newSources.keys).reduce(0) {
+                $0 + ((oldSources[$1] ?? newSources[$1])?.bytes ?? 0)
+            }
+            return retainedSources + (before.count + after.count + retained) * RasterDocument.tileBytes + (oldMetadata == nil ? 0 : 256)
         }
     }
     private enum TileState {
@@ -78,7 +83,7 @@ final class RasterDocument {
 
     func snapshot() -> DocumentSnapshot {
         var saved = record
-        saved.schemaVersion = 4
+        saved.schemaVersion = saved.layers.contains(where: { $0.photo != nil }) ? 5 : 4
         saved.modified = Date()
         for index in saved.layers.indices {
             saved.layers[index].tiles = Array((pixels[saved.layers[index].id] ?? [:]).keys)
@@ -99,9 +104,9 @@ final class RasterDocument {
         return DocumentSnapshot(record: saved, pixels: pixels, frames: frames)
     }
 
-    func beginStroke(mirrored: Bool = true, brushAids: Bool = true) -> Bool {
+    func beginStroke(mirrored: Bool = true, brushAids: Bool = true, photoErase: Bool = false) -> Bool {
         guard strokeLayer == nil, metadataBefore == nil,
-              let layer = record.layers.first(where: { $0.id == activeLayer }), layer.visible, !layer.locked, layer.opacity > 0 else { return false }
+              let layer = record.layers.first(where: { $0.id == activeLayer }), layer.visible, !layer.locked, layer.opacity > 0, layer.photo == nil || photoErase else { return false }
         strokePaintInside = paintInside && brushAids
         let paintingColorHints = record.layers.contains { candidate in
             guard let text = candidate.colorizeMask, let recipe = try? NativeColorizeRecipe.companion.decode(text: text) else { return false }
@@ -159,11 +164,16 @@ final class RasterDocument {
         let referenceID = strokeReferenceID
         let alphaLocked = strokePaintInside || record.layers.first { $0.id == layer }?.alphaLocked == true || referenceID == layer
         if erasing && alphaLocked { return }
+        if let photo = activePhoto {
+            guard erasing, referenceID == nil else { return }
+            try erasePhotoMask(photo, affected: keys, draw: draw)
+            return
+        }
         let transforms = mirrorTransforms
         let expanded = Set(keys.flatMap { key in transforms.flatMap { TileKey.intersecting(key.rect.applying($0), width: record.width, height: record.height) } })
         let keys = expanded.filter { key in
             ((!erasing && !alphaLocked) || pixels[layer]?[key] != nil) &&
-                (referenceID == nil || pixels[referenceID!]?[key] != nil)
+                (referenceID == nil || pixels[referenceID!]?[key] != nil || record.layers.first(where: { $0.id == referenceID })?.photo?.bounds.intersects(key.rect) == true)
         }
         let newKeys = keys.filter { before[$0] == nil }
         guard (before.count + newKeys.count) * Self.tileBytes * 2 <= Self.historyBudget else {
@@ -194,6 +204,33 @@ final class RasterDocument {
             }
             guard let image = context.makeImage() else { throw DrawingError.message("Could not allocate a painting tile.") }
             pixels[layer, default: [:]][key] = image
+        }
+    }
+    private func erasePhotoMask(_ photo: PhotoLayerRecord, affected: [TileKey], draw: (CGContext) throws -> Void) throws {
+        let inverse = photo.transform.inverted()
+        let keys = Set(affected.flatMap { key in mirrorTransforms.flatMap { mirror in
+            TileKey.intersecting(key.rect.applying(mirror).applying(inverse), width: photo.width, height: photo.height)
+        } })
+        guard (before.count + keys.filter({ before[$0] == nil }).count) * Self.tileBytes * 2 <= Self.historyBudget,
+              residentTileCount + keys.filter({ pixels[activeLayer]?[$0] == nil }).count <= Self.maximumTiles else {
+            throw DrawingError.message("This erase exceeds the image editing budget.")
+        }
+        for key in keys {
+            let old = pixels[activeLayer]?[key]
+            if before[key] == nil { before[key] = old.map(TileState.image) ?? .empty }
+            let context = try Self.context(width: 256, height: 256)
+            if let old { Self.draw(old, in: context, rect: CGRect(origin: .zero, size: key.rect.size)) }
+            context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
+            context.clip(to: photo.sourceBounds)
+            context.concatenate(inverse)
+            context.clip(to: bounds)
+            selection?.clip(context, bounds: bounds)
+            for mirror in mirrorTransforms {
+                context.saveGState(); context.concatenate(mirror)
+                try draw(context); context.restoreGState()
+            }
+            guard let mask = context.makeImage() else { throw DrawingError.message("Could not render the erase mask.") }
+            pixels[activeLayer, default: [:]][key] = mask
         }
     }
     func replaceTiles(_ tiles: [TileKey: CGImage]) throws {
@@ -381,7 +418,7 @@ final class RasterDocument {
         var changedTiles = 0
         func cropped(_ original: [UUID: [TileKey: CGImage]]) throws -> [UUID: [TileKey: CGImage]] {
             var replacement = original
-            for (id, tiles) in original {
+            for (id, tiles) in original where record.layers.first(where: { $0.id == id })?.photo == nil {
                 for (key, image) in tiles where !bounds.contains(key.rect) {
                     changedTiles += 1
                     guard changedTiles * Self.tileBytes * 2 + 256 <= Self.historyBudget else { throw DrawingError.message("This crop exceeds the undo budget.") }
@@ -423,8 +460,11 @@ final class RasterDocument {
         context.restoreGState()
     }
     static func layerTile(_ snapshot: DocumentSnapshot, id: UUID, key: TileKey, depth: Int = 0) throws -> CGImage? {
-        guard depth < 32, let layer = snapshot.record.layers.first(where: { $0.id == id }), layer.visible,
-              let image = snapshot.pixels[id]?[key] else { return nil }
+        guard depth < 32, let layer = snapshot.record.layers.first(where: { $0.id == id }), layer.visible else { return nil }
+        let image: CGImage?
+        if let photo = layer.photo { image = try photo.tile(key, masks: snapshot.pixels[id] ?? [:]) }
+        else { image = snapshot.pixels[id]?[key] }
+        guard let image else { return nil }
         guard let source = layer.clipSource else { return image }
         guard let mask = try layerTile(snapshot, id: source, key: key, depth: depth + 1) else { return nil }
         let context = try Self.context(width: 256, height: 256)
@@ -446,7 +486,8 @@ final class RasterDocument {
     }
     var residentTileCount: Int {
         let selectedFrame = record.animation.map { $0.frames[$0.selectedIndex].id }
-        return pixels.values.reduce(0) { $0 + $1.count } + framePixels.filter { $0.key != selectedFrame }.values.reduce(0) { count, layers in
+        let photoTiles = record.photoSources.values.reduce(0) { $0 + ($1.bytes + Self.tileBytes - 1) / Self.tileBytes }
+        return photoTiles + pixels.values.reduce(0) { $0 + $1.count } + framePixels.filter { $0.key != selectedFrame }.values.reduce(0) { count, layers in
             count + layers.values.reduce(0) { $0 + $1.count }
         }
     }
@@ -455,7 +496,11 @@ final class RasterDocument {
         let lower = record.layers[index - 1]
         guard !lower.locked else { throw DrawingError.message("The lower layer is locked.") }
         let snapshot = snapshot()
-        let keys = Set((pixels[id] ?? [:]).keys).union((pixels[lower.id] ?? [:]).keys)
+        func renderedKeys(_ layer: LayerRecord) -> Set<TileKey> {
+            if let photo = layer.photo { return Set(TileKey.intersecting(photo.bounds, width: record.width, height: record.height)) }
+            return Set((pixels[layer.id] ?? [:]).keys)
+        }
+        let keys = renderedKeys(record.layers[index]).union(renderedKeys(lower))
         guard keys.count * Self.tileBytes * 3 + 256 <= Self.historyBudget else { throw DrawingError.message("Merge exceeds the undo budget.") }
         var merged: [TileKey: CGImage] = [:]
         for key in keys {
@@ -471,6 +516,7 @@ final class RasterDocument {
         beginMetadataEdit()
         pixels[lower.id] = merged; pixels[id] = nil
         record.layers.remove(at: index); record.layers[index - 1].opacity = 1; record.layers[index - 1].blendMode = "NORMAL"
+        record.layers[index - 1].photo = nil
         record.layers[index - 1].clipSource = nil; record.selectedLayer = lower.id
         for i in record.layers.indices where record.layers[i].clipSource == id { record.layers[i].clipSource = lower.id }
         endMetadataEdit()

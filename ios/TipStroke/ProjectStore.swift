@@ -37,8 +37,31 @@ final class ProjectStore {
         return record
     }
     func load(_ id: UUID) throws -> DocumentSnapshot {
-        let record = try metadata(id)
+        var record = try metadata(id)
         let directory = try revision(id)
+        var sources: [UUID: PhotoSource] = [:]
+        let activeTiles = record.layers.reduce(0) { $0 + $1.tiles.count }
+        let otherTiles = record.animation.map { animation in
+            animation.frames.enumerated().filter { $0.offset != animation.selectedIndex }.reduce(0) { result, item in
+                result + item.element.tiles.values.reduce(0) { $0 + $1.count }
+            }
+        } ?? 0
+        var sourceBytes = (activeTiles + otherTiles) * RasterDocument.tileBytes
+        for index in record.layers.indices {
+            guard var photo = record.layers[index].photo else { continue }
+            if sources[photo.sourceID] == nil {
+                let url = directory.appendingPathComponent("photos").appendingPathComponent(photo.sourceID.uuidString + ".png")
+                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                let bytes = photo.width * photo.height * 4
+                guard size >= 0, size <= RasterDocument.historyBudget, sourceBytes + bytes + size <= RasterDocument.maximumTiles * RasterDocument.tileBytes else {
+                    throw DrawingError.message("Photo sources exceed the drawing memory budget.")
+                }
+                sources[photo.sourceID] = try PhotoSource(file: url, width: photo.width, height: photo.height)
+                sourceBytes += bytes + size
+            }
+            photo.source = sources[photo.sourceID]
+            record.layers[index].photo = photo
+        }
         var pixels: [UUID: [TileKey: CGImage]] = [:]
         func readTile(_ url: URL) throws -> CGImage {
             guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -83,6 +106,17 @@ final class ProjectStore {
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         var published = false
         defer { if !published { try? fm.removeItem(at: staging) } }
+        let sources = snapshot.record.photoSources
+        if !sources.isEmpty {
+            let photos = staging.appendingPathComponent("photos", isDirectory: true)
+            try fm.createDirectory(at: photos, withIntermediateDirectories: false)
+            for (id, source) in sources {
+                try source.png.write(to: photos.appendingPathComponent(id.uuidString + ".png"))
+            }
+        }
+        guard snapshot.record.layers.allSatisfy({ $0.photo == nil || $0.photo?.source != nil }) else {
+            throw DrawingError.message("A photo source is missing.")
+        }
         for layer in snapshot.record.layers {
             let target = staging.appendingPathComponent(layer.id.uuidString, isDirectory: true)
             try fm.createDirectory(at: target, withIntermediateDirectories: true)

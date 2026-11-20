@@ -30,11 +30,12 @@ struct LayerRecord: Codable, Identifiable, Equatable {
     var locked = false
     var alphaLocked = false
     var clipSource: UUID?
+    var photo: PhotoLayerRecord?
     var colorizeMask: String?
     var reference = false
 
     init() {}
-    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked, clipSource, reference, colorizeMask }
+    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked, clipSource, reference, colorizeMask, photo }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
@@ -46,6 +47,7 @@ struct LayerRecord: Codable, Identifiable, Equatable {
         locked = try values.decodeIfPresent(Bool.self, forKey: .locked) ?? false
         alphaLocked = try values.decodeIfPresent(Bool.self, forKey: .alphaLocked) ?? false
         clipSource = try values.decodeIfPresent(UUID.self, forKey: .clipSource)
+        photo = try values.decodeIfPresent(PhotoLayerRecord.self, forKey: .photo)
         colorizeMask = try values.decodeIfPresent(String.self, forKey: .colorizeMask)
         reference = try values.decodeIfPresent(Bool.self, forKey: .reference) ?? false
     }
@@ -67,7 +69,7 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
     var backgroundOpacity: Double?
 
     func validate() throws {
-        guard format == "dev.tipstroke.ios.raster", (1...4).contains(schemaVersion) else {
+        guard format == "dev.tipstroke.ios.raster", (1...5).contains(schemaVersion) else {
             throw DrawingError.message("This drawing uses an unsupported project format.")
         }
         guard (16...4096).contains(width), (16...4096).contains(height),
@@ -89,6 +91,8 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
         guard layers.filter({ $0.reference }).count <= 1 else { throw DrawingError.message("Only one reference layer is supported.") }
         var tileCount = 0
         for (index, layer) in layers.enumerated() {
+            try layer.photo?.validate()
+            let tileWidth = layer.photo?.width ?? width, tileHeight = layer.photo?.height ?? height
             if let mask = layer.colorizeMask {
                 let recipe = try NativeColorizeRecipe.companion.decode(text: mask)
                 guard UUID(uuidString: recipe.lineArtId) != nil, UUID(uuidString: recipe.hintsId) != nil else { throw DrawingError.message("Invalid colorize layer IDs.") }
@@ -96,7 +100,7 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
             if let source = layer.clipSource, !layers.prefix(index).contains(where: { $0.id == source }) { throw DrawingError.message("Invalid clipping source.") }
             guard RasterDocument.blendModes[layer.blendMode] != nil, layer.opacity.isFinite, (0...1).contains(layer.opacity),
                   Set(layer.tiles).count == layer.tiles.count,
-                  layer.tiles.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (width + 255) / 256 && $0.y < (height + 255) / 256 }) else {
+                  layer.tiles.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (tileWidth + 255) / 256 && $0.y < (tileHeight + 255) / 256 }) else {
                 throw DrawingError.message("This drawing has invalid layer metadata.")
             }
             tileCount += layer.tiles.count
@@ -105,8 +109,10 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
             let layerIDs = Set(layers.map { $0.id.uuidString })
             for (index, frame) in animation.frames.enumerated() {
                 for (layerID, keys) in frame.tiles {
+                    let photo = layers.first(where: { $0.id.uuidString == layerID })?.photo
+                    let tileWidth = photo?.width ?? width, tileHeight = photo?.height ?? height
                     guard layerIDs.contains(layerID), Set(keys).count == keys.count,
-                          keys.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (width + 255) / 256 && $0.y < (height + 255) / 256 }) else {
+                          keys.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (tileWidth + 255) / 256 && $0.y < (tileHeight + 255) / 256 }) else {
                         throw DrawingError.message("Invalid animation tile metadata.")
                     }
                     if index != animation.selectedIndex || animation.sharedLayerIDs.contains(UUID(uuidString: layerID)!) { tileCount += keys.count }

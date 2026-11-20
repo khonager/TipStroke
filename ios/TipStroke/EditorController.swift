@@ -402,22 +402,22 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if let grain = importingBrushTexture { importingBrushTexture = nil; importBrushTexture(url, grain: grain); return }
         // Decode and downsample off the input thread. Editing pauses while the new layer is prepared.
         view.isUserInteractionEnabled = false
-        let width = document.record.width, height = document.record.height
         store.queue.async {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            let result = Result { () -> [TileKey: CGImage] in
+            let result = Result { () -> PhotoSource in
                 guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
                     let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                         kCGImageSourceCreateThumbnailFromImageAlways: true,
                         kCGImageSourceCreateThumbnailWithTransform: true,
-                        kCGImageSourceThumbnailMaxPixelSize: max(width, height)
+                        kCGImageSourceShouldCacheImmediately: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 4096
                     ] as CFDictionary) else { throw DrawingError.message("This image could not be opened.") }
-                return try RasterDocument.imageTiles(image, width: width, height: height)
+                return try PhotoSource(image: image)
             }
             DispatchQueue.main.async {
                 self.view.isUserInteractionEnabled = true
-                do { try self.document.importTiles(result.get(), name: url.deletingPathExtension().lastPathComponent); self.changed() }
+                do { try self.document.importPhoto(result.get(), name: url.deletingPathExtension().lastPathComponent); self.changed() }
                 catch { self.showError(error) }
             }
         }

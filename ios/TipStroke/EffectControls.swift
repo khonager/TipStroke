@@ -2,6 +2,7 @@ import UIKit
 
 extension EditorController {
     func effectMenu() {
+        guard document.activePhoto == nil else { showError(DrawingError.message("Select a paint layer for Blur & bloom.")); return }
         let menu = UIAlertController(title: "Blur & bloom", message: "Affects the active paint layer and current selection. Preview before applying.", preferredStyle: .actionSheet)
         for (index, title) in ["Gaussian blur", "Motion blur", "Perspective blur", "Bloom"].enumerated() {
             menu.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in self?.effectSettings(index, title: title) })

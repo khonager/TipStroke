@@ -18,7 +18,7 @@ extension RasterDocument {
         return recipe
     }
     func createColorizeMask() throws -> UUID {
-        guard record.animation == nil, record.layers.count <= 30,
+        guard record.animation == nil, activePhoto == nil, record.layers.count <= 30,
               let index = record.layers.firstIndex(where: { $0.id == activeLayer }), record.layers[index].visible else {
             throw DrawingError.message("Colorize requires a visible line-art layer in a still drawing and two free layer slots.")
         }
