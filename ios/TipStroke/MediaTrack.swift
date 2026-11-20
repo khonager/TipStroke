@@ -474,9 +474,21 @@ struct AnimationRenderPlan {
             let count = Int(ceil(Double(length) * rate / 1e6))
             guard (1...36_000).contains(count) else { throw DrawingError.message("This animation exceeds the export frame limit.") }
             fps = rate; durationUs = length
+            let timed = a.frames.indices.filter { a.frames[$0].sourceTimeUs != nil }.sorted { lhs, rhs in
+                let left = a.frames[lhs].sourceTimeUs!, right = a.frames[rhs].sourceTimeUs!
+                return left == right ? lhs < rhs : left < right
+            }
+            var upcoming = 0
             samples = (0..<count).map { i in
                 let t = Int64(Double(i) / rate * 1e6), end = min(length, Int64(Double(i + 1) / rate * 1e6))
-                return ExportSample(frame: a.coverageIndex(at: t), startUs: t, durationUs: end-t, ticks: 1)
+                while upcoming < timed.count && a.frames[timed[upcoming]].sourceTimeUs! <= t { upcoming += 1 }
+                var active: Int?
+                if upcoming > 0 {
+                    let candidate = timed[upcoming - 1], frame = a.frames[candidate]
+                    let hold = frame.durationUs ?? Int64(frame.exposure) * 1_000_000 / Int64(a.fps)
+                    if t - frame.sourceTimeUs! < hold { active = candidate }
+                }
+                return ExportSample(frame: active, startUs: t, durationUs: end-t, ticks: 1)
             }
         } else {
             reader = nil; fps = Double(a.fps)
@@ -495,7 +507,7 @@ struct AnimationRenderPlan {
         drawing.record.media?.positionUs = sample.startUs
         let rect = CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height)
         try reader?.draw(time: sample.startUs, canvas: rect, in: context)
-        try RasterDocument.composite(drawing, in: context, visible: rect)
+        try RasterDocument.composite(drawing, in: context, visible: rect, drawingGap: sample.frame == nil)
     }
     func image(_ sample: ExportSample) throws -> CGImage {
         let context = try RasterDocument.context(width: snapshot.record.width, height: snapshot.record.height)

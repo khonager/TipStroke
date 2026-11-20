@@ -271,6 +271,8 @@ extension ProjectStore {
         let plan = try AnimationRenderPlan(snapshot, smooth: smooth)
         let order = plan.samples
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("TipStroke-\(UUID().uuidString).gif")
+        var finished = false
+        defer { if !finished { try? FileManager.default.removeItem(at: url) } }
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, order.count, nil) else {
             throw DrawingError.message("Could not create the animation export.")
         }
@@ -278,11 +280,14 @@ extension ProjectStore {
             CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         }
         for segment in order {
-            let image = try plan.image(segment)
-            let delay = Double(segment.durationUs) / 1e6
-            CGImageDestinationAddImage(destination, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay, kCGImagePropertyGIFUnclampedDelayTime: delay]] as CFDictionary)
+            try autoreleasepool {
+                let image = try plan.image(segment)
+                let delay = Double(segment.durationUs) / 1e6
+                CGImageDestinationAddImage(destination, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay, kCGImagePropertyGIFUnclampedDelayTime: delay]] as CFDictionary)
+            }
         }
-        guard CGImageDestinationFinalize(destination) else { try? FileManager.default.removeItem(at: url); throw DrawingError.message("Could not finish the animation export.") }
+        guard CGImageDestinationFinalize(destination) else { throw DrawingError.message("Could not finish the animation export.") }
+        finished = true
         return url
     }
 }

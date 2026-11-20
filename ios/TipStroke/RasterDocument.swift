@@ -662,11 +662,11 @@ final class RasterDocument {
         context.setAlpha(snapshot.record.layers.first(where: { $0.id == source })?.opacity ?? 1)
         draw(mask, in: context, rect: rect); return context.makeImage()
     }
-    static func composite(_ snapshot: DocumentSnapshot, in context: CGContext, visible: CGRect, excluding: Set<UUID> = [], exportPhotoDetail: Bool = false) throws {
+    static func composite(_ snapshot: DocumentSnapshot, in context: CGContext, visible: CGRect, excluding: Set<UUID> = [], exportPhotoDetail: Bool = false, drawingGap: Bool? = nil) throws {
         context.saveGState()
         defer { context.restoreGState() }
         context.clip(to: CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height))
-        let gap = snapshot.record.media.map { media in
+        let gap = drawingGap ?? snapshot.record.media.map { media in
             guard let animation = snapshot.record.animation else { return true }
             return animation.coverageIndex(at: media.positionUs) != animation.selectedIndex
         } ?? false
