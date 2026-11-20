@@ -441,14 +441,15 @@ final class RasterDocument {
         guard metadataBefore == nil, strokeLayer == nil else { return }
         metadataBefore = Metadata(record: record, pixels: pixels, frames: framePixels, coldFrames: coldFrames)
     }
-    func endMetadataEdit(force: Bool = false) {
+    func endMetadataEdit(force: Bool = false, movedSelection: (CanvasSelection, CanvasSelection)? = nil) {
         guard let old = metadataBefore else { return }
         metadataBefore = nil
         guard force || old.record != record else { return }
         revision &+= 1
         redoStack = []
-        undoStack.append(Edit(layer: activeLayer, before: [:], after: [:], oldMetadata: old,
+        undoStack.append(Edit(layer: activeLayer, before: [:], after: [:], movedSelection: movedSelection, oldMetadata: old,
                               newMetadata: Metadata(record: record, pixels: pixels, frames: framePixels, coldFrames: coldFrames)))
+        if let movedSelection { selection = movedSelection.1 }
         trimHistory()
     }
     func duplicateLayer(_ id: UUID) throws {

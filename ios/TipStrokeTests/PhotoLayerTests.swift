@@ -95,6 +95,30 @@ final class PhotoLayerTests: XCTestCase {
         restored.selectFrame(1); XCTAssertEqual(restored.activePhoto?.transform,moved)
         restored.selectFrame(0); XCTAssertEqual(restored.activePhoto?.transform,initial)
     }
+    func testOneTransformMovesBothPaintLayersAndUndoRestoresBoth() throws {
+        let doc = RasterDocument(name:"Group transform",width:256,height:256)
+        let first = doc.activeLayer
+        for x in [30, 60] {
+            if x == 60 { XCTAssertTrue(doc.addLayer()) }
+            XCTAssertTrue(doc.beginStroke())
+            let point = CGPoint(x:x,y:40)
+            _ = try doc.paint(from:point,to:point,radius:4,color:.red,erasing:false)
+            doc.endStroke(cancelled:false)
+        }
+        let second = doc.activeLayer
+        doc.chooseLayers([first,second])
+        let session = try SelectionTransformSession(document:doc)
+        session.geometry = session.initial.dragged(tool:.move,from:.zero,to:CGPoint(x:10,y:20),divisions:4,radius:24)
+        try session.apply(to:doc,copy:false)
+        for (id,x) in [(first,30),(second,60)] {
+            let pixels = TilePixels(doc.pixels[id] ?? [:])
+            XCTAssertEqual(try pixels.rgba(x,40) & 255,0)
+            XCTAssertEqual(try pixels.rgba(x+10,60) & 255,255)
+        }
+        doc.undo()
+        XCTAssertEqual(try TilePixels(doc.pixels[first] ?? [:]).rgba(30,40) & 255,255)
+        XCTAssertEqual(try TilePixels(doc.pixels[second] ?? [:]).rgba(60,40) & 255,255)
+    }
     func testFitAndSnapRespectCanvasCoordinates() {
         let canvas = CGRect(x:0,y:0,width:200,height:100)
         let shape = TransformGeometry(rect:CGRect(x:0,y:0,width:50,height:50))

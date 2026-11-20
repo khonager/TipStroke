@@ -15,7 +15,7 @@ final class TransformController: UIViewController {
     required init?(coder: NSCoder) { fatalError("Use init(document:session:)") }
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = session.photo == nil ? "Transform selection" : "Transform photo"
+        title = session.singlePhoto ? "Transform photo" : "Transform selection"
         view.backgroundColor = .systemBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Apply", primaryAction: UIAction { [weak self] _ in
@@ -65,7 +65,7 @@ final class TransformController: UIViewController {
                 UIAction(title: "\(Int(100*value))%", state: self.editor.snapStrength == value ? .on : .off) { _ in self.editor.snapStrength = value }
             })
             var items: [UIMenuElement] = [grid,radius,filter,flipX,flipY,rotate,fit,exact,snap,snapAngles,strength,reset]
-            if self.session.photo == nil {
+            if self.session.photos.isEmpty {
                 items.append(UIAction(title: "Keep original pixels", state: self.copyPaint ? .on : .off) { _ in self.copyPaint.toggle() })
             }
             complete(items)
