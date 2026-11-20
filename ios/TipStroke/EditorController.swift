@@ -125,6 +125,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         viewport.canvas.onFill = { [weak self] point in self?.fill(at: point) }
         viewport.canvas.onError = { [weak self] error in self?.showError(error) }
+        configureFingerGestures()
         let pencil = UIPencilInteraction(); pencil.delegate = self; viewport.addInteraction(pencil)
         NotificationCenter.default.addObserver(self, selector: #selector(backgrounded), name: UIApplication.willResignActiveNotification, object: nil)
         ProjectStore.shared.queue.async {

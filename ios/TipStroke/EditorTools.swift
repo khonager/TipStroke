@@ -45,6 +45,7 @@ extension EditorController {
         menu.addAction(UIAlertAction(title: "Brush aids", style: .default) { [weak self] _ in self?.brushAids() })
         menu.addAction(UIAlertAction(title: "Selection actions", style: .default) { [weak self] _ in self?.selectionActions() })
         menu.addAction(UIAlertAction(title: "Animation timeline", style: .default) { [weak self] _ in self?.showTimeline() })
+        menu.addAction(UIAlertAction(title: "Finger gestures", style: .default) { [weak self] _ in self?.fingerSettings() })
         menu.addAction(UIAlertAction(title: "Paper color", style: .default) { [weak self] _ in self?.setPaperColor() })
         menu.addAction(UIAlertAction(title: "Resize canvas", style: .default) { [weak self] _ in self?.resizeCanvas() })
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel))

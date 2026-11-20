@@ -65,7 +65,8 @@ are not an Apple SDK build, simulator run or physical Pencil validation.
 - Paper color/opacity, atomic local saves and white/custom-paper or transparent PNG
   sharing. Thumbnail and encoding work runs away from the input thread.
 
-Finger drawing defaults on. Disable **Draw with finger** in brush settings for
+Tools → Finger gestures configures one-finger drag and hold, the hold delay,
+and two- or three-finger tap actions. Finger drawing defaults on. Disable **Draw with finger** in brush settings for
 Pencil-only input. A second finger cancels provisional finger paint and starts
 navigation. Pencil takes priority. Pressureless hardware, fingers and estimated
 force use the constant fallback. No predicted or late-corrected samples are baked
@@ -89,7 +90,7 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | --- | --- |
 | Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation |
 | Creative tools added in this port | Native implementations present; Apple SDK compilation, iPhone/iPad simulator tests and physical Pencil checks still required |
-| Fill and gestures | Animated fill reveal and configurable gesture actions |
+| Fill and gestures | Animated fill reveal |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
 | Animation | Shared background cels, live motion recording, disk-backed long timelines and resolution reduction |
 | Video | Source-backed GIF/video canvases, media playback/scrubbing, clip editing, keyframes, crossfades and coverage navigation |

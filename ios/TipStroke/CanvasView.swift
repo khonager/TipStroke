@@ -11,7 +11,17 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var previewSnapshot: DocumentSnapshot?
     weak var viewport: CanvasViewport?
     let document: RasterDocument
-    var mode: CanvasMode = .paint { didSet { cancelStroke() } }
+    private var selectedMode: CanvasMode = .paint
+    private var fingerSmudge = false
+    var mode: CanvasMode {
+        get { fingerSmudge ? .smudge : selectedMode }
+        set { cancelStroke(); selectedMode = newValue }
+    }
+    private var holdGesture: UILongPressGestureRecognizer!
+    private var commandDrag: UIPanGestureRecognizer!
+    private var dragCommand: FingerCommand = .draw
+    private var holdCommand: FingerCommand = .pick
+    var onFingerHistory: ((FingerCommand) -> Void)?
     var filledShapes = false
     var quickShapes = true
     var elasticLine = false
@@ -120,11 +130,22 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         clipsToBounds = true
         accessibilityLabel = "Drawing canvas"
         let picker = UILongPressGestureRecognizer(target: self, action: #selector(pickColor(_:)))
+        holdGesture = picker
         picker.minimumPressDuration = 0.55
         picker.cancelsTouchesInView = false
         picker.delegate = self
         picker.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
         addGestureRecognizer(picker)
+        commandDrag = UIPanGestureRecognizer(target: self, action: #selector(runDrag(_:)))
+        commandDrag.maximumNumberOfTouches = 1
+        commandDrag.allowedTouchTypes = picker.allowedTouchTypes
+        addGestureRecognizer(commandDrag)
+        let three = UITapGestureRecognizer(target: self, action: #selector(tapHistory(_:)))
+        three.numberOfTouchesRequired = 3; three.allowedTouchTypes = picker.allowedTouchTypes
+        let two = UITapGestureRecognizer(target: self, action: #selector(tapHistory(_:)))
+        two.numberOfTouchesRequired = 2; two.allowedTouchTypes = picker.allowedTouchTypes
+        two.require(toFail: three)
+        addGestureRecognizer(two); addGestureRecognizer(three)
         accessibilityHint = "Draw with one finger or Apple Pencil. Use two fingers to pan and pinch to zoom."
     }
     required init?(coder: NSCoder) { fatalError("Use init(document:)") }
@@ -193,8 +214,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             start(pencil, event: event)
         } else if all.filter({ $0.type == .direct }).count > 1 {
             cancelStroke()
-        } else if pointer == nil, fingerDrawing, let touch = touches.first(where: { $0.type == .direct }) {
+        } else if pointer == nil, fingerDrawing, dragCommand == .draw || dragCommand == .smudge,
+                  let touch = touches.first(where: { $0.type == .direct }) {
+            fingerSmudge = dragCommand == .smudge
             start(touch, event: event)
+            if pointer == nil { fingerSmudge = false }
         }
     }
     private func start(_ touch: UITouch, event: UIEvent?) {
@@ -272,9 +296,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             } catch { document.endStroke(cancelled: true); onError?(error) }
         }
         previewLink?.invalidate(); previewLink = nil
-        self.pointer = nil; previous = nil; shadowPull = false; shadowTiles = [:]
+        let endedMode = mode
+        self.pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
         refresh(); refreshSelection(); onCommit?()
-        if mode == .fill { onFill?(point) }
+        if endedMode == .fill { onFill?(point) }
     }
     func refreshSelection() {
         if perspectiveMode > 0 {
@@ -312,7 +337,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         guard pointer != nil else { shadowPull = false; shadowTiles = [:]; placingMirrorCenter = false; placingVanishingPoint = 0; return }
         holdWork?.cancel(); previewLink?.invalidate(); previewLink = nil
         document.endStroke(cancelled: true)
-        pointer = nil; previous = nil; shadowPull = false; shadowTiles = [:]
+        pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
         refreshSelection()
         refresh()
         onCommit?()
@@ -322,7 +347,33 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     @objc private func pickColor(_ gesture: UILongPressGestureRecognizer) {
         guard pointer?.type != .pencil, gesture.state == .began || gesture.state == .changed else { return }
-        cancelStroke()
+        if gesture.state == .began { cancelFingerStroke() }
+        performFingerCommand(holdCommand, gesture)
+    }
+    func configureInput() {
+        dragCommand = FingerBinding.drag.command; holdCommand = FingerBinding.hold.command
+        holdGesture.isEnabled = holdCommand != .disabled
+        let ms = UserDefaults.standard.integer(forKey: "finger.holdDelay")
+        holdGesture.minimumPressDuration = Double(ms == 0 ? 550 : ms) / 1000
+        commandDrag.isEnabled = [.pick, .undo, .redo].contains(dragCommand)
+        viewport?.panGestureRecognizer.minimumNumberOfTouches = dragCommand == .navigate ? 1 : 2
+    }
+    @objc private func runDrag(_ gesture: UIPanGestureRecognizer) {
+        performFingerCommand(dragCommand, gesture)
+    }
+    @objc private func tapHistory(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended, pointer?.type != .pencil else { return }
+        cancelFingerStroke()
+        let command = (gesture.numberOfTouchesRequired == 2 ? FingerBinding.two : FingerBinding.three).command
+        if command == .undo || command == .redo { onFingerHistory?(command) }
+    }
+    private func performFingerCommand(_ command: FingerCommand, _ gesture: UIGestureRecognizer) {
+        guard pointer?.type != .pencil else { return }
+        if command == .undo || command == .redo {
+            if gesture.state == .began { onFingerHistory?(command) }
+            return
+        }
+        guard command == .pick, gesture.state == .began || gesture.state == .changed else { return }
         do {
             if let color = try document.color(at: gesture.location(in: self)) {
                 brushColor = color; onPickColor?(color)
