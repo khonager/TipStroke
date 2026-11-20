@@ -137,13 +137,13 @@ extension ProjectStore {
         }
         guard Set(ids.layers.values).count == ids.layers.count else { throw PackageIO.invalid }
         var tileCount = 0
-        func readTiles(_ url: URL) throws -> [TileKey: CGImage] {
+        func readTiles(_ url: URL, width: Int, height: Int) throws -> [TileKey: CGImage] {
             guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
             var result: [TileKey: CGImage] = [:]
             for file in try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
                 let indices = file.deletingPathExtension().lastPathComponent.components(separatedBy: "_")
                 guard file.pathExtension == "png", indices.count == 2, let x = Int(indices[0]), let y = Int(indices[1]),
-                      x >= 0, x < (w + 255) / 256, y >= 0, y < (h + 255) / 256,
+                      x >= 0, x < (width + 255) / 256, y >= 0, y < (height + 255) / 256,
                       tileCount < RasterDocument.maximumTiles else { throw PackageIO.invalid }
                 let key = TileKey(x: x, y: y)
                 guard key.fileName == file.lastPathComponent, result[key] == nil,
@@ -159,9 +159,6 @@ extension ProjectStore {
         }
         var pixels: [UUID: [TileKey: CGImage]] = [:]
         state.layers = try layers.map { raw in
-            guard raw["kind"] as? String == "raster" else {
-                throw DrawingError.message("This package contains a source-backed image that cannot yet be imported losslessly.")
-            }
             let key = try identifier(raw)
             var layer = LayerRecord()
             guard let native = ids.layers[key], let name = raw["name"] as? String else { throw PackageIO.invalid }
@@ -182,19 +179,37 @@ extension ProjectStore {
                 }
                 layer.colorizeMask = String(data: try JSONSerialization.data(withJSONObject: recipe), encoding: .utf8)
             }
-            pixels[native] = try readTiles(directory.appendingPathComponent("layers/\(key)/tiles"))
+            switch raw["kind"] as? String {
+            case "raster":
+                pixels[native] = try readTiles(directory.appendingPathComponent("layers/\(key)/tiles"), width: w, height: h)
+            case "image":
+                guard let width = raw["originalWidthPx"] as? Int, let height = raw["originalHeightPx"] as? Int,
+                      (1...4096).contains(width), (1...4096).contains(height) else { throw PackageIO.invalid }
+                let file = directory.appendingPathComponent("assets/\(key).source")
+                let fileBytes = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                let cost = (width * height * 4 + fileBytes + RasterDocument.tileBytes - 1) / RasterDocument.tileBytes
+                guard fileBytes > 0, tileCount + cost <= RasterDocument.maximumTiles else { throw PackageIO.invalid }
+                tileCount += cost
+                let photo = try Self.importPhoto(raw, width: width, height: height, source: PhotoSource(file: file, width: width, height: height))
+                layer.photo = photo
+                pixels[native] = try readTiles(directory.appendingPathComponent("layers/\(key)/mask"), width: width, height: height)
+            default: throw PackageIO.invalid
+            }
             return layer
         }
         state.selectedLayer = (manifest["selectedLayerId"] as? String).flatMap { ids.layers[$0] } ?? state.layers.last?.id
         var frames: [UUID: [UUID: [TileKey: CGImage]]] = [:]
         if let raw = manifest["animation"] as? JSONObject {
             guard raw["media"] == nil || raw["media"] is NSNull,
-                  (raw["imageCels"] as? [Any] ?? []).isEmpty,
-                  (raw["backgroundLayerIds"] as? [Any] ?? []).isEmpty else {
-                throw DrawingError.message("This animation contains media or shared cels that cannot yet be exchanged losslessly.")
+                  (raw["imageCels"] as? [JSONObject] ?? []).allSatisfy({ ($0["frames"] as? [JSONObject])?.isEmpty == true }) else {
+                throw DrawingError.message("This animation contains media or animated image poses that cannot yet be exchanged losslessly.")
             }
             guard let list = raw["frames"] as? [JSONObject], (1...240).contains(list.count) else { throw PackageIO.invalid }
             var timeline = AnimationRecord()
+            timeline.backgroundLayers = try Set((raw["backgroundLayerIds"] as? [String] ?? []).map {
+                guard let id = ids.layers[$0] else { throw PackageIO.invalid }
+                return id
+            })
             timeline.fps = raw["fps"] as? Int ?? 12; timeline.playbackMode = raw["playbackMode"] as? String ?? "LOOP"
             timeline.selectedIndex = raw["selectedIndex"] as? Int ?? 0
             guard list.indices.contains(timeline.selectedIndex) else { throw PackageIO.invalid }
@@ -206,14 +221,16 @@ extension ProjectStore {
                 frame.exposure = item["exposure"] as? Int ?? 1; ids.frames[key] = frame.id
                 if index != timeline.selectedIndex {
                     for (layer, native) in ids.layers {
-                        let tiles = try readTiles(directory.appendingPathComponent("animation/cels/\(layer)/\(key)"))
+                        let tiles = try readTiles(directory.appendingPathComponent("animation/cels/\(layer)/\(key)"), width: w, height: h)
                         if !tiles.isEmpty { frames[frame.id, default: [:]][native] = tiles }
                     }
                 }
                 return frame
             }
+            guard Set(ids.frames.values).count == ids.frames.count else { throw PackageIO.invalid }
             state.animation = timeline
         }
+        guard Set(ids.layers.values).count == ids.layers.count else { throw PackageIO.invalid }
         let snapshot = RasterDocument(snapshot: DocumentSnapshot(record: state, pixels: pixels, frames: frames)).snapshot()
         try save(snapshot)
         let replay = directory.appendingPathComponent("ios-progress")
@@ -308,12 +325,22 @@ extension ProjectStore {
                 }
                 raw["colorizeMask"] = recipe
             } else { raw.removeValue(forKey: "colorizeMask") }
-            try writeTiles(snapshot.pixels[layer.id] ?? [:], "layers/\(id)/tiles")
+            if let photo = layer.photo {
+                guard let source = photo.source else { throw PackageIO.invalid }
+                raw.removeValue(forKey: "warp")
+                raw.merge(Self.exportPhoto(photo)) { _, new in new }
+                raw["kind"] = "image"; raw["originalWidthPx"] = photo.width; raw["originalHeightPx"] = photo.height
+                let assets = target.appendingPathComponent("assets")
+                try fm.createDirectory(at: assets, withIntermediateDirectories: true)
+                try source.png.write(to: assets.appendingPathComponent(id + ".source"), options: .atomic)
+                try writeTiles(snapshot.pixels[layer.id] ?? [:], "layers/\(id)/mask")
+            } else { try writeTiles(snapshot.pixels[layer.id] ?? [:], "layers/\(id)/tiles") }
             return raw
         }
         if let timeline = state.animation {
             var raw = manifest["animation"] as? JSONObject ?? [:]
             let priorFrames = raw["frames"] as? [JSONObject] ?? []
+            raw["backgroundLayerIds"] = (timeline.backgroundLayers ?? []).map(layerID).sorted()
             raw["fps"] = timeline.fps; raw["playbackMode"] = timeline.playbackMode; raw["selectedIndex"] = timeline.selectedIndex
             let wasOn = (raw["onionBefore"] as? Int ?? 0) > 0 || (raw["onionAfter"] as? Int ?? 0) > 0
             if wasOn != timeline.onionSkin {
@@ -326,7 +353,7 @@ extension ProjectStore {
                 var item = priorFrames.first(where: { $0["id"] as? String == id }) ?? [:]
                 item["id"] = id; item["exposure"] = frame.exposure
                 let cels = index == timeline.selectedIndex ? snapshot.pixels : (snapshot.frames[frame.id] ?? [:])
-                for (layer, tiles) in cels { try writeTiles(tiles, "animation/cels/\(layerID(layer))/\(id)") }
+                for (layer, tiles) in cels where state.layers.contains(where: { $0.id == layer && $0.photo == nil }) { try writeTiles(tiles, "animation/cels/\(layerID(layer))/\(id)") }
                 return item
             }
             manifest["animation"] = raw
@@ -358,5 +385,43 @@ extension GalleryController: UIDocumentPickerDelegate {
                 }
             }
         }
+    }
+}
+
+private extension ProjectStore {
+    static func importPhoto(_ raw: JSONObject, width: Int, height: Int, source: PhotoSource) throws -> PhotoLayerRecord {
+        guard let x = raw["centerX"] as? Double, let y = raw["centerY"] as? Double,
+              let scale = raw["scale"] as? Double, scale.isFinite, scale > 0 else { throw PackageIO.invalid }
+        let angle = (raw["rotationDegrees"] as? Double ?? 0) * .pi / 180
+        let sx = scale * (raw["stretchX"] as? Double ?? 1), sy = scale * (raw["stretchY"] as? Double ?? 1)
+        let transform = CGAffineTransform(translationX: x, y: y).rotated(by: angle)
+            .scaledBy(x: sx, y: sy).translatedBy(x: -CGFloat(width) / 2, y: -CGFloat(height) / 2)
+        var photo = PhotoLayerRecord(width: width, height: height, transform: transform, source: source)
+        photo.filtered = raw["filtered"] as? Bool ?? true
+        if let warp = raw["warp"] {
+            guard let values = warp as? [Double], values.count == 578 else { throw PackageIO.invalid }
+            photo.mesh = stride(from: 0, to: 578, by: 2).map { CGPoint(x: values[$0], y: values[$0 + 1]) }
+        }
+        try photo.validate()
+        return photo
+    }
+
+    static func exportPhoto(_ photo: PhotoLayerRecord) -> JSONObject {
+        let t = photo.transform, width = CGFloat(photo.width), height = CGFloat(photo.height)
+        let center = CGPoint(x: width / 2, y: height / 2).applying(t)
+        let angle = atan2(t.b, t.a), sx = hypot(t.a, t.b), sy = (t.a * t.d - t.b * t.c) / sx
+        var raw: JSONObject = ["centerX": center.x, "centerY": center.y, "rotationDegrees": angle * 180 / .pi,
+                               "scale": 1.0, "stretchX": sx, "stretchY": sy, "filtered": photo.filtered ?? true]
+        // Rotation plus independent scales cannot express shear. Keep its exact affine
+        // contribution in the same normalized 17×17 mesh understood by both renderers.
+        if photo.mesh != nil || abs(t.a * t.c + t.b * t.d) > 1e-9 {
+            let inverse = CGAffineTransform(translationX: center.x, y: center.y).rotated(by: angle)
+                .scaledBy(x: sx * width, y: sy * height).translatedBy(x: -0.5, y: -0.5).inverted()
+            raw["warp"] = (0..<289).flatMap { i -> [Double] in
+                let p = photo.geometry.vertex(i).applying(inverse)
+                return [Double(p.x), Double(p.y)]
+            }
+        }
+        return raw
     }
 }
