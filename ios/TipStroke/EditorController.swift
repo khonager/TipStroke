@@ -18,6 +18,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var palette: ToolPalette?
     private let saveLabel = UILabel()
     lazy var sharedControls = AppleEditorBridge(actions: EditorActions(self))
+    var fillPending = false
+    var closingEditor: Bool { closeAfterSave }
     var exporting = false
     var importingBrush = false
     var importingBrushTexture: Bool?
@@ -65,6 +67,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             self.refreshDrawingColors()
             self.showShared(self.sharedControls.colorController(), title: "Colors")
         }
+        color.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(dropColor(_:))))
+        color.accessibilityHint = "Tap to change color or drag to fill a region."
         let settings = button("Brush size, opacity and finger drawing", symbol: "slider.horizontal.3") { [weak self] in self?.brushSettings() }
         let tools = button("Drawing tools", symbol: "eraser") { [weak self] in
             guard let self else { return }
@@ -200,6 +204,27 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if viewport.canvas.tool == .eraser { viewport.canvas.tool = previousTool }
         else { previousTool = viewport.canvas.tool; viewport.canvas.tool = .eraser }
         toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
+    }
+    private let dropSwatch = UIView()
+    @objc private func dropColor(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            dropSwatch.frame.size = CGSize(width: 28, height: 28)
+            dropSwatch.layer.cornerRadius = 14
+            dropSwatch.layer.borderColor = UIColor.white.cgColor
+            dropSwatch.layer.borderWidth = 2
+            dropSwatch.isUserInteractionEnabled = false
+            dropSwatch.backgroundColor = viewport.canvas.brushColor
+            view.addSubview(dropSwatch)
+            fallthrough
+        case .changed: dropSwatch.center = gesture.location(in: view)
+        case .ended:
+            dropSwatch.removeFromSuperview()
+            let point = gesture.location(in: viewport.canvas)
+            if viewport.bounds.contains(gesture.location(in: viewport)), document.bounds.contains(point) { fill(at: point) }
+        case .cancelled, .failed: dropSwatch.removeFromSuperview()
+        default: break
+        }
     }
     private weak var toolsButton: UIButton?
     private var holdTools: Bool { UserDefaults.standard.object(forKey: "holdDrawingTools") as? Bool ?? true }

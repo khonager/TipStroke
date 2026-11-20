@@ -87,13 +87,13 @@ supports up to 8192 px and additionally offers its heap-based maximum square.
 | --- | --- |
 | Brush quality and input | Native graphite/airbrush/Jetpack texture parity, wet/final and Pencil hardware validation, complete per-tip preferences/favorites/categories |
 | Creative tools added in this port | Native implementations present; Apple SDK compilation, iPhone/iPad simulator tests and physical Pencil checks still required |
-| Fill and gestures | Android color-drop/reveal UI, concurrent editing during fill, configurable gesture actions and camera rotation |
+| Fill and gestures | Animated fill reveal, configurable gesture actions and camera rotation |
 | Selection/image editing | Non-destructive source-backed image layers/masks, Apply/Cancel transform sessions, freeform/perspective/mesh warp and local deformation; current imported images are raster paint layers |
 | Animation | Shared background cels, live motion recording, disk-backed long timelines and resolution reduction |
 | Video | Source-backed GIF/video canvases, media playback/scrubbing, clip editing, keyframes, crossfades and coverage navigation |
 | Process recording | Replay persistence, preview/scrub and process exports |
 | Project exchange | Lossless Android `.tipstroke` import/export; current iOS documents use their own versioned format |
-| Gallery and editor shell | Stacks/drag organization, multi-export, Android's adaptive toolbar layout and matching color-drop interaction |
+| Gallery and editor shell | Stacks/drag organization, multi-export, Android's adaptive toolbar layout and matching quick-color shelf interactions |
 
 Adding a feature only to `app/` or `drawing-android/` still does not port it to iOS.
 Keep portable rules in `core`, reusable controls in `shared-ui`, and provide both
@@ -212,3 +212,6 @@ Tap the eraser in the iOS tool dock to toggle it. Hold the icon, slide to a
 tool, and release to select it. Pausing over an icon shows its name. Release
 outside the grid to cancel. **More tools** opens the full editor menu. Turn off
 **Hold for drawing tools** in Brush settings for tap-to-open selection.
+
+Drag the iOS brush-color button onto a canvas region to fill it. The worker keeps
+the editor responsive and discards a stale result if the destination has changed.

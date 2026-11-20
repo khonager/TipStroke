@@ -176,16 +176,33 @@ extension EditorController {
         present(alert, animated: true)
     }
     func fill(at point: CGPoint) {
+        guard !fillPending else { return }
         let snapshot = document.snapshot(), layer = document.activeLayer
         guard let record = snapshot.record.layers.first(where: { $0.id == layer }), record.visible, !record.locked else { return }
         let selection = document.selection, color = viewport.canvas.brushColor.withAlphaComponent(viewport.canvas.brushOpacity)
-        view.isUserInteractionEnabled = false
-        ProjectStore.shared.queue.async {
+        fillPending = true
+        DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try RasterDocument.floodFill(snapshot, layerID: layer, point: point, color: color, tolerance: 24, selection: selection) }
             DispatchQueue.main.async {
-                self.view.isUserInteractionEnabled = true
-                do { try self.document.replaceTiles(result.get()); self.changed() }
-                catch { self.showError(error) }
+                self.fillPending = false
+                guard !self.closingEditor, self.view.window != nil else { return }
+                do {
+                    let tiles = try result.get()
+                    guard !tiles.isEmpty else { return }
+                    let current = self.document
+                    let frame = current.record.animation.map { $0.frames[$0.selectedIndex].id }
+                    let originalFrame = snapshot.record.animation.map { $0.frames[$0.selectedIndex].id }
+                    guard !self.viewport.canvas.isDrawing, current.activeLayer == layer, frame == originalFrame,
+                          current.record.width == snapshot.record.width, current.record.height == snapshot.record.height,
+                          let target = current.record.layers.first(where: { $0.id == layer }),
+                          target.visible, !target.locked, target.alphaLocked == record.alphaLocked,
+                          current.selection?.path == selection?.path, current.selection?.inverted == selection?.inverted,
+                          tiles.keys.allSatisfy({ current.pixels[layer]?[$0] === snapshot.pixels[layer]?[$0] }) else {
+                        throw DrawingError.message("The fill area changed. Drop the color again to fill it.")
+                    }
+                    try current.replaceTiles(tiles)
+                    self.changed()
+                } catch { self.showError(error) }
             }
         }
     }
