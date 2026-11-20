@@ -26,6 +26,7 @@ final class ToolPalette: UIView {
         caption.font = .preferredFont(forTextStyle: .caption1)
         caption.textAlignment = .center
         panel.addSubview(caption)
+        panel.addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hoverIcon(_:))))
     }
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
@@ -82,6 +83,10 @@ final class ToolPalette: UIView {
         let index = hit(point)
         onClose?()
         if let index { actions[index]() }
+    }
+    @objc private func hoverIcon(_ gesture: UIHoverGestureRecognizer) {
+        if gesture.state == .began || gesture.state == .changed { track(gesture.location(in: self)) }
+        else { track(CGPoint(x: -1, y: -1)) }
     }
     @objc private func showName(_ gesture: UILongPressGestureRecognizer) {
         if gesture.state == .began { caption.text = gesture.view?.accessibilityLabel }

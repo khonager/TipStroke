@@ -1,5 +1,8 @@
 package dev.tipstroke.ui
 
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -88,7 +91,13 @@ fun HoldToolPicker(
                     labels.indices.chunked(columns).forEach { row ->
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr) { Row {
                             row.forEach { index ->
-                                Box(Modifier.size(cell)
+                                val interaction = remember { MutableInteractionSource() }
+                                val pointerOver by interaction.collectIsHoveredAsState()
+                                LaunchedEffect(pointerOver) {
+                                    if (pointerOver) { delay(450); hint = index }
+                                    else if (hint == index && hovered != index) hint = null
+                                }
+                                Box(Modifier.size(cell).hoverable(interaction)
                                     .background(if (hovered == index) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
                                     .combinedClickable(role = Role.Button, onLongClick = { hint = index },
                                         onClick = { close(); choose(index) })

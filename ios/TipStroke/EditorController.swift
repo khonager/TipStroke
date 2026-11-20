@@ -22,6 +22,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private weak var actionStack: UIStackView?
     private var sideDock = false
     private let saveLabel = UILabel()
+    private let hoverName = UILabel()
+    private var hoverWork: DispatchWorkItem?
+
     lazy var sharedControls = AppleEditorBridge(actions: EditorActions(self))
     var fillPending = false
     var closingEditor: Bool { closeAfterSave }
@@ -214,9 +217,29 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     private func configure(_ button: UIButton, label: String, symbol: String, action: @escaping () -> Void) {
         button.setImage(UIImage(systemName: symbol), for: .normal); button.accessibilityLabel = label
+        button.addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hoverControl(_:))))
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+    }
+    @objc private func hoverControl(_ gesture: UIHoverGestureRecognizer) {
+        guard gesture.state != .changed else { return }
+        hoverWork?.cancel(); hoverName.removeFromSuperview()
+        guard gesture.state == .began, let control = gesture.view, let title = control.accessibilityLabel else { return }
+        let work = DispatchWorkItem { [weak self, weak control] in
+            guard let self, let control, control.window != nil, self.palette == nil else { return }
+            let label = self.hoverName
+            label.text = title; label.font = .preferredFont(forTextStyle: .caption1); label.textAlignment = .center
+            label.textColor = .label; label.backgroundColor = .secondarySystemBackground
+            label.layer.cornerRadius = 6; label.clipsToBounds = true; label.sizeToFit()
+            let target = control.convert(control.bounds, to: self.view), safe = self.view.safeAreaLayoutGuide.layoutFrame
+            let w = min(safe.width, label.bounds.width + 16), h = label.bounds.height + 8
+            let y = target.maxY + h <= safe.maxY ? target.maxY : target.minY-h
+            label.frame = CGRect(x: min(max(safe.minX, target.midX - w/2), safe.maxX-w), y: y, width: w, height: h)
+            self.view.addSubview(label)
+        }
+        hoverWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
     }
     @objc private func toolChanged() {
         viewport.canvas.cancelStroke()
