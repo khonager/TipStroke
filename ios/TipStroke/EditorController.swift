@@ -135,7 +135,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let hint = UIButton(type: .system)
         hint.configuration = .tinted(); hint.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
         hint.translatesAutoresizingMaskIntoConstraints = false; hint.isHidden = true
-        hint.addAction(UIAction { [weak self] _ in self?.viewport.canvas.cancelStroke() }, for: .touchUpInside)
+        hint.addAction(UIAction { [weak self] _ in self?.viewport.canvas.stopLiveDrawing(); self?.viewport.canvas.cancelStroke() }, for: .touchUpInside)
         view.addSubview(hint)
         NSLayoutConstraint.activate([
             hint.topAnchor.constraint(equalTo: safe.topAnchor, constant: 55),
@@ -192,6 +192,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        viewport.canvas.stopLiveDrawing()
         palette?.onClose?()
         if isMovingFromParent { navigationController?.interactivePopGestureRecognizer?.isEnabled = true }
     }
@@ -346,6 +347,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         saveWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
     }
     @objc private func backgrounded() {
+        viewport.canvas.stopLiveDrawing()
         viewport.canvas.cancelStroke()
         if backgroundTask == .invalid {
             backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Save drawing") { [weak self] in self?.endBackgroundTask() }

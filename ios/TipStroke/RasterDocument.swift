@@ -76,6 +76,26 @@ final class RasterDocument {
         var coldFrames: [UUID: CelFiles]
     }
     private var metadataBefore: Metadata?
+    private var recordingGesture: (Metadata, [Edit], [Edit])?
+
+    func checkpointRecordingGesture() {
+        guard recordingGesture == nil else { return }
+        recordingGesture = (Metadata(record: record, pixels: pixels, frames: framePixels, coldFrames: coldFrames), undoStack, redoStack)
+    }
+    func finishRecordingGesture(cancelled: Bool) {
+        guard let (old, undo, redo) = recordingGesture else { return }
+        recordingGesture = nil
+        if cancelled {
+            record = old.record; pixels = old.pixels; framePixels = old.frames; coldFrames = old.coldFrames
+            undoStack = undo; redoStack = redo
+        } else {
+            let new = Metadata(record: record, pixels: pixels, frames: framePixels, coldFrames: coldFrames)
+            let combined = Edit(layer: activeLayer, before: [:], after: [:], oldMetadata: old, newMetadata: new)
+            if combined.cost <= Self.historyBudget {
+                undoStack = undo + [combined]; redoStack = []; trimHistory()
+            }
+        }
+    }
     private struct Edit {
         var layer: UUID
         var frame: UUID? = nil

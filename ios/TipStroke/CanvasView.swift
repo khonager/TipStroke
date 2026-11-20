@@ -35,7 +35,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var shadowPull = false { didSet { updateInteractionHint() } }
     var onInteractionHint: ((String?) -> Void)?
     private func updateInteractionHint() {
-        let hint: String? = shadowPull ? "Shadow pull: drag selected paint · Cancel" : placingMirrorCenter ? "Touch to place mirror center · Cancel" : placingVanishingPoint > 0 ? "Touch to place vanishing point \(placingVanishingPoint) · Cancel" : nil
+        let hint: String? = liveDrawing != nil ? "Recording drawing · Stop" : shadowPull ? "Shadow pull: drag selected paint · Cancel" : placingMirrorCenter ? "Touch to place mirror center · Cancel" : placingVanishingPoint > 0 ? "Touch to place vanishing point \(placingVanishingPoint) · Cancel" : nil
         onInteractionHint?(hint)
     }
     private var shadowTiles: [TileKey: CGImage] = [:]
@@ -46,6 +46,55 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private let outlineLayer = CAShapeLayer()
     private var gesturePoints: [CGPoint] = []
     private var shapeTracker = NativeShapeTracker()
+    private var recordingLink: CADisplayLink?
+    private var liveDrawing: (start: TimeInterval, index: Int, layer: UUID)?
+    func startLiveDrawing() throws {
+        guard document.record.media == nil, let a = document.record.animation else { return }
+        cancelStroke()
+        guard document.addLayer() else { throw DrawingError.message("The drawing has reached its layer limit.") }
+        document.record.layers[document.record.layers.count - 1].name = "Live drawing"
+        liveDrawing = (ProcessInfo.processInfo.systemUptime, a.selectedIndex, document.activeLayer)
+        recordingLink?.invalidate()
+        let link = CADisplayLink(target: self, selector: #selector(advanceIdleRecording))
+        link.preferredFramesPerSecond = a.fps
+        link.add(to: .main, forMode: .common); recordingLink = link; updateInteractionHint()
+    }
+    func stopLiveDrawing() {
+        guard liveDrawing != nil else { return }
+        recordingLink?.invalidate(); recordingLink = nil; liveDrawing = nil
+        if pointer != nil {
+            document.endStroke(cancelled: false); document.finishRecordingGesture(cancelled: false)
+            pointer = nil; previous = nil
+        }
+        updateInteractionHint(); onCommit?()
+    }
+    @objc private func advanceIdleRecording() {
+        guard pointer == nil else { return }
+        do { try advanceRecording(at: ProcessInfo.processInfo.systemUptime, resumeStroke: false) }
+        catch { stopLiveDrawing(); onError?(error) }
+    }
+    private func advanceRecording(at time: TimeInterval, resumeStroke: Bool) throws {
+        guard let session = liveDrawing, let a = document.record.animation else { return }
+        guard document.activeLayer == session.layer, mode == .paint else { stopLiveDrawing(); return }
+        let target = session.index + Int(max(0, time - session.start) * Double(a.fps))
+        guard target > a.selectedIndex else { return }
+        if resumeStroke { document.endStroke(cancelled: false) }
+        for i in (a.selectedIndex+1)...target {
+            let carry = document.pixels[session.layer]
+            if i < (document.record.animation?.frames.count ?? 0) {
+                guard let id = document.record.animation?.frames[i].id, document.coldFrames[id] == nil else {
+                    throw DrawingError.message("The next cel is loading. Resume live recording when it is ready.")
+                }
+                document.installFrame(i)
+            } else { try document.addFrame(copy: false) }
+            document.pixels[session.layer] = carry
+        }
+        if resumeStroke && !document.beginStroke() { throw DrawingError.message("Cannot continue recording on this layer.") }
+        refresh()
+        if let a = document.record.animation, a.frames.indices.contains(target + 1) {
+            document.prepareFrame(target + 1) {}
+        }
+    }
     private var holdWork: DispatchWorkItem?
     private var fitted = false
     private var previewLink: CADisplayLink?
@@ -296,7 +345,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         if document.record.media != nil, mode.streamsPaint || liveFill || mode.isShape {
             do { try document.ensureDrawingCel() } catch { onError?(error); return }
         }
-        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull, brushAids: mode != .colorPush && !shadowPull, photoErase: mode == .paint && tool == .eraser && !shadowPull) { return }
+        if liveDrawing != nil {
+            do { try advanceRecording(at: touch.timestamp, resumeStroke: false); document.checkpointRecordingGesture() }
+            catch { stopLiveDrawing(); onError?(error); return }
+        }
+        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull, brushAids: mode != .colorPush && !shadowPull, photoErase: mode == .paint && tool == .eraser && !shadowPull) { document.finishRecordingGesture(cancelled: true); return }
         pointer = touch; previous = nil; previousTimestamp = -1
         let first = vanishingPoint1 ?? CGPoint(x: bounds.width * 0.25, y: bounds.height * 0.35)
         let second = vanishingPoint2 ?? CGPoint(x: bounds.width * 0.75, y: bounds.height * 0.35)
@@ -356,6 +409,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 }
             } catch { document.endStroke(cancelled: true); onError?(error) }
         }
+        document.finishRecordingGesture(cancelled: false)
         previewLink?.invalidate(); previewLink = nil
         let endedMode = mode
         self.pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
@@ -398,6 +452,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         guard pointer != nil else { shadowPull = false; shadowTiles = [:]; placingMirrorCenter = false; placingVanishingPoint = 0; return }
         holdWork?.cancel(); previewLink?.invalidate(); previewLink = nil
         document.endStroke(cancelled: true)
+        document.finishRecordingGesture(cancelled: true)
         pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
         refreshSelection()
         refresh()
@@ -478,6 +533,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             var dirty = CGRect.null
             for sample in event?.coalescedTouches(for: touch) ?? [touch] {
                 guard sample.timestamp > previousTimestamp else { continue }
+                try advanceRecording(at: sample.timestamp, resumeStroke: true)
                 var point = sample.location(in: self)
                 if mode == .paint, let previous {
                     let response = 1 - CGFloat(strokeBrush.stabilization) * 0.85
@@ -528,12 +584,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             }
             if !dirty.isNull { refresh(dirty) }
             holdWork?.cancel()
-            if mode == .paint && magneticRuler == nil && (quickShapes || elasticLine) && (elasticLine || strokeTool != .eraser) {
+            if liveDrawing == nil && mode == .paint && magneticRuler == nil && (quickShapes || elasticLine) && (elasticLine || strokeTool != .eraser) {
                 let work = DispatchWorkItem { [weak self] in self?.fitQuickShape() }
                 holdWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
             }
         } catch {
-            cancelStroke(); onError?(error)
+            cancelStroke(); stopLiveDrawing(); onError?(error)
         }
     }
 }
