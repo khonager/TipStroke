@@ -53,6 +53,7 @@ final class SharedControlsTests: XCTestCase {
         XCTAssertFalse(restored.importBrushes(data: "not a brush"))
     }
 
+    @MainActor
     func testSharedPanelsCreateRealUIKitControllers() {
         let bridge = AppleEditorBridge(actions: Actions())
         let brush = bridge.brushController()
