@@ -63,7 +63,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             UIAction(title: "Share animation MP4") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimationVideo(smooth: $0) } },
             UIAction(title: "Share PNG sequence") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimation(pngSequence: true, smooth: $0) } },
             UIAction(title: "Share animation GIF") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimation(smooth: $0) } },
-            UIAction(title: "Import movie or GIF") { [weak self] _ in self?.importMedia() },
+            UIAction(title: "Import media clip") { [weak self] _ in self?.importMedia() },
             UIAction(title: "Import image", image: UIImage(systemName: "photo")) { [weak self] _ in self?.importImage() }
         ])
         let top = UIStackView(arrangedSubviews: [back, undoButton, redoButton, fit, layers, share])

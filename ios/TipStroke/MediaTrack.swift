@@ -49,7 +49,7 @@ struct MediaTrack: Codable, Equatable {
     var positionUs: Int64 = 0
     func plan() throws -> NativeVideoPlan {
         guard assets.count <= 1000, Set(assets.map(\.id)).count == assets.count,
-              assets.allSatisfy({ ["gif", "video"].contains($0.kind) && (1...86_400_000_000).contains($0.durationUs) &&
+              assets.allSatisfy({ ["gif", "video", "image"].contains($0.kind) && (1...86_400_000_000).contains($0.durationUs) &&
                 $0.frameRate.isFinite && $0.frameRate > 0 && $0.fileExtension.range(of: "^[a-z0-9]{1,10}$", options: .regularExpression) != nil }),
               clips.allSatisfy({ c in assets.contains { $0.id == c.assetID && c.sourceInUs >= 0 && c.durationUs > 0 && c.sourceInUs <= $0.durationUs - c.durationUs } })
         else { throw DrawingError.message("Invalid media track.") }
@@ -70,6 +70,7 @@ final class MediaFrameReader {
     private enum Decoder {
         case movie(AVAssetImageGenerator)
         case gif(CGImageSource, [Int64])
+        case still(CGImage)
     }
     private var decoders: [UUID: Decoder] = [:]
     init(track: MediaTrack) throws { self.track = track; plan = try track.plan() }
@@ -82,6 +83,10 @@ final class MediaFrameReader {
             let ends = try gifEnds(gif)
             return MediaAssetRecord(id: UUID(), name: name, kind: "gif", durationUs: ends.last!,
                 frameRate: min(120, Double(ends.count) * 1_000_000 / Double(ends.last!)), fileExtension: "gif", source: file)
+        }
+        if let image = CGImageSourceCreateWithURL(file.url as CFURL, nil), CGImageSourceGetCount(image) > 0 {
+            return MediaAssetRecord(id: UUID(), name: name, kind: "image", durationUs: 5_000_000,
+                frameRate: 30, fileExtension: ext, source: file)
         }
         let asset = AVURLAsset(url: file.url)
         guard let video = asset.tracks(withMediaType: .video).first, asset.duration.seconds.isFinite,
@@ -113,6 +118,13 @@ final class MediaFrameReader {
             if asset.kind == "gif" {
                 guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw DrawingError.message("Cannot read GIF.") }
                 decoders[id] = .gif(source, try Self.gifEnds(source))
+            } else if asset.kind == "image" {
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                      let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: max(size.width, size.height)
+                      ] as CFDictionary) else { throw DrawingError.message("Could not decode the still image.") }
+                decoders[id] = .still(image)
             } else {
                 let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
                 generator.appliesPreferredTrackTransform = true
@@ -121,6 +133,7 @@ final class MediaFrameReader {
             }
         }
         switch decoders[id]! {
+        case .still(let image): return image
         case .movie(let generator):
             generator.maximumSize = size
             return try generator.copyCGImage(at: CMTime(value: time, timescale: 1_000_000), actualTime: nil)
@@ -136,13 +149,17 @@ final class MediaFrameReader {
     }
 
     func draw(time: Int64, canvas: CGRect, in context: CGContext) throws {
-        for sample in plan.samples(timeUs: time) {
+        let samples = plan.samples(timeUs: time)
+        if samples.count > 1 { context.beginTransparencyLayer(auxiliaryInfo: nil) }
+        defer { if samples.count > 1 { context.endTransparencyLayer() } }
+        for (i, sample) in samples.enumerated() {
             guard let id = UUID(uuidString: sample.assetId) else { throw DrawingError.message("Invalid clip asset.") }
             let image = try image(id, time: sample.sourceUs, size: canvas.size)
             let pose = sample.pose
             let scale = min(canvas.width / CGFloat(image.width), canvas.height / CGFloat(image.height)) * CGFloat(pose.scale)
             let size = CGSize(width: CGFloat(image.width) * scale, height: CGFloat(image.height) * scale)
             context.saveGState()
+            if i == 1 { context.setBlendMode(.plusLighter) }
             context.setAlpha(CGFloat(pose.opacity * sample.weight))
             context.translateBy(x: canvas.midX + canvas.width * CGFloat(pose.x), y: canvas.midY + canvas.height * CGFloat(pose.y))
             context.rotate(by: CGFloat(pose.rotation) * .pi / 180)
@@ -209,7 +226,7 @@ extension EditorController {
     func importMedia() {
         viewport.canvas.cancelStroke()
         importingMedia = true
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.movie, .gif], asCopy: true)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.movie, .image], asCopy: true)
         picker.delegate = self
         present(picker, animated: true)
     }

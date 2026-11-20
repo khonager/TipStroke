@@ -20,7 +20,7 @@ class NativeVideoPlan private constructor(private val edit: VideoEdit) {
         }
         if (current > 0 && elapsed < clip.transitionUs) {
             val weight = elapsed.toFloat() / clip.transitionUs
-            return listOf(sample(current - 1, time - edit.startUs(current - 1), 1f), sample(current, elapsed, weight))
+            return listOf(sample(current - 1, time - edit.startUs(current - 1), 1f - weight), sample(current, elapsed, weight))
         }
         return listOf(sample(current, elapsed, 1f))
     }
