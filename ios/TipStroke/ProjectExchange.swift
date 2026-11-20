@@ -211,13 +211,14 @@ extension ProjectStore {
                 pixels[native] = try readTiles(directory.appendingPathComponent("layers/\(key)/tiles"), width: w, height: h)
             case "image":
                 guard let width = raw["originalWidthPx"] as? Int, let height = raw["originalHeightPx"] as? Int,
-                      (1...4096).contains(width), (1...4096).contains(height) else { throw PackageIO.invalid }
+                      (1...PhotoSource.maximumDimension).contains(width), (1...PhotoSource.maximumDimension).contains(height) else { throw PackageIO.invalid }
                 let file = directory.appendingPathComponent("assets/\(key).source")
                 let fileBytes = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                let cost = (width * height * 4 + fileBytes + RasterDocument.tileBytes - 1) / RasterDocument.tileBytes
-                guard fileBytes > 0, tileCount + cost <= RasterDocument.maximumTiles else { throw PackageIO.invalid }
-                tileCount += cost
-                let photo = try Self.importPhoto(raw, width: width, height: height, source: PhotoSource(file: file, width: width, height: height))
+                guard fileBytes > 0, fileBytes <= RasterDocument.historyBudget else { throw PackageIO.invalid }
+                let source = try PhotoSource(file: file, width: width, height: height)
+                tileCount += (source.bytes + RasterDocument.tileBytes - 1) / RasterDocument.tileBytes
+                guard tileCount <= RasterDocument.maximumTiles else { throw PackageIO.invalid }
+                let photo = try Self.importPhoto(raw, width: width, height: height, source: source)
                 layer.photo = photo
                 pixels[native] = try readTiles(directory.appendingPathComponent("layers/\(key)/mask"), width: width, height: height)
             default: throw PackageIO.invalid
@@ -455,7 +456,7 @@ extension ProjectStore {
                 raw["kind"] = "image"; raw["originalWidthPx"] = photo.width; raw["originalHeightPx"] = photo.height
                 let assets = target.appendingPathComponent("assets")
                 try fm.createDirectory(at: assets, withIntermediateDirectories: true)
-                try source.png.write(to: assets.appendingPathComponent(id + ".source"), options: .atomic)
+                try source.encoded.write(to: assets.appendingPathComponent(id + ".source"), options: .atomic)
                 try writeTiles(snapshot.pixels[layer.id] ?? [:], "layers/\(id)/mask")
             } else { try writeTiles(snapshot.pixels[layer.id] ?? [:], "layers/\(id)/tiles") }
             return raw

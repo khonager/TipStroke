@@ -497,21 +497,12 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if importingMedia { importingMedia = false; addMediaFile(url); return }
         if importingBrush { importingBrush = false; importBrushFile(url); return }
         if let grain = importingBrushTexture { importingBrushTexture = nil; importBrushTexture(url, grain: grain); return }
-        // Decode and downsample off the input thread. Editing pauses while the new layer is prepared.
+        // Read the original and prepare its bounded display cache off the input thread.
         view.isUserInteractionEnabled = false
         store.queue.async {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            let result = Result { () -> PhotoSource in
-                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                    let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                        kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceCreateThumbnailWithTransform: true,
-                        kCGImageSourceShouldCacheImmediately: true,
-                        kCGImageSourceThumbnailMaxPixelSize: 4096
-                    ] as CFDictionary) else { throw DrawingError.message("This image could not be opened.") }
-                return try PhotoSource(image: image)
-            }
+            let result = Result { try PhotoSource(file: url) }
             DispatchQueue.main.async {
                 self.view.isUserInteractionEnabled = true
                 do { try self.document.importPhoto(result.get(), name: url.deletingPathExtension().lastPathComponent); self.changed(); self.showTransformEditor() }

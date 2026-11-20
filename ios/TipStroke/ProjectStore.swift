@@ -60,14 +60,19 @@ final class ProjectStore {
             if sources[photo.sourceID] == nil {
                 let url = directory.appendingPathComponent("photos").appendingPathComponent(photo.sourceID.uuidString + ".png")
                 let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                let bytes = photo.width * photo.height * 4
-                guard size >= 0, size <= RasterDocument.historyBudget, sourceBytes + bytes + size <= RasterDocument.maximumTiles * RasterDocument.tileBytes else {
+                guard size >= 0, size <= RasterDocument.historyBudget, sourceBytes + size <= RasterDocument.maximumTiles * RasterDocument.tileBytes else {
                     throw DrawingError.message("Photo sources exceed the drawing memory budget.")
                 }
                 sources[photo.sourceID] = try PhotoSource(file: url, width: photo.width, height: photo.height)
-                sourceBytes += bytes + size
+                sourceBytes += sources[photo.sourceID]?.bytes ?? 0
+                guard sourceBytes <= RasterDocument.maximumTiles * RasterDocument.tileBytes else {
+                    throw DrawingError.message("Photo sources exceed the drawing memory budget.")
+                }
             }
-            photo.source = sources[photo.sourceID]
+            guard let source = sources[photo.sourceID], source.width == photo.width, source.height == photo.height else {
+                throw DrawingError.message("Photo source dimensions disagree between layers.")
+            }
+            photo.source = source
             record.layers[index].photo = photo
         }
         var pixels: [UUID: [TileKey: CGImage]] = [:]
@@ -132,7 +137,7 @@ final class ProjectStore {
             let photos = staging.appendingPathComponent("photos", isDirectory: true)
             try fm.createDirectory(at: photos, withIntermediateDirectories: false)
             for (id, source) in sources {
-                try source.png.write(to: photos.appendingPathComponent(id.uuidString + ".png"))
+                try source.encoded.write(to: photos.appendingPathComponent(id.uuidString + ".png"))
             }
         }
         guard snapshot.record.layers.allSatisfy({ $0.photo == nil || $0.photo?.source != nil }) else {
@@ -211,7 +216,7 @@ final class ProjectStore {
         let bounds = CGRect(x: 0, y: 0, width: record.width, height: record.height)
         if !transparent { context.setFillColor(record.paperColor.cgColor); context.fill(bounds) }
         if let track = snapshot.record.media { try MediaFrameReader(track: track).draw(time: track.positionUs, canvas: bounds, in: context) }
-        try RasterDocument.composite(snapshot, in: context, visible: bounds)
+        try RasterDocument.composite(snapshot, in: context, visible: bounds, exportPhotoDetail: true)
         guard let image = context.makeImage() else { throw DrawingError.message("Could not render the drawing.") }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("TipStrokeExports", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

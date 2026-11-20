@@ -4,8 +4,14 @@ import UniformTypeIdentifiers
 
 /// Immutable pixels shared by layer copies, previews, and undo records.
 final class PhotoSource {
+    // Source coordinates and erase masks stay at original resolution. The editor's
+    // disposable image is EXIF-oriented and bounded independently of the canvas.
+    static let maximumDimension = 65_535
+    let width: Int
+    let height: Int
     let image: CGImage
-    let png: Data
+    let encoded: Data
+
     init(image: CGImage) throws {
         let buffer = NSMutableData()
         guard let writer = CGImageDestinationCreateWithData(buffer as CFMutableData, UTType.png.identifier as CFString, 1, nil) else {
@@ -13,19 +19,52 @@ final class PhotoSource {
         }
         CGImageDestinationAddImage(writer, image, nil)
         guard CGImageDestinationFinalize(writer) else { throw DrawingError.message("Could not encode the photo.") }
-        self.image = image; self.png = buffer as Data
+        self.image = image; self.encoded = buffer as Data
+        width = image.width; height = image.height
     }
-    init(file: URL, width: Int, height: Int) throws {
+
+    init(file: URL, width expectedWidth: Int? = nil, height expectedHeight: Int? = nil) throws {
+        let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard size > 0, size < RasterDocument.historyBudget - 65_536 else {
+            throw DrawingError.message("The original photo exceeds the 32 MiB image import budget.")
+        }
         let data = try Data(contentsOf: file, options: .mappedIfSafe)
         guard let reader = CGImageSourceCreateWithData(data as CFData, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(reader, 0, nil) as? [CFString: Any],
-              props[kCGImagePropertyPixelWidth] as? Int == width, props[kCGImagePropertyPixelHeight] as? Int == height,
-              let image = CGImageSourceCreateImageAtIndex(reader, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else {
-            throw DrawingError.message("The saved photo source is missing or damaged.")
+              let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
+              (1...Self.maximumDimension).contains(w), (1...Self.maximumDimension).contains(h),
+              expectedWidth.map({ $0 == w }) ?? true, expectedHeight.map({ $0 == h }) ?? true else {
+            throw DrawingError.message("The photo's source dimensions are unsupported or damaged.")
         }
-        self.image = image; self.png = data
+        width = w; height = h; encoded = data
+        image = try Self.decode(reader, width: w, height: h, maxEdge: 4096,
+                                byteBudget: RasterDocument.historyBudget - data.count - 65_536)
     }
-    var bytes: Int { image.bytesPerRow * image.height + png.count }
+
+    private static func decode(_ reader: CGImageSource, width: Int, height: Int, maxEdge: Int, byteBudget: Int) throws -> CGImage {
+        let scale = min(1, sqrt(Double(max(1, byteBudget)) / (4 * Double(width) * Double(height))))
+        let edge = min(maxEdge, max(1, Int(Double(max(width, height)) * scale)))
+        guard let decoded = CGImageSourceCreateThumbnailAtIndex(reader, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: edge,
+            kCGImageSourceShouldCacheImmediately: true
+        ] as CFDictionary) else { throw DrawingError.message("The photo could not be decoded.") }
+        return decoded
+    }
+
+    /// PNG export requests detail at the layer's destination size, independently
+    /// of its interactive cache. Only one enlarged layer is held by the compositor.
+    func exportImage(for bounds: CGRect) throws -> CGImage {
+        let longest = max(width, height)
+        let desired = min(longest, max(1, Int(ceil(max(bounds.width, bounds.height)))))
+        guard desired > max(image.width, image.height) else { return image }
+        guard let reader = CGImageSourceCreateWithData(encoded as CFData, nil) else {
+            throw DrawingError.message("The original photo could not be read.")
+        }
+        return try Self.decode(reader, width: width, height: height, maxEdge: desired, byteBudget: 64 * 1024 * 1024)
+    }
+    var bytes: Int { image.bytesPerRow * image.height + encoded.count }
 }
 
 struct PhotoLayerRecord: Codable, Equatable {
@@ -45,19 +84,20 @@ struct PhotoLayerRecord: Codable, Equatable {
     var bounds: CGRect { geometry.bounds }
     func validate() throws {
         let t = transform
-        guard geometry.validated(), (1...4096).contains(width), (1...4096).contains(height),
+        guard geometry.validated(), (1...PhotoSource.maximumDimension).contains(width), (1...PhotoSource.maximumDimension).contains(height),
               [t.a, t.b, t.c, t.d, t.tx, t.ty].allSatisfy({ $0.isFinite && abs($0) < 1_000_000 }),
               abs(t.a * t.d - t.b * t.c) > 0.00000001 else { throw DrawingError.message("Invalid photo geometry.") }
     }
-    func tile(_ key: TileKey, masks: [TileKey: CGImage]) throws -> CGImage? {
-        guard bounds.intersects(key.rect), let image = source?.image else { return nil }
+    func tile(_ key: TileKey, masks: [TileKey: CGImage], image sourceImage: CGImage? = nil) throws -> CGImage? {
+        guard bounds.intersects(key.rect), let image = sourceImage ?? source?.image else { return nil }
         let context = try RasterDocument.context(width: 256, height: 256)
         context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
         geometry.render(in: context, visible: key.rect) { piece in
             RasterDocument.draw(image, in: piece, rect: sourceBounds)
             piece.setBlendMode(.destinationOut)
-            for sourceKey in TileKey.intersecting(piece.boundingBoxOfClipPath, width: width, height: height) {
-                if let coverage = masks[sourceKey] { RasterDocument.draw(coverage, in: piece, rect: sourceKey.rect) }
+            let visible = piece.boundingBoxOfClipPath
+            for (sourceKey, coverage) in masks where visible.intersects(sourceKey.rect) {
+                RasterDocument.draw(coverage, in: piece, rect: sourceKey.rect)
             }
         }
         return context.makeImage()
@@ -66,15 +106,16 @@ struct PhotoLayerRecord: Codable, Equatable {
 
 extension RasterDocument {
     func importPhoto(_ source: PhotoSource, name: String) throws {
-        let width = source.image.width, height = source.image.height
+        let width = source.width, height = source.height
         guard record.layers.count < 32, source.bytes + 256 <= Self.historyBudget,
               residentTileCount + (source.bytes + Self.tileBytes - 1) / Self.tileBytes <= Self.maximumTiles else {
             throw DrawingError.message("This photo exceeds the layer, undo or resident image budget.")
         }
-        let scale = min(bounds.width / CGFloat(width), bounds.height / CGFloat(height))
-        let rect = CGRect(x: (bounds.width - CGFloat(width) * scale) / 2, y: (bounds.height - CGFloat(height) * scale) / 2,
-                          width: CGFloat(width) * scale, height: CGFloat(height) * scale)
-        let pose = CGAffineTransform(translationX: rect.minX, y: rect.minY).scaledBy(x: scale, y: scale)
+        let displaySize = CGSize(width: source.image.width, height: source.image.height)
+        let scale = min(bounds.width / displaySize.width, bounds.height / displaySize.height)
+        let rect = CGRect(x: (bounds.width - displaySize.width * scale) / 2, y: (bounds.height - displaySize.height * scale) / 2,
+                          width: displaySize.width * scale, height: displaySize.height * scale)
+        let pose = CGAffineTransform(translationX: rect.minX, y: rect.minY).scaledBy(x: rect.width / CGFloat(width), y: rect.height / CGFloat(height))
         var layer = LayerRecord(); layer.name = name
         layer.photo = PhotoLayerRecord(width: width, height: height, transform: pose, source: source)
         try layer.photo?.validate()

@@ -648,10 +648,10 @@ final class RasterDocument {
         context.draw(image, in: CGRect(origin: .zero, size: rect.size))
         context.restoreGState()
     }
-    static func layerTile(_ snapshot: DocumentSnapshot, id: UUID, key: TileKey, depth: Int = 0) throws -> CGImage? {
+    static func layerTile(_ snapshot: DocumentSnapshot, id: UUID, key: TileKey, depth: Int = 0, sourceImage: CGImage? = nil) throws -> CGImage? {
         guard depth < 32, let layer = snapshot.record.layers.first(where: { $0.id == id }), layer.visible, layer.photoCelActive else { return nil }
         let image: CGImage?
-        if let photo = layer.photo { image = try photo.tile(key, masks: snapshot.pixels[id] ?? [:]) }
+        if let photo = layer.photo { image = try photo.tile(key, masks: snapshot.pixels[id] ?? [:], image: sourceImage) }
         else { image = snapshot.pixels[id]?[key] }
         guard let image else { return nil }
         guard let source = layer.clipSource else { return image }
@@ -662,7 +662,7 @@ final class RasterDocument {
         context.setAlpha(snapshot.record.layers.first(where: { $0.id == source })?.opacity ?? 1)
         draw(mask, in: context, rect: rect); return context.makeImage()
     }
-    static func composite(_ snapshot: DocumentSnapshot, in context: CGContext, visible: CGRect, excluding: Set<UUID> = []) throws {
+    static func composite(_ snapshot: DocumentSnapshot, in context: CGContext, visible: CGRect, excluding: Set<UUID> = [], exportPhotoDetail: Bool = false) throws {
         context.saveGState()
         defer { context.restoreGState() }
         context.clip(to: CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height))
@@ -671,9 +671,13 @@ final class RasterDocument {
             return animation.coverageIndex(at: media.positionUs) != animation.selectedIndex
         } ?? false
         for layer in snapshot.record.layers where !excluding.contains(layer.id) && layer.visible && layer.opacity > 0 && (!gap || snapshot.record.animation?.sharedLayerIDs.contains(layer.id) == true) {
+            let sourceImage: CGImage?
+            if exportPhotoDetail, layer.photoCelActive, let photo = layer.photo, photo.bounds.intersects(visible) {
+                sourceImage = try photo.source?.exportImage(for: photo.bounds)
+            } else { sourceImage = nil }
             context.setAlpha(layer.opacity); context.setBlendMode(blendModes[layer.blendMode] ?? .normal)
             for key in TileKey.intersecting(visible, width: snapshot.record.width, height: snapshot.record.height) {
-                if let image = try layerTile(snapshot, id: layer.id, key: key) { draw(image, in: context, rect: key.rect) }
+                if let image = try layerTile(snapshot, id: layer.id, key: key, sourceImage: sourceImage) { draw(image, in: context, rect: key.rect) }
             }
         }
     }

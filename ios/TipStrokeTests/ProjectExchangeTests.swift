@@ -22,7 +22,7 @@ final class ProjectExchangeTests: XCTestCase {
         let importedIDs = try store.importPackage(package)
         let restored = try store.load(XCTUnwrap(importedIDs.first))
         let photo = try XCTUnwrap(restored.record.layers.last?.photo)
-        XCTAssertEqual(photo.source?.png, source.png)
+        XCTAssertEqual(photo.source?.encoded, source.encoded)
         XCTAssertEqual(photo.transform.tx, doc.activePhoto?.transform.tx ?? -1, accuracy: 0.001)
         XCTAssertEqual(Set(restored.pixels[id]!.keys), Set(doc.pixels[id]!.keys))
     }

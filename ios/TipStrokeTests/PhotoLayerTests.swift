@@ -1,5 +1,7 @@
 import XCTest
 import UIKit
+import ImageIO
+import UniformTypeIdentifiers
 @testable import TipStroke
 
 final class PhotoLayerTests: XCTestCase {
@@ -162,6 +164,38 @@ final class PhotoLayerTests: XCTestCase {
         let distorted = warp.dragged(tool: .distort, from: .zero, to: CGPoint(x: 5, y: 4), divisions: 4, radius: 20)
         XCTAssertEqual(distorted.vertex(0).x, 5, accuracy: 0.001)
         XCTAssertTrue(distorted.validated())
+    }
+
+    func testOversizedOrientedPhotoKeepsOriginalBytesAndExportsVisiblePixels() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("Portrait.jpg")
+        let context = try RasterDocument.context(width: 5000, height: 100)
+        context.setFillColor(UIColor.red.cgColor); context.fill(CGRect(x: 0, y: 0, width: 5000, height: 100))
+        let writer = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(writer, try XCTUnwrap(context.makeImage()), [kCGImagePropertyOrientation: 6] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(writer))
+        let source = try PhotoSource(file: url)
+        XCTAssertEqual(source.width, 5000)
+        XCTAssertEqual(source.height, 100)
+        XCTAssertEqual(source.image.height, 4096)
+        XCTAssertLessThan(source.image.width, source.image.height)
+        let detailed = try source.exportImage(for: CGRect(x: 0, y: 0, width: 100, height: 5000))
+        XCTAssertEqual(detailed.height, 5000)
+        let doc = RasterDocument(name: "Original", width: 256, height: 256)
+        try doc.importPhoto(source, name: "Portrait")
+        XCTAssertLessThan(try XCTUnwrap(doc.activePhoto).bounds.width, 8)
+        let store = ProjectStore(root: root)
+        try store.save(doc.snapshot())
+        let restored = try store.load(doc.record.id)
+        XCTAssertEqual(restored.record.layers.last?.photo?.source?.encoded, try Data(contentsOf: url))
+        let png = try store.exportPNG(restored, transparent: true)
+        defer { try? FileManager.default.removeItem(at: png) }
+        let output = try XCTUnwrap(UIImage(contentsOfFile: png.path)?.cgImage)
+        let pixels = TilePixels([TileKey(x: 0, y: 0): output])
+        XCTAssertEqual(try pixels.rgba(128, 128) & 255, 255)
+        XCTAssertEqual(try pixels.rgba(20, 128) & 255, 0)
     }
 
     func testSourceSpaceMaskFollowsPhotoAndRoundTrips() throws {
