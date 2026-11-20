@@ -26,13 +26,16 @@ final class EditorFlowTests: XCTestCase {
         toolCenter.press(forDuration: 0.8, thenDragTo: smudge)
         XCTAssertEqual(tools.value as? String, "Smudge")
         app.segmentedControls["Drawing tool"].buttons["Ink"].tap()
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.45))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.55))
-        start.press(forDuration: 0.05, thenDragTo: end)
-        XCTAssertTrue(app.buttons["Undo"].isEnabled)
-        app.buttons["Undo"].tap()
-        XCTAssertTrue(app.buttons["Redo"].isEnabled)
-        app.buttons["Redo"].tap()
+        let canvas = app.descendants(matching: .any)["Drawing canvas"]
+        let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.40, dy: 0.45))
+        let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.60, dy: 0.55))
+        start.press(forDuration: 0.2, thenDragTo: end)
+        for label in ["Undo", "Redo"] {
+            let action = app.buttons[label]
+            let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: action)
+            XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)
+            action.tap()
+        }
         // These elements come from Kotlin Compose panels, exercising the framework in the real app.
         app.buttons["Brush size, opacity and finger drawing"].tap()
         XCTAssertTrue(app.navigationBars["Brush settings"].waitForExistence(timeout: 10))
