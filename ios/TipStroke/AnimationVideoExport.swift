@@ -54,7 +54,7 @@ extension ProjectStore {
                                 context.setFillColor(snapshot.record.paperColor.cgColor); context.fill(bounds)
                                 let segment = segments[index]
                                 var frame = snapshot
-                                frame.pixels = snapshot.frames[animation.frames[Int(segment.index)].id] ?? [:]
+                                frame.pixels = snapshot.pixelsForFrame(animation.frames[Int(segment.index)].id)
                                 try RasterDocument.composite(frame, in: context, visible: bounds)
                                 guard adaptor.append(buffer, withPresentationTime: CMTime(value: tick, timescale: Int32(animation.fps))) else {
                                     throw writer.error ?? DrawingError.message("Video encoding failed.")

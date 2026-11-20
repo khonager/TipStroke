@@ -109,11 +109,11 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
                           keys.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (width + 255) / 256 && $0.y < (height + 255) / 256 }) else {
                         throw DrawingError.message("Invalid animation tile metadata.")
                     }
-                    if index != animation.selectedIndex { tileCount += keys.count }
+                    if index != animation.selectedIndex || animation.sharedLayerIDs.contains(UUID(uuidString: layerID)!) { tileCount += keys.count }
                 }
             }
             let current = animation.frames[animation.selectedIndex]
-            guard layers.allSatisfy({ Set(current.tiles[$0.id.uuidString] ?? []) == Set($0.tiles) }) else {
+            guard animation.sharedLayerIDs.isSubset(of: Set(layers.map(\.id))), layers.allSatisfy({ animation.sharedLayerIDs.contains($0.id) || Set(current.tiles[$0.id.uuidString] ?? []) == Set($0.tiles) }) else {
                 throw DrawingError.message("The selected frame does not match the painting tiles.")
             }
         }
@@ -144,5 +144,6 @@ struct AnimationRecord: Codable, Equatable {
     var selectedIndex = 0
     var fps = 12
     var playbackMode = "LOOP"
+    var backgroundLayers: Set<UUID>?
     var onionSkin = false
 }

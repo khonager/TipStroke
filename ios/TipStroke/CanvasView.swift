@@ -167,7 +167,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 if let animation = document.record.animation, animation.onionSkin {
                     for index in [animation.selectedIndex - 1, animation.selectedIndex + 1] where animation.frames.indices.contains(index) {
                         var ghost = snapshot
-                        ghost.pixels = document.framePixels[animation.frames[index].id] ?? [:]
+                        ghost.pixels = (document.framePixels[animation.frames[index].id] ?? [:]).filter { !animation.sharedLayerIDs.contains($0.key) }
                         context.saveGState(); context.setAlpha(0.18); context.beginTransparencyLayer(auxiliaryInfo: nil)
                         try RasterDocument.composite(ghost, in: context, visible: key.rect)
                         context.endTransparencyLayer(); context.restoreGState()

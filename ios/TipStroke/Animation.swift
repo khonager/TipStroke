@@ -3,7 +3,40 @@ import ImageIO
 import UniformTypeIdentifiers
 import TipStrokeShared
 
+extension AnimationRecord {
+    var sharedLayerIDs: Set<UUID> { backgroundLayers ?? [] }
+}
+
+extension DocumentSnapshot {
+    func pixelsForFrame(_ id: UUID) -> [UUID: [TileKey: CGImage]] {
+        let backgrounds = record.animation?.sharedLayerIDs ?? []
+        let shared = pixels.filter { backgrounds.contains($0.key) }
+        return (frames[id] ?? [:]).merging(shared) { _, shared in shared }
+    }
+}
+
 extension RasterDocument {
+    private func storeCurrentCel(_ animation: AnimationRecord) {
+        let id = animation.frames[animation.selectedIndex].id
+        let hidden = framePixels[id]?.filter { animation.sharedLayerIDs.contains($0.key) } ?? [:]
+        framePixels[id] = hidden.merging(pixels.filter { !animation.sharedLayerIDs.contains($0.key) }) { _, current in current }
+    }
+    private func installCel(_ animation: AnimationRecord) {
+        let id = animation.frames[animation.selectedIndex].id
+        let shared = pixels.filter { animation.sharedLayerIDs.contains($0.key) }
+        pixels = (framePixels[id] ?? [:]).filter { !animation.sharedLayerIDs.contains($0.key) }.merging(shared) { _, current in current }
+    }
+    func toggleSharedBackground() {
+        guard var animation = record.animation else { return }
+        beginMetadataEdit()
+        storeCurrentCel(animation)
+        var ids = animation.sharedLayerIDs
+        if ids.contains(activeLayer) { ids.remove(activeLayer) } else { ids.insert(activeLayer) }
+        animation.backgroundLayers = ids
+        record.animation = animation
+        endMetadataEdit()
+    }
+
     func enableAnimation() {
         guard record.animation == nil else { return }
         beginMetadataEdit()
@@ -15,9 +48,9 @@ extension RasterDocument {
     func selectFrame(_ index: Int) {
         guard var animation = record.animation, animation.frames.indices.contains(index) else { return }
         endStroke(cancelled: true)
-        framePixels[animation.frames[animation.selectedIndex].id] = pixels
+        storeCurrentCel(animation)
         animation.selectedIndex = index
-        pixels = framePixels[animation.frames[index].id] ?? [:]
+        installCel(animation)
         record.animation = animation; selection = nil
     }
     func restoreFrameForHistory(_ id: UUID?) {
@@ -33,12 +66,12 @@ extension RasterDocument {
             throw DrawingError.message("This frame copy exceeds the painting memory budget.")
         }
         beginMetadataEdit()
-        framePixels[animation.frames[animation.selectedIndex].id] = pixels
+        storeCurrentCel(animation)
         let frame = AnimationFrameRecord()
-        let next = copy ? pixels : [:]
+        let next = copy ? pixels.filter { !animation.sharedLayerIDs.contains($0.key) } : [:]
         animation.selectedIndex += 1
         animation.frames.insert(frame, at: animation.selectedIndex)
-        framePixels[frame.id] = next; pixels = next; record.animation = animation
+        framePixels[frame.id] = next; installCel(animation); record.animation = animation
         selection = nil; endMetadataEdit()
     }
     func deleteFrame() throws {
@@ -50,7 +83,7 @@ extension RasterDocument {
         let removed = animation.frames.remove(at: animation.selectedIndex)
         framePixels[removed.id] = nil
         animation.selectedIndex = min(animation.selectedIndex, animation.frames.count - 1)
-        pixels = framePixels[animation.frames[animation.selectedIndex].id] ?? [:]
+        installCel(animation)
         record.animation = animation; selection = nil; endMetadataEdit()
     }
     func moveFrame(_ offset: Int) {
@@ -91,7 +124,7 @@ extension ProjectStore {
         for segment in segments {
             try autoreleasepool {
                 var drawing = snapshot
-                drawing.pixels = snapshot.frames[animation.frames[Int(segment.index)].id] ?? [:]
+                drawing.pixels = snapshot.pixelsForFrame(animation.frames[Int(segment.index)].id)
                 let image = try Self.render(drawing)
                 var first: URL?
                 for _ in 0..<Int(segment.ticks) {
@@ -130,7 +163,7 @@ extension ProjectStore {
         }
         for segment in order {
             let frame = animation.frames[Int(segment.index)]
-            var drawing = snapshot; drawing.pixels = snapshot.frames[frame.id] ?? [:]
+            var drawing = snapshot; drawing.pixels = snapshot.pixelsForFrame(frame.id)
             let image = try Self.render(drawing)
             let delay = Double(segment.ticks) / Double(animation.fps)
             CGImageDestinationAddImage(destination, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay, kCGImagePropertyGIFUnclampedDelayTime: delay]] as CFDictionary)
@@ -210,6 +243,10 @@ final class TimelineController: UITableViewController {
             self.document.beginMetadataEdit(); self.document.record.animation?.fps = fps
             self.document.record.animation?.frames[animation.selectedIndex].exposure = hold
             self.document.record.animation?.playbackMode = mode; self.document.endMetadataEdit(); self.changed()
+        })
+        let shared = animation.sharedLayerIDs.contains(document.activeLayer)
+        alert.addAction(UIAlertAction(title: shared ? "Animate selected layer separately" : "Share selected layer across frames", style: .default) { [weak self] _ in
+            self?.document.toggleSharedBackground(); self?.changed()
         })
         alert.addAction(UIAlertAction(title: "Move frame earlier", style: .default) { [weak self] _ in self?.document.moveFrame(-1); self?.changed() })
         alert.addAction(UIAlertAction(title: "Move frame later", style: .default) { [weak self] _ in self?.document.moveFrame(1); self?.changed() })

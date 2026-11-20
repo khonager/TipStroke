@@ -58,9 +58,11 @@ final class ProjectStore {
         var frames: [UUID: [UUID: [TileKey: CGImage]]] = [:]
         if let animation = record.animation {
             for frame in animation.frames {
-                if frame.id == animation.frames[animation.selectedIndex].id { frames[frame.id] = pixels; continue }
+                let selected = frame.id == animation.frames[animation.selectedIndex].id
+                if selected { frames[frame.id] = pixels.filter { !animation.sharedLayerIDs.contains($0.key) } }
                 for (layerID, keys) in frame.tiles {
                     guard let id = UUID(uuidString: layerID) else { throw DrawingError.message("Invalid frame layer.") }
+                    if selected && !animation.sharedLayerIDs.contains(id) { continue }
                     for key in keys {
                         let url = directory.appendingPathComponent("frames").appendingPathComponent(frame.id.uuidString)
                             .appendingPathComponent(layerID).appendingPathComponent(key.fileName)
@@ -90,9 +92,10 @@ final class ProjectStore {
             }
         }
         if let animation = snapshot.record.animation {
-            for frame in animation.frames where frame.id != animation.frames[animation.selectedIndex].id {
+            for frame in animation.frames {
                 for (layerID, keys) in frame.tiles {
                     guard let id = UUID(uuidString: layerID) else { throw DrawingError.message("Invalid frame layer.") }
+                    if frame.id == animation.frames[animation.selectedIndex].id && !animation.sharedLayerIDs.contains(id) { continue }
                     let target = staging.appendingPathComponent("frames").appendingPathComponent(frame.id.uuidString).appendingPathComponent(layerID)
                     try fm.createDirectory(at: target, withIntermediateDirectories: true)
                     for key in keys {

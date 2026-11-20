@@ -289,6 +289,32 @@ final class RasterDocumentTests: XCTestCase {
         document.endStroke(cancelled: false)
         for x in 254...259 { XCTAssertEqual(try alpha(document, x: x, y: 20), x % 2 == 0 ? 255 : 0) }
     }
+    func testSharedCelsPersistWithoutLosingHiddenFramePaint() throws {
+        let document = RasterDocument(name: "Background", width: 256, height: 256)
+        document.enableAnimation()
+        try document.addFrame(copy: false)
+        XCTAssertTrue(document.beginStroke())
+        try paint(document, from: .init(x: 70, y: 20), to: .init(x: 80, y: 20))
+        document.endStroke(cancelled: false)
+        document.selectFrame(0)
+        document.toggleSharedBackground()
+        XCTAssertTrue(document.beginStroke())
+        try paint(document, from: .init(x: 20, y: 20), to: .init(x: 30, y: 20))
+        document.endStroke(cancelled: false)
+        document.selectFrame(1)
+        XCTAssertGreaterThan(try alpha(document, x: 25, y: 20), 200)
+        XCTAssertEqual(try alpha(document, x: 75, y: 20), 0)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ProjectStore(root: root)
+        try store.save(document.snapshot())
+        let restored = RasterDocument(snapshot: try store.load(document.record.id))
+        restored.selectFrame(0)
+        restored.toggleSharedBackground()
+        restored.selectFrame(1)
+        XCTAssertGreaterThan(try alpha(restored, x: 75, y: 20), 200)
+        XCTAssertEqual(try alpha(restored, x: 25, y: 20), 0)
+    }
     func testAnimationRoundTripAndUndoSelectTheCorrectFrame() throws {
         let document = RasterDocument(name: "Animation", width: 256, height: 256)
         document.enableAnimation()

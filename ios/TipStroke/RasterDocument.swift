@@ -86,7 +86,9 @@ final class RasterDocument {
         }
         var frames = framePixels
         if var animation = saved.animation {
-            frames[animation.frames[animation.selectedIndex].id] = pixels
+            let selected = animation.frames[animation.selectedIndex].id
+            let hidden = frames[selected]?.filter { animation.sharedLayerIDs.contains($0.key) } ?? [:]
+            frames[selected] = hidden.merging(pixels.filter { !animation.sharedLayerIDs.contains($0.key) }) { _, current in current }
             for index in animation.frames.indices {
                 animation.frames[index].tiles = (frames[animation.frames[index].id] ?? [:]).reduce(into: [:]) { result, layer in
                     result[layer.key.uuidString] = Array(layer.value.keys).sorted { ($0.y, $0.x) < ($1.y, $1.x) }
@@ -234,7 +236,7 @@ final class RasterDocument {
             revision &+= 1
             let after = before.keys.reduce(into: [TileKey: TileState]()) { $0[$1] = pixels[layer]?[$1].map(TileState.image) ?? .empty }
             redoStack = []
-            undoStack.append(Edit(layer: layer, frame: record.animation.map { $0.frames[$0.selectedIndex].id }, before: before, after: after))
+            undoStack.append(Edit(layer: layer, frame: record.animation.flatMap { $0.sharedLayerIDs.contains(layer) ? nil : $0.frames[$0.selectedIndex].id }, before: before, after: after))
             trimHistory()
         }
         before = [:]; strokeLayer = nil
@@ -275,6 +277,7 @@ final class RasterDocument {
             throw DrawingError.message("This layer is too large to retain in undo history. Its pixels have been preserved.")
         }
         beginMetadataEdit()
+        record.animation?.backgroundLayers?.remove(id)
         record.layers.removeAll { $0.id == id }; pixels[id] = nil
         for index in record.layers.indices where record.layers[index].clipSource == id { record.layers[index].clipSource = nil }
         for frame in Array(framePixels.keys) { framePixels[frame]?[id] = nil }
