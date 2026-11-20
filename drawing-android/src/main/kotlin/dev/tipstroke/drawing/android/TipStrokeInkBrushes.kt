@@ -14,8 +14,6 @@ import dev.tipstroke.core.model.pencilShadeEndRadians
 import java.util.LinkedHashMap
 import kotlin.math.PI
 import kotlin.math.roundToInt
-import kotlin.math.sin
-import kotlin.random.Random
 
 /** TipStroke-owned Ink families. Finished meshes are still flattened into sparse raster tiles. */
 @OptIn(ExperimentalInkCustomBrushApi::class)
@@ -292,45 +290,10 @@ internal class TipStrokeInkBrushes {
         internal const val PENCIL_MIN_TILT_OPACITY_MULTIPLIER = .62f
 
         fun pencilGrainTexture(): Bitmap {
-            val size = 256
-            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val pixels = IntArray(size * size)
-            val fineRandom = Random(0x19D7)
-            val fine = FloatArray(size * size) { fineRandom.nextFloat() * 2f - 1f }
-            val tooth = valueNoiseGrid(size, 5, 0x32B1)
-            for (y in 0 until size) for (x in 0 until size) {
-                val index = y * size + x
-                val fiber = sin(y * .31f + sin(x * .047f) * 1.4f) * .015f
-                // Fine paper tooth varies coverage locally without broad light/dark blotches.
-                // Large shade areas should look even from a distance and granular up close.
-                val graphiteCoverage = .7f + fine[index] * .18f + tooth[index] * .025f + fiber
-                val alpha = (((graphiteCoverage - .42f) / .48f).coerceIn(0f, 1f) * 255f).roundToInt()
-                pixels[y * size + x] = Color.argb(alpha, 255, 255, 255)
-            }
-            bitmap.setPixels(pixels, 0, size, 0, 0, size, size)
-            return bitmap
+            val tip = dev.tipstroke.core.drawing.Graphite.grain()
+            val pixels = IntArray(tip.width * tip.height) { Color.argb(tip.coverage(it), 255, 255, 255) }
+            return Bitmap.createBitmap(pixels, tip.width, tip.height, Bitmap.Config.ARGB_8888)
         }
-
-        private fun valueNoiseGrid(size: Int, cellSize: Int, seed: Int): FloatArray {
-            val columns = size / cellSize + 2
-            val rows = size / cellSize + 2
-            val random = Random(seed)
-            val values = FloatArray(columns * rows) { random.nextFloat() * 2f - 1f }
-            return FloatArray(size * size) { index ->
-                val x = index % size
-                val y = index / size
-                val gridX = x / cellSize
-                val gridY = y / cellSize
-                val localX = smooth((x % cellSize) / cellSize.toFloat())
-                val localY = smooth((y % cellSize) / cellSize.toFloat())
-                val top = lerp(values[gridY * columns + gridX], values[gridY * columns + gridX + 1], localX)
-                val bottom = lerp(values[(gridY + 1) * columns + gridX], values[(gridY + 1) * columns + gridX + 1], localX)
-                lerp(top, bottom, localY)
-            }
-        }
-
-        private fun smooth(value: Float) = value * value * (3f - 2f * value)
-        private fun lerp(start: Float, end: Float, amount: Float) = start + (end - start) * amount
     }
 }
 

@@ -87,6 +87,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             catch { stampRenderer = nil; onError?(error) }
         }
     }
+    private let graphite = GraphiteRenderer()
     private var stampRenderer: NativeStampRenderer?
     private var stampPath: NativeStampPath?
     var brushColor: UIColor = .black
@@ -244,6 +245,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         magneticRuler = mode == .paint && perspectiveMode > 0 ? NativePerspectiveRuler(mode: Int32(perspectiveMode), x1: Float(first.x), y1: Float(first.y), x2: Float(second.x), y2: Float(second.y), threshold: Float(4 / scale)) : nil
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
         stampPath = brush.usesStamps && !(tool == .eraser && document.activePhoto != nil) ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
+        graphite.begin()
         strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
         if liveFill || shadowPull || mode == .colorPush {
@@ -441,7 +443,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 let alpha = strokeOpacity * (strokeTool == .eraser ? 1 : CGFloat(strokeBrush.opacityResponse(pressure: Float(pressure)))) *
                     (1 + (CGFloat(strokeBrush.pencilShadeOpacity) - 1) * shading)
                 let color = (strokeTool == .eraser ? UIColor.black : strokeColor).withAlphaComponent(alpha)
-                if mode == .paint, let stampPath, let stampRenderer {
+                if mode == .paint && strokeTool == .pencil && !strokeBrush.usesStamps {
+                    dirty = dirty.union(try graphite.paint(document: document, brush: strokeBrush, point: point, size: strokeSize,
+                        pressure: pressure, tilt: tilt, angle: sample.azimuthAngle(in: self), speed: speedScale,
+                        color: strokeColor, opacity: strokeOpacity))
+                } else if mode == .paint, let stampPath, let stampRenderer {
                     let stamps = stampPath.append(x: Float(point.x), y: Float(point.y), pressure: Float(pressure), tilt: tilt, time: sample.timestamp)
                     let roll: CGFloat
                     if #available(iOS 17.5, *), sample.type == .pencil { roll = sample.rollAngle } else { roll = 0 }

@@ -1,5 +1,7 @@
 package dev.tipstroke.drawing.android
 
+import dev.tipstroke.core.drawing.Graphite
+import dev.tipstroke.core.drawing.PencilTipDynamics
 import dev.tipstroke.core.drawing.mirrorCopies
 import android.graphics.BlurMaskFilter
 import android.graphics.Bitmap
@@ -551,36 +553,9 @@ internal object StrokeCanvasPainter {
         return dev.tipstroke.core.geometry.Rect(left, top, right, bottom)
     }
 
-    internal data class PencilTipDynamics(val width: Float, val height: Float, val alpha: Int)
-
-    internal fun pencilTipDynamics(stroke: CompletedStroke, sample: StrokeSample, speedScale: Float = 1f): PencilTipDynamics {
-        val brush = stroke.style.brush
-        val tiltResponse = brush.pencilTiltResponse(sample.tiltRadians)
-        val widthMultiplier = 1f +
-            (TipStrokeInkBrushes.PENCIL_MAX_TILT_WIDTH_MULTIPLIER - 1f) * brush.pencilShadeSize * tiltResponse
-        val heightMultiplier = 1f +
-            (TipStrokeInkBrushes.PENCIL_MAX_TILT_HEIGHT_MULTIPLIER - 1f) * brush.pencilShadeSize * tiltResponse
-        val tiltOpacity = 1f + (brush.pencilShadeOpacity - 1f) * tiltResponse
-        val rawPressureSize = sample.pressureSize(stroke)
-        // The exposed side of a real pencil remains broad under light pressure; pressure mostly
-        // controls how much graphite it deposits. Keep pressure sizing for the upright point,
-        // then progressively decouple contact width as the barrel approaches the paper.
-        val pressureDecoupling = sqrt(tiltResponse) * .95f * brush.pencilShadeSize.coerceIn(0f, 1f)
-        val pressureSize = rawPressureSize + (1f - rawPressureSize) * pressureDecoupling
-        val edgeVariation = 1f +
-            sin(sample.position.x * .071f + sample.position.y * .113f) * .006f +
-            sin(sample.position.x * .029f - sample.position.y * .053f) * .003f
-        val densityVariation = 1f + sin(sample.position.x * .047f + sample.position.y * .031f) * .015f
-        val baseDiameter = (
-            stroke.style.sizePx * TipStrokeInkBrushes.PENCIL_BASE_TIP_SCALE * brush.pencilPointSize
-            ).coerceAtLeast(.5f)
-        return PencilTipDynamics(
-            width = baseDiameter * pressureSize * speedScale * widthMultiplier * edgeVariation,
-            height = baseDiameter * pressureSize * speedScale * heightMultiplier * edgeVariation,
-            alpha = (stroke.style.opacity * stroke.style.color.alpha * sample.pressureOpacity(stroke) * tiltOpacity * densityVariation * 255f)
-                .roundToInt().coerceIn(0, 255),
-        )
-    }
+    internal fun pencilTipDynamics(stroke: CompletedStroke, sample: StrokeSample, speedScale: Float = 1f) =
+        Graphite.contact(stroke.style.brush, stroke.style.sizePx, stroke.style.opacity * stroke.style.color.alpha,
+            sample.position.x, sample.position.y, sample.pressure, sample.opacityPressure, sample.tiltRadians, speedScale)
 
     /** Assemble coverage first, then blur once. Blurring SRC segments separately leaves
      * the preceding segment showing through each new blurred cap, creating colored ridges.
