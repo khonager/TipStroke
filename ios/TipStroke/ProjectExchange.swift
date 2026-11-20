@@ -156,25 +156,24 @@ extension ProjectStore {
         }
         guard Set(ids.layers.values).count == ids.layers.count else { throw PackageIO.invalid }
         var tileCount = 0
-        func readTiles(_ url: URL, width: Int, height: Int) throws -> [TileKey: CGImage] {
-            guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
-            var result: [TileKey: CGImage] = [:]
-            for file in try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
+        func tileURLs(_ directory: URL, width: Int, height: Int) throws -> [TileKey: URL] {
+            guard FileManager.default.fileExists(atPath: directory.path) else { return [:] }
+            var result: [TileKey: URL] = [:]
+            for file in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
                 let indices = file.deletingPathExtension().lastPathComponent.components(separatedBy: "_")
-                guard file.pathExtension == "png", indices.count == 2, let x = Int(indices[0]), let y = Int(indices[1]),
-                      x >= 0, x < (width + 255) / 256, y >= 0, y < (height + 255) / 256,
-                      tileCount < RasterDocument.maximumTiles else { throw PackageIO.invalid }
+                guard indices.count == 2, let x = Int(indices[0]), let y = Int(indices[1]),
+                      x >= 0, x < (width + 255) / 256, y >= 0, y < (height + 255) / 256 else { throw PackageIO.invalid }
                 let key = TileKey(x: x, y: y)
-                guard key.fileName == file.lastPathComponent, result[key] == nil,
-                      let source = CGImageSourceCreateWithURL(file as CFURL, nil),
-                      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-                      properties[kCGImagePropertyPixelWidth] as? Int == 256,
-                      properties[kCGImagePropertyPixelHeight] as? Int == 256,
-                      let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
-                else { throw PackageIO.invalid }
-                result[key] = image; tileCount += 1
+                guard key.fileName == file.lastPathComponent, result[key] == nil else { throw PackageIO.invalid }
+                result[key] = file
             }
             return result
+        }
+        func readTiles(_ directory: URL, width: Int, height: Int) throws -> [TileKey: CGImage] {
+            let files = try tileURLs(directory, width: width, height: height)
+            tileCount += files.count
+            guard tileCount <= RasterDocument.maximumTiles else { throw PackageIO.invalid }
+            return try files.mapValues(CelStorage.read)
         }
         var pixels: [UUID: [TileKey: CGImage]] = [:]
         state.layers = try layers.map { raw in
@@ -224,12 +223,13 @@ extension ProjectStore {
         }
         state.selectedLayer = (manifest["selectedLayerId"] as? String).flatMap { ids.layers[$0] } ?? state.layers.last?.id
         var frames: [UUID: [UUID: [TileKey: CGImage]]] = [:]
+        var coldFrames: [UUID: CelFiles] = [:]
         if let raw = manifest["animation"] as? JSONObject {
             if let media = raw["media"] as? JSONObject {
                 state.media = try Self.importMedia(media, position: (raw["mediaPositionUs"] as? NSNumber)?.int64Value ?? 0,
                                                   from: directory, ids: &ids)
             }
-            guard let list = raw["frames"] as? [JSONObject], (1...240).contains(list.count) else { throw PackageIO.invalid }
+            guard let list = raw["frames"] as? [JSONObject], (1...10_000).contains(list.count) else { throw PackageIO.invalid }
             var timeline = AnimationRecord()
             timeline.backgroundLayers = try Set((raw["backgroundLayerIds"] as? [String] ?? []).map {
                 guard let id = ids.layers[$0] else { throw PackageIO.invalid }
@@ -239,24 +239,42 @@ extension ProjectStore {
             timeline.selectedIndex = raw["selectedIndex"] as? Int ?? 0
             guard list.indices.contains(timeline.selectedIndex) else { throw PackageIO.invalid }
             timeline.onionSkin = (raw["onionBefore"] as? Int ?? 1) > 0 || (raw["onionAfter"] as? Int ?? 1) > 0
-            timeline.frames = try list.enumerated().map { index, item in
+            timeline.frames = try list.map { item in
                 let key = try identifier(item)
                 guard ids.frames[key] == nil else { throw PackageIO.invalid }
                 var frame = AnimationFrameRecord(); frame.id = UUID(uuidString: key) ?? UUID()
                 frame.exposure = item["exposure"] as? Int ?? 1; ids.frames[key] = frame.id
                 frame.sourceTimeUs = (item["sourceTimeUs"] as? NSNumber)?.int64Value
                 frame.durationUs = (item["durationUs"] as? NSNumber)?.int64Value
-                for (layer, native) in ids.layers {
-                    // The selected frame's visible pixels live in layers/<id>/tiles; a
-                    // promoted background can also have an inactive cel at that frame.
-                    if index != timeline.selectedIndex || timeline.sharedLayerIDs.contains(native) {
-                        let tiles = try readTiles(directory.appendingPathComponent("animation/cels/\(layer)/\(key)"), width: w, height: h)
-                        if !tiles.isEmpty { frames[frame.id, default: [:]][native] = tiles }
-                    }
-                }
                 return frame
             }
             guard Set(ids.frames.values).count == ids.frames.count else { throw PackageIO.invalid }
+            let celRoot = directory.appendingPathComponent("animation/cels")
+            if FileManager.default.fileExists(atPath: celRoot.path) {
+                let selected = timeline.frames[timeline.selectedIndex].id
+                var counts: [UUID: Int] = [:]
+                for layerDir in try FileManager.default.contentsOfDirectory(at: celRoot, includingPropertiesForKeys: nil) {
+                    guard let layer = ids.layers[layerDir.lastPathComponent] else { continue }
+                    for celDir in try FileManager.default.contentsOfDirectory(at: layerDir, includingPropertiesForKeys: nil) {
+                        guard let frame = ids.frames[celDir.lastPathComponent] else { continue }
+                        if frame == selected {
+                            if timeline.sharedLayerIDs.contains(layer) {
+                                frames[frame, default: [:]][layer] = try readTiles(celDir, width: w, height: h)
+                            }
+                        } else {
+                            let files = try tileURLs(celDir, width: w, height: h)
+                            counts[frame, default: 0] += files.count
+                            guard counts[frame, default: 0] <= RasterDocument.maximumTiles else { throw PackageIO.invalid }
+                            coldFrames[frame, default: [:]][layer] = try files.mapValues { url in
+                                try autoreleasepool {
+                                    _ = try CelStorage.read(url)
+                                    return try LocalMediaFile(url)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             let frameIndices = Dictionary(uniqueKeysWithValues: timeline.frames.enumerated().map { ($1.id, $0) })
             for index in timeline.frames.indices { timeline.frames[index].photoCels = [:] }
             for layerEntry in raw["imageCels"] as? [JSONObject] ?? [] {
@@ -271,9 +289,10 @@ extension ProjectStore {
                 }
             }
             state.animation = timeline
+            state.installPhotoCels(timeline, at: timeline.selectedIndex)
         }
         guard Set(ids.layers.values).count == ids.layers.count else { throw PackageIO.invalid }
-        let snapshot = RasterDocument(snapshot: DocumentSnapshot(record: state, pixels: pixels, frames: frames)).snapshot()
+        let snapshot = RasterDocument(snapshot: DocumentSnapshot(record: state, pixels: pixels, frames: frames, coldFrames: coldFrames)).snapshot()
         try save(snapshot)
         let replay = directory.appendingPathComponent("ios-progress")
         if FileManager.default.fileExists(atPath: replay.path) {
@@ -406,7 +425,10 @@ extension ProjectStore {
         }
         if let timeline = state.animation {
             var raw = manifest["animation"] as? JSONObject ?? [:]
-            let priorFrames = raw["frames"] as? [JSONObject] ?? []
+            let priorFrames = (raw["frames"] as? [JSONObject] ?? []).reduce(into: [String: JSONObject]()) { result, item in
+                if let id = item["id"] as? String { result[id] = item }
+            }
+            let rasterIDs = Set(state.layers.filter { $0.photo == nil }.map(\.id))
             raw["imageCels"] = state.layers.compactMap { layer -> JSONObject? in
                 guard let original = layer.photo else { return nil }
                 let poses = timeline.frames.compactMap { frame -> JSONObject? in
@@ -428,13 +450,26 @@ extension ProjectStore {
             }
             if raw["onionBefore"] == nil { raw["onionBefore"] = 0 }
             if raw["onionAfter"] == nil { raw["onionAfter"] = 0 }
-            raw["frames"] = try timeline.frames.enumerated().map { index, frame -> JSONObject in
+            raw["frames"] = try timeline.frames.map { frame -> JSONObject in
                 let id = frameID(frame.id)
-                var item = priorFrames.first(where: { $0["id"] as? String == id }) ?? [:]
+                var item = priorFrames[id] ?? [:]
                 item["id"] = id; item["exposure"] = frame.exposure
                 item["sourceTimeUs"] = frame.sourceTimeUs; item["durationUs"] = frame.durationUs
-                let cels = snapshot.frames[frame.id] ?? [:]
-                for (layer, tiles) in cels where state.layers.contains(where: { $0.id == layer && $0.photo == nil }) { try writeTiles(tiles, "animation/cels/\(layerID(layer))/\(id)") }
+                if let files = snapshot.coldFrames[frame.id] {
+                    for (layer, tiles) in files where rasterIDs.contains(layer) && !tiles.isEmpty {
+                        let dir = target.appendingPathComponent("animation/cels/\(layerID(layer))/\(id)")
+                        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+                        for (key, file) in tiles {
+                            let output = dir.appendingPathComponent(key.fileName)
+                            do { try fm.linkItem(at: file.url, to: output) }
+                            catch { try fm.copyItem(at: file.url, to: output) }
+                        }
+                    }
+                } else {
+                    for (layer, tiles) in snapshot.frames[frame.id] ?? [:] where rasterIDs.contains(layer) {
+                        try writeTiles(tiles, "animation/cels/\(layerID(layer))/\(id)")
+                    }
+                }
                 return item
             }
             if let media = state.media {

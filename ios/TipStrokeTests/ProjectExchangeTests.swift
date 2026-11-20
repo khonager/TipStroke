@@ -27,6 +27,33 @@ final class ProjectExchangeTests: XCTestCase {
         XCTAssertEqual(Set(restored.pixels[id]!.keys), Set(doc.pixels[id]!.keys))
     }
 
+    func testLongTimelineRoundTripPreservesDiskBackedCels() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = ProjectStore(root: folder)
+        let doc = RasterDocument(name: "Long timeline", width: 256, height: 256)
+        let layer = doc.activeLayer
+        let key = TileKey(x: 0, y: 0)
+        let context = try RasterDocument.context(width: 256, height: 256)
+        context.setFillColor(UIColor.green.cgColor); context.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
+        let image = try XCTUnwrap(context.makeImage())
+        let encoded = try CelStorage.encode([layer: [key: image]])
+        var snapshot = doc.snapshot(), timeline = AnimationRecord()
+        timeline.frames = (0..<241).map { _ in AnimationFrameRecord() }
+        for index in 1...65 {
+            timeline.frames[index].tiles = [layer.uuidString: [key]]
+            snapshot.coldFrames[timeline.frames[index].id] = encoded
+        }
+        snapshot.record.animation = timeline
+        try store.save(snapshot)
+        let package = try store.exportPackage([doc.record.id])
+        defer { try? FileManager.default.removeItem(at: package) }
+        let imported = try store.load(XCTUnwrap(store.importPackage(package).first))
+        XCTAssertEqual(imported.record.animation?.frames.count, 241)
+        let tile = try XCTUnwrap(imported.coldFrames[timeline.frames[65].id]?[layer]?[key])
+        XCTAssertEqual(try Data(contentsOf: tile.url), try Data(contentsOf: XCTUnwrap(encoded[layer]?[key]).url))
+    }
+
     func testLayeredAnimationRoundTripRetainsExposurePaintAndIdentity() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
