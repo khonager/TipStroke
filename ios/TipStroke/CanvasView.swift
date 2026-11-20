@@ -526,7 +526,13 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         } catch { onError?(error) }
     }
     private func paintFitted(_ points: [CGPoint]) throws {
-        if let stampRenderer {
+        if strokeTool == .pencil && !strokeBrush.usesStamps {
+            graphite.begin()
+            for point in points {
+                _ = try graphite.paint(document: document, brush: strokeBrush, point: point, size: strokeSize,
+                    pressure: 0.5, tilt: 0, angle: 0, speed: 1, color: strokeColor, opacity: strokeOpacity)
+            }
+        } else if stampPath != nil, let stampRenderer {
             let path = strokeBrush.path(size: Float(strokeSize), opacity: Float(strokeOpacity))
             var stamps: [BrushStamp] = []
             for (i, point) in points.enumerated() {
@@ -551,10 +557,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
         guard pointer != nil, let shape = shapeTracker.fit() else { return }
         let points = shape.points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
-        let path = CGMutablePath(); path.addLines(between: points)
-        document.endStroke(cancelled: true)
-        guard document.beginStroke() else { return }
-        do { try document.paintPath(path, color: strokeColor.withAlphaComponent(strokeOpacity), width: strokeSize, filled: false); fitted = true; refresh() }
+        document.resetStrokePreview()
+        do { try paintFitted(points); fitted = true; refresh(document.strokePreviewBounds) }
         catch { cancelStroke(); onError?(error) }
     }
     private func consume(_ touch: UITouch, event: UIEvent?) {

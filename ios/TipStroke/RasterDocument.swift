@@ -359,7 +359,19 @@ final class RasterDocument {
     }
 
     // Restore only tiles reached by this provisional stroke; retain their original undo states.
-    var strokePreviewBounds: CGRect { before.keys.reduce(CGRect.null) { $0.union($1.rect) } }
+    var strokePreviewBounds: CGRect {
+        guard let layer = strokeLayer else { return .null }
+        func touchedBounds(_ id: UUID, _ states: [TileKey: TileState]) -> CGRect {
+            let touched = states.keys.reduce(CGRect.null) { $0.union($1.rect) }
+            guard !touched.isNull, let photo = record.layers.first(where: { $0.id == id })?.photo else { return touched }
+            var dirty = CGRect.null
+            photo.geometry.pieces(in: bounds, source: touched) { transform, _, cell in
+                dirty = dirty.union(touched.intersection(cell).applying(transform))
+            }
+            return dirty
+        }
+        return extraBefore.reduce(touchedBounds(layer, before)) { $0.union(touchedBounds($1.key, $1.value)) }
+    }
     func resetStrokePreview() {
         guard let layer = strokeLayer else { return }
         apply(before, layer: layer)

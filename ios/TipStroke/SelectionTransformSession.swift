@@ -2,6 +2,7 @@ import UIKit
 
 /// Each selected layer retains immutable source pixels or its photo pose until Apply.
 final class SelectionTransformSession {
+    let frameID: UUID?
     let revision: UInt64
     let layerID: UUID
     let sourceSelection: CanvasSelection?
@@ -18,6 +19,7 @@ final class SelectionTransformSession {
         guard !targets.isEmpty, targets.allSatisfy({ !$0.locked && ($0.photo != nil || !$0.alphaLocked) }) else {
             throw DrawingError.message("Select visible, unlocked layers. Unlock transparency to transform paint.")
         }
+        frameID = document.record.animation.map { $0.frames[$0.selectedIndex].id }
         revision = document.revision; layerID = document.activeLayer; sourceSelection = document.selection
         singlePhoto = targets.count == 1 && targets[0].photo != nil
         photos = targets.reduce(into: [:]) { $0[$1.id] = $1.photo }
@@ -77,7 +79,8 @@ final class SelectionTransformSession {
     }
 
     func apply(to document: RasterDocument, copy: Bool) throws {
-        guard revision == document.revision,layerID == document.activeLayer else { throw DrawingError.message("The layer changed. Reopen Transform.") }
+        let currentFrame = document.record.animation.map { $0.frames[$0.selectedIndex].id }
+        guard frameID == currentFrame, revision == document.revision, layerID == document.activeLayer else { throw DrawingError.message("The layer changed. Reopen Transform.") }
         let bounds = document.bounds
         var result: [UUID: [TileKey: CGImage]] = [:], poses: [UUID: PhotoLayerRecord] = [:]
         var touchedCount = 0, newCount = 0
