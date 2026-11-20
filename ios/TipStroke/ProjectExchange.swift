@@ -22,7 +22,9 @@ private enum PackageIO {
     }
 
     static func write(_ object: JSONObject, at url: URL) throws {
-        try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(to: url, options: .atomic)
+        let bytes = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        guard bytes.count <= 8_388_608 else { throw DrawingError.message("A project manifest exceeds the 8 MiB archive limit.") }
+        try bytes.write(to: url, options: .atomic)
     }
 
     static func safeID(_ value: String) -> Bool {
@@ -35,6 +37,30 @@ private enum PackageIO {
         let url = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fm.createDirectory(at: url, withIntermediateDirectories: false)
         return url
+    }
+
+    static func pack(_ folder: URL, to output: URL) throws {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .fileSizeKey]
+        var enumerationError: Error?
+        guard let files = fm.enumerator(at: folder, includingPropertiesForKeys: Array(keys), errorHandler: { _, error in
+            enumerationError = error
+            return false
+        }) else { throw invalid }
+        var entries = 0, total: UInt64 = 0
+        for case let url as URL in files {
+            entries += 1
+            let info = try url.resourceValues(forKeys: keys)
+            guard entries <= 100_000, info.isDirectory == true || info.isRegularFile == true else { throw invalid }
+            if info.isRegularFile == true {
+                let bytes = info.fileSize ?? -1
+                guard bytes >= 0, UInt64(bytes) <= sizeLimit - total else {
+                    throw DrawingError.message("The selected projects exceed the 2 GiB archive limit.")
+                }
+                total += UInt64(bytes)
+            }
+        }
+        if let error = enumerationError { throw error }
+        try fm.zipItem(at: folder, to: output, shouldKeepParent: false)
     }
 
     static func unpack(_ input: URL, to folder: URL) throws {
@@ -396,7 +422,7 @@ extension ProjectStore {
         }
         try PackageIO.write(["schemaVersion": 1, "items": items], at: staging.appendingPathComponent("gallery.json"))
         do {
-            try FileManager.default.zipItem(at: staging, to: output, shouldKeepParent: false)
+            try PackageIO.pack(staging, to: output)
             return output
         } catch { try? FileManager.default.removeItem(at: output); throw error }
     }
