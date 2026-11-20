@@ -255,11 +255,13 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         palette.add("Blur & bloom", "sun.max") { [weak self] in self?.effectMenu() }
         palette.add("Brush aids", "ruler") { [weak self] in self?.brushAids() }
         palette.add("Adjust tip", "slider.horizontal.3") { [weak self] in self?.brushSettings() }
+        palette.add("Transform", "perspective") { [weak self] in self?.showTransformEditor() }
         palette.add("More tools", "ellipsis") { [weak self] in self?.showTools() }
         palette.layoutIfNeeded()
     }
 
     func activateMode(_ mode: CanvasMode) {
+        if mode == .transform { showTransformEditor(); return }
         viewport.canvas.cancelStroke()
         if viewport.canvas.tool == .eraser { toggleEraser() }
         viewport.canvas.mode = mode

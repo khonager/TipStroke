@@ -3,6 +3,39 @@ import UIKit
 @testable import TipStroke
 
 final class PhotoLayerTests: XCTestCase {
+    func testTransformDraftIsolatedUntilApplyAndUndoRestoresPixels() throws {
+        let doc = RasterDocument(name: "Selection", width: 256, height: 256)
+        XCTAssertTrue(doc.beginStroke())
+        _ = try doc.paint(from: CGPoint(x: 20, y: 20), to: CGPoint(x: 20, y: 20), radius: 5, color: .red, erasing: false)
+        doc.endStroke(cancelled: false)
+        doc.selection = CanvasSelection(path: CGPath(rect: CGRect(x: 10, y: 10, width: 30, height: 30), transform: nil))
+        let revision = doc.revision
+        let session = try SelectionTransformSession(document: doc)
+        session.geometry = session.initial.dragged(tool: .move, from: .zero, to: CGPoint(x: 50, y: 0), divisions: 4, radius: 50)
+        func alpha(_ x: Int) throws -> UInt32 { try TilePixels(doc.pixels[doc.activeLayer] ?? [:]).rgba(x, 20) & 255 }
+        XCTAssertEqual(doc.revision, revision)
+        XCTAssertEqual(try alpha(20), 255)
+        XCTAssertEqual(try alpha(70), 0)
+        try session.apply(to: doc, copy: false)
+        XCTAssertEqual(try alpha(20), 0)
+        XCTAssertEqual(try alpha(70), 255)
+        XCTAssertTrue(doc.selection?.contains(CGPoint(x: 70,y: 20), in: doc.bounds) == true)
+        doc.undo()
+        XCTAssertEqual(try alpha(20), 255)
+        XCTAssertEqual(try alpha(70), 0)
+    }
+
+    func testWarpAndPerspectiveUseSharedNonFoldingGeometry() {
+        let initial = TransformGeometry(rect: CGRect(x: 0, y: 0, width: 100, height: 100))
+        let warp = initial.dragged(tool: .warp, from: CGPoint(x: 50, y: 50), to: CGPoint(x: 54, y: 51), divisions: 4, radius: 20)
+        XCTAssertEqual(warp.mesh?.count, 289)
+        XCTAssertEqual(warp.vertex(8 * 17 + 8).x, 54, accuracy: 0.001)
+        XCTAssertTrue(warp.validated())
+        let distorted = warp.dragged(tool: .distort, from: .zero, to: CGPoint(x: 5, y: 4), divisions: 4, radius: 20)
+        XCTAssertEqual(distorted.vertex(0).x, 5, accuracy: 0.001)
+        XCTAssertTrue(distorted.validated())
+    }
+
     func testSourceSpaceMaskFollowsPhotoAndRoundTrips() throws {
         let context = try RasterDocument.context(width: 512, height: 256)
         context.setFillColor(UIColor.red.cgColor)

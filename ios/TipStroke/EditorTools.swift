@@ -138,7 +138,7 @@ extension EditorController {
             guard self.document.selection != nil else { throw DrawingError.message("Select an area first.") }
             self.viewport.canvas.mode = .paint; self.viewport.canvas.shadowPull = true
         }
-        action("Move") { self.viewport.canvas.mode = .transform }
+        menu.addAction(UIAlertAction(title: "Transform…", style: .default) { [weak self] _ in self?.showTransformEditor() })
         action("Copy and offset") { try self.document.transformSelection(CGAffineTransform(translationX: 24, y: 24), copy: true) }
         action("Flip horizontal") { try self.document.transformSelection(centered(CGAffineTransform(scaleX: -1, y: 1))) }
         action("Flip vertical") { try self.document.transformSelection(centered(CGAffineTransform(scaleX: 1, y: -1))) }

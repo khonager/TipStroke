@@ -32,17 +32,20 @@ struct PhotoLayerRecord: Codable, Equatable {
     var sourceID = UUID()
     let width: Int
     let height: Int
+    var mesh: [CGPoint]?
+    var filtered: Bool?
     var transform: CGAffineTransform
     var source: PhotoSource?
-    private enum CodingKeys: String, CodingKey { case sourceID, width, height, transform }
+    private enum CodingKeys: String, CodingKey { case sourceID, width, height, transform, mesh, filtered }
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.sourceID == rhs.sourceID && lhs.width == rhs.width && lhs.height == rhs.height && lhs.transform == rhs.transform
+        lhs.sourceID == rhs.sourceID && lhs.width == rhs.width && lhs.height == rhs.height && lhs.transform == rhs.transform && lhs.mesh == rhs.mesh && lhs.filtered == rhs.filtered
     }
     var sourceBounds: CGRect { CGRect(x: 0, y: 0, width: width, height: height) }
-    var bounds: CGRect { sourceBounds.applying(transform) }
+    var geometry: TransformGeometry { TransformGeometry(rect: sourceBounds, pose: transform, mesh: mesh, filtered: filtered ?? true) }
+    var bounds: CGRect { geometry.bounds }
     func validate() throws {
         let t = transform
-        guard (1...4096).contains(width), (1...4096).contains(height),
+        guard geometry.validated(), (1...4096).contains(width), (1...4096).contains(height),
               [t.a, t.b, t.c, t.d, t.tx, t.ty].allSatisfy({ $0.isFinite && abs($0) < 1_000_000 }),
               abs(t.a * t.d - t.b * t.c) > 0.00000001 else { throw DrawingError.message("Invalid photo geometry.") }
     }
@@ -50,11 +53,12 @@ struct PhotoLayerRecord: Codable, Equatable {
         guard bounds.intersects(key.rect), let image = source?.image else { return nil }
         let context = try RasterDocument.context(width: 256, height: 256)
         context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
-        context.concatenate(transform)
-        RasterDocument.draw(image, in: context, rect: sourceBounds)
-        context.setBlendMode(.destinationOut)
-        for sourceKey in TileKey.intersecting(context.boundingBoxOfClipPath, width: width, height: height) {
-            if let coverage = masks[sourceKey] { RasterDocument.draw(coverage, in: context, rect: sourceKey.rect) }
+        geometry.render(in: context, visible: key.rect) { piece in
+            RasterDocument.draw(image, in: piece, rect: sourceBounds)
+            piece.setBlendMode(.destinationOut)
+            for sourceKey in TileKey.intersecting(piece.boundingBoxOfClipPath, width: width, height: height) {
+                if let coverage = masks[sourceKey] { RasterDocument.draw(coverage, in: piece, rect: sourceKey.rect) }
+            }
         }
         return context.makeImage()
     }

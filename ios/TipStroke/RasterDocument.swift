@@ -207,9 +207,8 @@ final class RasterDocument {
         }
     }
     private func erasePhotoMask(_ photo: PhotoLayerRecord, affected: [TileKey], draw: (CGContext) throws -> Void) throws {
-        let inverse = photo.transform.inverted()
         let keys = Set(affected.flatMap { key in mirrorTransforms.flatMap { mirror in
-            TileKey.intersecting(key.rect.applying(mirror).applying(inverse), width: photo.width, height: photo.height)
+            photo.geometry.sourceKeys(over: key.rect.applying(mirror), width: photo.width, height: photo.height)
         } })
         guard (before.count + keys.filter({ before[$0] == nil }).count) * Self.tileBytes * 2 <= Self.historyBudget,
               residentTileCount + keys.filter({ pixels[activeLayer]?[$0] == nil }).count <= Self.maximumTiles else {
@@ -222,12 +221,17 @@ final class RasterDocument {
             if let old { Self.draw(old, in: context, rect: CGRect(origin: .zero, size: key.rect.size)) }
             context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
             context.clip(to: photo.sourceBounds)
-            context.concatenate(inverse)
-            context.clip(to: bounds)
-            selection?.clip(context, bounds: bounds)
+            let region = affected.reduce(CGRect.null) { $0.union($1.rect) }
             for mirror in mirrorTransforms {
-                context.saveGState(); context.concatenate(mirror)
-                try draw(context); context.restoreGState()
+                try photo.geometry.pieces(in: region.applying(mirror), source: key.rect) { transform, clip, _ in
+                    context.saveGState()
+                    defer { context.restoreGState() }
+                    if let clip { context.setShouldAntialias(false); context.addPath(clip); context.clip() }
+                    context.concatenate(transform.inverted())
+                    context.clip(to: bounds); selection?.clip(context, bounds: bounds)
+                    context.concatenate(mirror)
+                    try draw(context)
+                }
             }
             guard let mask = context.makeImage() else { throw DrawingError.message("Could not render the erase mask.") }
             pixels[activeLayer, default: [:]][key] = mask
