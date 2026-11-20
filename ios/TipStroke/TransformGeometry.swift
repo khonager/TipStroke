@@ -134,3 +134,37 @@ struct TransformGeometry {
 private extension CGAffineTransform {
     func translatedInWorld(_ x: CGFloat, _ y: CGFloat) -> Self { concatenating(CGAffineTransform(translationX: x, y: y)) }
 }
+
+extension TransformGeometry {
+    func centered(_ delta: CGAffineTransform) -> Self {
+        var g = self
+        let p = CGPoint(x: bounds.midX, y: bounds.midY)
+        g.pose = pose.translatedInWorld(-p.x,-p.y).concatenating(delta).translatedInWorld(p.x,p.y)
+        return g
+    }
+    func fitted(in canvas: CGRect) -> Self {
+        let s = min(canvas.width/max(0.001,bounds.width), canvas.height/max(0.001,bounds.height))
+        var g = centered(CGAffineTransform(scaleX: s,y: s))
+        g.pose = g.pose.translatedInWorld(canvas.midX-g.bounds.midX,canvas.midY-g.bounds.midY)
+        return g
+    }
+    var angle: CGFloat { atan2(pose.b,pose.a) }
+    func snapped(to targets: [CGRect], angles: [CGFloat], step: CGFloat, distance: CGFloat, tolerance: CGFloat) -> Self {
+        guard step > 0 else { return self }
+        let degree = .pi / CGFloat(180)
+        let increment = step * degree
+        let candidate = (angle/increment).rounded()*increment
+        let offsets = ([candidate]+angles).map { atan2(sin($0-angle), cos($0-angle)) }
+        let rotation = offsets.min(by: { abs($0)<abs($1) }) ?? 0
+        var g = abs(rotation) <= tolerance*degree ? centered(CGAffineTransform(rotationAngle: rotation)) : self
+        let b = g.bounds
+        func match(_ values: [CGFloat], _ magnets: [CGFloat]) -> CGFloat {
+            let d = values.flatMap { v in magnets.map { $0-v } }.min(by: { abs($0)<abs($1) }) ?? 0
+            return abs(d) <= distance ? d : 0
+        }
+        let dx = match([b.minX,b.midX,b.maxX],targets.flatMap { [$0.minX,$0.midX,$0.maxX] })
+        let dy = match([b.minY,b.midY,b.maxY],targets.flatMap { [$0.minY,$0.midY,$0.maxY] })
+        g.pose = g.pose.translatedInWorld(dx,dy)
+        return g
+    }
+}

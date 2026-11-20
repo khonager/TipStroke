@@ -139,6 +139,19 @@ final class LayerSettingsController: UIViewController, AppleLayerBlendActions {
     override func viewDidLoad() {
         super.viewDidLoad(); title = "Layer settings"; view.backgroundColor = .systemBackground
         guard let layer = document.record.layers.first(where: { $0.id == id }) else { return }
+        if layer.photo != nil {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Edit photo", primaryAction: UIAction { [weak self] _ in
+                guard let self else { return }
+                self.endAdjustment()
+                do {
+                    let editor = try TransformController(document: self.document, session: SelectionTransformSession(document: self.document))
+                    editor.onApply = { [weak self] in self?.onChange?() }
+                    let navigation = UINavigationController(rootViewController: editor)
+                    navigation.modalPresentationStyle = .fullScreen
+                    self.present(navigation, animated: true)
+                } catch { self.showError(error) }
+            })
+        }
         let name = UITextField(); name.borderStyle = .roundedRect; name.text = layer.name; name.accessibilityLabel = "Layer name"
         name.addAction(UIAction { [weak self, weak name] _ in
             let text = (name?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

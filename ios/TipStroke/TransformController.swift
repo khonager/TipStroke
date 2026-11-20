@@ -9,7 +9,7 @@ final class TransformController: UIViewController {
 
     init(document: RasterDocument, session: SelectionTransformSession) {
         self.document = document; self.session = session
-        editor = TransformPreviewView(session: session, canvas: document.bounds)
+        editor = TransformPreviewView(session: session, document: document)
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("Use init(document:session:)") }
@@ -50,7 +50,21 @@ final class TransformController: UIViewController {
                 self.session.geometry.filtered.toggle(); self.editor.setNeedsDisplay()
             }
             let reset = UIAction(title: "Reset transform") { _ in self.session.geometry = self.session.initial; self.editor.setNeedsDisplay() }
-            var items: [UIMenuElement] = [grid,radius,filter,reset]
+            let flipX = UIAction(title: "Flip horizontal") { _ in self.editor.adjust(CGAffineTransform(scaleX: -1,y: 1)) }
+            let flipY = UIAction(title: "Flip vertical") { _ in self.editor.adjust(CGAffineTransform(scaleX: 1,y: -1)) }
+            let rotate = UIAction(title: "Rotate 45°") { _ in self.editor.adjust(CGAffineTransform(rotationAngle: .pi/4)) }
+            let fit = UIAction(title: "Fit to canvas") { _ in
+                self.session.geometry = self.session.geometry.fitted(in: self.document.bounds); self.editor.setNeedsDisplay()
+            }
+            let exact = UIAction(title: "Exact size and rotation…") { _ in self.exactSize() }
+            let snap = UIAction(title: "Snap", state: self.editor.snapping ? .on : .off) { _ in self.editor.snapping.toggle() }
+            let snapAngles = UIMenu(title: "Snap angle", children: [5,15,30,45,90].map { angle in
+                UIAction(title: "\(angle)°", state: self.editor.snapAngle == CGFloat(angle) ? .on : .off) { _ in self.editor.snapAngle = CGFloat(angle) }
+            })
+            let strength = UIMenu(title: "Snap strength", children: [0.25,0.5,0.75,1.0].map { value in
+                UIAction(title: "\(Int(100*value))%", state: self.editor.snapStrength == value ? .on : .off) { _ in self.editor.snapStrength = value }
+            })
+            var items: [UIMenuElement] = [grid,radius,filter,flipX,flipY,rotate,fit,exact,snap,snapAngles,strength,reset]
             if self.session.photo == nil {
                 items.append(UIAction(title: "Keep original pixels", state: self.copyPaint ? .on : .off) { _ in self.copyPaint.toggle() })
             }
@@ -66,6 +80,33 @@ final class TransformController: UIViewController {
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor), stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bar.heightAnchor.constraint(greaterThanOrEqualToConstant: 44)])
     }
+    private func exactSize() {
+        let g = session.geometry, initial = session.initial
+        let xScale = hypot(g.pose.a,g.pose.b)/max(0.00001,hypot(initial.pose.a,initial.pose.b))
+        let yScale = hypot(g.pose.c,g.pose.d)/max(0.00001,hypot(initial.pose.c,initial.pose.d))
+        let alert = UIAlertController(title: "Exact size and rotation", message: "Width and height in percent (1–800), rotation in degrees.", preferredStyle: .alert)
+        for (name, value) in [("Width %",xScale*100),("Height %",yScale*100),("Rotation °",g.angle*180 / .pi)] {
+            alert.addTextField { field in
+                field.accessibilityLabel = name; field.placeholder = name; field.keyboardType = .numbersAndPunctuation
+                field.text = String(format: "%.2f", Double(value))
+            }
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Update preview", style: .default) { [weak self, weak alert] _ in
+            guard let self, let fields = alert?.textFields else { return }
+            let values = fields.compactMap { Double($0.text ?? "") }
+            guard values.count == 3, values.allSatisfy(\.isFinite), (1...800).contains(values[0]), (1...800).contains(values[1]) else {
+                self.showError(DrawingError.message("Enter sizes from 1 to 800 percent and a finite rotation.")); return
+            }
+            var updated = g
+            updated.pose = g.pose.scaledBy(x: CGFloat(values[0])/100/xScale,y: CGFloat(values[1])/100/yScale)
+            let center = CGPoint(x:g.bounds.midX,y:g.bounds.midY), moved = updated.bounds
+            updated.pose = updated.pose.concatenating(CGAffineTransform(translationX: center.x-moved.midX,y: center.y-moved.midY))
+            self.session.geometry = updated.centered(CGAffineTransform(rotationAngle: CGFloat(values[2]) * .pi / 180 - g.angle))
+            self.editor.setNeedsDisplay()
+        })
+        present(alert, animated: true)
+    }
 }
 
 private final class TransformPreviewView: UIView {
@@ -74,38 +115,72 @@ private final class TransformPreviewView: UIView {
     var tool: TransformGeometry.Tool = .move
     var divisions = 4
     var radius: CGFloat = 64
-    private var origin = CGPoint.zero
+    private let targets: [CGRect]
+    private let angles: [CGFloat]
+    private var pointers: [UITouch] = []
+    private var origins: [CGPoint] = []
     private var beforeDrag: TransformGeometry?
-    init(session: SelectionTransformSession, canvas: CGRect) {
-        self.session = session; self.canvas = canvas
-        super.init(frame: .zero)
-        backgroundColor = .secondarySystemBackground; isOpaque = true; contentMode = .redraw
-        accessibilityLabel = "Transform preview"
-        addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(drag(_:))))
+    private var originalGesture: TransformGeometry?
+    var snapping = UserDefaults.standard.bool(forKey: "photoSnap") { didSet { UserDefaults.standard.set(snapping,forKey: "photoSnap") } }
+    var snapAngle = CGFloat(UserDefaults.standard.object(forKey: "photoSnapAngle") as? Double ?? 15) {
+        didSet { UserDefaults.standard.set(Double(snapAngle),forKey: "photoSnapAngle") }
     }
+    var snapStrength = UserDefaults.standard.object(forKey: "photoSnapStrength") as? Double ?? 0.5 {
+        didSet { UserDefaults.standard.set(snapStrength,forKey: "photoSnapStrength") }
+    }
+    init(session: SelectionTransformSession, document: RasterDocument) {
+        self.session = session; self.canvas = document.bounds
+        let photos = document.record.layers.filter { $0.visible && $0.id != session.layerID }.compactMap(\.photo)
+        targets = [document.bounds] + photos.map(\.bounds); angles = photos.map { $0.geometry.angle }
+        super.init(frame: .zero)
+        backgroundColor = .secondarySystemBackground; isOpaque = true; contentMode = .redraw; isMultipleTouchEnabled = true
+        accessibilityLabel = "Transform preview"
+    }
+    func adjust(_ t: CGAffineTransform) { session.geometry = session.geometry.centered(t); setNeedsDisplay() }
     required init?(coder: NSCoder) { fatalError("Use init(session:canvas:)") }
     private var documentToView: CGAffineTransform {
         let s = max(0.0001,min((bounds.width-24)/canvas.width,(bounds.height-24)/canvas.height))
         return CGAffineTransform(translationX: bounds.midX - canvas.midX*s, y: bounds.midY - canvas.midY*s).scaledBy(x: s,y: s)
     }
-    @objc private func drag(_ pan: UIPanGestureRecognizer) {
-        let p = pan.location(in: self).applying(documentToView.inverted())
-        switch pan.state {
-        case .began:
-            let delta = pan.translation(in: self)
-            origin = CGPoint(x: p.x-delta.x/documentToView.a, y: p.y-delta.y/documentToView.d)
-            beforeDrag = session.geometry
-            fallthrough
-        case .changed, .ended:
-            if let beforeDrag {
-                session.geometry = beforeDrag.dragged(tool: tool, from: origin, to: p, divisions: divisions, radius: radius)
-            }
-            if pan.state == .ended { beforeDrag = nil }
-        case .cancelled, .failed:
-            if let beforeDrag { session.geometry = beforeDrag }; beforeDrag = nil
-        default: return
+    private func position(_ touch: UITouch) -> CGPoint { touch.location(in: self).applying(documentToView.inverted()) }
+    private func rebase() { beforeDrag = session.geometry; origins = pointers.map(position) }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if pointers.isEmpty { originalGesture = session.geometry }
+        for touch in touches where pointers.count < 2 { pointers.append(touch) }
+        rebase()
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let start = beforeDrag, let origin = origins.first, let first = pointers.first else { return }
+        let point = position(first)
+        var changed: TransformGeometry
+        if pointers.count == 2 {
+            let other = position(pointers[1]), o = origins[1]
+            let pivot = CGPoint(x:(origin.x+o.x)/2,y:(origin.y+o.y)/2)
+            let center = CGPoint(x:(point.x+other.x)/2,y:(point.y+other.y)/2)
+            let angle = atan2(other.y-point.y,other.x-point.x)-atan2(o.y-origin.y,o.x-origin.x)
+            let scale = max(0.01,min(100,hypot(other.x-point.x,other.y-point.y)/max(0.1,hypot(o.x-origin.x,o.y-origin.y))))
+            let delta = CGAffineTransform(translationX:-pivot.x,y:-pivot.y)
+                .concatenating(CGAffineTransform(scaleX:scale,y:scale))
+                .concatenating(CGAffineTransform(rotationAngle:angle))
+                .concatenating(CGAffineTransform(translationX:center.x,y:center.y))
+            changed = start; changed.pose = start.pose.concatenating(delta)
+        } else { changed = start.dragged(tool: tool, from: origin, to: point, divisions: divisions, radius: radius) }
+        if snapping && (pointers.count == 2 || tool == .move || tool == .scale || tool == .rotate) {
+            changed = changed.snapped(to: targets, angles: angles, step: snapAngle,
+                distance: CGFloat(20*snapStrength)/documentToView.a, tolerance: CGFloat(6*snapStrength))
         }
+        session.geometry = changed
         setNeedsDisplay()
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touchesMoved(touches, with: event)
+        pointers.removeAll { touches.contains($0) }
+        rebase()
+        if pointers.isEmpty { beforeDrag = nil; originalGesture = nil }
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if let originalGesture { session.geometry = originalGesture }
+        pointers = []; origins = []; originalGesture = nil; beforeDrag = nil; setNeedsDisplay()
     }
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }

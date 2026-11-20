@@ -21,10 +21,42 @@ final class PhotoLayerTests: XCTestCase {
         XCTAssertEqual(try alpha(70), 255)
         XCTAssertTrue(doc.selection?.contains(CGPoint(x: 70,y: 20), in: doc.bounds) == true)
         doc.undo()
+        XCTAssertTrue(doc.selection?.contains(CGPoint(x:20,y:20), in:doc.bounds) == true)
         XCTAssertEqual(try alpha(20), 255)
         XCTAssertEqual(try alpha(70), 0)
     }
 
+    func testBooleanSelectionRecallAndCutUseTheSameHole() throws {
+        let doc = RasterDocument(name: "Hole", width: 256, height: 256)
+        XCTAssertTrue(doc.beginStroke())
+        try doc.paintPath(CGPath(rect: doc.bounds, transform: nil), color: .red, width: 0, filled: true)
+        doc.endStroke(cancelled: false)
+        doc.combineSelection(CGPath(rect: CGRect(x: 10,y: 10,width: 100,height: 100), transform: nil))
+        doc.selectionOperation = .subtract
+        doc.combineSelection(CGPath(rect: CGRect(x: 30,y: 30,width: 30,height: 30), transform: nil))
+        doc.selection = nil
+        XCTAssertTrue(doc.restoreSelection())
+        XCTAssertFalse(try XCTUnwrap(doc.selection).contains(CGPoint(x:40,y:40), in:doc.bounds))
+        let original = doc.activeLayer
+        try doc.transferSelection(cut: true)
+        let kept = TilePixels(doc.pixels[original] ?? [:]), cut = TilePixels(doc.pixels[doc.activeLayer] ?? [:])
+        XCTAssertEqual(try kept.rgba(40,40) & 255,255)
+        XCTAssertEqual(try cut.rgba(40,40) & 255,0)
+        XCTAssertEqual(try kept.rgba(20,20) & 255,0)
+        XCTAssertEqual(try cut.rgba(20,20) & 255,255)
+        doc.undo(); XCTAssertEqual(doc.record.layers.count,1)
+    }
+    func testFitAndSnapRespectCanvasCoordinates() {
+        let canvas = CGRect(x:0,y:0,width:200,height:100)
+        let shape = TransformGeometry(rect:CGRect(x:0,y:0,width:50,height:50))
+        let moved = shape.dragged(tool:.move,from:.zero,to:CGPoint(x:148,y:49),divisions:4,radius:24)
+        let snapped = moved.snapped(to:[canvas],angles:[],step:15,distance:3,tolerance:2)
+        XCTAssertEqual(snapped.bounds.maxX,200,accuracy:0.01)
+        XCTAssertEqual(snapped.bounds.maxY,100,accuracy:0.01)
+        let fitted = snapped.fitted(in:canvas)
+        XCTAssertEqual(fitted.bounds.midX,100,accuracy:0.01)
+        XCTAssertEqual(fitted.bounds.height,100,accuracy:0.01)
+    }
     func testWarpAndPerspectiveUseSharedNonFoldingGeometry() {
         let initial = TransformGeometry(rect: CGRect(x: 0, y: 0, width: 100, height: 100))
         let warp = initial.dragged(tool: .warp, from: CGPoint(x: 50, y: 50), to: CGPoint(x: 54, y: 51), divisions: 4, radius: 20)

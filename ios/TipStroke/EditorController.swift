@@ -437,7 +437,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             }
             DispatchQueue.main.async {
                 self.view.isUserInteractionEnabled = true
-                do { try self.document.importPhoto(result.get(), name: url.deletingPathExtension().lastPathComponent); self.changed() }
+                do { try self.document.importPhoto(result.get(), name: url.deletingPathExtension().lastPathComponent); self.changed(); self.showTransformEditor() }
                 catch { self.showError(error) }
             }
         }
