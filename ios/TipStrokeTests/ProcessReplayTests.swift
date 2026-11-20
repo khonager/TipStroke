@@ -18,22 +18,25 @@ final class ProcessReplayTests: XCTestCase {
         document.undo(); recorder.capture(document)
         let replay = try store.queue.sync { try ProcessReplay(folder: store.replayFolder(document.record.id)) }
         XCTAssertEqual(replay.count, 3)
-        func pixel(_ step: Int) throws -> UInt32 {
-            let image = try replay.render(step, maxEdge: 32)
+        func pixel(_ player: ProcessReplay, _ step: Int) throws -> UInt32 {
+            let image = try player.render(step, maxEdge: 32)
             let context = try RasterDocument.context(width: 256, height: 256)
             RasterDocument.draw(image, in: context, rect: CGRect(x: 0, y: 0, width: 32, height: 32))
             let tile = try XCTUnwrap(context.makeImage())
             return try TilePixels([TileKey(x: 0, y: 0): tile]).rgba(16, 16)
         }
-        XCTAssertEqual(try pixel(1), 0xff0000ff)
-        XCTAssertEqual(try pixel(2), 0xffffffff)
-        XCTAssertEqual(try pixel(0), 0xffffffff)
+        XCTAssertEqual(try pixel(replay, 1), 0xff0000ff)
+        XCTAssertEqual(try pixel(replay, 2), 0xffffffff)
+        XCTAssertEqual(try pixel(replay, 0), 0xffffffff)
         let portable = root.appendingPathComponent("test.tsr")
         try AndroidProcess.exportRecording(store.replayFolder(document.record.id), to: portable)
         let playback = root.appendingPathComponent("imported-progress")
         try AndroidProcess.importRecording(portable, to: playback)
         let imported = try ProcessReplay(folder: playback)
-        XCTAssertEqual(try imported.render(imported.count - 1, maxEdge: 32).width, 32)
+        XCTAssertEqual(imported.count, replay.count)
+        for step in 0..<replay.count {
+            XCTAssertEqual(try pixel(imported, step), try pixel(replay, step), "Portable replay step \(step)")
+        }
         let gif = try replay.exportGIF()
         defer { try? FileManager.default.removeItem(at: gif) }
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(gif as CFURL, nil))
