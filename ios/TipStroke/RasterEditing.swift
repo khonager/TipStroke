@@ -328,41 +328,54 @@ extension RasterDocument {
     }
 
     func transferSelection(cut: Bool) throws {
-        guard let selection, record.layers.count < 32,
-              let index = record.layers.firstIndex(where: { $0.id == activeLayer }),
-              record.layers[index].photo == nil, record.layers[index].visible,
-              !cut || (!record.layers[index].locked && !record.layers[index].alphaLocked) else {
-            throw DrawingError.message("Select paint on an editable layer with a free layer slot.")
+        let targets = record.layers.filter { editingLayerIDs.contains($0.id) && $0.visible && $0.photo == nil }
+        guard let selection, !targets.isEmpty, record.layers.count + targets.count <= 32,
+              !cut || targets.allSatisfy({ !$0.locked && !$0.alphaLocked }) else {
+            throw DrawingError.message("Select paint on editable layers with a free slot for each copy.")
         }
-        let original = pixels[activeLayer] ?? [:]
-        let keys = original.keys.filter { selection.inverted || selection.path.boundingBoxOfPath.intersects($0.rect) }
-        guard !keys.isEmpty, keys.count * Self.tileBytes * (cut ? 3 : 1) + 256 <= Self.historyBudget,
-              residentTileCount + keys.count <= Self.maximumTiles else {
-            throw DrawingError.message("The selected paint is empty or exceeds the editing budget.")
-        }
-        var moved: [TileKey: CGImage] = [:], remaining = original
-        for key in keys {
-            guard let source = original[key] else { continue }
-            let ctx = try Self.context(width: 256, height: 256)
-            ctx.translateBy(x: -key.rect.minX, y: -key.rect.minY)
-            selection.clip(ctx, bounds: bounds)
-            Self.draw(source, in: ctx, rect: key.rect)
-            guard let isolated = ctx.makeImage() else { throw DrawingError.message("Could not prepare the selected paint.") }
-            moved[key] = isolated
-            if cut {
-                let kept = try Self.context(width: 256, height: 256)
-                kept.translateBy(x: -key.rect.minX, y: -key.rect.minY)
-                Self.draw(source, in: kept, rect: key.rect)
-                selection.clip(kept, bounds: bounds); kept.clear(key.rect)
-                guard let remainder = kept.makeImage() else { throw DrawingError.message("Could not cut the selected paint.") }
-                remaining[key] = remainder
+        var tileCount = 0
+        var staged: [(UUID, LayerRecord, [TileKey: CGImage], [TileKey: CGImage])] = []
+        for layer in targets {
+            let original = pixels[layer.id] ?? [:]
+            let keys = original.keys.filter { selection.inverted || selection.path.boundingBoxOfPath.intersects($0.rect) }
+            guard !keys.isEmpty else { continue }
+            tileCount += keys.count
+            guard tileCount * Self.tileBytes * (cut ? 3 : 1) + 256 <= Self.historyBudget,
+                  residentTileCount + tileCount <= Self.maximumTiles else {
+                throw DrawingError.message("The selected paint exceeds the editing budget.")
             }
+            var moved: [TileKey: CGImage] = [:], remaining = original
+            for key in keys {
+                guard let source = original[key] else { continue }
+                let ctx = try Self.context(width: 256, height: 256)
+                ctx.translateBy(x: -key.rect.minX, y: -key.rect.minY)
+                selection.clip(ctx, bounds: bounds)
+                Self.draw(source, in: ctx, rect: key.rect)
+                guard let isolated = ctx.makeImage() else { throw DrawingError.message("Could not prepare the selected paint.") }
+                moved[key] = isolated
+                if cut {
+                    let kept = try Self.context(width: 256, height: 256)
+                    kept.translateBy(x: -key.rect.minX, y: -key.rect.minY)
+                    Self.draw(source, in: kept, rect: key.rect)
+                    selection.clip(kept, bounds: bounds); kept.clear(key.rect)
+                    guard let remainder = kept.makeImage() else { throw DrawingError.message("Could not cut the selected paint.") }
+                    remaining[key] = remainder
+                }
+            }
+            var added = LayerRecord(); added.name = layer.name + " selection"
+            staged.append((layer.id, added, moved, remaining))
         }
-        var added = LayerRecord(); added.name = record.layers[index].name + " selection"
+        guard !staged.isEmpty else { throw DrawingError.message("The selection contains no paint.") }
         beginMetadataEdit()
-        if cut { pixels[activeLayer] = remaining }
-        pixels[added.id] = moved
-        record.layers.insert(added, at: index+1); record.selectedLayer = added.id
+        let primary = staged.first(where: { $0.0 == activeLayer })?.1.id ?? staged[0].1.id
+        for (source, added, moved, remaining) in staged {
+            guard let index = record.layers.firstIndex(where: { $0.id == source }) else { continue }
+            if cut { pixels[source] = remaining }
+            pixels[added.id] = moved
+            record.layers.insert(added, at: index + 1)
+        }
+        record.selectedLayer = primary
+        chooseLayers(Set(staged.map { $0.1.id }))
         endMetadataEdit()
     }
 }

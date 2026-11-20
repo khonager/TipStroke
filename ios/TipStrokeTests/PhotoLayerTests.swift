@@ -46,6 +46,31 @@ final class PhotoLayerTests: XCTestCase {
         XCTAssertEqual(try cut.rgba(20,20) & 255,255)
         doc.undo(); XCTAssertEqual(doc.record.layers.count,1)
     }
+    func testErasePaintAndPhotoTogetherCanCancelAndUndo() throws {
+        let doc = RasterDocument(name:"Mixed",width:128,height:128)
+        let paint = doc.activeLayer
+        XCTAssertTrue(doc.beginStroke())
+        try doc.paintPath(CGPath(rect: doc.bounds, transform:nil),color:.red,width:0,filled:true)
+        doc.endStroke(cancelled:false)
+        let ctx = try RasterDocument.context(width:256,height:128)
+        ctx.setFillColor(UIColor.green.cgColor); ctx.fill(CGRect(x:0,y:0,width:256,height:128))
+        try doc.importPhoto(PhotoSource(image:XCTUnwrap(ctx.makeImage())),name:"Photo")
+        let photo = doc.activeLayer, key = TileKey(x:0,y:0)
+        doc.chooseLayers([paint,photo])
+        func alpha(_ id: UUID) throws -> UInt32 {
+            let image = try XCTUnwrap(RasterDocument.layerTile(doc.snapshot(),id:id,key:key))
+            return try TilePixels([key:image]).rgba(64,64) & 255
+        }
+        for cancel in [true,false] {
+            XCTAssertTrue(doc.beginStroke(photoErase:true))
+            _ = try doc.paint(from:CGPoint(x:64,y:64),to:CGPoint(x:64,y:64),radius:10,color:.black,erasing:true)
+            XCTAssertEqual(try alpha(photo),0); XCTAssertEqual(try alpha(paint),0)
+            doc.endStroke(cancelled:cancel)
+            if !cancel { doc.undo() }
+            XCTAssertEqual(try alpha(photo),255); XCTAssertEqual(try alpha(paint),255)
+        }
+        doc.redo(); XCTAssertEqual(try alpha(photo),0); XCTAssertEqual(try alpha(paint),0)
+    }
     func testFitAndSnapRespectCanvasCoordinates() {
         let canvas = CGRect(x:0,y:0,width:200,height:100)
         let shape = TransformGeometry(rect:CGRect(x:0,y:0,width:50,height:50))

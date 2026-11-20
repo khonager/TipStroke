@@ -30,12 +30,13 @@ struct LayerRecord: Codable, Identifiable, Equatable {
     var locked = false
     var alphaLocked = false
     var clipSource: UUID?
+    var editGroup: UUID?
     var photo: PhotoLayerRecord?
     var colorizeMask: String?
     var reference = false
 
     init() {}
-    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked, clipSource, reference, colorizeMask, photo }
+    private enum CodingKeys: String, CodingKey { case id, name, visible, opacity, tiles, blendMode, locked, alphaLocked, clipSource, reference, colorizeMask, photo, editGroup }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
@@ -47,6 +48,7 @@ struct LayerRecord: Codable, Identifiable, Equatable {
         locked = try values.decodeIfPresent(Bool.self, forKey: .locked) ?? false
         alphaLocked = try values.decodeIfPresent(Bool.self, forKey: .alphaLocked) ?? false
         clipSource = try values.decodeIfPresent(UUID.self, forKey: .clipSource)
+        editGroup = try values.decodeIfPresent(UUID.self, forKey: .editGroup)
         photo = try values.decodeIfPresent(PhotoLayerRecord.self, forKey: .photo)
         colorizeMask = try values.decodeIfPresent(String.self, forKey: .colorizeMask)
         reference = try values.decodeIfPresent(Bool.self, forKey: .reference) ?? false

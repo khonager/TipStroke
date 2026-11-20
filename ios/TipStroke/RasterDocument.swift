@@ -37,6 +37,30 @@ final class RasterDocument {
     var pixels: [UUID: [TileKey: CGImage]]
     private var before: [TileKey: TileState] = [:]
     private var strokeLayer: UUID?
+    private var extraEraseLayers: [UUID] = []
+    private var extraBefore: [UUID: [TileKey: TileState]] = [:]
+    private var selectionAnchor: UUID?
+    private var extraLayers = Set<UUID>()
+    var editingLayerIDs: Set<UUID> {
+        guard selectionAnchor == activeLayer else { return [activeLayer] }
+        return extraLayers.intersection(record.layers.map(\.id)).union([activeLayer])
+    }
+    func chooseLayers(_ ids: Set<UUID>) { selectionAnchor = activeLayer; extraLayers = ids.subtracting([activeLayer]) }
+    func groupSelection() {
+        let ids = editingLayerIDs
+        guard ids.count > 1 else { return }
+        let group = UUID()
+        beginMetadataEdit()
+        for index in record.layers.indices where ids.contains(record.layers[index].id) { record.layers[index].editGroup = group }
+        endMetadataEdit()
+    }
+    func ungroupSelection() {
+        let ids = editingLayerIDs
+        beginMetadataEdit()
+        for index in record.layers.indices where ids.contains(record.layers[index].id) { record.layers[index].editGroup = nil }
+        endMetadataEdit()
+    }
+    private var heldTileCount: Int { before.count + extraBefore.values.reduce(0) { $0 + $1.count } }
     private var undoStack: [Edit] = []
     private var redoStack: [Edit] = []
     private struct Metadata {
@@ -51,6 +75,8 @@ final class RasterDocument {
         var before: [TileKey: TileState]
         var after: [TileKey: TileState]
         var movedSelection: (CanvasSelection, CanvasSelection)? = nil
+        var extraBefore: [UUID: [TileKey: TileState]] = [:]
+        var extraAfter: [UUID: [TileKey: TileState]] = [:]
         var oldMetadata: Metadata? = nil
         var newMetadata: Metadata? = nil
         var cost: Int {
@@ -65,7 +91,8 @@ final class RasterDocument {
             let retainedSources = Set(oldSources.keys).symmetricDifference(newSources.keys).reduce(0) {
                 $0 + ((oldSources[$1] ?? newSources[$1])?.bytes ?? 0)
             }
-            return retainedSources + (before.count + after.count + retained) * RasterDocument.tileBytes + (oldMetadata == nil ? 0 : 256)
+            let others = extraBefore.values.reduce(0) { $0 + $1.count } + extraAfter.values.reduce(0) { $0 + $1.count }
+            return retainedSources + (before.count + after.count + retained + others) * RasterDocument.tileBytes + (oldMetadata == nil ? 0 : 256)
         }
     }
     private enum TileState {
@@ -93,7 +120,7 @@ final class RasterDocument {
 
     func snapshot() -> DocumentSnapshot {
         var saved = record
-        saved.schemaVersion = saved.media != nil || !(saved.animation?.sharedLayerIDs.isEmpty ?? true) ? 6 : (saved.layers.contains(where: { $0.photo != nil }) ? 5 : 4)
+        saved.schemaVersion = saved.media != nil || !(saved.animation?.sharedLayerIDs.isEmpty ?? true) ? 6 : (saved.layers.contains(where: { $0.photo != nil || $0.editGroup != nil }) ? 5 : 4)
         saved.modified = Date()
         for index in saved.layers.indices {
             saved.layers[index].tiles = Array((pixels[saved.layers[index].id] ?? [:]).keys)
@@ -124,6 +151,11 @@ final class RasterDocument {
         }
         strokeReferenceID = strokePaintInside || paintingColorHints ? nil : record.layers.first { $0.reference }?.id
         strokeLayer = activeLayer; strokeMirroring = mirrored
+        let selected = editingLayerIDs
+        extraEraseLayers = photoErase ? record.layers.filter {
+            $0.id != activeLayer && selected.contains($0.id) && $0.visible && !$0.locked && $0.opacity > 0
+        }.map(\.id) : []
+        extraBefore = [:]
         before = [:]
         return true
     }
@@ -135,7 +167,7 @@ final class RasterDocument {
                           width: abs(end.x - start.x), height: abs(end.y - start.y))
             .insetBy(dx: -radius - 2, dy: -radius - 2).intersection(bounds)
         let alphaLocked = strokePaintInside || record.layers.first { $0.id == layer }?.alphaLocked == true
-        if alphaLocked && erasing { return .null }
+        if alphaLocked && erasing && extraEraseLayers.isEmpty { return .null }
         let keys = TileKey.intersecting(area, width: record.width, height: record.height)
         try editTiles(keys: keys, erasing: erasing) { context in
             context.setStrokeColor(color.cgColor)
@@ -170,13 +202,30 @@ final class RasterDocument {
         try editTiles(keys: keys, erasing: erasing, draw: draw)
     }
     func editTiles(keys: [TileKey], erasing: Bool, draw: (CGContext) throws -> Void) throws {
+        guard let primary = strokeLayer else { return }
+        try editTarget(keys: keys, erasing: erasing, draw: draw)
+        if erasing {
+            for id in extraEraseLayers {
+                extraBefore[primary] = before
+                before = extraBefore.removeValue(forKey: id) ?? [:]
+                strokeLayer = id
+                defer {
+                    extraBefore[id] = before
+                    before = extraBefore.removeValue(forKey: primary) ?? [:]
+                    strokeLayer = primary
+                }
+                try editTarget(keys: keys, erasing: true, draw: draw)
+            }
+        }
+    }
+    private func editTarget(keys: [TileKey], erasing: Bool, draw: (CGContext) throws -> Void) throws {
         guard let layer = strokeLayer else { return }
         let referenceID = strokeReferenceID
         let alphaLocked = strokePaintInside || record.layers.first { $0.id == layer }?.alphaLocked == true || referenceID == layer
         if erasing && alphaLocked { return }
-        if let photo = activePhoto {
+        if let photo = record.layers.first(where: { $0.id == layer })?.photo {
             guard erasing, referenceID == nil else { return }
-            try erasePhotoMask(photo, affected: keys, draw: draw)
+            try erasePhotoMask(photo, layer: layer, affected: keys, draw: draw)
             return
         }
         let transforms = mirrorTransforms
@@ -186,7 +235,7 @@ final class RasterDocument {
                 (referenceID == nil || pixels[referenceID!]?[key] != nil || record.layers.first(where: { $0.id == referenceID })?.photo?.bounds.intersects(key.rect) == true)
         }
         let newKeys = keys.filter { before[$0] == nil }
-        guard (before.count + newKeys.count) * Self.tileBytes * 2 <= Self.historyBudget else {
+        guard (heldTileCount + newKeys.count) * Self.tileBytes * 2 <= Self.historyBudget else {
             throw DrawingError.message("This edit exceeds the undo budget. Use a smaller selected area.")
         }
         guard residentTileCount + keys.filter({ pixels[layer]?[$0] == nil }).count <= Self.maximumTiles else {
@@ -216,16 +265,16 @@ final class RasterDocument {
             pixels[layer, default: [:]][key] = image
         }
     }
-    private func erasePhotoMask(_ photo: PhotoLayerRecord, affected: [TileKey], draw: (CGContext) throws -> Void) throws {
+    private func erasePhotoMask(_ photo: PhotoLayerRecord, layer: UUID, affected: [TileKey], draw: (CGContext) throws -> Void) throws {
         let keys = Set(affected.flatMap { key in mirrorTransforms.flatMap { mirror in
             photo.geometry.sourceKeys(over: key.rect.applying(mirror), width: photo.width, height: photo.height)
         } })
-        guard (before.count + keys.filter({ before[$0] == nil }).count) * Self.tileBytes * 2 <= Self.historyBudget,
-              residentTileCount + keys.filter({ pixels[activeLayer]?[$0] == nil }).count <= Self.maximumTiles else {
+        guard (heldTileCount + keys.filter({ before[$0] == nil }).count) * Self.tileBytes * 2 <= Self.historyBudget,
+              residentTileCount + keys.filter({ pixels[layer]?[$0] == nil }).count <= Self.maximumTiles else {
             throw DrawingError.message("This erase exceeds the image editing budget.")
         }
         for key in keys {
-            let old = pixels[activeLayer]?[key]
+            let old = pixels[layer]?[key]
             if before[key] == nil { before[key] = old.map(TileState.image) ?? .empty }
             let context = try Self.context(width: 256, height: 256)
             if let old { Self.draw(old, in: context, rect: CGRect(origin: .zero, size: key.rect.size)) }
@@ -244,7 +293,7 @@ final class RasterDocument {
                 }
             }
             guard let mask = context.makeImage() else { throw DrawingError.message("Could not render the erase mask.") }
-            pixels[activeLayer, default: [:]][key] = mask
+            pixels[layer, default: [:]][key] = mask
         }
     }
     func replaceTiles(_ tiles: [TileKey: CGImage]) throws {
@@ -278,20 +327,24 @@ final class RasterDocument {
     func resetStrokePreview() {
         guard let layer = strokeLayer else { return }
         apply(before, layer: layer)
+        for (id, states) in extraBefore { apply(states, layer: id) }
     }
 
     func endStroke(cancelled: Bool, movedSelection: (CanvasSelection, CanvasSelection)? = nil) {
         guard let layer = strokeLayer else { return }
-        if cancelled { apply(before, layer: layer) }
-        else if !before.isEmpty {
+        if cancelled { resetStrokePreview() }
+        else if heldTileCount > 0 {
             revision &+= 1
             let after = before.keys.reduce(into: [TileKey: TileState]()) { $0[$1] = pixels[layer]?[$1].map(TileState.image) ?? .empty }
+            let extraAfter = extraBefore.reduce(into: [UUID: [TileKey: TileState]]()) { result, item in
+                result[item.key] = item.value.keys.reduce(into: [:]) { delta, key in delta[key] = pixels[item.key]?[key].map(TileState.image) ?? .empty }
+            }
             redoStack = []
-            undoStack.append(Edit(layer: layer, frame: record.animation.flatMap { $0.sharedLayerIDs.contains(layer) ? nil : $0.frames[$0.selectedIndex].id }, before: before, after: after, movedSelection: movedSelection))
+            undoStack.append(Edit(layer: layer, frame: record.animation.flatMap { $0.sharedLayerIDs.contains(layer) && extraBefore.keys.allSatisfy($0.sharedLayerIDs.contains) ? nil : $0.frames[$0.selectedIndex].id }, before: before, after: after, movedSelection: movedSelection, extraBefore: extraBefore, extraAfter: extraAfter))
             if let movedSelection { selection = movedSelection.1 }
             trimHistory()
         }
-        before = [:]; strokeLayer = nil
+        before = [:]; strokeLayer = nil; extraBefore = [:]; extraEraseLayers = []
     }
 
     func undo() {
@@ -299,6 +352,7 @@ final class RasterDocument {
         revision &+= 1
         if let state = edit.oldMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames }
         else { restoreFrameForHistory(edit.frame); apply(edit.before, layer: edit.layer) }
+        for (id, states) in edit.extraBefore { apply(states, layer: id) }
         if let moved = edit.movedSelection { selection = moved.0 }
         redoStack.append(edit)
     }
@@ -307,6 +361,7 @@ final class RasterDocument {
         revision &+= 1
         if let state = edit.newMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames }
         else { restoreFrameForHistory(edit.frame); apply(edit.after, layer: edit.layer) }
+        for (id, states) in edit.extraAfter { apply(states, layer: id) }
         if let moved = edit.movedSelection { selection = moved.1 }
         undoStack.append(edit)
     }

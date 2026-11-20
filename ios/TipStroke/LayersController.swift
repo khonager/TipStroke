@@ -13,6 +13,31 @@ final class LayersController: UITableViewController {
         super.viewDidLoad(); title = "Layers"
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addLayer))
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        let multi = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), menu: UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] complete in
+                guard let self else { complete([]); return }
+                let ids = self.document.editingLayerIDs
+                var actions: [UIMenuElement] = self.document.record.layers.reversed().map { layer in
+                    UIAction(title: layer.name, attributes: layer.id == self.document.activeLayer ? .disabled : [],
+                             state: ids.contains(layer.id) ? .on : .off) { _ in
+                        var next = ids
+                        if !next.insert(layer.id).inserted { next.remove(layer.id) }
+                        self.document.chooseLayers(next); self.tableView.reloadData()
+                    }
+                }
+                if ids.count > 1 {
+                    actions.append(UIAction(title: "Group selected layers") { _ in self.document.groupSelection(); self.changed() })
+                }
+                if let group = self.document.record.layers.first(where: { $0.id == self.document.activeLayer })?.editGroup {
+                    let members = Set(self.document.record.layers.filter { $0.editGroup == group }.map(\.id))
+                    actions.append(UIAction(title: "Select group") { _ in self.document.chooseLayers(members); self.tableView.reloadData() })
+                    actions.append(UIAction(title: "Ungroup") { _ in self.document.chooseLayers(members); self.document.ungroupSelection(); self.changed() })
+                }
+                complete(actions)
+            }
+        ]))
+        multi.accessibilityLabel = "Select multiple layers"
+        if let add = navigationItem.leftBarButtonItem { navigationItem.leftBarButtonItems = [add,multi] }
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "layer")
         tableView.allowsSelectionDuringEditing = true
         setEditing(true, animated: false)
@@ -34,7 +59,8 @@ final class LayersController: UITableViewController {
         var content = cell.defaultContentConfiguration()
         content.text = layer.name
         content.secondaryText = "\(layer.visible ? "Visible" : "Hidden") · \(Int(layer.opacity * 100))%"
-        content.image = UIImage(systemName: layer.id == document.activeLayer ? "checkmark.circle.fill" : "circle")
+        content.image = UIImage(systemName: document.editingLayerIDs.contains(layer.id) ? "checkmark.circle.fill" : "circle")
+        if layer.editGroup != nil { content.secondaryText = (content.secondaryText ?? "") + " · Group" }
         cell.contentView.viewWithTag(104)?.removeFromSuperview()
         if expanded == layer.id {
             cell.contentConfiguration = nil
@@ -75,6 +101,7 @@ final class LayersController: UITableViewController {
         let offset = index(path)
         document.record.selectedLayer = document.record.layers[offset].id
         expanded = expanded == document.activeLayer ? nil : document.activeLayer
+        document.chooseLayers([])
         changed()
     }
     private func openSettings(_ id: UUID) {
