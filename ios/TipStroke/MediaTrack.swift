@@ -79,6 +79,9 @@ final class MediaFrameReader {
     init(track: MediaTrack) throws { self.track = track; plan = try track.plan() }
 
     static func inspect(_ input: URL) throws -> MediaAssetRecord {
+        guard let size = try input.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0, size <= 512 * 1024 * 1024 else {
+            throw DrawingError.message("Import a media file up to 512 MiB.")
+        }
         let file = try LocalMediaFile(input)
         let ext = input.pathExtension.lowercased()
         let name = String(input.deletingPathExtension().lastPathComponent.prefix(100))
@@ -299,8 +302,18 @@ extension RasterDocument {
         }
     }
     func ensureDrawingCel() throws {
-        guard let track = record.media, let animation = record.animation, animation.coverageIndex(at: track.positionUs) == nil,
+        guard let track = record.media, let animation = record.animation,
               !animation.sharedLayerIDs.contains(activeLayer) else { return }
+        if let covered = animation.coverageIndex(at: track.positionUs) {
+            if covered != animation.selectedIndex {
+                guard coldFrames[animation.frames[covered].id] == nil else {
+                    throw DrawingError.message("The drawing at this time is still loading.")
+                }
+                pendingCelSelection = nil
+                installFrame(covered)
+            }
+            return
+        }
         try addFrame(copy: false, sourceTimeUs: track.positionUs)
     }
 }

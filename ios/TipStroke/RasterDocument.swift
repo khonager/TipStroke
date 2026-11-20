@@ -651,7 +651,10 @@ final class RasterDocument {
         context.saveGState()
         defer { context.restoreGState() }
         context.clip(to: CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height))
-        let gap = snapshot.record.media.map { media in snapshot.record.animation?.coverageIndex(at: media.positionUs) == nil } ?? false
+        let gap = snapshot.record.media.map { media in
+            guard let animation = snapshot.record.animation else { return true }
+            return animation.coverageIndex(at: media.positionUs) != animation.selectedIndex
+        } ?? false
         for layer in snapshot.record.layers where !excluding.contains(layer.id) && layer.visible && layer.opacity > 0 && (!gap || snapshot.record.animation?.sharedLayerIDs.contains(layer.id) == true) {
             context.setAlpha(layer.opacity); context.setBlendMode(blendModes[layer.blendMode] ?? .normal)
             for key in TileKey.intersecting(visible, width: snapshot.record.width, height: snapshot.record.height) {
