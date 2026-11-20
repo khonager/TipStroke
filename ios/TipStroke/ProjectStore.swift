@@ -53,7 +53,8 @@ final class ProjectStore {
                 result + item.element.tiles.values.reduce(0) { $0 + $1.count }
             }
         } ?? 0
-        var sourceBytes = (activeTiles + otherTiles) * RasterDocument.tileBytes
+        let loadCold = activeTiles + otherTiles > 64
+        var sourceBytes = (activeTiles + (loadCold ? 0 : otherTiles)) * RasterDocument.tileBytes
         for index in record.layers.indices {
             guard var photo = record.layers[index].photo else { continue }
             if sources[photo.sourceID] == nil {
@@ -85,7 +86,8 @@ final class ProjectStore {
                 pixels[layer.id, default: [:]][key] = try readTile(directory.appendingPathComponent(layer.id.uuidString).appendingPathComponent(key.fileName))
             }
         }
-        var frames: [UUID: [UUID: [TileKey: CGImage]]] = [:]
+        var frames: [UUID: CelPixels] = [:]
+        var coldFrames: [UUID: CelFiles] = [:]
         if let animation = record.animation {
             for frame in animation.frames {
                 let selected = frame.id == animation.frames[animation.selectedIndex].id
@@ -96,12 +98,14 @@ final class ProjectStore {
                     for key in keys {
                         let url = directory.appendingPathComponent("frames").appendingPathComponent(frame.id.uuidString)
                             .appendingPathComponent(layerID).appendingPathComponent(key.fileName)
-                        frames[frame.id, default: [:]][id, default: [:]][key] = try readTile(url)
+                        if loadCold && !selected {
+                            coldFrames[frame.id, default: [:]][id, default: [:]][key] = try LocalMediaFile(url)
+                        } else { frames[frame.id, default: [:]][id, default: [:]][key] = try readTile(url) }
                     }
                 }
             }
         }
-        return DocumentSnapshot(record: record, pixels: pixels, frames: frames)
+        return DocumentSnapshot(record: record, pixels: pixels, frames: frames, coldFrames: coldFrames)
     }
 
     func save(_ snapshot: DocumentSnapshot) throws {
@@ -149,8 +153,12 @@ final class ProjectStore {
                     let target = staging.appendingPathComponent("frames").appendingPathComponent(frame.id.uuidString).appendingPathComponent(layerID)
                     try fm.createDirectory(at: target, withIntermediateDirectories: true)
                     for key in keys {
-                        guard let image = snapshot.frames[frame.id]?[id]?[key] else { throw DrawingError.message("An animation tile is missing.") }
-                        try Self.writePNG(image, to: target.appendingPathComponent(key.fileName))
+                        let destination = target.appendingPathComponent(key.fileName)
+                        if let encoded = snapshot.coldFrames[frame.id]?[id]?[key] {
+                            do { try fm.linkItem(at: encoded.url, to: destination) } catch { try fm.copyItem(at: encoded.url, to: destination) }
+                        } else if let image = snapshot.frames[frame.id]?[id]?[key] {
+                            try Self.writePNG(image, to: destination)
+                        } else { throw DrawingError.message("An animation tile is missing.") }
                     }
                 }
             }

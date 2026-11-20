@@ -82,7 +82,7 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
             throw DrawingError.message("This drawing has invalid document metadata.")
         }
         if let animation {
-            guard (1...240).contains(animation.frames.count), (1...60).contains(animation.fps),
+            guard (1...10_000).contains(animation.frames.count), (1...60).contains(animation.fps),
                 animation.frames.indices.contains(animation.selectedIndex),
                 Set(animation.frames.map(\.id)).count == animation.frames.count,
                 animation.frames.allSatisfy({ (1...600).contains($0.exposure) }),
@@ -118,7 +118,8 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
         }
         if let animation {
             let layerIDs = Set(layers.map { $0.id.uuidString })
-            for (index, frame) in animation.frames.enumerated() {
+            for frame in animation.frames {
+                guard frame.tiles.values.reduce(0, { $0 + $1.count }) <= RasterDocument.maximumTiles else { throw DrawingError.message("A cel exceeds the iOS tile budget.") }
                 for (layerID, keys) in frame.tiles {
                     let photo = layers.first(where: { $0.id.uuidString == layerID })?.photo
                     let tileWidth = photo?.width ?? width, tileHeight = photo?.height ?? height
@@ -126,7 +127,7 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
                           keys.allSatisfy({ $0.x >= 0 && $0.y >= 0 && $0.x < (tileWidth + 255) / 256 && $0.y < (tileHeight + 255) / 256 }) else {
                         throw DrawingError.message("Invalid animation tile metadata.")
                     }
-                    if index != animation.selectedIndex || animation.sharedLayerIDs.contains(UUID(uuidString: layerID)!) { tileCount += keys.count }
+
                 }
             }
             let current = animation.frames[animation.selectedIndex]
@@ -149,6 +150,7 @@ struct DocumentSnapshot {
     var record: DocumentRecord
     var pixels: [UUID: [TileKey: CGImage]]
     var frames: [UUID: [UUID: [TileKey: CGImage]]] = [:]
+    var coldFrames: [UUID: CelFiles] = [:]
 }
 
 struct AnimationFrameRecord: Codable, Equatable, Identifiable {

@@ -318,6 +318,34 @@ final class RasterDocumentTests: XCTestCase {
         XCTAssertEqual(try reopened.record.media?.plan().durationUs, asset.durationUs)
         XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(reopened.record.media?.assets.first?.source?.url).path))
     }
+    func testColdCelSavesAndReturnsThroughWorkerSelection() throws {
+        let doc = RasterDocument(name: "Cold frames", width: 256, height: 256)
+        doc.enableAnimation()
+        XCTAssertTrue(doc.beginStroke())
+        try paint(doc, from: .init(x: 10, y: 20), to: .init(x: 20, y: 20))
+        doc.endStroke(cancelled: false)
+        let first = try XCTUnwrap(doc.record.animation?.frames.first?.id)
+        var snapshot = doc.snapshot()
+        let tiles = try XCTUnwrap(snapshot.frames[first])
+        snapshot.coldFrames[first] = try CelStorage.encode(tiles)
+        snapshot.frames.removeValue(forKey: first)
+        let next = AnimationFrameRecord()
+        snapshot.record.animation?.frames.append(next)
+        snapshot.record.animation?.selectedIndex = 1
+        snapshot.record.layers[0].tiles = []
+        snapshot.pixels = [:]
+        for _ in 0..<250 { snapshot.record.animation?.frames.append(AnimationFrameRecord()) }
+        let working = RasterDocument(snapshot: snapshot)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ProjectStore(root: root)
+        try store.save(working.snapshot())
+        XCTAssertEqual(try store.load(working.record.id).record.animation?.frames.count, 252)
+        let loaded = expectation(description: "Selected cold cel")
+        working.selectFrame(0) { loaded.fulfill() }
+        wait(for: [loaded], timeout: 5)
+        XCTAssertGreaterThan(try alpha(working, x: 15, y: 20), 200)
+    }
     func testSharedCelsPersistWithoutLosingHiddenFramePaint() throws {
         let document = RasterDocument(name: "Background", width: 256, height: 256)
         document.enableAnimation()

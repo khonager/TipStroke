@@ -38,6 +38,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     required init?(coder: NSCoder) { fatalError("Use init(document:)") }
     override func viewDidLoad() {
         super.viewDidLoad()
+        document.onCelReady = { [weak self] in self?.viewport.canvas.refresh(); self?.updateHistory() }
+        document.onCelError = { [weak self] error in self?.showError(error) }
         view.backgroundColor = .secondarySystemBackground
         viewport.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(viewport)

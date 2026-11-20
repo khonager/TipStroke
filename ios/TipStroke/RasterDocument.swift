@@ -33,6 +33,12 @@ final class RasterDocument {
         return true
     }
     var record: DocumentRecord
+    var coldFrames: [UUID: CelFiles] = [:]
+    var archivingCel = false
+    var loadingCel = false
+    var pendingCelSelection: (UUID, () -> Void)?
+    var onCelError: ((Error) -> Void)?
+    var onCelReady: (() -> Void)?
     var framePixels: [UUID: [UUID: [TileKey: CGImage]]] = [:]
     var pixels: [UUID: [TileKey: CGImage]]
     private var before: [TileKey: TileState] = [:]
@@ -66,7 +72,8 @@ final class RasterDocument {
     private struct Metadata {
         let record: DocumentRecord
         let pixels: [UUID: [TileKey: CGImage]]
-        let frames: [UUID: [UUID: [TileKey: CGImage]]]
+        var frames: [UUID: [UUID: [TileKey: CGImage]]]
+        var coldFrames: [UUID: CelFiles]
     }
     private var metadataBefore: Metadata?
     private struct Edit {
@@ -109,7 +116,7 @@ final class RasterDocument {
     init(snapshot: DocumentSnapshot) {
         record = snapshot.record
         pixels = snapshot.pixels
-        framePixels = snapshot.frames
+        framePixels = snapshot.frames; coldFrames = snapshot.coldFrames
     }
     convenience init(name: String, width: Int, height: Int) {
         var record = DocumentRecord()
@@ -132,16 +139,22 @@ final class RasterDocument {
             let hidden = frames[selected]?.filter { animation.sharedLayerIDs.contains($0.key) } ?? [:]
             frames[selected] = hidden.merging(pixels.filter { !animation.sharedLayerIDs.contains($0.key) }) { _, current in current }
             for index in animation.frames.indices {
-                animation.frames[index].tiles = (frames[animation.frames[index].id] ?? [:]).reduce(into: [:]) { result, layer in
+                let id = animation.frames[index].id
+                if let files = coldFrames[id] {
+                    animation.frames[index].tiles = files.reduce(into: [:]) { $0[$1.key.uuidString] = $1.value.keys.sorted { ($0.y, $0.x) < ($1.y, $1.x) } }
+                    continue
+                }
+                animation.frames[index].tiles = (frames[id] ?? [:]).reduce(into: [:]) { result, layer in
                     result[layer.key.uuidString] = Array(layer.value.keys).sorted { ($0.y, $0.x) < ($1.y, $1.x) }
                 }
             }
             saved.animation = animation
         }
-        return DocumentSnapshot(record: saved, pixels: pixels, frames: frames)
+        return DocumentSnapshot(record: saved, pixels: pixels, frames: frames, coldFrames: coldFrames)
     }
 
     func beginStroke(mirrored: Bool = true, brushAids: Bool = true, photoErase: Bool = false) -> Bool {
+        pendingCelSelection = nil
         guard strokeLayer == nil, metadataBefore == nil,
               let layer = record.layers.first(where: { $0.id == activeLayer }), layer.visible, !layer.locked, layer.opacity > 0, layer.photo == nil || photoErase else { return false }
         strokePaintInside = paintInside && brushAids
@@ -348,22 +361,44 @@ final class RasterDocument {
     }
 
     func undo() {
-        guard strokeLayer == nil, metadataBefore == nil, let edit = undoStack.popLast() else { return }
+        guard strokeLayer == nil, metadataBefore == nil else { return }
+        if let id = undoStack.last?.frame, coldFrames[id] != nil, let i = record.animation?.frames.firstIndex(where: { $0.id == id }) {
+            prepareFrame(i) { [weak self] in self?.undo(); self?.onCelReady?() }; return
+        }
+        guard let edit = undoStack.popLast() else { return }
         revision &+= 1
-        if let state = edit.oldMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames }
+        if let state = edit.oldMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames; coldFrames = state.coldFrames }
         else { restoreFrameForHistory(edit.frame); apply(edit.before, layer: edit.layer) }
         for (id, states) in edit.extraBefore { apply(states, layer: id) }
         if let moved = edit.movedSelection { selection = moved.0 }
         redoStack.append(edit)
     }
     func redo() {
-        guard strokeLayer == nil, metadataBefore == nil, let edit = redoStack.popLast() else { return }
+        guard strokeLayer == nil, metadataBefore == nil else { return }
+        if let id = redoStack.last?.frame, coldFrames[id] != nil, let i = record.animation?.frames.firstIndex(where: { $0.id == id }) {
+            prepareFrame(i) { [weak self] in self?.redo(); self?.onCelReady?() }; return
+        }
+        guard let edit = redoStack.popLast() else { return }
         revision &+= 1
-        if let state = edit.newMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames }
+        if let state = edit.newMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames; coldFrames = state.coldFrames }
         else { restoreFrameForHistory(edit.frame); apply(edit.after, layer: edit.layer) }
         for (id, states) in edit.extraAfter { apply(states, layer: id) }
         if let moved = edit.movedSelection { selection = moved.1 }
         undoStack.append(edit)
+    }
+    func archiveHistoryFrame(_ id: UUID, matching: CelPixels, files: CelFiles) {
+        func archive(_ state: inout Metadata?) {
+            if let active = state?.record.animation, active.frames[active.selectedIndex].id != id,
+               CelStorage.identical(state?.frames[id], matching) {
+                state?.frames[id] = nil; state?.coldFrames[id] = files
+            }
+        }
+        for index in undoStack.indices {
+            archive(&undoStack[index].oldMetadata); archive(&undoStack[index].newMetadata)
+        }
+        for index in redoStack.indices {
+            archive(&redoStack[index].oldMetadata); archive(&redoStack[index].newMetadata)
+        }
     }
     func clearHistory() { undoStack = []; redoStack = [] }
     private func trimHistory() {
@@ -390,13 +425,14 @@ final class RasterDocument {
         record.layers.removeAll { $0.id == id }; pixels[id] = nil
         for index in record.layers.indices where record.layers[index].clipSource == id { record.layers[index].clipSource = nil }
         for frame in Array(framePixels.keys) { framePixels[frame]?[id] = nil }
+        for frame in Array(coldFrames.keys) { coldFrames[frame]?[id] = nil }
         if record.selectedLayer == id { record.selectedLayer = record.layers.last!.id }
         endMetadataEdit()
     }
 
     func beginMetadataEdit() {
         guard metadataBefore == nil, strokeLayer == nil else { return }
-        metadataBefore = Metadata(record: record, pixels: pixels, frames: framePixels)
+        metadataBefore = Metadata(record: record, pixels: pixels, frames: framePixels, coldFrames: coldFrames)
     }
     func endMetadataEdit(force: Bool = false) {
         guard let old = metadataBefore else { return }
@@ -405,7 +441,7 @@ final class RasterDocument {
         revision &+= 1
         redoStack = []
         undoStack.append(Edit(layer: activeLayer, before: [:], after: [:], oldMetadata: old,
-                              newMetadata: Metadata(record: record, pixels: pixels, frames: framePixels)))
+                              newMetadata: Metadata(record: record, pixels: pixels, frames: framePixels, coldFrames: coldFrames)))
         trimHistory()
     }
     func duplicateLayer(_ id: UUID) throws {
@@ -420,6 +456,7 @@ final class RasterDocument {
         copy.locked = false; copy.reference = false
         pixels[copy.id] = tiles // immutable images; new paint replaces only touched tiles
         for frame in Array(framePixels.keys) { framePixels[frame]?[copy.id] = framePixels[frame]?[id] }
+        for frame in Array(coldFrames.keys) { coldFrames[frame]?[copy.id] = coldFrames[frame]?[id] }
         record.layers.insert(copy, at: index + 1); record.selectedLayer = copy.id
         endMetadataEdit()
     }
@@ -480,9 +517,18 @@ final class RasterDocument {
               record.animation?.selectedIndex == result.record.animation?.selectedIndex else {
             throw DrawingError.message("The drawing changed during resizing. Try again.")
         }
-        record = result.record; pixels = result.pixels; framePixels = result.frames
+        record = result.record; pixels = result.pixels; framePixels = result.frames; coldFrames = result.coldFrames
         selection = nil; mirrorCenter = nil
         clearHistory(); revision &+= 1
+    }
+
+    func installResize(_ result: DocumentSnapshot, expectedRevision: UInt64) throws {
+        guard revision == expectedRevision, strokeLayer == nil, metadataBefore == nil else {
+            throw DrawingError.message("The drawing changed while resizing. Try again.")
+        }
+        beginMetadataEdit()
+        record = result.record; pixels = result.pixels; framePixels = result.frames; coldFrames = result.coldFrames
+        selection = nil; endMetadataEdit()
     }
 
     func resize(width: Int, height: Int) throws {
@@ -512,7 +558,17 @@ final class RasterDocument {
         let selected = record.animation.map { $0.frames[$0.selectedIndex].id }
         for id in Array(frames.keys) where id != selected { frames[id] = try cropped(frames[id] ?? [:]) }
         if let selected { frames[selected] = replacement }
-        beginMetadataEdit(); pixels = replacement; framePixels = frames
+        var archived = coldFrames
+        for (frame, layers) in coldFrames {
+            for (id, files) in layers where record.layers.first(where: { $0.id == id })?.photo == nil {
+                for (key, file) in files where !bounds.contains(key.rect) {
+                    if !bounds.intersects(key.rect) { archived[frame]?[id]?[key] = nil; continue }
+                    let croppedTile = try cropped([id: [key: CelStorage.read(file.url)]])
+                    archived[frame]?[id]?[key] = try CelStorage.encode(croppedTile)[id]?[key]
+                }
+            }
+        }
+        beginMetadataEdit(); pixels = replacement; framePixels = frames; coldFrames = archived
         record.width = width; record.height = height; selection = nil; previousSelection = nil; endMetadataEdit()
     }
 

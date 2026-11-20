@@ -190,11 +190,23 @@ extension EditorController {
         alert.addAction(UIAlertAction(title: "Apply", style: .default) { [weak self, weak alert] _ in
             guard let self, let fields = alert?.textFields, let width = Int(fields[0].text ?? ""), let height = Int(fields[1].text ?? ""),
                   (16...4096).contains(width), (16...4096).contains(height) else { return }
-            do {
-                try self.document.resize(width: width, height: height)
-                self.viewport.canvas.bounds = self.document.bounds; self.viewport.contentSize = self.document.bounds.size
-                self.viewport.fit(); self.changed()
-            } catch { self.showError(error) }
+            let source = self.document.snapshot(), revision = self.document.revision
+            self.view.isUserInteractionEnabled = false
+            ProjectStore.shared.queue.async {
+                let result = Result { () -> DocumentSnapshot in
+                    let working = RasterDocument(snapshot: source)
+                    try working.resize(width: width, height: height)
+                    return working.snapshot()
+                }
+                DispatchQueue.main.async {
+                    self.view.isUserInteractionEnabled = true
+                    do {
+                        try self.document.installResize(result.get(), expectedRevision: revision)
+                        self.viewport.canvas.bounds = self.document.bounds; self.viewport.contentSize = self.document.bounds.size
+                        self.viewport.fit(); self.changed()
+                    } catch { self.showError(error) }
+                }
+            }
         })
         present(alert, animated: true)
     }

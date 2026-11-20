@@ -8,10 +8,11 @@ extension AnimationRecord {
 }
 
 extension DocumentSnapshot {
-    func pixelsForFrame(_ id: UUID) -> [UUID: [TileKey: CGImage]] {
+    func pixelsForFrame(_ id: UUID) throws -> [UUID: [TileKey: CGImage]] {
         let backgrounds = record.animation?.sharedLayerIDs ?? []
         let shared = pixels.filter { backgrounds.contains($0.key) }
-        return (frames[id] ?? [:]).merging(shared) { _, shared in shared }
+        let cel = try coldFrames[id].map(CelStorage.decode) ?? frames[id] ?? [:]
+        return cel.merging(shared) { _, shared in shared }
     }
 }
 
@@ -45,13 +46,22 @@ extension RasterDocument {
         framePixels[animation.frames[0].id] = pixels
         endMetadataEdit()
     }
-    func selectFrame(_ index: Int) {
+    func selectFrame(_ index: Int, completion: @escaping () -> Void = {}) {
+        guard let frames = record.animation?.frames, frames.indices.contains(index) else { return }
+        let id = frames[index].id
+        prepareFrame(index) { [weak self] in
+            guard let self, let destination = self.record.animation?.frames.firstIndex(where: { $0.id == id }) else { return }
+            self.installFrame(destination); completion(); self.onCelReady?()
+        }
+    }
+    private func installFrame(_ index: Int) {
         guard var animation = record.animation, animation.frames.indices.contains(index) else { return }
         endStroke(cancelled: true)
         storeCurrentCel(animation)
         animation.selectedIndex = index
         installCel(animation)
         record.animation = animation; selection = nil
+        archiveInactiveCels()
     }
     func restoreFrameForHistory(_ id: UUID?) {
         guard let id, let index = record.animation?.frames.firstIndex(where: { $0.id == id }) else { return }
@@ -59,8 +69,8 @@ extension RasterDocument {
     }
     func addFrame(copy: Bool, sourceTimeUs: Int64? = nil) throws {
         enableAnimation()
-        guard var animation = record.animation, animation.frames.count < 240 else {
-            throw DrawingError.message("This timeline has reached its 240-frame limit.")
+        guard var animation = record.animation, animation.frames.count < 10_000 else {
+            throw DrawingError.message("This timeline has reached its 10,000-frame limit.")
         }
         guard !copy || residentTileCount + pixels.values.reduce(0, { $0 + $1.count }) <= Self.maximumTiles else {
             throw DrawingError.message("This frame copy exceeds the painting memory budget.")
@@ -77,7 +87,7 @@ extension RasterDocument {
             animation.selectedIndex = animation.frames.firstIndex { $0.id == frame.id }!
         }
         framePixels[frame.id] = next; installCel(animation); record.animation = animation
-        selection = nil; endMetadataEdit()
+        selection = nil; endMetadataEdit(); archiveInactiveCels()
     }
     func deleteFrame() throws {
         guard var animation = record.animation, animation.frames.count > 1 else { return }
@@ -85,8 +95,10 @@ extension RasterDocument {
             throw DrawingError.message("This frame is too large to retain in undo history.")
         }
         beginMetadataEdit()
+        let nextIndex = animation.selectedIndex == animation.frames.count - 1 ? animation.selectedIndex - 1 : animation.selectedIndex + 1
+        guard coldFrames[animation.frames[nextIndex].id] == nil else { endMetadataEdit(); throw DrawingError.message("The adjacent frame is loading.") }
         let removed = animation.frames.remove(at: animation.selectedIndex)
-        framePixels[removed.id] = nil
+        framePixels[removed.id] = nil; coldFrames[removed.id] = nil
         animation.selectedIndex = min(animation.selectedIndex, animation.frames.count - 1)
         installCel(animation)
         record.animation = animation; selection = nil; endMetadataEdit()
@@ -146,6 +158,9 @@ extension ProjectStore {
         }
         result.pixels = try reduce(source.pixels)
         result.frames = try source.frames.mapValues(reduce)
+        result.coldFrames = try source.coldFrames.mapValues { files in
+            try autoreleasepool { try CelStorage.encode(reduce(CelStorage.decode(files))) }
+        }
         // Regenerate sparse tile indexes for the new canvas before validating or publishing it.
         result = RasterDocument(snapshot: result).snapshot()
         try result.record.validate()
@@ -277,8 +292,14 @@ final class TimelineController: UITableViewController {
         guard indexPath.section == 1 else { return nil }
         return UISwipeActionsConfiguration(actions: [UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, done in
             guard let self else { done(false); return }; self.stopPlayback()
-            do { self.document.selectFrame(indexPath.row); try self.document.deleteFrame(); self.changed(); done(true) }
-            catch { self.showError(error); done(false) }
+            let remove = {
+                do { try self.document.deleteFrame(); self.changed(); done(true) }
+                catch { self.showError(error); done(false) }
+            }
+            self.document.selectFrame(indexPath.row) {
+                let target = min(indexPath.row + 1, (self.document.record.animation?.frames.count ?? 1) - 1)
+                self.document.prepareFrame(target == indexPath.row ? max(0, target-1) : target, then: remove)
+            }
         }])
     }
     private func settings() {
