@@ -28,13 +28,17 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
     private let thumbnails = NSCache<NSUUID, UIImage>()
     private let store = ProjectStore.shared
     private var loading = false
+    private var pickingExports = false
+    private var exportingDrawings = false
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "TipStroke"
         thumbnails.countLimit = 80
         tableView.rowHeight = 100
-        navigationController?.navigationBar.prefersLargeTitles = true
-        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(newDrawing))
+        navigationItem.largeTitleDisplayMode = .never
+        tableView.allowsMultipleSelectionDuringEditing = true
+        updateGalleryActions()
+
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "drawing")
         refreshControl = UIRefreshControl()
         refreshControl?.addTarget(self, action: #selector(reload), for: .valueChanged)
@@ -42,6 +46,54 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         empty.text = "Your drawings stay on this device.\nTap + to open a new canvas."
         empty.numberOfLines = 0; empty.textAlignment = .center; empty.textColor = .secondaryLabel
         tableView.backgroundView = empty
+    }
+    private func updateGalleryActions() {
+        if pickingExports {
+            navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.setPicking(false) })
+            let share = UIBarButtonItem(systemItem: .action, primaryAction: UIAction { [weak self] _ in self?.shareSelected() })
+            share.isEnabled = !(tableView.indexPathsForSelectedRows ?? []).isEmpty && !exportingDrawings
+            share.accessibilityLabel = "Share selected drawings"
+            navigationItem.rightBarButtonItems = [share]
+        } else {
+            navigationItem.leftBarButtonItem = nil
+            let select = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), primaryAction: UIAction { [weak self] _ in self?.setPicking(true) })
+            select.accessibilityLabel = "Select drawings"
+            navigationItem.rightBarButtonItems = [UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(newDrawing)), select]
+        }
+    }
+    private func setPicking(_ enabled: Bool) {
+        guard !exportingDrawings else { return }
+        pickingExports = enabled
+        tableView.setEditing(enabled, animated: true)
+        refreshControl?.isEnabled = !enabled
+        updateGalleryActions()
+    }
+    private func shareSelected() {
+        let ids = (tableView.indexPathsForSelectedRows ?? []).sorted().map { drawings[$0.row].id }
+        guard !ids.isEmpty, !exportingDrawings else { return }
+        exportingDrawings = true; updateGalleryActions()
+        store.queue.async {
+            var urls: [URL] = []
+            do {
+                for id in ids {
+                    try autoreleasepool { urls.append(try self.store.exportPNG(self.store.load(id))) }
+                }
+                let files = urls
+                DispatchQueue.main.async {
+                    self.exportingDrawings = false; self.setPicking(false)
+                    let sheet = UIActivityViewController(activityItems: files, applicationActivities: nil)
+                    sheet.popoverPresentationController?.barButtonItem = self.navigationItem.rightBarButtonItems?.last
+                    sheet.completionWithItemsHandler = { _, _, _, _ in files.forEach { try? FileManager.default.removeItem(at: $0) } }
+                    self.present(sheet, animated: true)
+                }
+            } catch {
+                urls.forEach { try? FileManager.default.removeItem(at: $0) }
+                DispatchQueue.main.async { self.exportingDrawings = false; self.updateGalleryActions(); self.showError(error) }
+            }
+        }
+    }
+    override func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) {
+        if pickingExports { updateGalleryActions() }
     }
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -114,6 +166,7 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         return cell
     }
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if pickingExports { updateGalleryActions(); return }
         tableView.deselectRow(at: indexPath, animated: true)
         guard !loading else { return }
         loading = true
