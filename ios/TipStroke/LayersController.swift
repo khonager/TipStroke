@@ -17,6 +17,7 @@ final class LayersController: UITableViewController {
         tableView.allowsSelectionDuringEditing = true
         setEditing(true, animated: false)
     }
+    private var expanded: UUID?
     private func index(_ path: IndexPath) -> Int { document.record.layers.count - 1 - path.row }
     @objc private func addLayer() {
         guard document.addLayer() else { showError(DrawingError.message("A drawing can contain up to 32 layers.")); return }
@@ -34,14 +35,50 @@ final class LayersController: UITableViewController {
         content.text = layer.name
         content.secondaryText = "\(layer.visible ? "Visible" : "Hidden") · \(Int(layer.opacity * 100))%"
         content.image = UIImage(systemName: layer.id == document.activeLayer ? "checkmark.circle.fill" : "circle")
-        cell.contentConfiguration = content
+        cell.contentView.viewWithTag(104)?.removeFromSuperview()
+        if expanded == layer.id {
+            cell.contentConfiguration = nil
+            let name = UITextField()
+            name.borderStyle = .roundedRect; name.text = layer.name; name.accessibilityLabel = "Layer name"
+            name.returnKeyType = .done
+            name.addAction(UIAction { [weak name] _ in name?.resignFirstResponder() }, for: .editingDidEndOnExit)
+            name.addAction(UIAction { [weak self, weak name] _ in
+                guard let self, let text = name?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      let i = self.document.record.layers.firstIndex(where: { $0.id == layer.id }) else { return }
+                guard !text.isEmpty, text != self.document.record.layers[i].name else {
+                    name?.text = self.document.record.layers[i].name; return
+                }
+                self.document.beginMetadataEdit(); self.document.record.layers[i].name = text
+                self.document.endMetadataEdit(); self.onChange?()
+            }, for: .editingDidEnd)
+            let visibility = UIButton(type: .system)
+            visibility.setImage(UIImage(systemName: layer.visible ? "eye" : "eye.slash"), for: .normal)
+            visibility.accessibilityLabel = layer.visible ? "Hide layer" : "Show layer"
+            visibility.addAction(UIAction { [weak self] _ in
+                guard let self, let i = self.document.record.layers.firstIndex(where: { $0.id == layer.id }) else { return }
+                self.document.beginMetadataEdit(); self.document.record.layers[i].visible.toggle()
+                self.document.endMetadataEdit(); self.changed()
+            }, for: .touchUpInside)
+            let more = UIButton(type: .system)
+            more.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal); more.accessibilityLabel = "Layer settings"
+            more.addAction(UIAction { [weak self] _ in self?.openSettings(layer.id) }, for: .touchUpInside)
+            let row = UIStackView(arrangedSubviews: [name, visibility, more]); row.tag = 104; row.spacing = 8
+            row.translatesAutoresizingMaskIntoConstraints = false; cell.contentView.addSubview(row)
+            let margins = cell.contentView.layoutMarginsGuide
+            NSLayoutConstraint.activate([row.leadingAnchor.constraint(equalTo: margins.leadingAnchor),
+                row.trailingAnchor.constraint(equalTo: margins.trailingAnchor), row.centerYAnchor.constraint(equalTo: margins.centerYAnchor),
+                visibility.widthAnchor.constraint(equalToConstant: 44), more.widthAnchor.constraint(equalToConstant: 44)])
+        } else { cell.contentConfiguration = content }
         return cell
     }
     override func tableView(_ tableView: UITableView, didSelectRowAt path: IndexPath) {
         let offset = index(path)
         document.record.selectedLayer = document.record.layers[offset].id
+        expanded = expanded == document.activeLayer ? nil : document.activeLayer
         changed()
-        let settings = LayerSettingsController(document: document, id: document.activeLayer, sharedControls: sharedControls)
+    }
+    private func openSettings(_ id: UUID) {
+        let settings = LayerSettingsController(document: document, id: id, sharedControls: sharedControls)
         settings.onChange = { [weak self] in self?.changed() }
         navigationController?.pushViewController(settings, animated: true)
     }

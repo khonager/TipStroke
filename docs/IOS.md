@@ -170,9 +170,8 @@ simulators. Swift syntax parsing on Linux is not an Apple SDK type check. A gree
 Codemagic run plus the physical-device checklist in `TESTING.md` is required before
 calling this port device-validated or ready for distribution.
 
-Android control-layout parity: Android now offers inline layer-row renaming and
-compact expanded settings. UIKit currently retains its separate layer-settings
-screen and name field. Native input/rendering and document semantics are unchanged.
+Tap an iOS layer to expand its name field, visibility switch and settings button
+in the row. Full settings include opacity, blend mode, reference and clipping.
 On iOS the compact gallery heading contains New and Select drawings. Select multiple
 drawings and use Share to export their PNGs together. Drag into the center of a
 drawing or stack to group it, or near an edge to reorder. Swipe a stack to rename
