@@ -206,7 +206,7 @@ final class RasterDocument {
         let alphaLocked = strokePaintInside || record.layers.first { $0.id == layer }?.alphaLocked == true
         if alphaLocked && erasing && extraEraseLayers.isEmpty { return .null }
         let keys = TileKey.intersecting(area, width: record.width, height: record.height)
-        try editTiles(keys: keys, erasing: erasing) { context in
+        try editTiles(keys: keys, affectedArea: area, erasing: erasing) { context in
             context.setStrokeColor(color.cgColor)
             context.setFillColor(color.cgColor)
             context.setLineWidth(radius * 2)
@@ -236,11 +236,11 @@ final class RasterDocument {
 
     func editTiles(in area: CGRect, erasing: Bool = false, draw: (CGContext) throws -> Void) throws {
         let keys = TileKey.intersecting(area, width: record.width, height: record.height)
-        try editTiles(keys: keys, erasing: erasing, draw: draw)
+        try editTiles(keys: keys, affectedArea: area, erasing: erasing, draw: draw)
     }
-    func editTiles(keys: [TileKey], erasing: Bool, draw: (CGContext) throws -> Void) throws {
+    func editTiles(keys: [TileKey], affectedArea: CGRect? = nil, erasing: Bool, draw: (CGContext) throws -> Void) throws {
         guard let primary = strokeLayer else { return }
-        try editTarget(keys: keys, erasing: erasing, draw: draw)
+        try editTarget(keys: keys, affectedArea: affectedArea, erasing: erasing, draw: draw)
         if erasing {
             for id in extraEraseLayers {
                 extraBefore[primary] = before
@@ -251,18 +251,21 @@ final class RasterDocument {
                     before = extraBefore.removeValue(forKey: primary) ?? [:]
                     strokeLayer = primary
                 }
-                try editTarget(keys: keys, erasing: true, draw: draw)
+                try editTarget(keys: keys, affectedArea: affectedArea, erasing: true, draw: draw)
             }
         }
     }
-    private func editTarget(keys: [TileKey], erasing: Bool, draw: (CGContext) throws -> Void) throws {
+    private func editTarget(keys: [TileKey], affectedArea: CGRect?, erasing: Bool, draw: (CGContext) throws -> Void) throws {
         guard let layer = strokeLayer else { return }
         let referenceID = strokeReferenceID
         let alphaLocked = strokePaintInside || record.layers.first { $0.id == layer }?.alphaLocked == true || referenceID == layer
         if erasing && alphaLocked { return }
         if let photo = record.layers.first(where: { $0.id == layer })?.photo {
             guard erasing, referenceID == nil else { return }
-            try erasePhotoMask(photo, layer: layer, affected: keys, draw: draw)
+            let area = affectedArea ?? keys.reduce(CGRect.null) { $0.union($1.rect) }
+            let selectedBounds = selection.flatMap { $0.inverted ? nil : $0.path.boundingBoxOfPath } ?? bounds
+            let regions = keys.map { $0.rect.intersection(area) }.filter { !$0.isNull }
+            try erasePhotoMask(photo, layer: layer, regions: regions, selectedBounds: selectedBounds, draw: draw)
             return
         }
         let transforms = mirrorTransforms
@@ -302,9 +305,11 @@ final class RasterDocument {
             pixels[layer, default: [:]][key] = image
         }
     }
-    private func erasePhotoMask(_ photo: PhotoLayerRecord, layer: UUID, affected: [TileKey], draw: (CGContext) throws -> Void) throws {
-        let keys = Set(affected.flatMap { key in mirrorTransforms.flatMap { mirror in
-            photo.geometry.sourceKeys(over: key.rect.applying(mirror), width: photo.width, height: photo.height)
+    private func erasePhotoMask(_ photo: PhotoLayerRecord, layer: UUID, regions: [CGRect], selectedBounds: CGRect, draw: (CGContext) throws -> Void) throws {
+        let transforms = mirrorTransforms
+        let region = regions.reduce(CGRect.null) { $0.union($1) }
+        let keys = Set(regions.flatMap { area in transforms.flatMap { mirror in
+            photo.geometry.sourceKeys(over: area.applying(mirror).intersection(selectedBounds), width: photo.width, height: photo.height)
         } })
         guard (heldTileCount + keys.filter({ before[$0] == nil }).count) * Self.tileBytes * 2 <= Self.historyBudget,
               residentTileCount + keys.filter({ pixels[layer]?[$0] == nil }).count <= Self.maximumTiles else {
@@ -317,8 +322,7 @@ final class RasterDocument {
             if let old { Self.draw(old, in: context, rect: CGRect(origin: .zero, size: key.rect.size)) }
             context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
             context.clip(to: photo.sourceBounds)
-            let region = affected.reduce(CGRect.null) { $0.union($1.rect) }
-            for mirror in mirrorTransforms {
+            for mirror in transforms {
                 try photo.geometry.pieces(in: region.applying(mirror), source: key.rect) { transform, clip, _ in
                     context.saveGState()
                     defer { context.restoreGState() }

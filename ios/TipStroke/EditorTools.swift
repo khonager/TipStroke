@@ -151,8 +151,10 @@ extension EditorController {
         action("Deselect") { self.document.selection = nil }
         action("Invert") { self.document.selection?.inverted.toggle() }
         action("Clear selected pixels") {
+            guard let selection = self.document.selection else { throw DrawingError.message("Select an area to clear.") }
+            let area = selection.inverted ? self.document.bounds : selection.path.boundingBoxOfPath
             if self.document.beginStroke(mirrored: false, brushAids: false, photoErase: true) {
-                do { try self.document.editTiles(in: self.document.bounds, erasing: true) { $0.fill(self.document.bounds) }; self.document.endStroke(cancelled: false) }
+                do { try self.document.editTiles(in: area, erasing: true) { $0.fill(area) }; self.document.endStroke(cancelled: false) }
                 catch { self.document.endStroke(cancelled: true); throw error }
             }
         }

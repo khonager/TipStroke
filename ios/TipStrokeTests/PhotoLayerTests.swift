@@ -216,6 +216,7 @@ final class PhotoLayerTests: XCTestCase {
         document.endStroke(cancelled: false)
         XCTAssertEqual(try alpha(document, 96, 64), 0)
         XCTAssertNotNil(document.pixels[document.activeLayer]?[TileKey(x: 1, y: 0)])
+        XCTAssertNil(document.pixels[document.activeLayer]?[TileKey(x: 0, y: 0)])
         XCTAssertFalse(document.beginStroke())
         document.undo()
         XCTAssertEqual(try alpha(document, 96, 64), 255)

@@ -38,7 +38,7 @@ final class NativeStampRenderer {
             keys.formUnion(TileKey.intersecting(bounds, width: document.record.width, height: document.record.height))
         }
         // Each affected tile is copied once for the complete batch, never once per dab.
-        try document.editTiles(keys: Array(keys), erasing: erasing) { context in
+        try document.editTiles(keys: Array(keys), affectedArea: dirty, erasing: erasing) { context in
         for stamp in stamps {
             let size = CGFloat(stamp.size), x = CGFloat(stamp.x), y = CGFloat(stamp.y)
             let radius = size * 0.72 + 1
