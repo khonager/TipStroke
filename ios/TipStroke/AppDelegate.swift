@@ -92,11 +92,12 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
             return layout.stacks[id]?.members ?? [id]
         }
         guard !ids.isEmpty, !exportingDrawings else { return }
+        let selectedLayout = layout
         exportingDrawings = true; updateGalleryActions()
         store.queue.async {
             var urls: [URL] = []
             do {
-                if asProject { urls = [try self.store.exportPackage(ids)] }
+                if asProject { urls = [try self.store.exportPackage(ids, layout: selectedLayout)] }
                 else {
                     for id in ids { try autoreleasepool { urls.append(try self.store.exportPNG(self.store.load(id))) } }
                 }

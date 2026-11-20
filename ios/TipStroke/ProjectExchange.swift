@@ -72,6 +72,7 @@ private enum PackageIO {
 private struct PackageIDs: Codable {
     var layers: [String: UUID] = [:]
     var frames: [String: UUID] = [:]
+    var layerGroups: [String: UUID]?
     var mediaAssets: [String: UUID]?
     var clips: [String: UUID]?
 }
@@ -86,7 +87,9 @@ extension ProjectStore {
         if FileManager.default.fileExists(atPath: src.path) { try FileManager.default.copyItem(at: src, to: packageBase(copy)) }
     }
 
-    func importPackage(_ input: URL) throws -> [UUID] {
+    func importPackage(_ input: URL) throws -> [UUID] { try importPackageWithLayout(input).drawings }
+
+    func importPackageWithLayout(_ input: URL) throws -> (drawings: [UUID], layout: GalleryStacks) {
         let staging = try PackageIO.temporaryFolder()
         defer { try? FileManager.default.removeItem(at: staging) }
         try PackageIO.unpack(input, to: staging)
@@ -110,7 +113,20 @@ extension ProjectStore {
                                                  to: root.appendingPathComponent(id.uuidString))
                 installed.append(id)
             }
-            return installed
+            let mapping = Dictionary(uniqueKeysWithValues: zip(drawings, installed))
+            var layout = GalleryStacks(), seen = Set<UUID>()
+            for item in gallery["items"] as? [JSONObject] ?? [] {
+                if item["kind"] as? String == "drawing", let key = item["id"] as? String, let id = mapping[key], seen.insert(id).inserted {
+                    layout.order.append(id)
+                } else if item["kind"] as? String == "stack", let members = item["drawingIds"] as? [String] {
+                    let members = members.compactMap { mapping[$0] }.filter { seen.insert($0).inserted }
+                    if members.isEmpty { continue }
+                    let id = UUID()
+                    layout.order.append(id); layout.stacks[id] = .init(name: item["name"] as? String ?? "Stack", members: members)
+                }
+            }
+            layout.order += installed.filter { !seen.contains($0) }
+            return (installed, layout)
         } catch {
             for id in installed { try? delete(id) }
             throw error
@@ -170,6 +186,12 @@ extension ProjectStore {
             layer.locked = raw["iosLocked"] as? Bool ?? false
             layer.alphaLocked = raw["iosAlphaLocked"] as? Bool ?? false
             layer.reference = raw["iosReference"] as? Bool ?? false
+            if let group = raw["groupId"] as? String {
+                guard PackageIO.safeID(group) else { throw PackageIO.invalid }
+                var groups = ids.layerGroups ?? [:]
+                let groupID = groups[group] ?? UUID(uuidString: group) ?? UUID()
+                groups[group] = groupID; ids.layerGroups = groups; layer.editGroup = groupID
+            }
             if let clip = raw["clipSourceId"] as? String {
                 guard let target = ids.layers[clip] else { throw PackageIO.invalid }
                 layer.clipSource = target
@@ -261,7 +283,7 @@ extension ProjectStore {
 }
 
 extension ProjectStore {
-    func exportPackage(_ drawings: [UUID]) throws -> URL {
+    func exportPackage(_ drawings: [UUID], layout: GalleryStacks? = nil) throws -> URL {
         guard !drawings.isEmpty, Set(drawings).count == drawings.count else { throw PackageIO.invalid }
         let staging = try PackageIO.temporaryFolder()
         defer { try? FileManager.default.removeItem(at: staging) }
@@ -280,6 +302,16 @@ extension ProjectStore {
             } else { items.append(["kind": "drawing", "id": id.uuidString]) }
             let target = staging.appendingPathComponent("drawings/\(id.uuidString)")
             try autoreleasepool { try exportDrawing(load(id), base: base, to: target) }
+        }
+        if let layout {
+            let selected = Set(drawings)
+            items = layout.order.compactMap { id -> JSONObject? in
+                if let stack = layout.stacks[id] {
+                    let members = stack.members.filter { selected.contains($0) }
+                    return members.isEmpty ? nil : ["kind": "stack", "id": id.uuidString, "name": stack.name, "drawingIds": members.map(\.uuidString)]
+                }
+                return selected.contains(id) ? ["kind": "drawing", "id": id.uuidString] : nil
+            }
         }
         try PackageIO.write(["schemaVersion": 1, "items": items], at: staging.appendingPathComponent("gallery.json"))
         do {
@@ -326,6 +358,7 @@ extension ProjectStore {
             raw["id"] = id; raw["kind"] = "raster"; raw["name"] = layer.name
             raw["visible"] = layer.visible; raw["opacity"] = layer.opacity; raw["blendMode"] = layer.blendMode
             raw["clipSourceId"] = layer.clipSource.map(layerID)
+            raw["groupId"] = layer.editGroup.map { id in ids.layerGroups?.first(where: { $0.value == id })?.key ?? id.uuidString }
             raw["iosLocked"] = layer.locked; raw["iosAlphaLocked"] = layer.alphaLocked; raw["iosReference"] = layer.reference
             if let text = layer.colorizeMask {
                 guard var recipe = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? JSONObject else { throw PackageIO.invalid }
@@ -393,10 +426,14 @@ extension GalleryController: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
         ProjectStore.shared.queue.async {
-            let result = Result { try ProjectStore.shared.importPackage(url) }
+            let result = Result { try ProjectStore.shared.importPackageWithLayout(url) }
             DispatchQueue.main.async {
                 switch result {
-                case .success: self.reload()
+                case .success(let imported):
+                    self.layout.order.insert(contentsOf: imported.layout.order, at: 0)
+                    self.layout.stacks.merge(imported.layout.stacks) { _, new in new }
+                    self.saveLayout()
+                    self.reload()
                 case .failure(let error): self.showError(error)
                 }
             }
