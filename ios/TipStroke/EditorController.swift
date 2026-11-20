@@ -52,10 +52,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         view.addSubview(viewport)
         let back = button("Gallery", symbol: "square.grid.2x2") { [weak self] in self?.close() }
         configure(undoButton, label: "Undo", symbol: "arrow.uturn.backward") { [weak self] in
-            guard let self else { return }; self.viewport.canvas.cancelStroke(); self.document.undo(); self.changed()
+            guard let self else { return }; self.finishCanvasInteraction(); self.document.undo(); self.changed()
         }
         configure(redoButton, label: "Redo", symbol: "arrow.uturn.forward") { [weak self] in
-            guard let self else { return }; self.viewport.canvas.cancelStroke(); self.document.redo(); self.changed()
+            guard let self else { return }; self.finishCanvasInteraction(); self.document.redo(); self.changed()
         }
         let fit = button("Fit canvas", symbol: "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit() }
         let layers = button("Layers", symbol: "square.3.layers.3d") { [weak self] in self?.showLayers() }
@@ -65,7 +65,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             UIAction(title: "Share PNG", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.export() },
             UIAction(title: "Drawing progress", image: UIImage(systemName: "play.rectangle")) { [weak self] _ in
                 guard let self else { return }
-                self.viewport.canvas.cancelStroke()
+                self.finishCanvasInteraction()
                 self.present(UINavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
             },
             UIAction(title: "Share transparent PNG") { [weak self] _ in self?.export(transparent: true) },
@@ -85,7 +85,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         toolPicker.addTarget(self, action: #selector(toolChanged), for: .valueChanged)
         toolPicker.accessibilityLabel = "Drawing tool"
         let color = button("Brush color", symbol: "circle.lefthalf.filled") { [weak self] in
-            guard let self else { return }; self.viewport.canvas.cancelStroke()
+            guard let self else { return }; self.finishCanvasInteraction()
             self.refreshDrawingColors()
             self.showShared(self.sharedControls.colorController(), title: "Colors")
         }
@@ -143,7 +143,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let hint = UIButton(type: .system)
         hint.configuration = .tinted(); hint.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
         hint.translatesAutoresizingMaskIntoConstraints = false; hint.isHidden = true
-        hint.addAction(UIAction { [weak self] _ in self?.viewport.canvas.stopLiveDrawing(); self?.viewport.canvas.cancelStroke() }, for: .touchUpInside)
+        hint.addAction(UIAction { [weak self] _ in self?.finishCanvasInteraction() }, for: .touchUpInside)
         view.addSubview(hint)
         NSLayoutConstraint.activate([
             hint.topAnchor.constraint(equalTo: safe.topAnchor, constant: 55),
@@ -198,6 +198,16 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         navigationController?.setNavigationBarHidden(true, animated: animated)
         navigationController?.interactivePopGestureRecognizer?.isEnabled = false
     }
+    func finishCanvasInteraction() {
+        viewport.canvas.stopLiveDrawing()
+        viewport.canvas.cancelStroke()
+    }
+
+    override func present(_ viewControllerToPresent: UIViewController, animated flag: Bool, completion: (() -> Void)? = nil) {
+        viewport.canvas.stopLiveDrawing()
+        super.present(viewControllerToPresent, animated: flag, completion: completion)
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         viewport.canvas.stopLiveDrawing()
@@ -246,7 +256,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
     }
     @objc private func toolChanged() {
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         let tool = CanvasView.Tool.allCases[toolPicker.selectedSegmentIndex]
         if tool == .eraser && viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
         viewport.canvas.tool = tool
@@ -263,7 +273,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         switch UIPencilInteraction.preferredSqueezeAction {
         case .switchEraser: toggleEraser()
         case .showColorPalette:
-            viewport.canvas.cancelStroke()
+            finishCanvasInteraction()
             refreshDrawingColors()
             showShared(sharedControls.colorController(), title: "Colors")
         case .showContextualPalette: openPalette()
@@ -271,7 +281,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
     }
     private func toggleEraser() {
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         viewport.canvas.mode = .paint
         if viewport.canvas.tool == .eraser { viewport.canvas.tool = previousTool }
         else { previousTool = viewport.canvas.tool; viewport.canvas.tool = .eraser }
@@ -313,7 +323,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
 
     private func openPalette() {
         guard let anchor = toolsButton else { return }
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         palette?.removeFromSuperview()
         let palette = ToolPalette(frame: view.bounds)
         palette.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -350,7 +360,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
 
     func activateMode(_ mode: CanvasMode) {
         if mode == .transform { showTransformEditor(); return }
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         if viewport.canvas.tool == .eraser { toggleEraser() }
         viewport.canvas.mode = mode
         if mode != .paint { toolPicker.selectedSegmentIndex = UISegmentedControl.noSegment }
@@ -381,8 +391,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         saveWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
     }
     @objc private func backgrounded() {
-        viewport.canvas.stopLiveDrawing()
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         if backgroundTask == .invalid {
             backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Save drawing") { [weak self] in self?.endBackgroundTask() }
         }
@@ -427,10 +436,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     @objc private func retrySave() { saveNow() }
     private func close() {
-        viewport.canvas.cancelStroke(); closeAfterSave = true; view.isUserInteractionEnabled = false; saveNow()
+        finishCanvasInteraction(); closeAfterSave = true; view.isUserInteractionEnabled = false; saveNow()
     }
     private func export(transparent: Bool = false) {
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         let snapshot = document.snapshot()
         store.queue.async {
             let result = Result { try self.store.exportPNG(snapshot, transparent: transparent) }
@@ -447,7 +456,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
     }
     private func showLayers() {
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         let layers = LayersController(document: document, sharedControls: sharedControls)
         layers.onChange = { [weak self] in self?.changed() }
         let navigation = UINavigationController(rootViewController: layers)
@@ -456,7 +465,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         present(navigation, animated: true)
     }
     private func brushSettings() {
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         showShared(sharedControls.brushController(), title: "Brush settings")
     }
     func showShared(_ controller: UIViewController, title: String) {
@@ -470,7 +479,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         present(navigation, animated: true)
     }
     func applyBrush(_ brush: NativeBrush) {
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         let keepEraser = viewport.canvas.tool == .eraser && viewport.canvas.brush.id == brush.id
         viewport.canvas.brush = brush
         viewport.canvas.brushSize = CGFloat(brush.size)
@@ -484,7 +493,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         defaults.set(brush.opacity, forKey: "brush.opacity"); defaults.set(sharedControls.brushData(), forKey: "brush.data")
     }
     private func importImage() {
-        viewport.canvas.cancelStroke()
+        finishCanvasInteraction()
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
         picker.delegate = self
         present(picker, animated: true)
@@ -515,8 +524,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
          UIKeyCommand(input: "z", modifierFlags: [.command, .shift], action: #selector(keyRedo)),
          UIKeyCommand(input: "0", modifierFlags: .command, action: #selector(keyFit))]
     }
-    @objc private func keyUndo() { viewport.canvas.cancelStroke(); document.undo(); changed() }
-    @objc private func keyRedo() { viewport.canvas.cancelStroke(); document.redo(); changed() }
+    @objc private func keyUndo() { finishCanvasInteraction(); document.undo(); changed() }
+    @objc private func keyRedo() { finishCanvasInteraction(); document.redo(); changed() }
     @objc private func keyFit() { viewport.fit() }
 
 }

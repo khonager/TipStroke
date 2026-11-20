@@ -53,8 +53,7 @@ extension EditorController {
         anchor(menu); present(menu, animated: true)
     }
     func showTimeline() {
-        viewport.canvas.cancelStroke(); document.enableAnimation(); changed()
-        viewport.canvas.stopLiveDrawing()
+        finishCanvasInteraction(); document.enableAnimation(); changed()
         let controller = TimelineController(document: document)
         controller.onRecordMotion = { [weak self] in self?.configurePhotoMotion() }
         controller.onRecordDrawing = { [weak self] in
