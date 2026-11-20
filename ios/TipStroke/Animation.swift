@@ -61,6 +61,30 @@ extension RasterDocument {
             self.installFrame(destination); completion(); self.onCelReady?()
         }
     }
+    func selectTimelineFrame(_ index: Int) {
+        guard let animation = record.animation, animation.frames.indices.contains(index) else { return }
+        if let start = animation.frames[index].sourceTimeUs { record.media?.positionUs = start }
+        selectFrame(index)
+    }
+
+    func retimeDrawing(id: UUID, start: Int64, duration: Int64) throws {
+        guard let track = record.media, var animation = record.animation,
+              let index = animation.frames.firstIndex(where: { $0.id == id }) else { return }
+        let end = try track.plan().durationUs
+        guard start >= 0, start < end, duration > 0, duration <= end - start,
+              !animation.frames.contains(where: { $0.id != id && $0.sourceTimeUs == start }) else {
+            throw DrawingError.message("Choose a distinct start time and a duration within the media timeline.")
+        }
+        beginMetadataEdit()
+        let selected = animation.frames[animation.selectedIndex].id
+        animation.frames[index].sourceTimeUs = start
+        animation.frames[index].durationUs = duration
+        animation.frames.sort { ($0.sourceTimeUs ?? 0) < ($1.sourceTimeUs ?? 0) }
+        animation.selectedIndex = animation.frames.firstIndex { $0.id == selected }!
+        record.animation = animation
+        if selected == id { record.media?.positionUs = start }
+        endMetadataEdit()
+    }
     func installFrame(_ index: Int) {
         guard var animation = record.animation, animation.frames.indices.contains(index) else { return }
         endStroke(cancelled: true)
@@ -313,7 +337,7 @@ final class TimelineController: UITableViewController {
                 dismiss(animated: true) { record?() }; return
             }
             if indexPath.section == 0 { try document.addFrame(copy: indexPath.row == 1) }
-            else { document.selectFrame(indexPath.row) }
+            else { document.selectTimelineFrame(indexPath.row) }
             changed()
         } catch { showError(error) }
     }
@@ -353,9 +377,36 @@ final class TimelineController: UITableViewController {
         for divisor in [2, 4] {
             alert.addAction(UIAlertAction(title: "Reduce resolution to \(100 / divisor)%…", style: .default) { [weak self] _ in self?.confirmReduction(divisor) })
         }
-        alert.addAction(UIAlertAction(title: "Move frame earlier", style: .default) { [weak self] _ in self?.document.moveFrame(-1); self?.changed() })
-        alert.addAction(UIAlertAction(title: "Move frame later", style: .default) { [weak self] _ in self?.document.moveFrame(1); self?.changed() })
+        if document.record.media != nil {
+            let frame = animation.frames[animation.selectedIndex]
+            alert.addAction(UIAlertAction(title: "Set drawing coverage…", style: .default) { [weak self] _ in
+                self?.editCoverage(frame: frame, fps: animation.fps)
+            })
+        } else {
+            alert.addAction(UIAlertAction(title: "Move frame earlier", style: .default) { [weak self] _ in self?.document.moveFrame(-1); self?.changed() })
+            alert.addAction(UIAlertAction(title: "Move frame later", style: .default) { [weak self] _ in self?.document.moveFrame(1); self?.changed() })
+        }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel)); present(alert, animated: true)
+    }
+    private func editCoverage(frame: AnimationFrameRecord, fps: Int) {
+        let alert = UIAlertController(title: "Drawing coverage", message: "Enter the start time and duration in seconds.", preferredStyle: .alert)
+        let duration = frame.durationUs ?? Int64(frame.exposure) * 1_000_000 / Int64(fps)
+        for (label, us) in [("Start", frame.sourceTimeUs ?? 0), ("Duration", duration)] {
+            alert.addTextField { field in
+                field.placeholder = label; field.accessibilityLabel = label
+                field.keyboardType = .decimalPad; field.text = String(Double(us) / 1_000_000)
+            }
+        }
+        alert.addAction(UIAlertAction(title: "Apply", style: .default) { [weak self, weak alert] _ in
+            guard let self, let fields = alert?.textFields else { return }
+            let times = fields.compactMap { Double($0.text ?? "") }.compactMap { Int64(exactly: ($0 * 1_000_000).rounded()) }
+            do {
+                guard times.count == 2 else { throw DrawingError.message("Enter a valid time in seconds.") }
+                try self.document.retimeDrawing(id: frame.id, start: times[0], duration: times[1]); self.changed()
+            } catch { self.showError(error) }
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
     private func confirmReduction(_ divisor: Int) {
         let alert = UIAlertController(title: "Reduce all frames to \(100 / divisor)%?",
@@ -391,7 +442,7 @@ final class TimelineController: UITableViewController {
             let elapsed = ProcessInfo.processInfo.systemUptime - self.playbackStart
             let tick = self.playbackTick + Int64(elapsed * Double(animation.fps))
             let next = Int(timeline.frameAt(tick: tick))
-            if !self.document.loadingCel, self.document.record.animation?.selectedIndex != next { self.document.selectFrame(next); self.changed() }
+            if !self.document.loadingCel, self.document.record.animation?.selectedIndex != next { self.document.selectTimelineFrame(next); self.changed() }
             if animation.playbackMode == "ONCE" && tick >= Int64(timeline.totalTicks) { self.stopPlayback() }
         }
     }
