@@ -77,7 +77,8 @@ final class LayersController: UITableViewController {
     }
 }
 
-final class LayerSettingsController: UIViewController {
+final class LayerSettingsController: UIViewController, AppleLayerBlendActions {
+    func blendChanged(mode: String) { update { $0.blendMode = mode } }
     let document: RasterDocument
     let id: UUID
     var onChange: (() -> Void)?
@@ -132,9 +133,7 @@ final class LayerSettingsController: UIViewController {
         blend.addAction(UIAction { [weak self] _ in
             guard let self, let layer = self.document.record.layers.first(where: { $0.id == self.id }) else { return }
             self.beginAdjustment()
-            let controller = self.sharedControls.blendController(layerId: self.id.uuidString, modeName: layer.blendMode) { [weak self] mode in
-                self?.update { $0.blendMode = mode }; return KotlinUnit()
-            }
+            let controller = self.sharedControls.blendController(layerId: self.id.uuidString, modeName: layer.blendMode, callbacks: self)
             self.navigationController?.pushViewController(controller, animated: true)
         }, for: .touchUpInside)
         let duplicate = UIButton(type: .system); duplicate.setTitle("Duplicate layer", for: .normal)

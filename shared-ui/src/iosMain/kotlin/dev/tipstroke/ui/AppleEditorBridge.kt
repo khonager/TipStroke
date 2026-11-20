@@ -28,6 +28,16 @@ import platform.UIKit.UIViewController
 import platform.Foundation.NSUserDefaults
 
 /** Commands/settings only. UIKit owns touches, wet paint, tiles and viewport transforms. */
+interface AppleBrushLibraryActions {
+    fun librarySaved(data: String)
+    fun importFromFile()
+    fun exportToFile(data: String)
+}
+
+interface AppleLayerBlendActions {
+    fun blendChanged(mode: String)
+}
+
 interface AppleEditorActions {
     fun brushChanged(brush: NativeBrush)
     fun colorChanged(red: Float, green: Float, blue: Float)
@@ -101,16 +111,16 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         updateBrush(brush.copy(stamp = if (grain) stamp.copy(grainTexture = changed) else stamp.copy(shapeTexture = changed)))
     }
     fun libraryData(): String = BrushCollection.encode(library)
-    fun libraryController(onSave: (String) -> Unit, onImport: () -> Unit, onExport: (String) -> Unit): UIViewController = ComposeUIViewController {
+    fun libraryController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
                 BrushCollectionPanel(library, brush, ::updateBrush,
                     onSave = { preset, name ->
                         if (library.size >= 200) return@BrushCollectionPanel
                         val saved = preset.copy(id = BrushId("custom-${Uuid.random()}"), displayName = name)
-                        library = library + LibraryBrush(saved); updateBrush(saved); onSave(libraryData())
-                    }, onDelete = { preset -> library = library.filterNot { it.preset.id == preset.id }; onSave(libraryData()) },
-                    onImport = onImport, onExport = { onExport(BrushPackage.encode(LibraryBrush(it))) })
+                        library = library + LibraryBrush(saved); updateBrush(saved); callbacks.librarySaved(libraryData())
+                    }, onDelete = { preset -> library = library.filterNot { it.preset.id == preset.id }; callbacks.librarySaved(libraryData()) },
+                    onImport = callbacks::importFromFile, onExport = { callbacks.exportToFile(BrushPackage.encode(LibraryBrush(it))) })
             }
         }
     }
@@ -158,14 +168,14 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             }
         }
     }
-    fun blendController(layerId: String, modeName: String, onMode: (String) -> Unit): UIViewController = ComposeUIViewController {
+    fun blendController(layerId: String, modeName: String, callbacks: AppleLayerBlendActions): UIViewController = ComposeUIViewController {
         var selected by remember { mutableStateOf(LayerBlendMode.fromStorage(modeName)) }
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.padding(20.dp)) {
                     Text("Blend mode", style = MaterialTheme.typography.titleLarge)
                     BlendModeScroller(LayerId(layerId), selected,
-                        { selected = it; onMode(it.name) }, {}, {})
+                        { selected = it; callbacks.blendChanged(it.name) }, {}, {})
                 }
             }
         }

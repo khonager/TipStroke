@@ -3,7 +3,7 @@ import TipStrokeShared
 import UniformTypeIdentifiers
 import ImageIO
 
-extension EditorController {
+extension EditorController: AppleBrushLibraryActions {
     func brushSources() {
         let menu = UIAlertController(title: "Brush sources", message: "Transparent images use their alpha. Opaque images use brightness: white paints, black is empty. Draw a source on a transparent layer, then capture it here.", preferredStyle: .actionSheet)
         for grain in [false, true] {
@@ -75,20 +75,18 @@ extension EditorController {
     }
     func showBrushLibrary() {
         viewport.canvas.cancelStroke()
-        let controller = sharedControls.libraryController(onSave: { [weak self] data in
-            self?.saveBrushLibrary(data); return KotlinUnit()
-        }, onImport: { [weak self] in
-            self?.dismiss(animated: true) {
-                guard let self else { return }
-                self.importingBrush = true
-                let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json, .data], asCopy: true)
-                picker.delegate = self; self.present(picker, animated: true)
-            }
-            return KotlinUnit()
-        }, onExport: { [weak self] data in
-            self?.shareBrush(data); return KotlinUnit()
-        })
-        showShared(controller, title: "Tip library")
+        showShared(sharedControls.libraryController(callbacks: self), title: "Tip library")
+    }
+    func librarySaved(data: String) { saveBrushLibrary(data) }
+    func exportToFile(data: String) { shareBrush(data) }
+    func importFromFile() {
+        dismiss(animated: true) { [weak self] in
+            guard let self else { return }
+            self.importingBrush = true
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json, .data], asCopy: true)
+            picker.delegate = self
+            self.present(picker, animated: true)
+        }
     }
     func saveBrushLibrary(_ data: String) {
         ProjectStore.shared.queue.async {
