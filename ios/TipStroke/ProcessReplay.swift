@@ -155,14 +155,34 @@ final class ProcessRecorder {
         // Visiting at most the document's visible tile grid on metadata edits also
         // covers clipped layers, transformed image sources and removed layers.
         if previous?.record.layers != current.record.layers {
-            var keys = Set(current.pixels.values.flatMap { $0.keys })
-            if let previous { keys.formUnion(previous.pixels.values.flatMap { $0.keys }) }
+            func sceneKeys(_ scene: DocumentSnapshot) -> Set<TileKey> {
+                var keys = Set<TileKey>()
+                for layer in scene.record.layers where layer.visible {
+                    if let photo = layer.photo {
+                        keys.formUnion(TileKey.intersecting(photo.bounds, width: scene.record.width, height: scene.record.height))
+                    } else if let tiles = scene.pixels[layer.id] {
+                        keys.formUnion(tiles.keys)
+                    }
+                }
+                return keys
+            }
+            var keys = sceneKeys(current)
+            if let previous { keys.formUnion(sceneKeys(previous)) }
             return keys
         }
         var dirty = Set<TileKey>()
         for id in Set(current.pixels.keys).union(previous?.pixels.keys.map { $0 } ?? []) {
             let old = previous?.pixels[id] ?? [:], new = current.pixels[id] ?? [:]
-            for key in Set(new.keys).union(old.keys) where old[key] !== new[key] { dirty.insert(key) }
+            let keys = Set(new.keys).union(old.keys).filter { old[$0] !== new[$0] }
+            guard !keys.isEmpty else { continue }
+            if let photo = current.record.layers.first(where: { $0.id == id })?.photo {
+                for key in keys {
+                    photo.geometry.pieces(in: photo.bounds, source: key.rect) { pose, _, part in
+                        dirty.formUnion(TileKey.intersecting(part.intersection(key.rect).applying(pose),
+                            width: current.record.width, height: current.record.height))
+                    }
+                }
+            } else { dirty.formUnion(keys) }
         }
         return dirty
     }

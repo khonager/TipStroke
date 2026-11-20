@@ -219,8 +219,10 @@ extension ProjectStore {
                 guard ids.frames[key] == nil else { throw PackageIO.invalid }
                 var frame = AnimationFrameRecord(); frame.id = UUID(uuidString: key) ?? UUID()
                 frame.exposure = item["exposure"] as? Int ?? 1; ids.frames[key] = frame.id
-                if index != timeline.selectedIndex {
-                    for (layer, native) in ids.layers {
+                for (layer, native) in ids.layers {
+                    // The selected frame's visible pixels live in layers/<id>/tiles; a
+                    // promoted background can also have an inactive cel at that frame.
+                    if index != timeline.selectedIndex || timeline.sharedLayerIDs.contains(native) {
                         let tiles = try readTiles(directory.appendingPathComponent("animation/cels/\(layer)/\(key)"), width: w, height: h)
                         if !tiles.isEmpty { frames[frame.id, default: [:]][native] = tiles }
                     }
@@ -352,7 +354,7 @@ extension ProjectStore {
                 let id = frameID(frame.id)
                 var item = priorFrames.first(where: { $0["id"] as? String == id }) ?? [:]
                 item["id"] = id; item["exposure"] = frame.exposure
-                let cels = index == timeline.selectedIndex ? snapshot.pixels : (snapshot.frames[frame.id] ?? [:])
+                let cels = snapshot.frames[frame.id] ?? [:]
                 for (layer, tiles) in cels where state.layers.contains(where: { $0.id == layer && $0.photo == nil }) { try writeTiles(tiles, "animation/cels/\(layerID(layer))/\(id)") }
                 return item
             }

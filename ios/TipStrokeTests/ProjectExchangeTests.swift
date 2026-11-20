@@ -3,6 +3,30 @@ import UIKit
 @testable import TipStroke
 
 final class ProjectExchangeTests: XCTestCase {
+    func testPackageRetainsOriginalPhotoBytesAndSourceMask() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = ProjectStore(root: folder)
+        let doc = RasterDocument(name: "Photo exchange", width: 64, height: 64)
+        let ctx = try RasterDocument.context(width: 256, height: 128)
+        ctx.setFillColor(UIColor.orange.cgColor); ctx.fill(CGRect(x: 0, y: 0, width: 256, height: 128))
+        let source = try PhotoSource(image: XCTUnwrap(ctx.makeImage()))
+        try doc.importPhoto(source, name: "Photo")
+        let id = doc.activeLayer
+        XCTAssertTrue(doc.beginStroke())
+        _ = try doc.paint(from: CGPoint(x: 35, y: 32), to: CGPoint(x: 35, y: 32), radius: 6, color: .black, erasing: true)
+        doc.endStroke(cancelled: false)
+        try store.save(doc.snapshot())
+        let package = try store.exportPackage([doc.record.id])
+        defer { try? FileManager.default.removeItem(at: package) }
+        let importedIDs = try store.importPackage(package)
+        let restored = try store.load(XCTUnwrap(importedIDs.first))
+        let photo = try XCTUnwrap(restored.record.layers.last?.photo)
+        XCTAssertEqual(photo.source?.png, source.png)
+        XCTAssertEqual(photo.transform.tx, doc.activePhoto?.transform.tx ?? -1, accuracy: 0.001)
+        XCTAssertEqual(Set(restored.pixels[id]!.keys), Set(doc.pixels[id]!.keys))
+    }
+
     func testLayeredAnimationRoundTripRetainsExposurePaintAndIdentity() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
