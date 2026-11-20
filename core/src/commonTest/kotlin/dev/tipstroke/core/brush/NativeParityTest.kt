@@ -49,4 +49,13 @@ class NativeParityTest {
         assertEquals(10, timeline.cycleTicks)
         assertEquals(0, NativeTimeline("1", 12, "PING_PONG").frameAt(100))
     }
+    @Test fun exportSegmentsMatchEveryPlaybackTickForShortAndHeldEndpoints() {
+        for (mode in PlaybackMode.entries) {
+            for (exposures in listOf("1", "4", "1,1", "2,1", "1,3,1", "4,1,2")) {
+                val timeline = NativeTimeline(exposures, 12, mode.name)
+                assertEquals((0 until timeline.cycleTicks).map { timeline.frameAt(it.toLong()) },
+                    timeline.segments().flatMap { segment -> List(segment.ticks) { segment.index } })
+            }
+        }
+    }
 }

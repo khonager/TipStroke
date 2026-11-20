@@ -15,11 +15,22 @@ class NativeTimeline(exposures: String, fps: Int, mode: String) {
     fun frameAt(tick: Long): Int = timeline.frameAtPlaybackTick(tick)
     fun segments(): List<NativePlaybackSegment> {
         val result = mutableListOf<NativePlaybackSegment>()
-        for (tick in 0 until cycleTicks) {
-            val index = frameAt(tick.toLong())
+        fun append(index: Int, ticks: Int) {
+            if (ticks <= 0) return
             val last = result.lastOrNull()
-            if (last?.index == index) result[result.lastIndex] = last.copy(ticks = last.ticks + 1)
-            else result += NativePlaybackSegment(index, 1)
+            if (last?.index == index) result[result.lastIndex] = last.copy(ticks = last.ticks + ticks)
+            else result += NativePlaybackSegment(index, ticks)
+        }
+        val frames = timeline.frames
+        frames.forEachIndexed { index, frame -> append(index, frame.exposure) }
+        if (timeline.playbackMode == PlaybackMode.PING_PONG) {
+            // Reverse playback skips the two endpoint ticks already shown on the forward pass.
+            for (index in frames.indices.reversed()) {
+                var ticks = frames[index].exposure
+                if (index == frames.lastIndex) ticks--
+                if (index == 0) ticks--
+                append(index, ticks)
+            }
         }
         return result
     }
