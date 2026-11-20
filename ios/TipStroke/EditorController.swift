@@ -17,6 +17,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let redoButton = UIButton(type: .system)
     private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
     private var palette: ToolPalette?
+    private var portraitLayout: [NSLayoutConstraint] = []
+    private var landscapeLayout: [NSLayoutConstraint] = []
+    private weak var actionStack: UIStackView?
+    private var sideDock = false
     private let saveLabel = UILabel()
     lazy var sharedControls = AppleEditorBridge(actions: EditorActions(self))
     var fillPending = false
@@ -64,6 +68,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         ])
         let top = UIStackView(arrangedSubviews: [back, undoButton, redoButton, fit, layers, share])
         top.distribution = .equalSpacing
+        actionStack = top
         let topPanel = panel(top)
         toolPicker.setTitleTextAttributes([.font: UIFont.systemFont(ofSize: 12)], for: .normal)
         toolPicker.apportionsSegmentWidthsByContent = true
@@ -95,14 +100,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let bottom = UIStackView(arrangedSubviews: [toolPicker, quickColors.view, bottomActions]); bottom.spacing = 4
         quickColors.didMove(toParent: self)
         bottom.axis = .vertical
-        bottom.widthAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
+
         let bottomPanel = panel(bottom)
         saveLabel.font = .preferredFont(forTextStyle: .caption2)
         saveLabel.textColor = .secondaryLabel; saveLabel.textAlignment = .center
         saveLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(saveLabel)
         let safe = view.safeAreaLayoutGuide
-        NSLayoutConstraint.activate([
+        portraitLayout = [
             viewport.leadingAnchor.constraint(equalTo: view.leadingAnchor), viewport.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             viewport.topAnchor.constraint(equalTo: topPanel.bottomAnchor, constant: 4), viewport.bottomAnchor.constraint(equalTo: bottomPanel.topAnchor, constant: -4),
             topPanel.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4), topPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
@@ -112,15 +117,25 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             bottomPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor), bottomPanel.bottomAnchor.constraint(equalTo: saveLabel.topAnchor, constant: -2),
             bottomPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 480), bottomPanel.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 4),
             bottomPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -4),
-            saveLabel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -2), saveLabel.centerXAnchor.constraint(equalTo: safe.centerXAnchor)
-        ])
+            bottomPanel.widthAnchor.constraint(equalTo: safe.widthAnchor, constant: -12).withPriority(.defaultHigh),
+        ]
+        landscapeLayout = [
+            viewport.leadingAnchor.constraint(equalTo: view.leadingAnchor), viewport.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            viewport.topAnchor.constraint(equalTo: view.topAnchor), viewport.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            topPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 4), topPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
+            bottomPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4), bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
+            bottomPanel.widthAnchor.constraint(equalToConstant: 180),
+        ]
+        NSLayoutConstraint.activate(portraitLayout)
+        NSLayoutConstraint.activate([saveLabel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -2),
+            saveLabel.centerXAnchor.constraint(equalTo: safe.centerXAnchor)])
         let hint = UIButton(type: .system)
         hint.configuration = .tinted(); hint.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
         hint.translatesAutoresizingMaskIntoConstraints = false; hint.isHidden = true
         hint.addAction(UIAction { [weak self] _ in self?.viewport.canvas.cancelStroke() }, for: .touchUpInside)
         view.addSubview(hint)
         NSLayoutConstraint.activate([
-            hint.topAnchor.constraint(equalTo: topPanel.bottomAnchor, constant: 8),
+            hint.topAnchor.constraint(equalTo: safe.topAnchor, constant: 55),
             hint.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
             hint.widthAnchor.constraint(lessThanOrEqualTo: safe.widthAnchor, constant: -16)
         ])
@@ -152,6 +167,20 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         refreshDrawingColors()
         recorder.capture(document)
         updateHistory(); saveLabel.text = "Saved on this device"
+    }
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        let safe = view.safeAreaLayoutGuide.layoutFrame
+        let useSideDock = safe.width > safe.height && safe.width >= 560 && safe.height >= 280
+        guard useSideDock != sideDock else { return }
+        NSLayoutConstraint.deactivate(sideDock ? landscapeLayout : portraitLayout)
+        sideDock = useSideDock
+        actionStack?.axis = useSideDock ? .vertical : .horizontal
+        for (index, symbol) in ["pencil", "paintbrush.pointed", "aqi.low", "eraser"].enumerated() {
+            if useSideDock { toolPicker.setImage(UIImage(systemName: symbol), forSegmentAt: index) }
+            else { toolPicker.setTitle(CanvasView.Tool.allCases[index].rawValue, forSegmentAt: index) }
+        }
+        NSLayoutConstraint.activate(useSideDock ? landscapeLayout : portraitLayout)
     }
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -248,6 +277,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         self.palette = palette
         view.addSubview(palette)
         palette.anchor = anchor
+        palette.beside = sideDock
         palette.onClose = { [weak self] in self?.palette?.removeFromSuperview(); self?.palette = nil }
         palette.add("Eraser", "eraser") { [weak self] in
             guard let self else { return }

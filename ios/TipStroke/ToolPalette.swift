@@ -2,6 +2,7 @@ import UIKit
 
 final class ToolPalette: UIView {
     weak var anchor: UIView?
+    var beside = false
     var onClose: (() -> Void)?
     private let panel = UIView()
     private let caption = UILabel()
@@ -46,8 +47,10 @@ final class ToolPalette: UIView {
         let safe = bounds.inset(by: safeAreaInsets)
         let cell: CGFloat = min(48, safe.width / 4)
         let width = cell * 4, height = CGFloat((buttons.count + 3) / 4) * cell + 24
-        let x = min(max(safe.minX, target.midX - width / 2), safe.maxX - width)
-        let y = target.minY >= safe.minY + height ? target.minY - height : min(target.maxY, safe.maxY - height)
+        let preferredX = beside ? target.minX - width : target.midX - width / 2
+        let x = min(max(safe.minX, preferredX), safe.maxX - width)
+        let preferredY = beside ? target.midY - height / 2 : (target.minY >= safe.minY + height ? target.minY - height : target.maxY)
+        let y = max(safe.minY, min(preferredY, safe.maxY - height))
         panel.frame = CGRect(x: x, y: y, width: width, height: height)
         for (index, button) in buttons.enumerated() {
             button.frame = CGRect(x: CGFloat(index % 4) * cell, y: CGFloat(index / 4) * cell, width: cell, height: cell)
