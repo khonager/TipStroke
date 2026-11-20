@@ -49,7 +49,7 @@ def configurations(name, settings):
     for mode in ["Debug", "Release"]:
         values = dict(settings)
         if mode == "Debug":
-            values.update(SWIFT_OPTIMIZATION_LEVEL="-Onone", DEBUG_INFORMATION_FORMAT="dwarf", ENABLE_TESTABILITY="YES", SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG")
+            values.update(ONLY_ACTIVE_ARCH="YES", SWIFT_OPTIMIZATION_LEVEL="-Onone", DEBUG_INFORMATION_FORMAT="dwarf", ENABLE_TESTABILITY="YES", SWIFT_ACTIVE_COMPILATION_CONDITIONS="DEBUG")
         else:
             values.update(SWIFT_OPTIMIZATION_LEVEL="-O", DEBUG_INFORMATION_FORMAT="dwarf-with-dsym", SWIFT_COMPILATION_MODE="wholemodule")
         configs.append(obj(name + mode, "XCBuildConfiguration", buildSettings=values, name=mode))
