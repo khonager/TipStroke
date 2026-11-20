@@ -173,6 +173,7 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "drawing", for: indexPath)
         let id = displayed[indexPath.row]
+        cell.accessibilityIdentifier = "gallery-\(id.uuidString)"
         if let stack = layout.stacks[id] {
             var content = cell.defaultContentConfiguration()
             content.text = stack.name

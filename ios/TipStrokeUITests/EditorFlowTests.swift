@@ -5,14 +5,11 @@ final class EditorFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launch()
+        let galleryCells = app.tables.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "gallery-"))
+        let existingIDs = galleryCells.allElementsBoundByIndex.map(\.identifier)
         app.navigationBars.buttons["Add"].tap()
         let create = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Create")).firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 10))
-        let name = "UI drawing \(UUID().uuidString.prefix(8))"
-        let nameField = app.textFields.firstMatch
-        nameField.tap()
-        // Replace default text without relying on a hardware keyboard shortcut.
-        nameField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + name)
         create.tap()
         let gallery = app.buttons["Gallery"]
         XCTAssertTrue(gallery.waitForExistence(timeout: 10))
@@ -53,9 +50,11 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Layer 2"].exists)
         app.navigationBars.buttons["Done"].tap()
         gallery.tap()
-        XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 15))
+        let newDrawing = galleryCells.matching(NSPredicate(format: "NOT (identifier IN %@)", existingIDs)).firstMatch
+        XCTAssertTrue(newDrawing.waitForExistence(timeout: 15))
+        let drawingID = newDrawing.identifier
         app.terminate(); app.launch()
-        app.staticTexts[name].tap()
+        app.cells[drawingID].tap()
         XCTAssertTrue(app.buttons["Gallery"].waitForExistence(timeout: 10))
         app.buttons["Layers"].tap()
         XCTAssertTrue(app.staticTexts["Layer 2"].exists)
