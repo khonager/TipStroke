@@ -22,7 +22,7 @@ final class EditorFlowTests: XCTestCase {
         let anchor = tools.frame
         let origin = app.coordinate(withNormalizedOffset: .zero)
         // The four-column palette sits above the portrait dock. Smudge is the third cell.
-        let gridHeight: CGFloat = 4 * 48 + 24
+        let gridHeight: CGFloat = 5 * 48 + 24
         let smudge = origin.withOffset(CGVector(dx: anchor.midX + 24 - app.frame.minX,
             dy: anchor.minY - gridHeight + 24 - app.frame.minY))
         tools.press(forDuration: 0.8, thenDragTo: smudge)

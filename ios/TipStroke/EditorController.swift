@@ -316,6 +316,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.cancelStroke()
         if viewport.canvas.tool == .eraser { toggleEraser() }
         viewport.canvas.mode = mode
+        if mode != .paint { toolPicker.selectedSegmentIndex = UISegmentedControl.noSegment }
         updateToolValue()
         if [.pixel, .pixelLine, .dither].contains(mode) { viewport.canvas.brushSize = 1 }
     }
