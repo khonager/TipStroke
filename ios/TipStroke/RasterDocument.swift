@@ -469,7 +469,9 @@ final class RasterDocument {
     }
     func deleteLayer(_ id: UUID) throws {
         guard record.layers.count > 1, record.layers.contains(where: { $0.id == id }) else { return }
-        guard ((pixels[id]?.count ?? 0) + framePixels.values.reduce(0) { $0 + ($1[id]?.count ?? 0) }) * Self.tileBytes + 256 <= Self.historyBudget else {
+        var retainedTiles = pixels[id]?.count ?? 0
+        for frame in framePixels.values { retainedTiles += frame[id]?.count ?? 0 }
+        guard retainedTiles * Self.tileBytes + 256 <= Self.historyBudget else {
             throw DrawingError.message("This layer is too large to retain in undo history. Its pixels have been preserved.")
         }
         beginMetadataEdit()
