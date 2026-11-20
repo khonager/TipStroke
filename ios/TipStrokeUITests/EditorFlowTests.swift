@@ -25,7 +25,8 @@ final class EditorFlowTests: XCTestCase {
         let gridHeight: CGFloat = 5 * 48 + 24
         let smudge = origin.withOffset(CGVector(dx: anchor.midX + 24 - app.frame.minX,
             dy: anchor.minY - gridHeight + 24 - app.frame.minY))
-        tools.press(forDuration: 0.8, thenDragTo: smudge)
+        let toolCenter = tools.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        toolCenter.press(forDuration: 0.8, thenDragTo: smudge)
         XCTAssertEqual(tools.value as? String, "Smudge")
         app.segmentedControls["Drawing tool"].buttons["Ink"].tap()
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.45))
