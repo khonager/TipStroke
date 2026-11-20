@@ -67,7 +67,9 @@ Finger drawing defaults on. Disable **Draw with finger** in brush settings for
 Pencil-only input. A second finger cancels provisional finger paint and starts
 navigation. Pencil takes priority. Pressureless hardware, fingers and estimated
 force use the constant fallback. No predicted or late-corrected samples are baked
-into permanent tiles. Hover, squeeze and barrel roll remain unimplemented.
+into permanent tiles. On supported iPads, Pencil hover outlines the brush footprint. Pencil Pro barrel
+roll rotates the stamp tip. Squeeze can open drawing tools, show colors or toggle
+the eraser according to the system Pencil preference.
 
 ## New drawing sizes
 

@@ -30,6 +30,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private var elasticShape: NativeShape?
     private var bendAnchor = CGPoint.zero
     var onFill: ((CGPoint) -> Void)?
+    private let hoverLayer = CAShapeLayer()
     private let outlineLayer = CAShapeLayer()
     private var gesturePoints: [CGPoint] = []
     private var shapeTracker = NativeShapeTracker()
@@ -103,6 +104,16 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         outlineLayer.fillColor = UIColor.clear.cgColor; outlineLayer.lineWidth = 1
         outlineLayer.lineDashPattern = [5, 4]; outlineLayer.zPosition = 10_000
         layer.addSublayer(outlineLayer)
+        hoverLayer.zPosition = 10_001
+        hoverLayer.strokeColor = UIColor.label.cgColor
+        hoverLayer.fillColor = nil
+        hoverLayer.shadowColor = UIColor.systemBackground.cgColor
+        hoverLayer.shadowOpacity = 1; hoverLayer.shadowRadius = 1; hoverLayer.shadowOffset = .zero
+        hoverLayer.actions = ["path": NSNull(), "hidden": NSNull()]
+        layer.addSublayer(hoverLayer)
+        let hover = UIHoverGestureRecognizer(target: self, action: #selector(hoverPencil(_:)))
+        hover.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        addGestureRecognizer(hover)
         isMultipleTouchEnabled = true
         isOpaque = true
         clipsToBounds = true
@@ -116,6 +127,21 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         accessibilityHint = "Draw with one finger or Apple Pencil. Use two fingers to pan and pinch to zoom."
     }
     required init?(coder: NSCoder) { fatalError("Use init(document:)") }
+    @objc private func hoverPencil(_ gesture: UIHoverGestureRecognizer) {
+        let point = gesture.location(in: self)
+        guard pointer == nil, bounds.contains(point), gesture.state == .began || gesture.state == .changed else {
+            hoverLayer.path = nil
+            return
+        }
+        let width = max(1, brushSize)
+        let height = brush.usesStamps ? width * CGFloat(brush.aspectRatio) : width
+        let oval = UIBezierPath(ovalIn: CGRect(x: -width / 2, y: -height / 2, width: width, height: height))
+        var pose = CGAffineTransform(translationX: point.x, y: point.y)
+        if #available(iOS 17.5, *) { pose = pose.rotated(by: gesture.rollAngle) }
+        oval.apply(pose)
+        hoverLayer.lineWidth = 1 / max(0.01, (superview as? UIScrollView)?.zoomScale ?? 1)
+        hoverLayer.path = oval.cgPath
+    }
     // One native layer per visible tile; never allocate a document-sized UIView backing bitmap.
     func refresh(_ dirty: CGRect? = nil) {
         backgroundColor = document.record.paperColor
@@ -158,6 +184,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     func updateVisibleTiles() { refresh(.null) }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        hoverLayer.path = nil
         let all = event?.allTouches?.filter { $0.phase != .ended && $0.phase != .cancelled } ?? []
         if let pointer, pointer.type == .pencil { return }
         if let pencil = touches.first(where: { $0.type == .pencil }) {
@@ -364,7 +391,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 let color = (strokeTool == .eraser ? UIColor.black : strokeColor).withAlphaComponent(alpha)
                 if mode == .paint, let stampPath, let stampRenderer {
                     let stamps = stampPath.append(x: Float(point.x), y: Float(point.y), pressure: Float(pressure), tilt: tilt, time: sample.timestamp)
-                    dirty = dirty.union(try stampRenderer.paint(stamps, color: strokeColor, document: document, erasing: strokeTool == .eraser))
+                    let roll: CGFloat
+                    if #available(iOS 17.5, *), sample.type == .pencil { roll = sample.rollAngle } else { roll = 0 }
+                    dirty = dirty.union(try stampRenderer.paint(stamps, color: strokeColor, document: document,
+                        erasing: strokeTool == .eraser, roll: roll))
                 } else if mode == .smudge { try document.smudge(from: previous ?? point, to: point, radius: strokeSize / 2, strength: strokeOpacity) }
                 else if mode == .pixel || mode == .dither {
                     try document.paintPixelLine(from: previous ?? point, to: point, size: Int(strokeSize), color: strokeColor.withAlphaComponent(strokeOpacity), dither: mode == .dither)

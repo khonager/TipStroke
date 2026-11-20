@@ -181,6 +181,19 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
         toggleEraser()
     }
+    @available(iOS 17.5, *)
+    func pencilInteraction(_ interaction: UIPencilInteraction, didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+        guard squeeze.phase == .ended, presentedViewController == nil else { return }
+        switch UIPencilInteraction.preferredSqueezeAction {
+        case .switchEraser: toggleEraser()
+        case .showColorPalette:
+            viewport.canvas.cancelStroke()
+            refreshDrawingColors()
+            showShared(sharedControls.colorController(), title: "Colors")
+        case .showContextualPalette: openPalette()
+        default: break
+        }
+    }
     private func toggleEraser() {
         viewport.canvas.cancelStroke()
         viewport.canvas.mode = .paint

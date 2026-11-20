@@ -25,7 +25,7 @@ final class NativeStampRenderer {
         }
         guard let image = context.makeImage() else { throw DrawingError.message("Could not create the brush tip.") }; return image
     }
-    func paint(_ stamps: [BrushStamp], color: UIColor, document: RasterDocument, erasing: Bool) throws -> CGRect {
+    func paint(_ stamps: [BrushStamp], color: UIColor, document: RasterDocument, erasing: Bool, roll: CGFloat = 0) throws -> CGRect {
         var dirty = CGRect.null
         var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
         color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
@@ -61,7 +61,7 @@ final class NativeStampRenderer {
             context.saveGState()
             do {
                 context.setAlpha(CGFloat(stamp.alpha))
-                let local = CGAffineTransform(translationX: x, y: y).rotated(by: CGFloat(stamp.angle) * .pi / 180)
+                let local = CGAffineTransform(translationX: x, y: y).rotated(by: CGFloat(stamp.angle) * .pi / 180 + roll)
                     .scaledBy(x: size, y: size * CGFloat(self.brush.aspectRatio))
                 context.concatenate(local)
                 // Flip the image mask into the native top-left document coordinate system.
