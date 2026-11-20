@@ -42,7 +42,11 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     override func viewDidLoad() {
         super.viewDidLoad()
         document.onCelReady = { [weak self] in self?.viewport.canvas.refresh(); self?.updateHistory() }
+        document.onDeferredHistoryChange = { [weak self] in self?.changed() }
         document.onCelError = { [weak self] error in self?.showError(error) }
+        if let animation = document.record.animation, animation.onionSkin {
+            document.prepareFrame(animation.selectedIndex) { [weak self] in self?.viewport.canvas.refresh() }
+        }
         view.backgroundColor = .secondarySystemBackground
         viewport.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(viewport)

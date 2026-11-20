@@ -38,6 +38,7 @@ final class RasterDocument {
     var loadingCel = false
     var pendingCelSelection: (UUID, () -> Void)?
     var onCelError: ((Error) -> Void)?
+    var onDeferredHistoryChange: (() -> Void)?
     var onCelReady: (() -> Void)?
     var framePixels: [UUID: [UUID: [TileKey: CGImage]]] = [:]
     var pixels: [UUID: [TileKey: CGImage]]
@@ -401,7 +402,8 @@ final class RasterDocument {
             let requestedRevision = revision
             prepareFrame(i) { [weak self] in
                 guard let self, self.revision == requestedRevision else { return }
-                self.undo(); self.onCelReady?()
+                self.undo()
+                if self.revision != requestedRevision { self.onDeferredHistoryChange?() }
             }
             return
         }
@@ -419,7 +421,8 @@ final class RasterDocument {
             let requestedRevision = revision
             prepareFrame(i) { [weak self] in
                 guard let self, self.revision == requestedRevision else { return }
-                self.redo(); self.onCelReady?()
+                self.redo()
+                if self.revision != requestedRevision { self.onDeferredHistoryChange?() }
             }
             return
         }
