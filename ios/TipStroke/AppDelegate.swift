@@ -143,7 +143,8 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         let screen = view.window?.screen ?? UIScreen.main
         let controller = AppleNewDrawingBridge(actions: self).controller(
             screenWidth: Int32(screen.bounds.width * screen.scale),
-            screenHeight: Int32(screen.bounds.height * screen.scale))
+            screenHeight: Int32(screen.bounds.height * screen.scale),
+            tileBudget: Int32(RasterDocument.maximumTiles))
         controller.modalPresentationStyle = .pageSheet
         controller.sheetPresentationController?.detents = [.large()]
         controller.sheetPresentationController?.prefersGrabberVisible = true
@@ -151,7 +152,7 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
     }
     func cancelNewDrawing() { dismiss(animated: true) }
     func createDrawing(name: String, width: Int32, height: Int32) {
-        guard !loading, (16...4096).contains(Int(width)), (16...4096).contains(Int(height)) else { return }
+        guard !loading, (16...8192).contains(Int(width)), (16...8192).contains(Int(height)) else { return }
         loading = true
         let document = RasterDocument(name: name, width: Int(width), height: Int(height))
         let snapshot = document.snapshot()

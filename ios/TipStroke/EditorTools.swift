@@ -195,7 +195,7 @@ extension EditorController {
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         alert.addAction(UIAlertAction(title: "Apply", style: .default) { [weak self, weak alert] _ in
             guard let self, let fields = alert?.textFields, let width = Int(fields[0].text ?? ""), let height = Int(fields[1].text ?? ""),
-                  (16...4096).contains(width), (16...4096).contains(height) else { return }
+                  (16...8192).contains(width), (16...8192).contains(height) else { return }
             let source = self.document.snapshot(), revision = self.document.revision
             self.view.isUserInteractionEnabled = false
             ProjectStore.shared.queue.async {

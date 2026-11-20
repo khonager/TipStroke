@@ -31,7 +31,7 @@ are not an Apple SDK build, simulator run or physical Pencil validation.
 ## Included native workflows
 
 - Local gallery with thumbnails, creation, rename, duplicate, reopening and delete.
-  Canvas dimensions are 16–4096 px per side.
+  Canvas dimensions are 16–8192 px per side.
 - Pencil/finger drawing, Pencil/Ink/Airbrush/Eraser, pressure and tilt, size/opacity,
   stabilization and speed taper. Native shape-and-grain stamping uses shared tip
   coverage, arc-length placement and dynamics. Custom Jetpack definitions use an
@@ -81,8 +81,8 @@ The gallery presents the shared Compose paper-stack browser via
 custom presets, a default size, and width-limited favorite shortcuts persisted in
 `NSUserDefaults`. Android uses the same browser with SharedPreferences adapters.
 Portable presets and preference serialization live in `:core`; native canvas
-input and rendering are unchanged. iOS keeps its 16–4096 px side limit; Android
-supports up to 8192 px and additionally offers its heap-based maximum square.
+input and rendering are unchanged. Both platforms support up to 8192 px per side. The maximum one-layer square
+preset uses the iOS resident tile budget or Android’s app heap budget.
 
 ## Remaining parity work
 

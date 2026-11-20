@@ -36,7 +36,7 @@ private enum ReplayFiles {
             throw DrawingError.message("Invalid drawing progress index.")
         }
         let value = try JSONDecoder().decode(ReplayIndex.self, from: Data(contentsOf: url))
-        guard value.version == 1, (16...4096).contains(value.width), (16...4096).contains(value.height),
+        guard value.version == 1, (16...8192).contains(value.width), (16...8192).contains(value.height),
               (0...maxSteps).contains(value.count), (0...limit).contains(value.bytes) else {
             throw DrawingError.message("Unsupported drawing progress recording.")
         }

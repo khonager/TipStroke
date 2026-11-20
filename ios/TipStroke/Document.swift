@@ -76,7 +76,7 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
         guard format == "dev.tipstroke.ios.raster", (1...7).contains(schemaVersion) else {
             throw DrawingError.message("This drawing uses an unsupported project format.")
         }
-        guard (16...4096).contains(width), (16...4096).contains(height),
+        guard (16...8192).contains(width), (16...8192).contains(height),
               (1...32).contains(layers.count), Set(layers.map(\.id)).count == layers.count,
               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               selectedLayer == nil || layers.contains(where: { $0.id == selectedLayer }) else {

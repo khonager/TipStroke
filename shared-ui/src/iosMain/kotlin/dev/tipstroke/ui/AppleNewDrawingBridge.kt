@@ -21,22 +21,23 @@ interface AppleNewDrawingActions {
 
 /** Host persists documents; this bridge persists only local picker preferences. */
 class AppleNewDrawingBridge(private val actions: AppleNewDrawingActions) {
-    fun controller(screenWidth: Int, screenHeight: Int): UIViewController = ComposeUIViewController {
+    fun controller(screenWidth: Int, screenHeight: Int, tileBudget: Int): UIViewController = ComposeUIViewController {
         MaterialTheme {
             val defaults = remember { NSUserDefaults.standardUserDefaults }
-            val builtIns = remember { listOf(CanvasPreset("screen", "Screen size", screenWidth.coerceIn(16, 4096),
-                screenHeight.coerceIn(16, 4096), "Everyday")) + standardCanvasPresets() }
-            var saved by remember { mutableStateOf(CanvasPresetCodec.decode(defaults.stringForKey("canvas.saved").orEmpty(), 4096)) }
+            val square = (kotlin.math.sqrt(tileBudget.coerceAtLeast(1).toDouble()).toInt() * 256).coerceIn(16, 8192)
+            val builtIns = remember { listOf(CanvasPreset("screen", "Screen size", screenWidth.coerceIn(16, 8192),
+                screenHeight.coerceIn(16, 8192), "Everyday"), CanvasPreset("max-square", "Max one-layer square", square, square, "Everyday")) + standardCanvasPresets() }
+            var saved by remember { mutableStateOf(CanvasPresetCodec.decode(defaults.stringForKey("canvas.saved").orEmpty(), 8192)) }
             var favorites by remember { mutableStateOf(defaults.stringForKey("canvas.favorites").orEmpty().split('|').filter { it.isNotEmpty() }.distinct().take(8)) }
-            var defaultId by remember { mutableStateOf(defaults.stringForKey("canvas.default") ?: "square-2048") }
+            var defaultId by remember { mutableStateOf(defaults.stringForKey("canvas.default") ?: "max-square") }
             val initial = (builtIns + saved).find { it.id == defaultId } ?: builtIns.first()
             var selectedId by remember { mutableStateOf<String?>(initial.id) }
             var name by remember { mutableStateOf("Untitled") }
             var width by remember { mutableStateOf(initial.widthPx.toString()) }
             var height by remember { mutableStateOf(initial.heightPx.toString()) }
             var presetName by remember { mutableStateOf("") }
-            val validWidth = width.toIntOrNull()?.takeIf { it in 16..4096 }
-            val validHeight = height.toIntOrNull()?.takeIf { it in 16..4096 }
+            val validWidth = width.toIntOrNull()?.takeIf { it in 16..8192 }
+            val validHeight = height.toIntOrNull()?.takeIf { it in 16..8192 }
             fun select(preset: CanvasPreset) {
                 selectedId = preset.id; width = preset.widthPx.toString(); height = preset.heightPx.toString()
             }
@@ -57,7 +58,7 @@ class AppleNewDrawingBridge(private val actions: AppleNewDrawingActions) {
                             OutlinedTextField(height, { height = it.filter(Char::isDigit); selectedId = null }, Modifier.weight(1f),
                                 label = { Text("Height px") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                         }
-                        Text("Each side: 16–4096 px", style = MaterialTheme.typography.bodySmall)
+                        Text("Each side: 16–8192 px", style = MaterialTheme.typography.bodySmall)
                         if (selectedId == null) {
                             OutlinedTextField(presetName, { presetName = it }, Modifier.fillMaxWidth(), label = { Text("Custom preset name") }, singleLine = true)
                             TextButton(enabled = validWidth != null && validHeight != null && presetName.isNotBlank(), onClick = {
@@ -73,7 +74,7 @@ class AppleNewDrawingBridge(private val actions: AppleNewDrawingActions) {
                             if (saved.any { it.id == id }) TextButton(onClick = {
                                 saved = saved.filterNot { it.id == id }; storeSaved()
                                 favorites = favorites - id; storeFavorites()
-                                if (defaultId == id) { defaultId = "square-2048"; defaults.setObject(defaultId, forKey = "canvas.default") }
+                                if (defaultId == id) { defaultId = "max-square"; defaults.setObject(defaultId, forKey = "canvas.default") }
                                 select(builtIns.first())
                             }) { Text("Remove saved preset") }
                         }

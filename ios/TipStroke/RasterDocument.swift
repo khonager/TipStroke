@@ -567,7 +567,7 @@ final class RasterDocument {
     }
 
     func resize(width: Int, height: Int) throws {
-        guard (16...4096).contains(width), (16...4096).contains(height) else { return }
+        guard (16...8192).contains(width), (16...8192).contains(height) else { return }
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         var changedTiles = 0
         func cropped(_ original: [UUID: [TileKey: CGImage]]) throws -> [UUID: [TileKey: CGImage]] {

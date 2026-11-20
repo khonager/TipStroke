@@ -138,7 +138,7 @@ extension ProjectStore {
         guard let version = manifest["schemaVersion"] as? Int, (1...12).contains(version),
               let w = manifest["widthPx"] as? Int, let h = manifest["heightPx"] as? Int,
               let name = manifest["name"] as? String, let layers = manifest["layers"] as? [JSONObject],
-              (16...4096).contains(w), (16...4096).contains(h), (1...32).contains(layers.count) else {
+              (16...8192).contains(w), (16...8192).contains(h), (1...32).contains(layers.count) else {
             throw DrawingError.message("This drawing exceeds the supported canvas or layer limits, or uses a newer format.")
         }
         var ids = PackageIDs(), state = DocumentRecord()
