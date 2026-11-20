@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
@@ -197,6 +198,7 @@ private fun PickerModeTabs(mode: ColorPickerMode, onMode: (ColorPickerMode) -> U
             Box(
                 Modifier.weight(1f).clip(RoundedCornerShape(9.dp))
                     .background(if (selected) Color(0xFF45474E) else Color.Transparent)
+                    .testTag("color-mode-${option.name}")
                     .clickable { onMode(option) }
                     .padding(vertical = 9.dp)
                     .semantics { contentDescription = "${option.label} color picker" },

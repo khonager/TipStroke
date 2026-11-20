@@ -40,8 +40,11 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertTrue(pressure.waitForExistence(timeout: 10))
         app.navigationBars.buttons["Done"].tap()
         app.buttons["Brush color"].tap()
-        let wheel = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Wheel color picker")).firstMatch
-        XCTAssertTrue(wheel.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["Colors"].waitForExistence(timeout: 10))
+        let wheel = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == %@ OR label CONTAINS[c] %@", "color-mode-HSV_WHEEL", "wheel"
+        )).firstMatch
+        XCTAssertTrue(wheel.waitForExistence(timeout: 10), app.debugDescription)
         app.navigationBars.buttons["Done"].tap()
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(app.buttons["Layers"].isHittable)
