@@ -364,6 +364,17 @@ final class RasterDocument {
         "SATURATION": .saturation, "COLOR": .color, "LUMINOSITY": .luminosity
     ]
 
+    func installReduction(_ result: DocumentSnapshot, expectedRevision: UInt64) throws {
+        guard revision == expectedRevision, strokeLayer == nil, metadataBefore == nil,
+              record.selectedLayer == result.record.selectedLayer,
+              record.animation?.selectedIndex == result.record.animation?.selectedIndex else {
+            throw DrawingError.message("The drawing changed during resizing. Try again.")
+        }
+        record = result.record; pixels = result.pixels; framePixels = result.frames
+        selection = nil; mirrorCenter = nil
+        clearHistory(); revision &+= 1
+    }
+
     func resize(width: Int, height: Int) throws {
         guard (16...4096).contains(width), (16...4096).contains(height) else { return }
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)

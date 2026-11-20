@@ -98,6 +98,45 @@ extension RasterDocument {
 }
 
 extension ProjectStore {
+    static func reduceResolution(_ source: DocumentSnapshot, divisor: Int) throws -> DocumentSnapshot {
+        guard [2, 4].contains(divisor) else { throw DrawingError.message("Choose 50% or 25%.") }
+        let width = (source.record.width + divisor - 1) / divisor
+        let height = (source.record.height + divisor - 1) / divisor
+        guard min(width, height) >= 16 else { throw DrawingError.message("The canvas must remain at least 16 pixels on each side.") }
+        func reduce(_ layers: [UUID: [TileKey: CGImage]]) throws -> [UUID: [TileKey: CGImage]] {
+            try layers.mapValues { tiles in
+                let groups = Dictionary(grouping: tiles.keys) { TileKey(x: $0.x / divisor, y: $0.y / divisor) }
+                var output: [TileKey: CGImage] = [:]
+                for (target, keys) in groups {
+                    try autoreleasepool {
+                        let side = TileKey.side * divisor
+                        let input = try RasterDocument.context(width: side, height: side)
+                        input.translateBy(x: -target.rect.minX * CGFloat(divisor), y: -target.rect.minY * CGFloat(divisor))
+                        input.clip(to: CGRect(x: 0, y: 0, width: source.record.width, height: source.record.height))
+                        for key in keys {
+                            if let tile = tiles[key] { RasterDocument.draw(tile, in: input, rect: key.rect) }
+                        }
+                        let context = try RasterDocument.context(width: 256, height: 256)
+                        context.interpolationQuality = .high
+                        guard let region = input.makeImage() else { throw DrawingError.message("Could not read the source tiles.") }
+                        RasterDocument.draw(region, in: context, rect: CGRect(x: 0, y: 0, width: 256, height: 256))
+                        guard let tile = context.makeImage() else { throw DrawingError.message("Could not reduce the drawing.") }
+                        output[target] = tile
+                    }
+                }
+                return output
+            }
+        }
+        var result = source
+        result.record.width = width; result.record.height = height
+        result.pixels = try reduce(source.pixels)
+        result.frames = try source.frames.mapValues(reduce)
+        // Regenerate sparse tile indexes for the new canvas before validating or publishing it.
+        result = RasterDocument(snapshot: result).snapshot()
+        try result.record.validate()
+        return result
+    }
+
     static func render(_ snapshot: DocumentSnapshot, transparent: Bool = false) throws -> CGImage {
         let context = try RasterDocument.context(width: snapshot.record.width, height: snapshot.record.height)
         let bounds = CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height)
@@ -248,9 +287,33 @@ final class TimelineController: UITableViewController {
         alert.addAction(UIAlertAction(title: shared ? "Animate selected layer separately" : "Share selected layer across frames", style: .default) { [weak self] _ in
             self?.document.toggleSharedBackground(); self?.changed()
         })
+        for divisor in [2, 4] {
+            alert.addAction(UIAlertAction(title: "Reduce resolution to \(100 / divisor)%…", style: .default) { [weak self] _ in self?.confirmReduction(divisor) })
+        }
         alert.addAction(UIAlertAction(title: "Move frame earlier", style: .default) { [weak self] _ in self?.document.moveFrame(-1); self?.changed() })
         alert.addAction(UIAlertAction(title: "Move frame later", style: .default) { [weak self] _ in self?.document.moveFrame(1); self?.changed() })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel)); present(alert, animated: true)
+    }
+    private func confirmReduction(_ divisor: Int) {
+        let alert = UIAlertController(title: "Reduce all frames to \(100 / divisor)%?",
+            message: "The drawing will keep its layers and timeline. Resampling clears undo history.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Reduce", style: .destructive) { [weak self] _ in
+            guard let self else { return }
+            let snapshot = self.document.snapshot(), revision = self.document.revision
+            self.navigationController?.view.isUserInteractionEnabled = false
+            self.navigationController?.isModalInPresentation = true
+            ProjectStore.shared.queue.async {
+                let result = Result { try ProjectStore.reduceResolution(snapshot, divisor: divisor) }
+                DispatchQueue.main.async {
+                    self.navigationController?.view.isUserInteractionEnabled = true
+                    self.navigationController?.isModalInPresentation = false
+                    do { try self.document.installReduction(result.get(), expectedRevision: revision); self.changed() }
+                    catch { self.showError(error) }
+                }
+            }
+        })
+        present(alert, animated: true)
     }
     private func stopPlayback() { timer?.invalidate(); timer = nil; navigationItem.rightBarButtonItems?.last?.title = "Play" }
     private func togglePlayback() {
