@@ -270,16 +270,10 @@ internal class TipStrokeInkBrushes {
 
     companion object {
         private const val SOFT_INK_TEXTURE = "dev.tipstroke.texture.ink-soft.v1"
-        private fun softInkTexture(): Bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888).apply {
-            val pixels = IntArray(128 * 128) { index ->
-                val x = (index % 128 + .5f) / 64f - 1f
-                val y = (index / 128 + .5f) / 64f - 1f
-                val r2 = x * x + y * y
-                val alpha = if (r2 >= 1f) 0 else ((kotlin.math.exp(-5f * r2) - kotlin.math.exp(-5f)) /
-                    (1f - kotlin.math.exp(-5f)) * 255).roundToInt().coerceIn(0, 255)
-                Color.argb(alpha, 255, 255, 255)
-            }
-            setPixels(pixels, 0, 128, 0, 0, 128, 128)
+        private fun softInkTexture(): Bitmap {
+            val tip = dev.tipstroke.core.drawing.BrushTip.inkShape(dev.tipstroke.core.model.InkBrush(texture = InkTexture.SOFT, particles = true))
+            val pixels = IntArray(tip.width * tip.height) { Color.argb(tip.coverage(it), 255, 255, 255) }
+            return Bitmap.createBitmap(pixels, tip.width, tip.height, Bitmap.Config.ARGB_8888)
         }
 
         const val PENCIL_GRAIN_TEXTURE = "dev.tipstroke.texture.pencil-grain.v4"

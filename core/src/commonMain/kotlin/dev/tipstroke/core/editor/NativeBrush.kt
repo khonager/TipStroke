@@ -31,8 +31,8 @@ class NativeBrush(val preset: BrushPreset) {
             grain = if (ink.texture == InkTexture.GRAPHITE) StampGrain.PAPER else StampGrain.NONE),
             hardness = if (ink.texture == InkTexture.SOFT) .04f else preset.hardness)
     }
-    fun shape(): BrushTip = BrushTip.shape(requireNotNull(stampPreset().stamp), stampPreset().hardness)
-    fun grain(): BrushTip = BrushTip.grain(requireNotNull(stampPreset().stamp))
+    fun shape(): BrushTip = preset.ink?.let { BrushTip.inkShape(it) } ?: BrushTip.shape(requireNotNull(stampPreset().stamp), stampPreset().hardness)
+    fun grain(): BrushTip = if (preset.ink?.texture == InkTexture.GRAPHITE) Graphite.grain() else BrushTip.grain(requireNotNull(stampPreset().stamp))
     val hasGrain: Boolean get() = stampPreset().stamp!!.let { it.grain != StampGrain.NONE && it.grainDepth > 0 }
     val grainScale: Float get() = stampPreset().stamp!!.grainScale
     val grainFollowsStamp: Boolean get() = stampPreset().stamp!!.grainPlacement == GrainPlacement.STAMP

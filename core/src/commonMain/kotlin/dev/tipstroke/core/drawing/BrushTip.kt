@@ -7,6 +7,28 @@ import kotlin.math.*
 class BrushTip(val width: Int, val height: Int, private val alpha: ByteArray) {
     fun coverage(index: Int): Int = alpha[index].toInt() and 255
     companion object {
+        /** Alpha for Jetpack's soft particle texture and rounded custom nibs. */
+        fun inkShape(ink: InkBrush): BrushTip {
+            val side = 128
+            val rounding = ink.rounding
+            val tail = exp(-5f)
+            val alpha = ByteArray(side * side) { index ->
+                val x = (index % side + .5f) * 2f / side - 1f
+                val y = (index / side + .5f) * 2f / side - 1f
+                val edgeX = max(abs(x) - (1f - rounding), 0f)
+                val edgeY = max(abs(y) - (1f - rounding), 0f)
+                val radiusSquared = x * x + y * y
+                val coverage = when {
+                    hypot(edgeX, edgeY) > rounding -> 0f
+                    ink.texture != InkTexture.SOFT -> 1f
+                    radiusSquared >= 1f -> 0f
+                    else -> (exp(-5f * radiusSquared) - tail) / (1f - tail)
+                }
+                (coverage * 255f).roundToInt().coerceIn(0, 255).toByte()
+            }
+            return BrushTip(side, side, alpha)
+        }
+
         fun shape(config: StampBrush, hardness: Float): BrushTip {
             val texture = config.shapeTexture.takeIf { config.shape == StampShape.IMAGE }
             val width = texture?.width ?: 128; val height = texture?.height ?: 128
