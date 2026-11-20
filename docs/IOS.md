@@ -205,3 +205,8 @@ require a smaller selected area/drawing. The new `CreativeToolsTests` cover rast
 transactions and persistence; they are checked in for the existing Codemagic
 simulator workflow. Linux validation covers shared JVM tests and Swift syntax
 parsing only, not UIKit type checking or simulator/device behavior.
+
+Tap the eraser in the iOS tool dock to toggle it. Hold the icon, slide to a
+tool, and release to select it. Pausing over an icon shows its name. Release
+outside the grid to cancel. **More tools** opens the full editor menu. Turn off
+**Hold for drawing tools** in Brush settings for tap-to-open selection.

@@ -47,6 +47,17 @@ final class CreativeToolsTests: XCTestCase {
         XCTAssertTrue(doc.beginStroke()); try dot(doc, 20, 40); doc.endStroke(cancelled: false)
         XCTAssertNotEqual(try rgba(doc, 20, 40), 0); XCTAssertEqual(try rgba(doc, 492, 40), 0)
     }
+    func testMirrorEraseChangesBothLivePixelsAndCancelRestoresThem() throws {
+        let doc = RasterDocument(name: "Mirror erase", width: 512, height: 256)
+        doc.mirrorCopies = 2; doc.mirrorCenter = CGPoint(x: 256, y: 128)
+        XCTAssertTrue(doc.beginStroke()); try dot(doc, 20, 40); doc.endStroke(cancelled: false)
+        XCTAssertTrue(doc.beginStroke())
+        let point = CGPoint(x: 20, y: 40)
+        _ = try doc.paint(from: point, to: point, radius: 10, color: .black, erasing: true)
+        for x in [20, 492] { XCTAssertEqual(try rgba(doc, x, 40), 0) }
+        doc.endStroke(cancelled: true)
+        for x in [20, 492] { XCTAssertNotEqual(try rgba(doc, x, 40), 0) }
+    }
     func testShadowPullUsesSelectionAsSourceAndCancelRestores() throws {
         let doc = RasterDocument(name: "Shadow", width: 512, height: 256)
         XCTAssertTrue(doc.beginStroke()); try dot(doc, 250, 30); doc.endStroke(cancelled: false)

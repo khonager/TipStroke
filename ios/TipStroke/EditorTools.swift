@@ -234,8 +234,7 @@ extension EditorController {
         let menu = UIAlertController(title: title, message: modes.contains(.colorPush) ? "Color push uses size as diameter (up to 192 px) and opacity as strength." : nil, preferredStyle: .actionSheet)
         for mode in modes {
             menu.addAction(UIAlertAction(title: mode.rawValue + (viewport.canvas.mode == mode ? " ✓" : ""), style: .default) { [weak self] _ in
-                self?.viewport.canvas.mode = mode
-                if [.pixel, .pixelLine, .dither].contains(mode) { self?.viewport.canvas.brushSize = 1 }
+                self?.activateMode(mode)
             })
         }
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)

@@ -15,6 +15,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let undoButton = UIButton(type: .system)
     private let redoButton = UIButton(type: .system)
     private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
+    private var palette: ToolPalette?
     private let saveLabel = UILabel()
     lazy var sharedControls = AppleEditorBridge(actions: EditorActions(self))
     var exporting = false
@@ -64,7 +65,16 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             self.showShared(self.sharedControls.colorController(), title: "Colors")
         }
         let settings = button("Brush size, opacity and finger drawing", symbol: "slider.horizontal.3") { [weak self] in self?.brushSettings() }
-        let tools = button("Tools", symbol: "paintbrush.pointed") { [weak self] in self?.showTools() }
+        let tools = button("Drawing tools", symbol: "eraser") { [weak self] in
+            guard let self else { return }
+            if self.holdTools { self.toggleEraser() } else { self.openPalette() }
+        }
+        tools.accessibilityHint = "Tap for the default action or open the drawing tool palette."
+        tools.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Open drawing tools") { [weak self] _ in
+            self?.openPalette(); return true
+        }]
+        tools.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(trackTools(_:))))
+        toolsButton = tools
         let bottomActions = UIStackView(arrangedSubviews: [color, tools, settings]); bottomActions.distribution = .equalSpacing
         let quickColors = sharedControls.quickColorsController()
         addChild(quickColors)
@@ -135,6 +145,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        palette?.onClose?()
         if isMovingFromParent { navigationController?.interactivePopGestureRecognizer?.isEnabled = true }
     }
     deinit { NotificationCenter.default.removeObserver(self); saveWork?.cancel() }
@@ -167,10 +178,58 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if tool != .eraser { sharedControls.selectBrush(id: tool.brushID) }
     }
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+        toggleEraser()
+    }
+    private func toggleEraser() {
         viewport.canvas.cancelStroke()
+        viewport.canvas.mode = .paint
         if viewport.canvas.tool == .eraser { viewport.canvas.tool = previousTool }
         else { previousTool = viewport.canvas.tool; viewport.canvas.tool = .eraser }
         toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
+    }
+    private weak var toolsButton: UIButton?
+    private var holdTools: Bool { UserDefaults.standard.object(forKey: "holdDrawingTools") as? Bool ?? true }
+
+    private func openPalette() {
+        guard let anchor = toolsButton else { return }
+        viewport.canvas.cancelStroke()
+        palette?.removeFromSuperview()
+        let palette = ToolPalette(frame: view.bounds)
+        palette.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        self.palette = palette
+        view.addSubview(palette)
+        palette.anchor = anchor
+        palette.onClose = { [weak self] in self?.palette?.removeFromSuperview(); self?.palette = nil }
+        palette.add("Eraser", "eraser") { [weak self] in self?.toggleEraser() }
+        let modes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
+            (.ribbon, "scribble.variable"), (.colorPush, "arrow.up.and.down.and.arrow.left.and.right"),
+            (.pixel, "pencil"), (.pixelLine, "line.diagonal"), (.dither, "circle.grid.3x3.fill"), (.fill, "paintbrush")]
+        for (mode, icon) in modes {
+            palette.add(mode.rawValue, icon) { [weak self] in self?.activateMode(mode) }
+        }
+        palette.add("Colorize mask", "paintpalette") { [weak self] in self?.colorizeMenu() }
+        palette.add("Blur & bloom", "sun.max") { [weak self] in self?.effectMenu() }
+        palette.add("Brush aids", "ruler") { [weak self] in self?.brushAids() }
+        palette.add("Adjust tip", "slider.horizontal.3") { [weak self] in self?.brushSettings() }
+        palette.add("More tools", "ellipsis") { [weak self] in self?.showTools() }
+        palette.layoutIfNeeded()
+    }
+
+    func activateMode(_ mode: CanvasMode) {
+        viewport.canvas.cancelStroke()
+        if viewport.canvas.tool == .eraser { toggleEraser() }
+        viewport.canvas.mode = mode
+        if [.pixel, .pixelLine, .dither].contains(mode) { viewport.canvas.brushSize = 1 }
+    }
+
+    @objc private func trackTools(_ recognizer: UILongPressGestureRecognizer) {
+        switch recognizer.state {
+        case .began: openPalette()
+        case .changed: palette?.track(recognizer.location(in: palette))
+        case .ended: palette?.finish(recognizer.location(in: palette))
+        case .cancelled, .failed: palette?.onClose?()
+        default: break
+        }
     }
     private func updateHistory() { undoButton.isEnabled = document.canUndo; redoButton.isEnabled = document.canRedo }
     func changed(redraw: Bool = true) {

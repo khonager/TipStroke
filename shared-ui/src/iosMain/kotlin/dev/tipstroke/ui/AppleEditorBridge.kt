@@ -117,8 +117,15 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     fun brushController(): UIViewController = ComposeUIViewController {
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
-                BrushSettingsPanel(brush, ::updateBrush, fingerDrawing) {
-                    fingerDrawing = it; actions.fingerDrawingChanged(it)
+                Column {
+                    var hold by remember { mutableStateOf(defaults.objectForKey("holdDrawingTools") == null || defaults.boolForKey("holdDrawingTools")) }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Hold for drawing tools", Modifier.weight(1f))
+                        Switch(hold, { hold = it; defaults.setBool(it, forKey = "holdDrawingTools") })
+                    }
+                    BrushSettingsPanel(brush, ::updateBrush, fingerDrawing) {
+                        fingerDrawing = it; actions.fingerDrawingChanged(it)
+                    }
                 }
             }
         }
