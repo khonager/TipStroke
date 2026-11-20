@@ -103,8 +103,10 @@ extension ProjectStore {
         let width = (source.record.width + divisor - 1) / divisor
         let height = (source.record.height + divisor - 1) / divisor
         guard min(width, height) >= 16 else { throw DrawingError.message("The canvas must remain at least 16 pixels on each side.") }
+        let photoIDs = Set(source.record.layers.filter { $0.photo != nil }.map(\.id))
         func reduce(_ layers: [UUID: [TileKey: CGImage]]) throws -> [UUID: [TileKey: CGImage]] {
-            try layers.mapValues { tiles in
+            var reduced = layers
+            for (id, tiles) in layers where !photoIDs.contains(id) {
                 let groups = Dictionary(grouping: tiles.keys) { TileKey(x: $0.x / divisor, y: $0.y / divisor) }
                 var output: [TileKey: CGImage] = [:]
                 for (target, keys) in groups {
@@ -124,11 +126,19 @@ extension ProjectStore {
                         output[target] = tile
                     }
                 }
-                return output
+                reduced[id] = output
             }
+            return reduced
         }
         var result = source
         result.record.width = width; result.record.height = height
+        let scale = CGAffineTransform(scaleX: 1 / CGFloat(divisor), y: 1 / CGFloat(divisor))
+        for i in result.record.layers.indices {
+            if var photo = result.record.layers[i].photo {
+                photo.transform = photo.transform.concatenating(scale)
+                result.record.layers[i].photo = photo
+            }
+        }
         result.pixels = try reduce(source.pixels)
         result.frames = try source.frames.mapValues(reduce)
         // Regenerate sparse tile indexes for the new canvas before validating or publishing it.
