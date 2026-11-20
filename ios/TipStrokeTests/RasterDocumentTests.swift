@@ -289,6 +289,35 @@ final class RasterDocumentTests: XCTestCase {
         document.endStroke(cancelled: false)
         for x in 254...259 { XCTAssertEqual(try alpha(document, x: x, y: 20), x % 2 == 0 ? 255 : 0) }
     }
+    func testGIFSourcePersistsAcrossRevisionReplacementAndGalleryCopy() throws {
+        let doc = RasterDocument(name: "GIF", width: 64, height: 64)
+        doc.enableAnimation()
+        XCTAssertTrue(doc.beginStroke())
+        try paint(doc, from: .init(x: 10, y: 10), to: .init(x: 20, y: 10))
+        doc.endStroke(cancelled: false)
+        try doc.addFrame(copy: false)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ProjectStore(root: root)
+        let gif = try store.exportGIF(doc.snapshot())
+        defer { try? FileManager.default.removeItem(at: gif) }
+        let asset = try MediaFrameReader.inspect(gif)
+        let clip = MediaClipRecord(assetID: asset.id, name: "clip", durationUs: asset.durationUs)
+        doc.record.media = MediaTrack(assets: [asset], clips: [clip])
+        doc.record.animation?.frames[0].sourceTimeUs = 0
+        try store.save(doc.snapshot())
+        let restored = try store.load(doc.record.id)
+        let reader = try MediaFrameReader(track: XCTUnwrap(restored.record.media))
+        let context = try RasterDocument.context(width: 64, height: 64)
+        try reader.draw(time: 0, canvas: doc.bounds, in: context)
+        try store.save(restored)
+        try store.duplicate(doc.record.id)
+        try store.delete(doc.record.id)
+        let copy = try XCTUnwrap(store.list().first)
+        let reopened = try store.load(copy.id)
+        XCTAssertEqual(try reopened.record.media?.plan().durationUs, asset.durationUs)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(reopened.record.media?.assets.first?.source?.url).path))
+    }
     func testSharedCelsPersistWithoutLosingHiddenFramePaint() throws {
         let document = RasterDocument(name: "Background", width: 256, height: 256)
         document.enableAnimation()

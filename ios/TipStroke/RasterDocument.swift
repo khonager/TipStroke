@@ -93,7 +93,7 @@ final class RasterDocument {
 
     func snapshot() -> DocumentSnapshot {
         var saved = record
-        saved.schemaVersion = saved.layers.contains(where: { $0.photo != nil }) ? 5 : 4
+        saved.schemaVersion = saved.media != nil || !(saved.animation?.sharedLayerIDs.isEmpty ?? true) ? 6 : (saved.layers.contains(where: { $0.photo != nil }) ? 5 : 4)
         saved.modified = Date()
         for index in saved.layers.indices {
             saved.layers[index].tiles = Array((pixels[saved.layers[index].id] ?? [:]).keys)
@@ -399,14 +399,15 @@ final class RasterDocument {
         }
         return result
     }
-    func color(at point: CGPoint) throws -> UIColor? {
+    func color(at point: CGPoint, mediaPreview: CGImage? = nil) throws -> UIColor? {
         guard bounds.contains(point) else { return nil }
         let x = floor(point.x), y = floor(point.y)
         let context = try Self.context(width: 1, height: 1)
         context.setFillColor(UIColor.white.cgColor); context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         context.setFillColor(record.paperColor.cgColor); context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         context.translateBy(x: -x, y: -y)
-        try Self.composite(snapshot(), in: context, visible: CGRect(x: x, y: y, width: 1, height: 1))
+        if let mediaPreview { Self.draw(mediaPreview, in: context, rect: bounds) }
+        try Self.composite(DocumentSnapshot(record: record, pixels: pixels), in: context, visible: CGRect(x: x, y: y, width: 1, height: 1))
         guard let bytes = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
         return UIColor(red: CGFloat(bytes[0]) / 255, green: CGFloat(bytes[1]) / 255, blue: CGFloat(bytes[2]) / 255, alpha: 1)
     }
@@ -494,7 +495,8 @@ final class RasterDocument {
         context.saveGState()
         defer { context.restoreGState() }
         context.clip(to: CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height))
-        for layer in snapshot.record.layers where layer.visible && layer.opacity > 0 {
+        let gap = snapshot.record.media.map { media in snapshot.record.animation?.coverageIndex(at: media.positionUs) == nil } ?? false
+        for layer in snapshot.record.layers where layer.visible && layer.opacity > 0 && (!gap || snapshot.record.animation?.sharedLayerIDs.contains(layer.id) == true) {
             context.setAlpha(layer.opacity); context.setBlendMode(blendModes[layer.blendMode] ?? .normal)
             for key in TileKey.intersecting(visible, width: snapshot.record.width, height: snapshot.record.height) {
                 if let image = try layerTile(snapshot, id: layer.id, key: key) { draw(image, in: context, rect: key.rect) }

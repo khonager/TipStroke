@@ -39,6 +39,13 @@ final class ProjectStore {
     func load(_ id: UUID) throws -> DocumentSnapshot {
         var record = try metadata(id)
         let directory = try revision(id)
+        if var media = record.media {
+            for i in media.assets.indices {
+                let url = directory.appendingPathComponent("media").appendingPathComponent(media.assets[i].filename)
+                media.assets[i].source = try LocalMediaFile(url)
+            }
+            record.media = media
+        }
         var sources: [UUID: PhotoSource] = [:]
         let activeTiles = record.layers.reduce(0) { $0 + $1.tiles.count }
         let otherTiles = record.animation.map { animation in
@@ -106,6 +113,15 @@ final class ProjectStore {
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         var published = false
         defer { if !published { try? fm.removeItem(at: staging) } }
+        if let track = snapshot.record.media {
+            let media = staging.appendingPathComponent("media", isDirectory: true)
+            try fm.createDirectory(at: media, withIntermediateDirectories: false)
+            for asset in track.assets {
+                guard let source = asset.source else { throw DrawingError.message("A media asset is missing.") }
+                let target = media.appendingPathComponent(asset.filename)
+                do { try fm.linkItem(at: source.url, to: target) } catch { try fm.copyItem(at: source.url, to: target) }
+            }
+        }
         let sources = snapshot.record.photoSources
         if !sources.isEmpty {
             let photos = staging.appendingPathComponent("photos", isDirectory: true)
@@ -156,6 +172,7 @@ final class ProjectStore {
         context.scaleBy(x: scale, y: scale)
         let bounds = CGRect(x: 0, y: 0, width: snapshot.record.width, height: snapshot.record.height)
         context.setFillColor(snapshot.record.paperColor.cgColor); context.fill(bounds)
+        if let track = snapshot.record.media { try MediaFrameReader(track: track).draw(time: track.positionUs, canvas: bounds, in: context) }
         try RasterDocument.composite(snapshot, in: context, visible: bounds)
         guard let image = context.makeImage() else { throw DrawingError.message("Could not render the thumbnail.") }; return image
     }
@@ -184,6 +201,7 @@ final class ProjectStore {
         let context = try RasterDocument.context(width: record.width, height: record.height)
         let bounds = CGRect(x: 0, y: 0, width: record.width, height: record.height)
         if !transparent { context.setFillColor(record.paperColor.cgColor); context.fill(bounds) }
+        if let track = snapshot.record.media { try MediaFrameReader(track: track).draw(time: track.positionUs, canvas: bounds, in: context) }
         try RasterDocument.composite(snapshot, in: context, visible: bounds)
         guard let image = context.makeImage() else { throw DrawingError.message("Could not render the drawing.") }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("TipStrokeExports", isDirectory: true)

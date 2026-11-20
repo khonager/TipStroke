@@ -10,6 +10,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     var previewSnapshot: DocumentSnapshot?
     weak var viewport: CanvasViewport?
+    private let mediaBackdrop = MediaBackdrop()
     let document: RasterDocument
     private var selectedMode: CanvasMode = .paint
     private var fingerSmudge = false
@@ -115,6 +116,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         outlineLayer.strokeColor = UIColor.systemOrange.cgColor
         outlineLayer.fillColor = UIColor.clear.cgColor; outlineLayer.lineWidth = 1
         outlineLayer.lineDashPattern = [5, 4]; outlineLayer.zPosition = 10_000
+        layer.addSublayer(mediaBackdrop.layer)
+        mediaBackdrop.onError = { [weak self] error in self?.onError?(error) }
         layer.addSublayer(outlineLayer)
         hoverLayer.zPosition = 10_001
         hoverLayer.strokeColor = UIColor.label.cgColor
@@ -167,6 +170,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     // One native layer per visible tile; never allocate a document-sized UIView backing bitmap.
     func refresh(_ dirty: CGRect? = nil) {
+        mediaBackdrop.update(document.record.media, bounds: bounds)
         backgroundColor = document.record.paperColor
         isOpaque = (document.record.backgroundOpacity ?? 1) == 1
         let visible = viewport.map { convert($0.bounds, from: $0) } ?? bounds
@@ -236,6 +240,9 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         if shadowPull {
             do { shadowTiles = try document.shadowSource(color: brushColor.withAlphaComponent(brushOpacity)) }
             catch { shadowPull = false; onError?(error); return }
+        }
+        if document.record.media != nil, mode.streamsPaint || liveFill || mode.isShape {
+            do { try document.ensureDrawingCel() } catch { onError?(error); return }
         }
         if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull, brushAids: mode != .colorPush && !shadowPull, photoErase: mode == .paint && tool == .eraser && !shadowPull) { return }
         pointer = touch; previous = nil; previousTimestamp = -1
@@ -377,7 +384,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
         guard command == .pick, gesture.state == .began || gesture.state == .changed else { return }
         do {
-            if let color = try document.color(at: gesture.location(in: self)) {
+            if let color = try document.color(at: gesture.location(in: self), mediaPreview: mediaBackdrop.image) {
                 brushColor = color; onPickColor?(color)
             }
         } catch { onError?(error) }

@@ -22,6 +22,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     var fillPending = false
     var closingEditor: Bool { closeAfterSave }
     var exporting = false
+    var importingMedia = false
     var importingBrush = false
     var importingBrushTexture: Bool?
     private var previousTool: CanvasView.Tool = .ink
@@ -55,9 +56,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
                 self.present(UINavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
             },
             UIAction(title: "Share transparent PNG") { [weak self] _ in self?.export(transparent: true) },
-            UIAction(title: "Share animation MP4") { [weak self] _ in self?.exportAnimationVideo() },
-            UIAction(title: "Share PNG sequence") { [weak self] _ in self?.exportAnimation(pngSequence: true) },
-            UIAction(title: "Share animation GIF") { [weak self] _ in self?.exportAnimation() },
+            UIAction(title: "Share animation MP4") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimationVideo(smooth: $0) } },
+            UIAction(title: "Share PNG sequence") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimation(pngSequence: true, smooth: $0) } },
+            UIAction(title: "Share animation GIF") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimation(smooth: $0) } },
+            UIAction(title: "Import movie or GIF") { [weak self] _ in self?.importMedia() },
             UIAction(title: "Import image", image: UIImage(systemName: "photo")) { [weak self] _ in self?.importImage() }
         ])
         let top = UIStackView(arrangedSubviews: [back, undoButton, redoButton, fit, layers, share])
@@ -411,10 +413,11 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         present(picker, animated: true)
     }
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        importingBrush = false; importingBrushTexture = nil
+        importingMedia = false; importingBrush = false; importingBrushTexture = nil
     }
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
+        if importingMedia { importingMedia = false; addMediaFile(url); return }
         if importingBrush { importingBrush = false; importBrushFile(url); return }
         if let grain = importingBrushTexture { importingBrushTexture = nil; importBrushTexture(url, grain: grain); return }
         // Decode and downsample off the input thread. Editing pauses while the new layer is prepared.

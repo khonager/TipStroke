@@ -64,12 +64,13 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
     var modified = Date()
     var layers = [LayerRecord()]
     var selectedLayer: UUID?
+    var media: MediaTrack?
     var animation: AnimationRecord?
     var backgroundARGB: UInt32?
     var backgroundOpacity: Double?
 
     func validate() throws {
-        guard format == "dev.tipstroke.ios.raster", (1...5).contains(schemaVersion) else {
+        guard format == "dev.tipstroke.ios.raster", (1...6).contains(schemaVersion) else {
             throw DrawingError.message("This drawing uses an unsupported project format.")
         }
         guard (16...4096).contains(width), (16...4096).contains(height),
@@ -85,6 +86,14 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
                 animation.frames.allSatisfy({ (1...600).contains($0.exposure) }),
                 ["LOOP", "PING_PONG", "ONCE"].contains(animation.playbackMode) else {
                 throw DrawingError.message("Invalid animation timeline.")
+            }
+        }
+        if let media {
+            let plan = try media.plan()
+            guard animation != nil, (0..<plan.durationUs).contains(media.positionUs),
+                  animation?.frames.allSatisfy({ ($0.sourceTimeUs.map { (0...86_400_000_000).contains($0) } ?? true)
+                    && ($0.durationUs.map { (1...86_400_000_000).contains($0) } ?? true) }) == true else {
+                throw DrawingError.message("Invalid media playhead or drawing coverage.")
             }
         }
         if let opacity = backgroundOpacity, !opacity.isFinite || !(0...1).contains(opacity) { throw DrawingError.message("Invalid background opacity.") }
@@ -141,6 +150,8 @@ struct DocumentSnapshot {
 }
 
 struct AnimationFrameRecord: Codable, Equatable, Identifiable {
+    var sourceTimeUs: Int64?
+    var durationUs: Int64?
     var id = UUID()
     var exposure = 1
     var tiles: [String: [TileKey]] = [:]

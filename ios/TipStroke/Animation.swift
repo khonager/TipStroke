@@ -57,7 +57,7 @@ extension RasterDocument {
         guard let id, let index = record.animation?.frames.firstIndex(where: { $0.id == id }) else { return }
         selectFrame(index)
     }
-    func addFrame(copy: Bool) throws {
+    func addFrame(copy: Bool, sourceTimeUs: Int64? = nil) throws {
         enableAnimation()
         guard var animation = record.animation, animation.frames.count < 240 else {
             throw DrawingError.message("This timeline has reached its 240-frame limit.")
@@ -67,10 +67,15 @@ extension RasterDocument {
         }
         beginMetadataEdit()
         storeCurrentCel(animation)
-        let frame = AnimationFrameRecord()
+        var frame = AnimationFrameRecord()
+        if let track = record.media { frame.sourceTimeUs = sourceTimeUs ?? track.positionUs }
         let next = copy ? pixels.filter { !animation.sharedLayerIDs.contains($0.key) } : [:]
         animation.selectedIndex += 1
         animation.frames.insert(frame, at: animation.selectedIndex)
+        if record.media != nil {
+            animation.frames.sort { ($0.sourceTimeUs ?? 0) < ($1.sourceTimeUs ?? 0) }
+            animation.selectedIndex = animation.frames.firstIndex { $0.id == frame.id }!
+        }
         framePixels[frame.id] = next; installCel(animation); record.animation = animation
         selection = nil; endMetadataEdit()
     }
@@ -157,24 +162,23 @@ extension ProjectStore {
         guard let image = context.makeImage() else { throw DrawingError.message("Could not render the drawing.") }
         return image
     }
-    func exportPNGSequence(_ snapshot: DocumentSnapshot) throws -> URL {
+    func exportPNGSequence(_ snapshot: DocumentSnapshot, smooth: Bool = false) throws -> URL {
         guard let animation = snapshot.record.animation else { throw DrawingError.message("Create an animation first.") }
-        let segments = animation.shared.segments()
+        let plan = try AnimationRenderPlan(snapshot, smooth: smooth)
+        let segments = plan.samples
         let count = segments.reduce(0) { $0 + Int($1.ticks) }
         guard (1...36000).contains(count) else { throw DrawingError.message("Animation is too long to export.") }
         let files = FileManager.default
         let folder = files.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try files.createDirectory(at: folder, withIntermediateDirectories: false)
         defer { try? files.removeItem(at: folder) }
-        let timing: [String: Any] = ["fps": animation.fps, "durationUs": Int64(count) * 1_000_000 / Int64(animation.fps),
+        let timing: [String: Any] = ["fps": plan.fps, "durationUs": plan.durationUs,
             "playbackMode": animation.playbackMode, "frameCount": count]
         try JSONSerialization.data(withJSONObject: timing).write(to: folder.appendingPathComponent("timing.json"))
         var tick = 1
         for segment in segments {
             try autoreleasepool {
-                var drawing = snapshot
-                drawing.pixels = snapshot.pixelsForFrame(animation.frames[Int(segment.index)].id)
-                let image = try Self.render(drawing)
+                let image = try plan.image(segment)
                 var first: URL?
                 for _ in 0..<Int(segment.ticks) {
                     let url = folder.appendingPathComponent(String(format: "frame_%05d.png", tick))
@@ -200,9 +204,10 @@ extension ProjectStore {
             throw error
         }
     }
-    func exportGIF(_ snapshot: DocumentSnapshot) throws -> URL {
+    func exportGIF(_ snapshot: DocumentSnapshot, smooth: Bool = false) throws -> URL {
         guard let animation = snapshot.record.animation else { throw DrawingError.message("Create an animation first.") }
-        let order = animation.shared.segments()
+        let plan = try AnimationRenderPlan(snapshot, smooth: smooth)
+        let order = plan.samples
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("TipStroke-\(UUID().uuidString).gif")
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, order.count, nil) else {
             throw DrawingError.message("Could not create the animation export.")
@@ -211,10 +216,8 @@ extension ProjectStore {
             CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         }
         for segment in order {
-            let frame = animation.frames[Int(segment.index)]
-            var drawing = snapshot; drawing.pixels = snapshot.pixelsForFrame(frame.id)
-            let image = try Self.render(drawing)
-            let delay = Double(segment.ticks) / Double(animation.fps)
+            let image = try plan.image(segment)
+            let delay = Double(segment.durationUs) / 1e6
             CGImageDestinationAddImage(destination, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay, kCGImagePropertyGIFUnclampedDelayTime: delay]] as CFDictionary)
         }
         guard CGImageDestinationFinalize(destination) else { try? FileManager.default.removeItem(at: url); throw DrawingError.message("Could not finish the animation export.") }

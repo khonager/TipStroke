@@ -44,6 +44,7 @@ extension EditorController {
         menu.addAction(UIAlertAction(title: "Blur & bloom", style: .default) { [weak self] _ in self?.effectMenu() })
         menu.addAction(UIAlertAction(title: "Brush aids", style: .default) { [weak self] _ in self?.brushAids() })
         menu.addAction(UIAlertAction(title: "Selection actions", style: .default) { [weak self] _ in self?.selectionActions() })
+        if document.record.media != nil { menu.addAction(UIAlertAction(title: "Media timeline", style: .default) { [weak self] _ in self?.showMediaTimeline() }) }
         menu.addAction(UIAlertAction(title: "Animation timeline", style: .default) { [weak self] _ in self?.showTimeline() })
         menu.addAction(UIAlertAction(title: "Finger gestures", style: .default) { [weak self] _ in self?.fingerSettings() })
         menu.addAction(UIAlertAction(title: "Paper color", style: .default) { [weak self] _ in self?.setPaperColor() })
@@ -74,10 +75,17 @@ extension EditorController {
         }
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
     }
-    func exportAnimationVideo() {
+    func chooseExportTiming(_ action: @escaping (Bool) -> Void) {
+        guard document.record.media != nil else { action(false); return }
+        let menu = UIAlertController(title: "Export frame rate", message: nil, preferredStyle: .actionSheet)
+        menu.addAction(UIAlertAction(title: "Drawing FPS", style: .default) { _ in action(false) })
+        menu.addAction(UIAlertAction(title: "Smooth video", style: .default) { _ in action(true) })
+        menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
+    }
+    func exportAnimationVideo(smooth: Bool = false) {
         guard !exporting else { return }; exporting = true
         viewport.canvas.cancelStroke()
-        ProjectStore.shared.exportMP4(document.snapshot()) { result in
+        ProjectStore.shared.exportMP4(document.snapshot(), smooth: smooth) { result in
             DispatchQueue.main.async {
                 self.exporting = false
                 do {
@@ -89,12 +97,12 @@ extension EditorController {
             }
         }
     }
-    func exportAnimation(pngSequence: Bool = false) {
+    func exportAnimation(pngSequence: Bool = false, smooth: Bool = false) {
         guard !exporting else { return }; exporting = true
         viewport.canvas.cancelStroke(); let snapshot = document.snapshot()
         ProjectStore.shared.queue.async {
             let result = Result {
-                try pngSequence ? ProjectStore.shared.exportPNGSequence(snapshot) : ProjectStore.shared.exportGIF(snapshot)
+                try pngSequence ? ProjectStore.shared.exportPNGSequence(snapshot, smooth: smooth) : ProjectStore.shared.exportGIF(snapshot, smooth: smooth)
             }
             DispatchQueue.main.async {
                 self.exporting = false
