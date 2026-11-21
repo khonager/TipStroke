@@ -102,8 +102,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }]
         tools.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(trackTools(_:))))
         toolsButton = tools
+        let movingTools = button("Moving tools", symbol: "arrow.up.and.down.and.arrow.left.and.right") { [weak self] in
+            self?.openPalette(moving: true)
+        }
+        movingTools.accessibilityHint = "Open selection and transform tools."
+        movingTools.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(trackTools(_:))))
+        movingToolsButton = movingTools
         updateToolValue()
-        let bottomActions = UIStackView(arrangedSubviews: [color, tools, settings]); bottomActions.distribution = .equalSpacing
+        let bottomActions = UIStackView(arrangedSubviews: [color, tools, movingTools, settings]); bottomActions.distribution = .equalSpacing
         let quickColors = sharedControls.quickColorsController()
         quickShelf = quickColors.view
         addChild(quickColors)
@@ -135,7 +141,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             viewport.topAnchor.constraint(equalTo: view.topAnchor), viewport.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             topPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 4), topPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
             bottomPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4), bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
-            bottomPanel.widthAnchor.constraint(equalToConstant: 180),
+            bottomPanel.widthAnchor.constraint(equalToConstant: 192),
         ]
         NSLayoutConstraint.activate(portraitLayout)
         NSLayoutConstraint.activate([saveLabel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -2),
@@ -316,39 +322,58 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             cancelled: gesture.state == .cancelled || gesture.state == .failed)
     }
     private weak var toolsButton: UIButton?
-    private let paletteModes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
-            (.ribbon, "scribble.variable"), (.colorPush, "arrow.up.and.down.and.arrow.left.and.right"),
+    private weak var movingToolsButton: UIButton?
+    private let drawingModes: [(CanvasMode, String)] = [(.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
+            (.ribbon, "scribble.variable"), (.colorPush, "hand.draw"),
             (.pixel, "pencil"), (.pixelLine, "line.diagonal"), (.dither, "circle.grid.3x3.fill"), (.fill, "paintbrush")]
+    private let selectionModes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.rectangleSelection, "rectangle.dashed"),
+            (.ellipseSelection, "circle.dashed")]
     private func updateToolValue() {
-        let symbol = paletteModes.first { $0.0 == viewport.canvas.mode }?.1 ?? (viewport.canvas.mode.isSelection ? "lasso" : "eraser")
-        toolsButton?.setImage(UIImage(systemName: symbol), for: .normal)
-        toolsButton?.accessibilityValue = viewport.canvas.mode == .paint ? viewport.canvas.tool.rawValue : viewport.canvas.mode.rawValue
+        let mode = viewport.canvas.mode
+        let drawingSymbol = drawingModes.first { $0.0 == mode }?.1 ?? (mode.isShape ? "scribble.variable" : "eraser")
+        toolsButton?.setImage(UIImage(systemName: drawingSymbol), for: .normal)
+        toolsButton?.accessibilityValue = mode.isSelection ? nil : (mode == .paint ? viewport.canvas.tool.rawValue : mode.rawValue)
+        let movingSymbol = selectionModes.first { $0.0 == mode }?.1 ?? "arrow.up.and.down.and.arrow.left.and.right"
+        movingToolsButton?.setImage(UIImage(systemName: movingSymbol), for: .normal)
+        movingToolsButton?.accessibilityValue = mode.isSelection ? mode.rawValue : nil
     }
     private var holdTools: Bool { UserDefaults.standard.object(forKey: "holdDrawingTools") as? Bool ?? true }
 
-    private func openPalette() {
-        guard let anchor = toolsButton else { return }
+    private func openPalette(moving: Bool = false) {
+        guard let anchor = (moving ? movingToolsButton : toolsButton) else { return }
         finishCanvasInteraction()
         palette?.removeFromSuperview()
-        let palette = ToolPalette(frame: view.bounds)
+        let palette = ToolPalette(frame: view.bounds, title: moving ? "Moving tools" : "Drawing tools")
         palette.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         self.palette = palette
         view.addSubview(palette)
         palette.anchor = anchor
         palette.beside = sideDock
         palette.onClose = { [weak self] in self?.palette?.removeFromSuperview(); self?.palette = nil }
+        if moving { addMovingTools(to: palette) } else { addDrawingTools(to: palette) }
+        palette.layoutIfNeeded()
+    }
+
+    private func addDrawingTools(to palette: ToolPalette) {
         palette.add("Eraser", "eraser") { [weak self] in
             guard let self else { return }
             if self.viewport.canvas.tool != .eraser { self.toggleEraser() }
             else { self.viewport.canvas.mode = .paint }
         }
-        for (mode, icon) in paletteModes {
+        for (mode, icon) in drawingModes {
             palette.add(mode.rawValue, icon) { [weak self] in self?.activateMode(mode) }
         }
         palette.add("Colorize mask", "paintpalette") { [weak self] in self?.colorizeMenu() }
         palette.add("Blur & bloom", "sun.max") { [weak self] in self?.effectMenu() }
         palette.add("Brush aids", "ruler") { [weak self] in self?.brushAids() }
         palette.add("Adjust tip", "slider.horizontal.3") { [weak self] in self?.brushSettings() }
+        palette.add("More tools", "ellipsis") { [weak self] in self?.showTools() }
+    }
+
+    private func addMovingTools(to palette: ToolPalette) {
+        for (mode, icon) in selectionModes {
+            palette.add(mode.rawValue, icon) { [weak self] in self?.activateMode(mode) }
+        }
         palette.add("Reselect previous area", "arrow.uturn.backward.circle") { [weak self] in
             guard let self else { return }
             guard self.document.restoreSelection() else { self.showError(DrawingError.message("Make a selection in this drawing first.")); return }
@@ -356,8 +381,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             self.viewport.canvas.refreshSelection()
         }
         palette.add("Transform", "perspective") { [weak self] in self?.showTransformEditor() }
-        palette.add("More tools", "ellipsis") { [weak self] in self?.showTools() }
-        palette.layoutIfNeeded()
+        palette.add("Selection actions", "ellipsis") { [weak self] in self?.selectionActions() }
+        palette.add("Fit canvas", "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit() }
     }
 
     func activateMode(_ mode: CanvasMode) {
@@ -372,7 +397,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
 
     @objc private func trackTools(_ recognizer: UILongPressGestureRecognizer) {
         switch recognizer.state {
-        case .began: openPalette()
+        case .began: openPalette(moving: recognizer.view === movingToolsButton)
         case .changed: palette?.track(recognizer.location(in: palette))
         case .ended: palette?.finish(recognizer.location(in: palette))
         case .cancelled, .failed: palette?.onClose?()

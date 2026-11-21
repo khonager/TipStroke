@@ -225,6 +225,13 @@ fun CanvasScreen(
         touchDrawing = gestureSettings.oneFingerDrag == FingerAction.DRAW
     }
 
+    fun openImageTransform() {
+        imageTransforming = true
+        layersOpen = false
+        selectionMode = false
+        movingSelection = false
+        selectToolActive = false
+    }
     val importTimelineMedia = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { surface?.addTimelineMedia(it); animationOpen = true }
     }
@@ -234,7 +241,7 @@ fun CanvasScreen(
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             surface?.addImage(uri)?.fold(
-                onSuccess = { imageTransforming = true; selectionMode = false; movingSelection = false; selectToolActive = false },
+                onSuccess = { openImageTransform() },
                 onFailure = { message = it.message ?: "This image could not be opened." },
             )
             layersOpen = !imageTransforming
@@ -312,6 +319,7 @@ fun CanvasScreen(
         ribbon = false
         lassoFill = false
         smudging = false
+        imageTransforming = false
         selectToolActive = false; selectionMode = false; movingSelection = false
         erasing = !erasing
         if (pixelTool == null) applyTuning(if (erasing) brushPreferences.loadEraser() else brushPreferences.load(brush))
@@ -322,6 +330,7 @@ fun CanvasScreen(
         ribbon = false
         lassoFill = false
         smudging = false
+        imageTransforming = false
         selectToolActive = false; selectionMode = false; movingSelection = false
         if (pixelTool == null) opacity = 1f
         pixelTool = tool
@@ -337,6 +346,7 @@ fun CanvasScreen(
         ribbon = false
         lassoFill = false
         smudging = false
+        imageTransforming = false
         selectToolActive = false; selectionMode = false; movingSelection = false
         pixelTool = null
         brush = preset
@@ -352,6 +362,32 @@ fun CanvasScreen(
         imageTransforming = false; layersOpen = false; colorPickerOpen = false
         phoneAdjustmentsOpen = true
         surface?.setSelectionTool(selectionTool)
+    }
+    fun beginSelectionTransform(): Boolean {
+        if (surface?.beginSelectionTransform() != true) return false
+        movingSelection = false
+        selectionMode = false
+        selectionTransformOpen = true
+        return true
+    }
+    fun transformFromDock() {
+        if (selectionTransformOpen) return
+        if (layers.any { it.id == selectedLayerId && it.kind == LayerKind.IMAGE }) {
+            openImageTransform()
+            return
+        }
+        selectSelectionTool()
+        if (!beginSelectionTransform()) message = "Select an area on a paint layer to transform it."
+    }
+    val activeDockTool = when {
+        imageTransforming || selectionTransformOpen -> "Transform"
+        selectToolActive -> "Select"
+        colorPushing -> "Color push"
+        ribbon -> "Ribbon"
+        lassoFill -> "Lasso fill"
+        erasing -> "Eraser"
+        smudging -> "Smudge"
+        else -> pixelTool?.displayName
     }
     fun selectLassoFill() {
         colorPushing = false
@@ -700,11 +736,11 @@ fun CanvasScreen(
         ) {
             BrushFavoritesDock(
                 selected = brush, favorites = favoriteBrushes, groups = tipGroups, onManageGroups = openTipGroupManager,
-                brushActive = !colorPushing && !ribbon && !lassoFill && !erasing && !smudging && !selectToolActive && pixelTool == null,
-                toolLabel = when { colorPushing -> "Color push"; ribbon -> "Ribbon"; lassoFill -> "Lasso fill"; erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
+                brushActive = activeDockTool == null, toolLabel = activeDockTool,
                 onLibrary = { brushToEdit = null; brushLibraryOpen = true },
                 onBrush = ::selectRegularBrush, onSelect = ::selectSelectionTool,
                 onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
+                onTransform = ::transformFromDock, onFitCanvas = { surface?.resetView() },
                 onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                 perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                     onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
@@ -775,11 +811,11 @@ fun CanvasScreen(
             ) {
                 BrushFavoritesDock(
                     selected = brush, favorites = favoriteBrushes, groups = tipGroups, onManageGroups = openTipGroupManager, horizontal = !landscapeDock,
-                    brushActive = !colorPushing && !ribbon && !lassoFill && !erasing && !smudging && !selectToolActive && pixelTool == null,
-                    toolLabel = when { colorPushing -> "Color push"; ribbon -> "Ribbon"; lassoFill -> "Lasso fill"; erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
+                    brushActive = activeDockTool == null, toolLabel = activeDockTool,
                     onLibrary = { brushToEdit = null; brushLibraryOpen = true },
                     onBrush = ::selectRegularBrush, onSelect = ::selectSelectionTool,
                     onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
+                    onTransform = ::transformFromDock, onFitCanvas = { surface?.resetView() },
                     onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
                     perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                 onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
@@ -868,19 +904,13 @@ fun CanvasScreen(
             canDuplicate = selectedLayerIds.any { selectedId -> layers.any { it.id == selectedId && it.kind == LayerKind.RASTER } },
             onTool = { tool -> selectionTool = tool; movingSelection = false; selectionMode = true; surface?.setSelectionTool(tool) },
             onMove = {
-                if (surface?.beginSelectionTransform() == true) {
-                    movingSelection=false;selectionMode=false;selectionTransformOpen=true
-                } else { movingSelection = !movingSelection; selectionMode = false }
+                if (!beginSelectionTransform()) { movingSelection = !movingSelection; selectionMode = false }
             },
             onSelectAll = { surface?.selectAll() },
             onReselect = { selectSelectionTool(); surface?.restoreSelection() },
             onDuplicate = { surface?.duplicateSelection() },
             canTransform = selectedLayerIds.isNotEmpty() && selectedLayerIds.all { id -> layers.any { it.id == id && it.kind == LayerKind.RASTER } },
-            onTransform = {
-                if (surface?.beginSelectionTransform() == true) {
-                    movingSelection = false; selectionMode = false; selectionTransformOpen = true
-                }
-            },
+            onTransform = { beginSelectionTransform() },
             onClear = { movingSelection = false; selectionMode = true; surface?.clearSelection() },
             modifier = if (compactPhone) Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
                 .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp + timelineClearance)
@@ -956,8 +986,7 @@ fun CanvasScreen(
                 onFitImage = { surface?.fitSelectedImage() },
                 onOriginalImageSize = { surface?.originalSizeSelectedImage() },
                 onImageTransforming = {
-                    imageTransforming = it
-                    if (it) { layersOpen = false; selectionMode = false; movingSelection = false; selectToolActive = false }
+                    if (it) openImageTransform() else imageTransforming = false
                 },
                 onAddPaint = { imageTransforming = false; movingSelection = false; surface?.addPaintLayer() },
                 onImportImage = { message = null; importImage.launch(arrayOf("image/*")) },

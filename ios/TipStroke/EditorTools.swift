@@ -33,8 +33,7 @@ extension EditorController {
         let groups: [(String, [CanvasMode])] = [
             ("Paint tools", [.paint, .fill, .lassoFill, .ribbon, .smudge, .colorPush]),
             ("Pixel tools", [.pixel, .pixelLine, .dither]),
-            ("Shapes", [.line, .rectangle, .ellipse, .triangle, .arrow]),
-            ("Select an area", [.lasso, .rectangleSelection, .ellipseSelection, .transform])
+            ("Shapes", [.line, .rectangle, .ellipse, .triangle, .arrow])
         ]
         for (title, modes) in groups {
             menu.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in self?.chooseCanvasMode(modes, title: title) })
@@ -43,7 +42,6 @@ extension EditorController {
         menu.addAction(UIAlertAction(title: "Colorize mask", style: .default) { [weak self] _ in self?.colorizeMenu() })
         menu.addAction(UIAlertAction(title: "Blur & bloom", style: .default) { [weak self] _ in self?.effectMenu() })
         menu.addAction(UIAlertAction(title: "Brush aids", style: .default) { [weak self] _ in self?.brushAids() })
-        menu.addAction(UIAlertAction(title: "Selection actions", style: .default) { [weak self] _ in self?.selectionActions() })
         if document.record.media != nil { menu.addAction(UIAlertAction(title: "Media timeline", style: .default) { [weak self] _ in self?.showMediaTimeline() }) }
         menu.addAction(UIAlertAction(title: "Animation timeline", style: .default) { [weak self] _ in self?.showTimeline() })
         menu.addAction(UIAlertAction(title: "Finger gestures", style: .default) { [weak self] _ in self?.fingerSettings() })

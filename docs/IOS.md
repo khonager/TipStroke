@@ -59,7 +59,7 @@ from `:shared-ui`, exporting `:core`. There is no account or network service.
 - Paper color/opacity, atomic local saves and white/custom-paper or transparent PNG
   sharing. Thumbnail and encoding work runs away from the input thread.
 
-Tools → Finger gestures configures one-finger drag and hold, the hold delay,
+**Drawing tools → More tools → Finger gestures** configures one-finger drag and hold, the hold delay,
 and two- or three-finger tap actions. Finger drawing defaults on. Disable **Draw with finger** in brush settings for
 Pencil-only input. A second finger cancels provisional finger paint and starts
 navigation. Pencil takes priority. Pressureless hardware, fingers and estimated
@@ -87,7 +87,7 @@ preset uses the iOS resident tile budget or Android’s app heap budget.
 | Animation and video | Work with disk-backed cels, change resolution, record motion, scrub GIF and video sources, edit clips and crossfades, and navigate drawing coverage. Photo motion uses keyframes. |
 | Process recording | Preview, scrub and export saved replay. Native Android command streams from older files are preserved for Android playback. New portable recordings include raster updates. |
 | Project exchange | Import and export Android project archives. Native metadata preserves iOS-specific locks and frame masks through an Android save. The local gallery also keeps its versioned native format. |
-| Gallery and editor | Named stacks, batch sharing, adaptive controls and quick-color drag-to-fill. Tool categories support tap, hold, slide with an immediate name above the grid, and release to select. Android offers a dedicated Tip groups picker with customizable membership and visibility, individual favorite shortcuts, and a canvas Deselect shortcut. iOS offers its tip library and Deselect in Selection actions. |
+| Gallery and editor | Named stacks, batch sharing, adaptive controls and quick-color drag-to-fill. Both platforms separate Drawing tools from Moving tools and support holding and sliding to select a tool. Android offers a dedicated Tip groups picker with customizable membership and visibility, individual favorite shortcuts, and a canvas Deselect shortcut. iOS offers its tip library and Deselect in Selection actions. |
 
 Adding a feature only to `app/` or `drawing-android/` still does not port it to iOS.
 Keep portable rules in `core`, reusable controls in `shared-ui`, and provide both
@@ -182,28 +182,28 @@ The editor shows tool and control names on pointer dwell.
 
 ## Creative tools on iOS
 
-- **Tools → Paint tools**: live Lasso fill, Ribbon and Color push alongside Brush,
+- **Drawing tools → More tools → Paint tools**: live Lasso fill, Ribbon and Color push alongside Brush,
   Fill and Smudge. Lasso/Ribbon use native display-link previews; Color push uses
   a bounded local inverse warp, with size as diameter and opacity as strength.
-- **Tools → Brush aids**: temporary Paint inside, hold-and-bend Elastic line,
+- **Drawing tools → Brush aids**: temporary Paint inside, hold-and-bend Elastic line,
   Mirror wheel (Off/2/4/6/8/12, movable center), and magnetic one/two-point rulers.
   Paint inside preserves existing soft alpha and overrides reference constraints.
   Rulers take priority over Elastic line. Numeric vanishing-point entry supports
   off-canvas points. Placement prompts offer a visible Cancel button.
-- **Tools → Selection actions → Shadow pull**: select, arm, drag, release. A
+- **Moving tools → Selection actions → Shadow pull**: select, arm, drag, release. A
   current-color shadow is composited behind paint on the same layer. Preview can
   be cancelled; opaque paint on that layer naturally hides the shadow.
-- **Tools → Blur & bloom**: Gaussian, Motion, Perspective and Bloom with relevant
+- **Drawing tools → Blur & bloom**: Gaussian, Motion, Perspective and Bloom with relevant
   radius/angle/center/threshold/intensity controls. Worker-owned tile halos reuse
   core filter math. Preview does not mutate the source; Apply commits exactly
   that preview as one undo transaction.
-- **Tools → Colorize mask**: creates saved editable hints above line art and
+- **Drawing tools → Colorize mask**: creates saved editable hints above line art and
   generated output beneath it. Reopen hints, use magenta for transparent regions,
   tune gap/threshold, Preview, then Apply. Shared codec/solver, still drawings,
   1024-pixel analysis limit and sparse native-resolution output. Schema 4 retains
   recipe links; generation and hints visibility undo together. Missing inputs
   preserve existing generated paint and report an error when regenerating.
-- **Tools → Manga tips**: six shared dot/hatching presets, native canvas-anchored
+- **Drawing tools → More tools → Manga tips**: six shared dot/hatching presets, native canvas-anchored
   grain, nearest-neighbor pattern sampling and inline usage guidance.
 
 These additions preserve native UIKit sample routing, 256 px sparse tiles, the
@@ -213,10 +213,11 @@ transactions and persistence; they are checked in for the existing Codemagic
 simulator workflow. Linux validation covers shared JVM tests and Swift syntax
 parsing only, not UIKit type checking or simulator/device behavior.
 
-Tap the eraser in the iOS tool dock to toggle it. Hold the icon, slide to a
-tool, and release to select it. Pausing over an icon shows its name. Release
-outside the grid to cancel. **More tools** opens the full editor menu. Turn off
-**Hold for drawing tools** in Brush settings for tap-to-open selection.
+Tap **Drawing tools** to toggle the eraser. Hold the icon, slide to a tool, and
+release to select it. Pausing over an icon shows its name. Release outside the grid
+to cancel. **More tools** opens the editor menu. Turn off **Hold for drawing tools**
+in Brush settings to open the drawing palette with a tap. Tap or hold **Moving
+tools** for selection, selection recall, transform, selection actions, and Fit canvas.
 
 Drag the iOS brush-color button onto a canvas region to fill it. The worker keeps
 the editor responsive and discards a stale result if the destination has changed.

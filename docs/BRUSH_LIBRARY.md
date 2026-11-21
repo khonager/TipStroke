@@ -84,13 +84,15 @@ introduced.
 
 ## Favorites that fit
 
-The canvas dock contains a Tips library button, a Tip groups folder, favorite stroke thumbnails, a Tools
-menu, and Adjust. Tools contains Select, Eraser, Smudge, eligible pixel tools, and
-Tip Studio; the adjustment action retains the phone size/opacity toggle.
+The canvas dock contains a Tips library button, a Tip groups folder, individual
+favorites, Drawing tools, Moving tools, and Adjust. Drawing tools includes
+Eraser, Smudge, eligible pixel tools, and Tip Studio. Moving tools includes
+Select, Transform, Reselect previous area, and Fit canvas. Adjust toggles size and
+opacity controls on compact phones.
 There is no scrolling container in the dock.
 
 Individual favorites fill the remaining dock space using 48 dp cells,
-2 dp gaps and four reserved actions. Extra pins are available from **Favorites**
+2 dp gaps and five reserved actions. Extra pins are available from **Favorites**
 in the tip library.
 
 ## Visual controls and endpoint previews
@@ -218,6 +220,6 @@ limit shading; keep opacity at 100% for crisp dots. Size controls brush coverage
 while Grain scale controls pattern spacing. Scaling finished tone artwork can cause
 moiré; choose tone spacing at the intended output resolution.
 
-iOS Tools → Manga tips exposes all six shared presets with usage guidance. The
+iOS **Drawing tools → More tools → Manga tips** exposes all six shared presets with usage guidance. The
 native stamp adapter uses nearest-neighbor pattern sampling for crisp tones;
 canvas-anchored grain keeps separate strokes registered.

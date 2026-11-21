@@ -9,14 +9,16 @@ final class ToolPalette: UIView {
     private var buttons: [UIButton] = []
     private var actions: [() -> Void] = []
     private var hovered: Int?
+    private let title: String
 
-    override init(frame: CGRect) {
+    init(frame: CGRect, title: String) {
+        self.title = title
         super.init(frame: frame)
         accessibilityViewIsModal = true
         let backdrop = UIButton(type: .custom)
         backdrop.frame = bounds
         backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        backdrop.accessibilityLabel = "Close drawing tools"
+        backdrop.accessibilityLabel = "Close " + title.lowercased()
         backdrop.addAction(UIAction { [weak self] _ in self?.onClose?() }, for: .touchUpInside)
         addSubview(backdrop)
         panel.backgroundColor = UIColor(red: 32/255, green: 33/255, blue: 37/255, alpha: 1)
@@ -26,6 +28,7 @@ final class ToolPalette: UIView {
         addSubview(panel)
         caption.font = .preferredFont(forTextStyle: .caption1)
         caption.textAlignment = .center
+        caption.text = title
         panel.addSubview(caption)
         panel.addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hoverIcon(_:))))
     }
@@ -69,7 +72,7 @@ final class ToolPalette: UIView {
         guard index != hovered else { return }
         if let hovered { buttons[hovered].backgroundColor = .clear }
         hovered = index
-        caption.text = nil
+        caption.text = title
         guard let index else { return }
         buttons[index].backgroundColor = UIColor(white: 0.32, alpha: 1)
         caption.text = buttons[index].accessibilityLabel

@@ -32,6 +32,10 @@ class SelectionToolControlsTest {
         compose.onNodeWithContentDescription("Select all").assertDoesNotExist()
         compose.onNodeWithText("Deselect").performClick().assertDoesNotExist()
         compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Select").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Smudge").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Moving tools").performClick()
+        compose.onNodeWithContentDescription("Smudge").assertDoesNotExist()
         compose.onNodeWithContentDescription("Select").performClick()
         compose.onNodeWithContentDescription("Select all").assertIsDisplayed()
         compose.onNodeWithText("Selection active").assertDoesNotExist()
@@ -41,12 +45,14 @@ class SelectionToolControlsTest {
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme { CanvasScreen(initialSelectionOpen = true) }
         }
-        fun choose(label: String) {
-            compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        fun choose(menu: String, label: String) {
+            val picker = compose.onNodeWithContentDescription(menu)
+            if (menu == "Drawing tools") picker.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+            else picker.performClick()
             compose.onNodeWithContentDescription(label).performClick()
         }
-        fun toolIs(label: String) {
-            compose.onNodeWithContentDescription("Drawing tools").assert(
+        fun toolIs(menu: String, label: String) {
+            compose.onNodeWithContentDescription(menu).assertIsSelected().assert(
                 SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, label))
         }
         compose.onNodeWithContentDescription("Select all").performClick()
@@ -54,15 +60,16 @@ class SelectionToolControlsTest {
         compose.onNodeWithContentDescription("Repeat last selection").performClick()
         compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
         repeat(2) {
-            choose("Eraser"); toolIs("Eraser")
+            choose("Drawing tools", "Eraser"); toolIs("Drawing tools", "Eraser")
             compose.onNodeWithContentDescription("Select all").assertDoesNotExist()
-            choose("Select"); toolIs("Select")
+            choose("Moving tools", "Select"); toolIs("Moving tools", "Select")
             compose.onNodeWithContentDescription("Select all").assertIsDisplayed()
         }
         compose.onNodeWithContentDescription("Deselect").performClick()
-        compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
-        compose.onNodeWithContentDescription("Reselect previous area").performClick()
+        choose("Moving tools", "Reselect previous area")
         compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
+        choose("Moving tools", "Transform")
+        compose.onNodeWithContentDescription("Cancel transform").assertIsDisplayed()
     }
     @Test fun transformPanelExposesMeshAndSharedActions() {
         var tool=dev.tipstroke.core.model.PhotoEditTool.MOVE

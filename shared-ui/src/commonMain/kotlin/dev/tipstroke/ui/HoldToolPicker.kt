@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -27,8 +28,9 @@ import androidx.compose.ui.window.PopupProperties
 @Composable
 fun HoldToolPicker(
     labels: List<String>, horizontal: Boolean, holdEnabled: Boolean, extent: Dp, reopen: Int,
-    stateLabel: String, selected: Boolean, onTap: (() -> Unit)? = null, onLegacyHold: (() -> Unit)? = null,
-    description: String = "Drawing tools", onClosed: () -> Unit = {},
+    stateLabel: String, selected: Boolean, onTap: (() -> Unit)? = null,
+    description: String = "Drawing tools", menuTitle: String = description, showLabels: Boolean = false,
+    onClosed: () -> Unit = {},
     onChoose: (Int) -> Unit, anchorIcon: @Composable () -> Unit, toolIcon: @Composable (Int) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -37,12 +39,14 @@ fun HoldToolPicker(
     var hint by remember { mutableStateOf<Int?>(null) }
     val position = remember(horizontal) { ToolMenuPosition(horizontal) }
     val choose by rememberUpdatedState(onChoose)
-    val columns = 4
+    val columns = if (showLabels) 2 else 4
     val cell = 48.dp
+    val cellWidth = if (showLabels) cell * 2 else cell
     var page by remember(labels) { mutableIntStateOf(0) }
     // Leave space for the caption and navigation in landscape windows.
-    val paged = labels.size > 16
-    val indices = if (paged) labels.indices.drop(page * 12).take(12) else labels.indices.toList()
+    val paged = labels.size > columns * 4
+    val pageSize = columns * 3
+    val indices = if (paged) labels.indices.drop(page * pageSize).take(pageSize) else labels.indices.toList()
     val cells = buildList {
         addAll(indices)
         if (paged && page > 0) add(-1)
@@ -62,9 +66,10 @@ fun HoldToolPicker(
         Surface(shape = MaterialTheme.shapes.small,
             color = if (active) Color(0xFFF4F4F2) else Color.Transparent,
             contentColor = if (active) Color(0xFF17181B) else Color.White) {
-            Box(Modifier.size(extent).pointerInput(holdEnabled, labels, position) {
+            Box(Modifier.size(extent).pointerInput(holdEnabled, labels, columns, position) {
                 if (!holdEnabled) return@pointerInput
                 val cellPx = cell.roundToPx()
+                val cellWidthPx = cellWidth.roundToPx()
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     pointerDown = true
@@ -76,8 +81,8 @@ fun HoldToolPicker(
                             if (event.changes.size != 1 || change.isConsumed) break
                             if (open) {
                                 val local = change.position - position.relativeOrigin - Offset(0f, 24.dp.roundToPx().toFloat())
-                                hovered = if (local.x >= 0 && local.x < columns * cellPx && local.y >= 0)
-                                    currentCells.getOrNull((local.y / cellPx).toInt() * columns + (local.x / cellPx).toInt())
+                                hovered = if (local.x >= 0 && local.x < columns * cellWidthPx && local.y >= 0)
+                                    currentCells.getOrNull((local.y / cellPx).toInt() * columns + (local.x / cellWidthPx).toInt())
                                 else null
                                 if (!change.pressed) {
                                     released = true
@@ -94,8 +99,8 @@ fun HoldToolPicker(
                 }
             }.combinedClickable(role = Role.Button,
                 onClick = { if (holdEnabled && onTap != null) onTap() else open = true },
-                onLongClickLabel = if (holdEnabled) "Open ${description.lowercase()}" else if (onLegacyHold != null) "Reselect previous area" else null,
-                onLongClick = if (holdEnabled) ({ open = true }) else onLegacyHold)
+                onLongClickLabel = if (holdEnabled) "Open ${description.lowercase()}" else null,
+                onLongClick = if (holdEnabled) ({ open = true }) else null)
                 .semantics { contentDescription = description; stateDescription = stateLabel; this.selected = active },
                 contentAlignment = Alignment.Center) { anchorIcon() }
         }
@@ -103,8 +108,8 @@ fun HoldToolPicker(
             Surface(shape = MaterialTheme.shapes.medium, color = Color(0xFF202125), contentColor = Color.White,
                 border = BorderStroke(1.dp, Color(0xFF45474D))) {
                 Column {
-                    Box(Modifier.width(cell * columns).height(24.dp), contentAlignment = Alignment.Center) {
-                        Text((hovered ?: hint)?.let(::label) ?: description, maxLines = 1, style = MaterialTheme.typography.labelMedium)
+                    Box(Modifier.width(cellWidth * columns).height(24.dp), contentAlignment = Alignment.Center) {
+                        Text((hovered ?: hint)?.let(::label) ?: menuTitle, maxLines = 1, style = MaterialTheme.typography.labelMedium)
                     }
                     cells.chunked(columns).forEach { row ->
                         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr) { Row {
@@ -115,12 +120,22 @@ fun HoldToolPicker(
                                     if (pointerOver) hint = index
                                     else if (hint == index && hovered != index) hint = null
                                 }
-                                Box(Modifier.size(cell).hoverable(interaction)
+                                Box(Modifier.size(cellWidth, cell).hoverable(interaction)
                                     .background(if (hovered == index || pointerOver) Color(0xFF834337) else Color.Transparent)
                                     .combinedClickable(role = Role.Button, onLongClick = { hint = index },
                                         onClick = { activate(index) })
                                     .semantics { contentDescription = label(index) },
-                                    contentAlignment = Alignment.Center) { if (index < 0) Text(if (index == -1) "‹" else "›") else toolIcon(index) }
+                                    contentAlignment = Alignment.Center) {
+                                    when {
+                                        index < 0 -> Text(if (index == -1) "‹" else "›")
+                                        showLabels -> Column(Modifier.padding(horizontal = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            toolIcon(index)
+                                            Text(label(index), Modifier.clearAndSetSemantics {}, maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        else -> toolIcon(index)
+                                    }
+                                }
                             }
                         } }
                     }

@@ -12,7 +12,6 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,8 +34,9 @@ internal fun BrushFavoritesDock(
     onSelect: () -> Unit, onEraser: () -> Unit, onSmudge: () -> Unit,
     pixelToolsAvailable: Boolean, onPixelTool: (PixelTool) -> Unit,
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
-    brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String = "Tools",
-    onReselect: () -> Unit = {}, onAdjustments: () -> Unit = {}, onColorizeMask: () -> Unit = {},
+    brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String? = null,
+    onReselect: () -> Unit = {}, onTransform: () -> Unit = {}, onFitCanvas: () -> Unit = {},
+    onAdjustments: () -> Unit = {}, onColorizeMask: () -> Unit = {},
     onLassoFill: () -> Unit = {}, onRibbon: () -> Unit = {}, onColorPush: () -> Unit = {},
     assists: dev.tipstroke.core.drawing.BrushAssists = dev.tipstroke.core.drawing.BrushAssists(),
     onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
@@ -53,7 +53,8 @@ internal fun BrushFavoritesDock(
         border = BorderStroke(1.dp, Color(0xB345474D))) {
         BoxWithConstraints(Modifier.padding(4.dp)) {
             val available = if (horizontal) maxWidth.value + 8f else maxHeight.value + 8f
-            val slot = minOf(48f, ((available - 14f) / 4f).coerceAtLeast(1f))
+            val fixedSpace = 8f + (BRUSH_DOCK_FIXED_CELLS - 1) * 2f
+            val slot = minOf(48f, ((available - fixedSpace) / BRUSH_DOCK_FIXED_CELLS).coerceAtLeast(1f))
             val capacity = brushFavoriteCapacity(available, slot)
             val visibleFavorites = favorites.distinctBy { it.id }.take(capacity)
             val favoriteSelected = visibleFavorites.any { it.id == selected.id }
@@ -67,41 +68,53 @@ internal fun BrushFavoritesDock(
                 Box {
                     val tools = buildList {
                         add(DockTool("Eraser", EraserIcon) { if (toolLabel != "Eraser") onEraser() })
-                        add(DockTool("Select", Icons.Outlined.SelectAll, onSelect))
                         add(DockTool("Smudge", Icons.Outlined.BlurOn, onSmudge))
                         add(DockTool("Lasso fill", Icons.Outlined.FormatColorFill, onLassoFill))
                         add(DockTool("Ribbon", Icons.Outlined.Gesture, onRibbon))
-                        add(DockTool("Color push", Icons.Outlined.OpenWith, onColorPush))
+                        add(DockTool("Color push", Icons.Outlined.TouchApp, onColorPush))
                         if (pixelToolsAvailable) {
                             add(DockTool("Pixel pencil", Icons.Outlined.Edit) { onPixelTool(PixelTool.PENCIL) })
                             add(DockTool("Pixel line", Icons.Outlined.ShowChart) { onPixelTool(PixelTool.LINE) })
                             add(DockTool("Dither", Icons.Outlined.Grain) { onPixelTool(PixelTool.DITHER) })
                         }
-                        add(DockTool("Reselect previous area", Icons.Outlined.History, onReselect))
                         add(DockTool("Colorize mask", Icons.Outlined.Palette, onColorizeMask))
                         add(DockTool("Blur & bloom", Icons.Outlined.Flare, onAdjustments))
                         add(DockTool("Brush aids", Icons.Outlined.Architecture) { aidsOpen = true })
                         add(DockTool("Adjust tip", Icons.Outlined.Tune, onStudio))
                     }
+                    val active = tools.find { !brushActive && it.label == toolLabel }
+                    val state = active?.label ?: "Drawing tools"
                     var reopen by remember { mutableIntStateOf(0) }
-                    dev.tipstroke.ui.HoldToolPicker(
+                    HoldToolPicker(
                         labels = tools.map { it.label }, horizontal = horizontal, holdEnabled = holdPicker,
-                        extent = slot.dp, reopen = reopen, stateLabel = if (aidsActive) "$toolLabel; brush aids active" else toolLabel,
-                        selected = !brushActive || aidsActive, onTap = onEraser, onLegacyHold = onReselect,
+                        extent = slot.dp, reopen = reopen, stateLabel = if (aidsActive) "$state · brush aids active" else state,
+                        selected = active != null || aidsActive, onTap = onEraser,
                         onChoose = { tools[it].action() },
-                        anchorIcon = {
-                            val icon = tools.find { !brushActive && it.label == toolLabel }?.icon ?: EraserIcon
-                            Icon(icon, null)
-                        },
+                        anchorIcon = { Icon(active?.icon ?: EraserIcon, null) },
                         toolIcon = { Icon(tools[it].icon, null) },
                     )
                     DropdownMenu(aidsOpen, { aidsOpen = false }, containerColor = Color(0xFF202125)) {
-                        DropdownMenuItem(text = { Text("Back to tools") }, onClick = { aidsOpen = false; reopen++ })
+                        DropdownMenuItem(text = { Text("Back to drawing tools") }, onClick = { aidsOpen = false; reopen++ })
                         dev.tipstroke.ui.DrawingAssistsMenu(assists, onAssists, mirrorCopies, onMirrorCopies,
                             { aidsOpen = false; onMirrorCenter() }, perspectiveMode, onPerspectiveMode,
                             { index -> aidsOpen = false; onVanishingPoint(index) })
                     }
                 }
+                val movingTools = listOf(
+                    DockTool("Select", Icons.Outlined.SelectAll, onSelect),
+                    DockTool("Transform", Icons.Outlined.Transform, onTransform),
+                    DockTool("Reselect previous area", Icons.Outlined.History, onReselect),
+                    DockTool("Fit canvas", Icons.Outlined.FitScreen, onFitCanvas),
+                )
+                val activeMovingTool = movingTools.find { !brushActive && it.label == toolLabel }
+                HoldToolPicker(
+                    labels = movingTools.map { it.label }, horizontal = horizontal, holdEnabled = true,
+                    extent = slot.dp, reopen = 0, description = "Moving tools",
+                    stateLabel = activeMovingTool?.label ?: "Moving tools", selected = activeMovingTool != null,
+                    onChoose = { movingTools[it].action() },
+                    anchorIcon = { Icon(activeMovingTool?.icon ?: Icons.Outlined.OpenWith, null) },
+                    toolIcon = { Icon(movingTools[it].icon, null) },
+                )
                 DockCell(tuneDescription, false, slot, !horizontal, onTune, icon = Icons.Outlined.Tune)
             }
             if (horizontal) Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) { buttons() }
@@ -123,7 +136,8 @@ private fun TipGroupsPicker(
         else tips.map { it.displayName } + "Back to tip groups"
     HoldToolPicker(
         labels = labels, horizontal = horizontal, holdEnabled = true, extent = slot.dp, reopen = reopen,
-        description = "Tip groups", stateLabel = group?.name ?: if (selected) tipName else "Tip groups",
+        description = "Tip groups", menuTitle = group?.name ?: "Tip groups", showLabels = group == null,
+        stateLabel = if (selected) tipName else "Tip groups",
         selected = selected, onClosed = { groupId = null },
         onChoose = { index ->
             when {
@@ -146,12 +160,12 @@ private fun TipGroupsPicker(
 
 @Composable
 private fun DockCell(description: String, selected: Boolean, extent: Float, beside: Boolean, onClick: () -> Unit,
-    icon: ImageVector? = null, preset: BrushPreset? = null, onLongClick: (() -> Unit)? = null, stateLabel: String? = null) {
+    icon: ImageVector? = null, preset: BrushPreset? = null) {
     TipHint(description, beside) { showHint ->
         Surface(color = if (selected) Color(0xFFF4F4F2) else Color.Transparent, shape = MaterialTheme.shapes.small) {
             Box(Modifier.size(extent.dp).clip(MaterialTheme.shapes.small)
-                .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick ?: showHint, onLongClickLabel = if (onLongClick != null) "Reselect previous area" else description)
-                .semantics { contentDescription = description; this.selected = selected; stateLabel?.let { stateDescription = it } }, contentAlignment = Alignment.Center) {
+                .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = showHint, onLongClickLabel = description)
+                .semantics { contentDescription = description; this.selected = selected }, contentAlignment = Alignment.Center) {
                 if (preset != null) TipStrokeThumbnail(preset, Modifier.fillMaxSize().padding(2.dp))
                 else if (icon != null) Icon(icon, null, tint = if (selected) Color(0xFF17181B) else Color.White,
                     modifier = Modifier.size(minOf(24f, extent).dp))

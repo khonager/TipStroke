@@ -18,15 +18,20 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertEqual(tools.value as? String, "Eraser")
         let anchor = tools.frame
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        // Smudge is the third cell in the first row, below the palette caption.
+        // Smudge is the second cell in the first row, below the palette caption.
         let cellSize: CGFloat = 48
         let captionHeight: CGFloat = 24
-        let gridHeight = 5 * cellSize + captionHeight
-        let smudge = origin.withOffset(CGVector(dx: anchor.midX + cellSize / 2 - app.frame.minX,
+        let gridHeight = 4 * cellSize + captionHeight
+        let smudge = origin.withOffset(CGVector(dx: anchor.midX - cellSize / 2 - app.frame.minX,
             dy: anchor.minY - gridHeight + captionHeight + cellSize / 2 - app.frame.minY))
         let toolCenter = tools.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         toolCenter.press(forDuration: 0.8, thenDragTo: smudge)
         XCTAssertEqual(tools.value as? String, "Smudge")
+        let movingTools = app.buttons["Moving tools"]
+        movingTools.tap()
+        XCTAssertFalse(app.buttons["Smudge"].exists)
+        app.buttons["Freehand selection"].tap()
+        XCTAssertEqual(movingTools.value as? String, "Freehand selection")
         app.segmentedControls["Drawing tool"].buttons["Ink"].tap()
         let canvas = app.descendants(matching: .any)["Drawing canvas"]
         let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.40, dy: 0.45))

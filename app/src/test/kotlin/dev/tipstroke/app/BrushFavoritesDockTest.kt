@@ -47,7 +47,7 @@ class BrushFavoritesDockTest {
         compose.onNodeWithText("Elastic line").performClick()
         compose.onNodeWithText("Mirror wheel: 6 copies").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(assists.paintInside); assertTrue(assists.elasticLine); assertEquals(6, copies) }
-        compose.onNodeWithText("Back to tools").performScrollTo().performClick()
+        compose.onNodeWithText("Back to drawing tools").performScrollTo().performClick()
         compose.onNodeWithContentDescription("Ribbon").performClick()
         compose.runOnIdle { assertTrue(ribbon) }
         compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
@@ -141,10 +141,10 @@ class BrushFavoritesDockTest {
             }
         }
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("Pinned 3").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Pinned 4").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Pinned 2").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Pinned 3").assertDoesNotExist()
         compose.onAllNodes(hasScrollAction()).assertCountEquals(0)
-        compose.runOnIdle { width = 270 }
+        compose.runOnIdle { width = 320 }
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Pinned 0").assertIsDisplayed()
         compose.onNodeWithContentDescription("Pinned 1").assertDoesNotExist()
@@ -161,7 +161,7 @@ class BrushFavoritesDockTest {
             MaterialTheme {
                 Box(Modifier.fillMaxSize()) {
                     BrushFavoritesDock(tip, listOf(tip), false, {}, { selected++ }, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
-                        Modifier.height(300.dp))
+                        Modifier.height(350.dp))
                 }
             }
         }
@@ -251,7 +251,7 @@ class BrushFavoritesDockTest {
         assertEquals(listOf("custom-b", "ink-v1", "pencil-v1"), preferences.load())
         for (available in 120..1200) {
             val slots = brushFavoriteCapacity(available.toFloat())
-            if (slots > 0) assertTrue((slots + 4) * 48 + (slots + 3) * 2 + 8 <= available)
+            if (slots > 0) assertTrue((slots + 5) * 48 + (slots + 4) * 2 + 8 <= available)
         }
     }
 }

@@ -174,7 +174,7 @@ shows an explanation instead of filling outside the reference. Feathering and se
 
 ### Select tool controls and layer clipping
 
-Select lives beside Pencil, Ink and Eraser in the tool rail/dock. Selecting it
+Select lives under **Moving tools** in the canvas dock. Selecting it
 replaces size/opacity controls with an icon palette in the same area. Lasso,
 rectangle and ellipse sit above New/Add/Subtract/Intersect; active choices are
 highlighted. Each icon has an accessibility label and a hover/hold explanation. Choosing a drawing tool restores tip controls without
@@ -291,12 +291,15 @@ Flip horizontal, Flip vertical, Rotate 45°, a rotation slider, Fit to canvas, R
 Tips is a dedicated canvas-dock action, separate from Adjust. Its library lists
 all tips with previews, creation/import, and pinning. The dock uses fixed cells
 and never scrolls; the measured available axis determines how many favorites fit
-after reserving Tips, Tip groups, Tools, and Adjust. Saved pin order persists across layout
-changes. Extra pins are available from Favorites in the library. Tools contains selection, erasing, smudging,
-eligible pixel tools, and Tip Studio. Adjust retains the compact phone's
+after reserving Tips, Tip groups, Drawing tools, Moving tools, and Adjust. Saved
+pin order persists across layout changes. Extra pins are available from Favorites
+in the library. Tap Moving tools for selection, selection recall, transform, and
+Fit canvas. Transform opens the image controls for an active image layer, or
+opens the raster transform for a selected area. Drawing tools contains erasing,
+smudging, eligible pixel tools, and Tip Studio. Adjust retains the compact phone's
 size/opacity toggle; custom-tip studio adjustment opens its saved definition.
 
-Favorite cells show native stroke thumbnails; Tips, Tools, and Adjust use icons.
+Favorite cells show native stroke thumbnails. The fixed dock actions use icons.
 Tip action names appear after 650 ms of stylus/mouse hover and cancel on exit.
 Touch users can hold an icon for its label. The label appears beside a vertical
 dock or above a horizontal control and stays inside the window. Tip Studio and
@@ -488,7 +491,7 @@ ordinary marks. This replaces shape recognition while enabled, and does not affe
 lasso fill. Geometry fitting and bending live in core; native samples and previews
 stay on Android. Paint inside and selections also constrain elastic strokes.
 
-**Mirror wheel** under Tools → Brush aids offers Off, a two-sided horizontal reflection, or 4/6/8/12
+**Mirror wheel** under Drawing tools → Brush aids offers Off, a two-sided horizontal reflection, or 4/6/8/12
 radial copies. It defaults to the document center; **Place mirror center…** consumes
 the next drawing-pointer tap to reposition the visible crosshair. Copies preview
 natively and commit together as one undo operation. Selection/Paint inside clips
@@ -531,7 +534,7 @@ shows an active state whenever an aid is enabled; aids are not stored in presets
 
 ### Magnetic perspective rulers
 
-Tools → Brush aids offers one- and two-point rulers and vanishing-point placement.
+Drawing tools → Brush aids offers one- and two-point rulers and vanishing-point placement.
 Pan/zoom out before placing points beyond the document. One-point snapping chooses
 horizontal, vertical, or the ray toward its vanishing point. Two-point snapping
 chooses vertical or either vanishing-point ray. After 4 screen dp of movement the
@@ -542,7 +545,7 @@ Elastic line and do not constrain lasso fill, Ribbon, Color push, or Smudge.
 
 ### Blur and bloom
 
-Tools → Blur & bloom adjusts the active paint layer, clipped to the active selection.
+Drawing tools → Blur & bloom adjusts the active paint layer, clipped to the active selection.
 Gaussian uses a normalized separable kernel; Motion uses a directional kernel;
 Perspective spreads along rays from the chosen normalized center; Bloom extracts
 highlights, blurs them, and adds their light. All math is premultiplied-alpha in core.
@@ -554,7 +557,7 @@ filter layer or document-schema change is introduced.
 
 ### Colorize mask
 
-Tools → Colorize mask → Create mask creates ordinary sparse raster output and hints
+Drawing tools → Colorize mask → Create mask creates ordinary sparse raster output and hints
 layers linked to the active line-art layer. Draw opaque color scribbles on hints;
 reopen the action to Preview and Apply. Edit hints reopens the same saved hints layer.
 Magenta is reserved as the transparent hint color. Hint editing switches to Ink and
@@ -576,13 +579,13 @@ still drawings only. Imported image line art must first be on a paint layer.
 On iOS, Lasso fill uses a native display-link preview: only reached sparse tiles are
 restored from the stroke transaction before the even-odd polygon is repainted.
 Lifting commits one undo entry; cancellation restores the original tiles.
-iOS Tools → Brush aids exposes temporary Paint inside. It uses source-atop for
+iOS Drawing tools → Brush aids exposes temporary Paint inside. It uses source-atop for
 all native brush/stamp paths, preserves soft alpha, and takes priority over the
 reference layer. It is session state, separate from saved layer alpha lock.
 iOS Elastic line fits the shared bounded quadratic after a 650 ms hold. Dragging
 bends it with fixed endpoints; native stamp brushes retain their tip/grain.
 iOS Mirror wheel repeats native brush geometry inside one tile transaction, while
-selection/reference clips remain in document coordinates. Tools → Brush aids →
+selection/reference clips remain in document coordinates. Drawing tools → Brush aids →
 Mirror wheel offers Off/2/4/6/8/12 copies and next-touch center placement.
 iOS Ribbon uses the shared trailing-edge outline and native even-odd fill. Width
 uses brush size; color/opacity are flat. Mirror transforms preserve handedness.
@@ -600,7 +603,7 @@ Gaussian, Motion, Perspective and Bloom expose radius and their relevant control
 Preview uses an immutable snapshot; Apply commits one bounded transaction and
 Cancel leaves the document untouched. Selection stays in document coordinates.
 iOS Colorize mask creates saved output below line art and editable hints above.
-Tools → Colorize mask can reopen hints, set magenta transparent seeds, preview
+Drawing tools → Colorize mask can reopen hints, set magenta transparent seeds, preview
 shared bounded region propagation, and apply with a single compound undo entry.
 It supports still drawings, gap 0–4 and ink threshold 0.02–1. Generation runs off
 the input thread and uses at most a 1024×1024 analysis grid.
