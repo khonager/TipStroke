@@ -56,7 +56,7 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     integrations:
-      app_store_connect: TipStroke
+      app_store_connect: app-store-connect
     environment:
       xcode: "26.0"
       java: 17
