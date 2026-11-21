@@ -7,6 +7,8 @@ import androidx.compose.material.icons.outlined.*
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,6 +16,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import dev.tipstroke.core.model.*
@@ -86,7 +89,7 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
         Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Hold for drawing tools", color = Color.White)
-                Text("Tap for Eraser. Hold and slide to choose another tool.", color = Color(0xFFA9ABB1), fontSize = 12.sp)
+                Text("Tap for Eraser. Hold and slide to choose a drawing tool.", color = Color(0xFFA9ABB1), fontSize = 12.sp)
             }
             Switch(holdPicker, { holdPicker = it; ui.holdToolPicker = it },
                 modifier = Modifier.semantics { contentDescription = "Hold for drawing tools" })
@@ -187,10 +190,7 @@ private fun ActionChoicePanel(slot: SettingsSlot, settings: GestureSettings, onC
     Surface(modifier.fillMaxHeight(), color = Color(0xFF1D1E21), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Color(0xFF404247))) {
         Column(Modifier.padding(16.dp)) {
             Text(slot.title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 14.dp))
-            when (slot) {
-                is SettingsSlot.Finger -> availableActions(slot.slot).forEach { action -> ActionOption(action, action == actionFor(slot.slot, settings)) { onChange(settings.withAction(slot.slot, action)) } }
-                is SettingsSlot.Stylus -> StylusButtonAction.entries.forEach { action -> StylusActionOption(action, action == stylusActionFor(slot, settings)) { onChange(settings.withStylusAction(slot, action)) } }
-            }
+            ActionChoices(slot, settings, onChange, Modifier.weight(1f, fill = false))
         }
     }
 }
@@ -200,29 +200,45 @@ private fun ActionChoiceDialog(slot: SettingsSlot, settings: GestureSettings, on
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(slot.title) },
-        text = { Column {
-            when (slot) {
-                is SettingsSlot.Finger -> availableActions(slot.slot).forEach { action -> ActionOption(action, action == actionFor(slot.slot, settings)) { onChange(settings.withAction(slot.slot, action)); onDismiss() } }
-                is SettingsSlot.Stylus -> StylusButtonAction.entries.forEach { action -> StylusActionOption(action, action == stylusActionFor(slot, settings)) { onChange(settings.withStylusAction(slot, action)); onDismiss() } }
-            }
-        } },
+        text = { ActionChoices(slot, settings, { onChange(it); onDismiss() }) },
         confirmButton = { ActionIconButton(onClick = onDismiss, label = "Close", icon = Icons.Outlined.Close) },
     )
 }
 
 @Composable
-private fun StylusActionOption(action: StylusButtonAction, selected: Boolean, onClick: () -> Unit) {
+private fun ActionChoices(
+    slot: SettingsSlot, settings: GestureSettings, onChange: (GestureSettings) -> Unit, modifier: Modifier = Modifier,
+) {
+    val scroll = key(slot) { rememberScrollState() }
+    Column(modifier.fillMaxWidth().verticalScroll(scroll).selectableGroup()) {
+        when (slot) {
+            is SettingsSlot.Finger -> availableActions(slot.slot).forEach { action ->
+                ActionOption(action.displayName, actionDescription(action), action == actionFor(slot.slot, settings)) {
+                    onChange(settings.withAction(slot.slot, action))
+                }
+            }
+            is SettingsSlot.Stylus -> StylusButtonAction.entries.forEach { action ->
+                ActionOption(action.displayName, stylusActionDescription(action), action == stylusActionFor(slot, settings)) {
+                    onChange(settings.withStylusAction(slot, action))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionOption(label: String, description: String, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable(onClick = onClick)
+        Modifier.fillMaxWidth().padding(bottom = 8.dp).selectable(selected, role = Role.RadioButton, onClick = onClick)
             .background(if (selected) Color(0xFF3A2B2B) else Color.Transparent, RoundedCornerShape(13.dp))
             .border(1.dp, if (selected) Color(0xFFED6A5A) else Color(0xFF3F4146), RoundedCornerShape(13.dp)).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(action.displayName, color = Color.White, fontWeight = FontWeight.Medium)
-            Text(stylusActionDescription(action), color = Color(0xFFA5A7AD), fontSize = 11.sp)
+            Text(label, color = Color.White, fontWeight = FontWeight.Medium)
+            Text(description, color = Color(0xFFA5A7AD), fontSize = 11.sp)
         }
-        RadioButton(selected, onClick)
+        RadioButton(selected, onClick = null)
     }
 }
 
@@ -237,22 +253,6 @@ private fun stylusActionDescription(action: StylusButtonAction) = when (action) 
     StylusButtonAction.UNDO -> "Undo the last step"
     StylusButtonAction.REDO -> "Redo the last undone step"
     StylusButtonAction.DISABLED -> "No action"
-}
-
-@Composable
-private fun ActionOption(action: FingerAction, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable(onClick = onClick)
-            .background(if (selected) Color(0xFF3A2B2B) else Color.Transparent, RoundedCornerShape(13.dp))
-            .border(1.dp, if (selected) Color(0xFFED6A5A) else Color(0xFF3F4146), RoundedCornerShape(13.dp)).padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(action.displayName, color = Color.White, fontWeight = FontWeight.Medium)
-            Text(actionDescription(action), color = Color(0xFFA5A7AD), fontSize = 11.sp)
-        }
-        RadioButton(selected, onClick)
-    }
 }
 
 private fun actionFor(slot: GestureSlot, settings: GestureSettings) = when (slot) {
