@@ -70,10 +70,13 @@ fun CanvasScreen(
         categories = categoryStore.load(libraryBrushes)
     }
     val presetsById = remember(libraryBrushes) { (BrushPreset.libraryBuiltIns + libraryBrushes.map { it.preset }).associateBy { it.id.value } }
-    val favoriteBrushes = favoriteIds.mapNotNull(presetsById::get)
-    val tipGroups = remember(categories, favoriteIds, presetsById) {
-        (categories + BrushCategory("favorites", "Favorites", favoriteIds)).mapNotNull { group ->
-            val tips = group.brushIds.mapNotNull(presetsById::get).filter { it.ink == null || android.os.Build.VERSION.SDK_INT >= 34 }
+    val availableDockTips = remember(presetsById) {
+        presetsById.filterValues { it.ink == null || android.os.Build.VERSION.SDK_INT >= 34 }
+    }
+    val favoriteBrushes = favoriteIds.mapNotNull(availableDockTips::get)
+    val tipGroups = remember(categories, availableDockTips) {
+        categories.mapNotNull { group ->
+            val tips = group.brushIds.mapNotNull(availableDockTips::get)
             if (tips.isEmpty()) null else DockTipGroup(group.id, group.name, tips)
         }
     }

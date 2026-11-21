@@ -54,9 +54,15 @@ internal fun BrushFavoritesDock(
             // Even extremely narrow split windows keep all three fixed actions reachable.
             val slot = minOf(48f, ((available - 12f) / 3f).coerceAtLeast(1f))
             val capacity = brushFavoriteCapacity(available, slot)
+            val visibleGroups = groups.take(capacity)
+            val visibleFavorites = favorites.distinctBy { it.id }.take(capacity - visibleGroups.size)
+            val favoriteSelected = visibleFavorites.any { it.id == selected.id }
+            val selectedGroup = if (favoriteSelected) null else visibleGroups.firstOrNull { group ->
+                group.tips.any { it.id == selected.id }
+            }
             val buttons: @Composable () -> Unit = {
                 if (groups.isEmpty()) {
-                    DockCell("Tips", brushActive && favorites.take(capacity).none { it.id == selected.id }, slot, !horizontal, onLibrary, icon = Icons.Outlined.GridView)
+                    DockCell("Tips", brushActive && !favoriteSelected, slot, !horizontal, onLibrary, icon = Icons.Outlined.GridView)
                 } else {
                     // Holding Tips also reaches groups beyond the available dock slots.
                     var browsing by remember { mutableStateOf<DockTipGroup?>(null) }
@@ -75,7 +81,7 @@ internal fun BrushFavoritesDock(
                         toolIcon = { index -> TipStrokeThumbnail(group?.tips?.get(index) ?: groups[index].tips.first(), Modifier.size(42.dp)) },
                     )
                 }
-                groups.take(capacity).forEach { group ->
+                visibleGroups.forEach { group ->
                     key(group.id) {
                         var last by remember { mutableStateOf<String?>(null) }
                         val active = group.tips.find { it.id == selected.id }
@@ -83,14 +89,14 @@ internal fun BrushFavoritesDock(
                         dev.tipstroke.ui.HoldToolPicker(
                             labels = group.tips.map { it.displayName }, horizontal = horizontal, holdEnabled = true,
                             extent = slot.dp, reopen = 0, stateLabel = tip.displayName, description = group.name,
-                            selected = brushActive && active != null, onTap = { onBrush(tip) }, onLegacyHold = {},
+                            selected = brushActive && group == selectedGroup, onTap = { onBrush(tip) }, onLegacyHold = {},
                             onChoose = { index -> val chosen = group.tips[index]; last = chosen.id.value; onBrush(chosen) },
-                            anchorIcon = { TipStrokeThumbnail(tip, Modifier.size(slot.dp).padding(2.dp)) },
+                            anchorIcon = { Icon(Icons.Outlined.Folder, null) },
                             toolIcon = { TipStrokeThumbnail(group.tips[it], Modifier.size(42.dp)) },
                         )
                     }
                 }
-                favorites.take((capacity - groups.size).coerceAtLeast(0)).forEach { preset ->
+                visibleFavorites.forEach { preset ->
                     key(preset.id.value) { DockCell(preset.displayName, brushActive && preset.id == selected.id, slot, !horizontal, { onBrush(preset) }, preset = preset) }
                 }
                 Box {

@@ -90,8 +90,8 @@ Tip Studio; the adjustment action retains the phone size/opacity toggle.
 There is no scrolling container in the dock.
 
 The dock fits group buttons first, then individual favorites, using 48 dp cells,
-2 dp gaps and three reserved actions. Every pinned tip remains available in the
-Favorites group even when the window has no room for individual shortcuts.
+2 dp gaps and three reserved actions. Extra pins are available from **Favorites**
+in the tip library.
 
 ## Visual controls and endpoint previews
 
@@ -203,7 +203,8 @@ Library cards show edit, category, export, share and (for custom tips) duplicate
 ## Android dock groups
 
 Tap a group to use its current tip. Hold, slide onto a tip, and lift to select it.
-Manga, Jetpack Ink (Android 14 and newer), and Favorites are provided by default.
+Manga and Jetpack Ink (Android 14 and newer) are provided by default. Group
+buttons use folder icons and favorites appear once as individual shortcuts.
 Hold **Tips** to reach every nonempty group when dock space is limited. A tap opens
 the library. Use **Categories** to create, rename, reorder, or remove groups.
 Use a tip’s **Categories** action to change membership, or pin it for Favorites.
