@@ -535,7 +535,7 @@ checks a comparison's single undo step, selection changes and no-op comparisons.
 
 ## Integrated Apple/shared controls checks
 
-Codemagic's `ios-simulator` workflow uses JDK 17 and Xcode 26.0. It runs common
+Codemagic's `ios-simulator` workflow uses JDK 17 and Xcode 27.0. It runs common
 Kotlin tests on Apple Silicon, then `tools/ios-test.sh` on iPhone and iPad and an
 unsigned device build. The app build invokes the shared Kotlin framework itself.
 The UI test opens the shared brush and color panels, draws, undoes/redoes, rotates,

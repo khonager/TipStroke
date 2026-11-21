@@ -35,4 +35,4 @@ Update the relevant document in `docs/` whenever architecture, input behavior, b
 
 - Put portable feature rules/serialization in `:core` and reusable controls in `:shared-ui`; Android and iOS hosts should supply platform adapters. Moving Kotlin targets alone does not provide feature parity.
 - Preserve native input/rendering. Add an Apple adapter or explicitly update the parity table in `docs/IOS.md` when introducing Android-only behavior.
-- Apple CI uses JDK 17, Xcode 26.0 and `-Ptipstroke.appleOnly=true`; no Android SDK is needed for that build path.
+- Apple CI uses JDK 17, Xcode 27.0 on Codemagic, Xcode 26.0 on GitHub Actions, and `-Ptipstroke.appleOnly=true`; no Android SDK is needed for that build path.

@@ -140,17 +140,17 @@ For direct registered-device distribution, change the release workflow's
 `distribution_type` to `ad_hoc` and provide the matching profile containing those
 devices. This is a signing choice, not an application-code change.
 
-Codemagic pins Xcode 26.0 and Java 17; Kotlin 2.2.21 adds Xcode 26 support.
-Avoid changing Xcode to `latest` without checking Kotlin/Native compatibility.
-The integration follows [Kotlin direct integration](https://kotlinlang.org/docs/multiplatform/multiplatform-direct-integration.html)
-and [Kotlin 2.2.21's Xcode support](https://kotlinlang.org/docs/whatsnew2220.html).
+Codemagic pins Xcode 27.0 and Java 17. Xcode 27 supplies the iOS 27 SDK
+required for App Store Connect uploads starting April 2027. TipStroke targets
+iOS 16 and later. GitHub Actions still uses Xcode 26.0 for its Apple checks.
+The framework uses [Kotlin direct integration](https://kotlinlang.org/docs/multiplatform/multiplatform-direct-integration.html).
 The configuration follows Codemagic's [native iOS build guide](https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/)
 and [signing instructions](https://docs.codemagic.io/yaml-code-signing/signing-ios/).
 No Codemagic build or Apple submission is performed merely by adding these files.
 
 ## Local macOS development
 
-Install JDK 17 and Xcode 26.0 (Kotlin 2.2.21), then open
+Install JDK 17 and Xcode 27.0 to match Codemagic, then open
 `ios/TipStroke.xcodeproj`, choose **TipStroke**, and run
 an iPhone or iPad simulator. For a physical device, select your Apple development
 team in Signing & Capabilities. Xcode resolves the pinned ZIPFoundation package for project exchange. Gradle downloads Kotlin/Compose
