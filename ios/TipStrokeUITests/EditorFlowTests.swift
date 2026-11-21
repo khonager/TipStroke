@@ -18,10 +18,12 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertEqual(tools.value as? String, "Eraser")
         let anchor = tools.frame
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        // The four-column palette sits above the portrait dock. Smudge is the third cell.
-        let gridHeight: CGFloat = 5 * 48 + 24
-        let smudge = origin.withOffset(CGVector(dx: anchor.midX + 24 - app.frame.minX,
-            dy: anchor.minY - gridHeight + 24 - app.frame.minY))
+        // Smudge is the third cell in the first row, below the palette caption.
+        let cellSize: CGFloat = 48
+        let captionHeight: CGFloat = 24
+        let gridHeight = 5 * cellSize + captionHeight
+        let smudge = origin.withOffset(CGVector(dx: anchor.midX + cellSize / 2 - app.frame.minX,
+            dy: anchor.minY - gridHeight + captionHeight + cellSize / 2 - app.frame.minY))
         let toolCenter = tools.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         toolCenter.press(forDuration: 0.8, thenDragTo: smudge)
         XCTAssertEqual(tools.value as? String, "Smudge")
