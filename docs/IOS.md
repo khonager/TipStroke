@@ -106,8 +106,19 @@ The repository-root `codemagic.yaml` defines two workflows:
 2. **ios-release** is started manually and produces a signed App Store IPA after
    the same simulator checks. It does not upload or submit anything to Apple.
 
-Connect this repository in Codemagic and select its YAML configuration. Run
-**ios-simulator** first. For the signed workflow:
+In Codemagic, open TipStroke and select **Start new build**. Choose the branch
+containing the `codemagic.yaml` you want to run, such as `unstable`, and select
+**iOS — iPhone and iPad checks** (`ios-simulator`). The YAML supplies Xcode and
+Java. This workflow needs no signing identities or environment variables in
+Codemagic. After a successful build, download `TipStroke-simulator.zip` from
+the build's artifacts.
+
+If **Test on iPhone and iPad** fails, check **Simulator test summary** at the
+end of the step for each device's result. Both device families run even if the
+first fails. Use the failing device's output or its `.xcresult` bundle to find
+the first test, build, or simulator error.
+
+For the signed workflow:
 
 1. Register the explicit App ID `dev.tipstroke.ios` in your Apple Developer team.
    If that identifier is unavailable or you prefer another, change it in

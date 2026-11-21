@@ -21,14 +21,31 @@ for family in ('iPhone', 'iPad'):
     print(f"{family}\t{candidates[0]['udid']}")
 PY
 result=0
+summary=()
 while IFS=$'\t' read -r family device; do
-    xcodebuild test \
+    result_bundle="build/ios/${family}-$(date +%s).xcresult"
+    printf '\nRunning %s simulator tests (%s)\n' "$family" "$result_bundle"
+    if xcodebuild test \
       -project ios/TipStroke.xcodeproj -scheme TipStroke \
       -destination "platform=iOS Simulator,id=$device" \
       -parallel-testing-enabled NO \
       -derivedDataPath build/ios/DerivedData \
-      -resultBundlePath "build/ios/${family}-$(date +%s).xcresult" \
-      CODE_SIGNING_ALLOWED=NO || result=1
-    xcrun simctl shutdown "$device" || true
+      -resultBundlePath "$result_bundle" \
+      CODE_SIGNING_ALLOWED=NO </dev/null; then
+        summary+=("$family passed ($result_bundle)")
+    else
+        summary+=("$family failed (xcodebuild exit $?, $result_bundle)")
+        result=1
+    fi
+
+    if ! shutdown_output=$(xcrun simctl shutdown "$device" 2>&1); then
+        # Xcode may already have shut down the simulator after testing.
+        case "$shutdown_output" in
+            *"Unable to shutdown device in current state: Shutdown") ;;
+            *) printf 'Warning while shutting down the %s simulator\n%s\n' "$family" "$shutdown_output" >&2 ;;
+        esac
+    fi
 done < build/ios/test-devices.tsv
+printf '\nSimulator test summary\n'
+printf '  %s\n' "${summary[@]}"
 exit "$result"
