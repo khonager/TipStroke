@@ -515,7 +515,7 @@
 		"E9B2E96ABC5F6856F2BE79CF" = {
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
-				"PRODUCT_BUNDLE_IDENTIFIER" = "dev.tipstroke.ios";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "de.khonager.tipstroke";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"INFOPLIST_FILE" = "TipStroke/Info.plist";
 				"CODE_SIGN_STYLE" = "Automatic";
@@ -538,7 +538,7 @@
 		"5A8C91857F674E16E2724F47" = {
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
-				"PRODUCT_BUNDLE_IDENTIFIER" = "dev.tipstroke.ios";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "de.khonager.tipstroke";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"INFOPLIST_FILE" = "TipStroke/Info.plist";
 				"CODE_SIGN_STYLE" = "Automatic";
@@ -647,7 +647,7 @@
 		"3CD89298FE505B38345C1824" = {
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
-				"PRODUCT_BUNDLE_IDENTIFIER" = "dev.tipstroke.ios.TipStrokeTests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "de.khonager.tipstroke.TipStrokeTests";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"GENERATE_INFOPLIST_FILE" = "YES";
 				"CODE_SIGN_STYLE" = "Automatic";
@@ -665,7 +665,7 @@
 		"4D147ECFB9FFAFFBE9E85A02" = {
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
-				"PRODUCT_BUNDLE_IDENTIFIER" = "dev.tipstroke.ios.TipStrokeTests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "de.khonager.tipstroke.TipStrokeTests";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"GENERATE_INFOPLIST_FILE" = "YES";
 				"CODE_SIGN_STYLE" = "Automatic";
@@ -728,7 +728,7 @@
 		"1FC3C417888CB730F1918128" = {
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
-				"PRODUCT_BUNDLE_IDENTIFIER" = "dev.tipstroke.ios.TipStrokeUITests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "de.khonager.tipstroke.TipStrokeUITests";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"GENERATE_INFOPLIST_FILE" = "YES";
 				"CODE_SIGN_STYLE" = "Automatic";
@@ -745,7 +745,7 @@
 		"DA0D996C354AB7BB810C838D" = {
 			"isa" = "XCBuildConfiguration";
 			"buildSettings" = {
-				"PRODUCT_BUNDLE_IDENTIFIER" = "dev.tipstroke.ios.TipStrokeUITests";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "de.khonager.tipstroke.TipStrokeUITests";
 				"PRODUCT_NAME" = "$(TARGET_NAME)";
 				"GENERATE_INFOPLIST_FILE" = "YES";
 				"CODE_SIGN_STYLE" = "Automatic";

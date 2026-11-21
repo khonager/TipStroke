@@ -104,7 +104,7 @@ The repository-root `codemagic.yaml` defines two workflows:
    bundles and `TipStroke-simulator.zip`. The unsigned device app cannot be
    installed on a normal iPhone; the simulator ZIP is for a Mac simulator.
 2. **ios-release** is started manually and produces a signed App Store IPA after
-   the same simulator checks. It does not upload or submit anything to Apple.
+   the same simulator checks, then uploads the build to App Store Connect for TestFlight.
 
 In Codemagic, open TipStroke and select **Start new build**. Choose the branch
 containing the `codemagic.yaml` you want to run, such as `unstable`, and select
@@ -120,19 +120,21 @@ the first test, build, or simulator error.
 
 For the signed workflow:
 
-1. Register the explicit App ID `dev.tipstroke.ios` in your Apple Developer team.
-   If that identifier is unavailable or you prefer another, change it in
-   `tools/generate-ios-project.py` and the signing block in `codemagic.yaml`, then
-   regenerate and commit the Xcode project.
-2. Add your Apple distribution certificate (including its private key) and a
-   matching App Store provisioning profile under Codemagic **Team settings →
-   codemagic.yaml settings → Code signing identities**. Keep these in Codemagic;
-   never commit credentials or profiles. The workflow applies these through
-   `xcode-project use-profiles` and uses Codemagic's build number for the IPA.
-3. Run **ios-release** and download its IPA. App Store signing is for App Store
-   Connect/TestFlight distribution, not direct installation on arbitrary devices.
-   Upload through your normal App Store Connect process. TestFlight publishing
-   can be configured separately after the app record and API integration exist.
+1. Register the explicit App ID `de.khonager.tipstroke` in Apple Developer and
+   select it when creating the TipStroke app record in App Store Connect.
+2. In Codemagic → Team settings → Team integrations → Developer Portal → Manage keys,
+   find the existing App Store Connect integration for your Apple team. Set
+   `ios-release.integrations.app_store_connect` in `codemagic.yaml` to its exact
+   name. If you are connecting the team for the first time, add a team API key
+   with upload access using its issuer ID, key ID and private `.p8` file.
+3. In Codemagic → Team settings → codemagic.yaml settings → Code signing identities,
+   reuse a valid Apple Distribution certificate with its private key. Fetch or upload
+   an App Store Connect provisioning profile for `de.khonager.tipstroke` that
+   includes this certificate.
+4. Start **iOS — signed App Store IPA** on the branch with this configuration.
+   Codemagic uploads the signed IPA. After Apple processes it, open TipStroke →
+   TestFlight in App Store Connect, answer any export compliance prompt, and add
+   the build and testers to an internal testing group.
 
 For direct registered-device distribution, change the release workflow's
 `distribution_type` to `ad_hoc` and provide the matching profile containing those

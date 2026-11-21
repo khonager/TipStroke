@@ -56,7 +56,7 @@ def configurations(name, settings):
     return obj(name + "configs", "XCConfigurationList", buildConfigurations=configs, defaultConfigurationIsVisible=0, defaultConfigurationName="Release")
 
 project_config = configurations("project", common)
-app_settings = dict(PRODUCT_BUNDLE_IDENTIFIER="dev.tipstroke.ios", PRODUCT_NAME="$(TARGET_NAME)",
+app_settings = dict(PRODUCT_BUNDLE_IDENTIFIER="de.khonager.tipstroke", PRODUCT_NAME="$(TARGET_NAME)",
                     INFOPLIST_FILE="TipStroke/Info.plist", CODE_SIGN_STYLE="Automatic", CURRENT_PROJECT_VERSION="1",
                     MARKETING_VERSION="0.1.0", ASSETCATALOG_COMPILER_APPICON_NAME="AppIcon",
                     SUPPORTED_PLATFORMS="iphoneos iphonesimulator", SUPPORTS_MACCATALYST="NO",
@@ -89,7 +89,7 @@ targets = [app]
 for name, product, kind in [("TipStrokeTests", unit_product, "unit-test"), ("TipStrokeUITests", ui_product, "ui-testing")]:
     proxy = obj(name + "proxy", "PBXContainerItemProxy", containerPortal=key("project"), proxyType=1, remoteGlobalIDString=app, remoteInfo="TipStroke")
     dependency = obj(name + "dependency", "PBXTargetDependency", target=app, targetProxy=proxy)
-    settings = dict(PRODUCT_BUNDLE_IDENTIFIER="dev.tipstroke.ios." + name, PRODUCT_NAME="$(TARGET_NAME)", GENERATE_INFOPLIST_FILE="YES", CODE_SIGN_STYLE="Automatic", LD_RUNPATH_SEARCH_PATHS="$(inherited) @executable_path/Frameworks @loader_path/Frameworks")
+    settings = dict(PRODUCT_BUNDLE_IDENTIFIER="de.khonager.tipstroke." + name, PRODUCT_NAME="$(TARGET_NAME)", GENERATE_INFOPLIST_FILE="YES", CODE_SIGN_STYLE="Automatic", LD_RUNPATH_SEARCH_PATHS="$(inherited) @executable_path/Frameworks @loader_path/Frameworks")
     if kind == "unit-test":
         settings.update(BUNDLE_LOADER="$(TEST_HOST)", TEST_HOST="$(BUILT_PRODUCTS_DIR)/TipStroke.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TipStroke")
     else:

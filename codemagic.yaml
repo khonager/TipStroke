@@ -55,13 +55,14 @@ workflows:
     name: iOS — signed App Store IPA
     instance_type: mac_mini_m2
     max_build_duration: 90
-    # Manual workflow: upload matching certificate and provisioning profile in Codemagic first.
+    integrations:
+      app_store_connect: TipStroke
     environment:
       xcode: "26.0"
       java: 17
       ios_signing:
         distribution_type: app_store
-        bundle_identifier: dev.tipstroke.ios
+        bundle_identifier: de.khonager.tipstroke
     scripts:
       - name: Verify generated Xcode project
         script: |
@@ -84,4 +85,6 @@ workflows:
       - build/ios/ipa/*.ipa
       - build/ios/*.xcresult
       - /tmp/xcodebuild_logs/*.log
-    # No publishing block: this workflow produces an artifact and does not submit it to Apple.
+    publishing:
+      app_store_connect:
+        auth: integration
