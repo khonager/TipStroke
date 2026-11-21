@@ -39,12 +39,20 @@ class BrushPackTest {
     @Test fun categoryOrderMembershipAndRenamesPersist() {
         val store = BrushCategories(RuntimeEnvironment.getApplication())
         val first = BrushCategory(name = "Inks", brushIds = listOf("b", "a"))
-        val second = BrushCategory(name = "Paint", brushIds = listOf("a"))
+        val second = BrushCategory(name = "Paint", brushIds = listOf("a"), showInDock = false)
         store.save(listOf(second, first.copy(name = "Line tips")))
         assertEquals(listOf(second, first.copy(name = "Line tips")), store.load())
         store.save(listOf(first.copy(brushIds = listOf("a", "b"))))
         assertEquals(listOf("a", "b"), store.load().single().brushIds)
         store.save(emptyList())
         assertTrue(store.load().isEmpty())
+    }
+
+    @Test fun savedCategoriesWithoutVisibilityStillShowInTipBar() {
+        val context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("brush-categories", 0).edit()
+            .putBoolean("defaultGroupsAdded", true)
+            .putString("categories", """[{"id":"manga","name":"Manga","tips":["a"]}]""").apply()
+        assertTrue(BrushCategories(context).load().single().showInDock)
     }
 }

@@ -8,7 +8,12 @@ import org.json.JSONObject
 import java.io.InputStream
 import java.util.UUID
 
-internal data class BrushCategory(val id: String = UUID.randomUUID().toString(), val name: String, val brushIds: List<String> = emptyList())
+internal data class BrushCategory(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val brushIds: List<String> = emptyList(),
+    val showInDock: Boolean = true,
+)
 
 internal class BrushCategories(context: Context) {
     private val prefs = context.getSharedPreferences("brush-categories", Context.MODE_PRIVATE)
@@ -16,7 +21,8 @@ internal class BrushCategories(context: Context) {
         val array = JSONArray(prefs.getString("categories", "[]"))
         val saved = List(array.length()) { index -> array.getJSONObject(index).let { item ->
             val ids = item.getJSONArray("tips")
-            BrushCategory(item.getString("id"), item.getString("name"), List(ids.length()) { ids.getString(it) })
+            BrushCategory(item.getString("id"), item.getString("name"), List(ids.length()) { ids.getString(it) },
+                showInDock = item.optBoolean("showInDock", true))
         } }
         if (prefs.getBoolean("defaultGroupsAdded", false)) saved else {
             val ink = BrushPreset.jetpackInk + library.map { it.preset }.filter { it.ink != null }
@@ -31,7 +37,8 @@ internal class BrushCategories(context: Context) {
         require(categories.size <= 64 && categories.map { it.id }.distinct().size == categories.size)
         require(categories.all { it.name.isNotBlank() && it.name.length <= 80 && it.brushIds.size <= 200 && it.brushIds.distinct() == it.brushIds })
         prefs.edit().putBoolean("defaultGroupsAdded", true).putString("categories", JSONArray().apply {
-            categories.forEach { put(JSONObject().put("id", it.id).put("name", it.name).put("tips", JSONArray(it.brushIds))) }
+            categories.forEach { put(JSONObject().put("id", it.id).put("name", it.name)
+                .put("tips", JSONArray(it.brushIds)).put("showInDock", it.showInDock)) }
         }.toString()).apply()
     }
 }

@@ -87,7 +87,7 @@ preset uses the iOS resident tile budget or Android’s app heap budget.
 | Animation and video | Work with disk-backed cels, change resolution, record motion, scrub GIF and video sources, edit clips and crossfades, and navigate drawing coverage. Photo motion uses keyframes. |
 | Process recording | Preview, scrub and export saved replay. Native Android command streams from older files are preserved for Android playback. New portable recordings include raster updates. |
 | Project exchange | Import and export Android project archives. Native metadata preserves iOS-specific locks and frame masks through an Android save. The local gallery also keeps its versioned native format. |
-| Gallery and editor | Named stacks, batch sharing, adaptive controls and quick-color drag-to-fill. Tool categories support tap, hold, slide with an immediate name above the grid, and release to select. Android also supports hold-to-expand editable tip groups and a canvas Deselect shortcut. iOS offers its tip library and Deselect in Selection actions. |
+| Gallery and editor | Named stacks, batch sharing, adaptive controls and quick-color drag-to-fill. Tool categories support tap, hold, slide with an immediate name above the grid, and release to select. Android offers a dedicated Tip groups picker with customizable membership and visibility, individual favorite shortcuts, and a canvas Deselect shortcut. iOS offers its tip library and Deselect in Selection actions. |
 
 Adding a feature only to `app/` or `drawing-android/` still does not port it to iOS.
 Keep portable rules in `core`, reusable controls in `shared-ui`, and provide both

@@ -27,7 +27,7 @@ import androidx.compose.ui.window.PopupProperties
 @Composable
 fun HoldToolPicker(
     labels: List<String>, horizontal: Boolean, holdEnabled: Boolean, extent: Dp, reopen: Int,
-    stateLabel: String, selected: Boolean, onTap: () -> Unit, onLegacyHold: () -> Unit,
+    stateLabel: String, selected: Boolean, onTap: (() -> Unit)? = null, onLegacyHold: (() -> Unit)? = null,
     description: String = "Drawing tools", onClosed: () -> Unit = {},
     onChoose: (Int) -> Unit, anchorIcon: @Composable () -> Unit, toolIcon: @Composable (Int) -> Unit,
 ) {
@@ -93,9 +93,9 @@ fun HoldToolPicker(
                     }
                 }
             }.combinedClickable(role = Role.Button,
-                onClick = { if (holdEnabled) onTap() else open = true },
-                onLongClickLabel = if (holdEnabled) "Open ${description.lowercase()}" else "Reselect previous area",
-                onLongClick = { if (holdEnabled) open = true else onLegacyHold() })
+                onClick = { if (holdEnabled && onTap != null) onTap() else open = true },
+                onLongClickLabel = if (holdEnabled) "Open ${description.lowercase()}" else if (onLegacyHold != null) "Reselect previous area" else null,
+                onLongClick = if (holdEnabled) ({ open = true }) else onLegacyHold)
                 .semantics { contentDescription = description; stateDescription = stateLabel; this.selected = active },
                 contentAlignment = Alignment.Center) { anchorIcon() }
         }

@@ -93,17 +93,42 @@ class BrushFavoritesDockTest {
         assertEquals(1, smudges)
     }
 
-    @Test fun holdTipsReachesGroupsWithoutDockSlots() {
+    @Test fun tipGroupsStayReachableWithoutFavoriteSlots() {
         val tips = dev.tipstroke.core.model.MangaTips.presets
         var chosen: BrushPreset? = null
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             BrushFavoritesDock(tips.first(), emptyList(), true, {}, { chosen = it }, {}, {}, {}, false, {}, {}, {},
                 "Adjust tip", true, Modifier.width(150.dp), groups = listOf(DockTipGroup("manga", "Manga", tips)))
         }
-        compose.onNodeWithContentDescription("Tips").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Tip groups").performClick()
+        compose.onNodeWithContentDescription("Manga").performClick()
+        compose.onNodeWithContentDescription("Back to tip groups").performClick()
         compose.onNodeWithContentDescription("Manga").performClick()
         compose.onNodeWithContentDescription(tips.last().displayName).performClick()
         compose.runOnIdle { assertEquals(tips.last(), chosen) }
+    }
+
+    @Test fun aSingleFavoriteInMangaHasOneShortcutAndGroupsCanBeHidden() {
+        val favorite = MangaTips.presets.first()
+        val context = RuntimeEnvironment.getApplication()
+        BrushShelfPreferences(context).save(listOf(favorite.id.value))
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            MaterialTheme { CanvasScreen() }
+        }
+        compose.onAllNodesWithContentDescription(favorite.displayName).assertCountEquals(1)
+        compose.onNodeWithContentDescription(favorite.displayName).performClick().assertIsSelected()
+        compose.onNodeWithContentDescription("Tip groups").assertIsNotSelected().performClick()
+        compose.onNodeWithContentDescription("Favorites").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Manga").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Manage tip groups").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Show Manga in tip bar").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Show Manga in tip bar").performScrollTo().performClick().assertIsOff()
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithContentDescription("Back to canvas").performClick()
+        compose.onAllNodesWithContentDescription(favorite.displayName).assertCountEquals(1)
+        compose.onNodeWithContentDescription("Tip groups").performClick()
+        compose.onNodeWithContentDescription("Manga").assertDoesNotExist()
+        assertFalse(BrushCategories(context).load().first { it.id == "builtin-manga" }.showInDock)
     }
 
     @Test fun dockFitsMeasuredWidthAndShrinksWithoutScrolling() {
@@ -116,10 +141,10 @@ class BrushFavoritesDockTest {
             }
         }
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("Pinned 4").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Pinned 5").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Pinned 3").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Pinned 4").assertDoesNotExist()
         compose.onAllNodes(hasScrollAction()).assertCountEquals(0)
-        compose.runOnIdle { width = 220 }
+        compose.runOnIdle { width = 270 }
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Pinned 0").assertIsDisplayed()
         compose.onNodeWithContentDescription("Pinned 1").assertDoesNotExist()
@@ -226,7 +251,7 @@ class BrushFavoritesDockTest {
         assertEquals(listOf("custom-b", "ink-v1", "pencil-v1"), preferences.load())
         for (available in 120..1200) {
             val slots = brushFavoriteCapacity(available.toFloat())
-            if (slots > 0) assertTrue((slots + 3) * 48 + (slots + 2) * 2 + 8 <= available)
+            if (slots > 0) assertTrue((slots + 4) * 48 + (slots + 3) * 2 + 8 <= available)
         }
     }
 }

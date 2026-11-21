@@ -15,4 +15,4 @@ internal class BrushShelfPreferences(context: Context) {
 }
 
 internal fun brushFavoriteCapacity(availableDp: Float, slotDp: Float = 48f, gapDp: Float = 2f): Int =
-    (((availableDp - 8f + gapDp) / (slotDp + gapDp)).toInt() - 3).coerceAtLeast(0)
+    (((availableDp - 8f + gapDp) / (slotDp + gapDp)).toInt() - 4).coerceAtLeast(0)

@@ -50,7 +50,7 @@ Tip Studio keeps a compact live tip preview pinned above its scrolling controls 
 
 Drawing mode hides the Android navigation bar by default and uses transient-bar swipe behavior, preventing an ordinary canvas stroke at the bottom edge from immediately navigating away. The focused drawing mode setting can keep the navigation bar visible; gallery and settings screens always restore it.
 
-On compact phone windows, portrait uses a condensed top command strip and a bottom tip dock. Landscape keeps commands on the left edge and the tip dock on the right, even in narrow split windows. The command rail scrolls vertically if needed; the tip dock fits favorites around its three fixed actions. Size and opacity expand beside the landscape dock or above the portrait dock only when requested. All controls respect safe system insets. Chrome hides only as the active pointer approaches an occupied edge and returns on lift, cancellation, or the transition to two-finger navigation. The explicit **Hide controls** action remains persistent until the small top-edge handle or Android Back restores it.
+On compact phone windows, portrait uses a condensed top command strip and a bottom tip dock. Landscape keeps commands on the left edge and the tip dock on the right, even in narrow split windows. The command rail scrolls vertically if needed. The tip dock fits favorites into the space available beside its fixed actions. Size and opacity expand beside the landscape dock or above the portrait dock only when requested. All controls respect safe system insets. Chrome hides only as the active pointer approaches an occupied edge and returns on lift, cancellation, or the transition to two-finger navigation. The explicit **Hide controls** action remains persistent until the small top-edge handle or Android Back restores it.
 
 The tablet color dock exposes the current drawing's most-used colors. In landscape it sits in the top-right toolbar immediately after Layers; in portrait it remains above the bottom adjustment controls. Phones keep the current-color circle in the command strip or landscape left rail. Tapping the large current-color circle opens the color chooser; canvas hold remains the eyedropper gesture for sampling existing artwork. The color chooser's **Original image colors** switch makes the eyedropper and visible-artwork palette sample image layers at their original opacity, even when those layers are faded on the canvas; paint layers still use their displayed opacity. Adjust opens the compact Tip Studio for edge hardness, pressure-to-size, pressure-to-opacity, and optional speed taper. Tuning, size, and opacity are stored locally for each built-in tip; the eraser has its own remembered size, opacity, hardness, and dynamics.
 
@@ -290,9 +290,8 @@ Flip horizontal, Flip vertical, Rotate 45°, a rotation slider, Fit to canvas, R
 Tips is a dedicated canvas-dock action, separate from Adjust. Its library lists
 all tips with previews, creation/import, and pinning. The dock uses fixed cells
 and never scrolls; the measured available axis determines how many favorites fit
-after reserving Tips, Tools, and Adjust. Saved pin order persists across layout
-changes; extra pins are hidden until space returns, and additional pinning is
-disabled at the current capacity. Tools contains selection, erasing, smudging,
+after reserving Tips, Tip groups, Tools, and Adjust. Saved pin order persists across layout
+changes. Extra pins are available from Favorites in the library. Tools contains selection, erasing, smudging,
 eligible pixel tools, and Tip Studio. Adjust retains the compact phone's
 size/opacity toggle; custom-tip studio adjustment opens its saved definition.
 

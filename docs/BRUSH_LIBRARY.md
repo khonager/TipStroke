@@ -84,13 +84,13 @@ introduced.
 
 ## Favorites that fit
 
-The canvas dock contains a dedicated Tips grid icon, favorite stroke thumbnails, a Tools
+The canvas dock contains a Tips library button, a Tip groups folder, favorite stroke thumbnails, a Tools
 menu, and Adjust. Tools contains Select, Eraser, Smudge, eligible pixel tools, and
 Tip Studio; the adjustment action retains the phone size/opacity toggle.
 There is no scrolling container in the dock.
 
-The dock fits group buttons first, then individual favorites, using 48 dp cells,
-2 dp gaps and three reserved actions. Extra pins are available from **Favorites**
+Individual favorites fill the remaining dock space using 48 dp cells,
+2 dp gaps and four reserved actions. Extra pins are available from **Favorites**
 in the tip library.
 
 ## Visual controls and endpoint previews
@@ -202,13 +202,12 @@ Library cards show edit, category, export, share and (for custom tips) duplicate
 
 ## Android dock groups
 
-Tap a group to use its current tip. Hold, slide onto a tip, and lift to select it.
-Manga and Jetpack Ink (Android 14 and newer) are provided by default. Group
-buttons use folder icons and favorites appear once as individual shortcuts.
-Hold **Tips** to reach every nonempty group when dock space is limited. A tap opens
-the library. Use **Categories** to create, rename, reorder, or remove groups.
-Use a tip’s **Categories** action to change membership, or pin it for Favorites.
-The library section supports dragging tips into the desired order.
+Tap or hold **Tip groups**, choose a folder, then choose a tip. Manga and Jetpack Ink
+(Android 14 and newer) are provided by default. **Manage tip groups** is available
+from the folder picker and library. Create, rename, reorder, or remove groups,
+choose which groups appear in the picker, and edit each group's membership.
+Hidden groups remain accessible in the library, where you can also drag tips
+into the desired order. Use the star on a library tip to pin it individually.
 
 ## Manga tips
 

@@ -76,6 +76,7 @@ fun CanvasScreen(
     val favoriteBrushes = favoriteIds.mapNotNull(availableDockTips::get)
     val tipGroups = remember(categories, availableDockTips) {
         categories.mapNotNull { group ->
+            if (!group.showInDock) return@mapNotNull null
             val tips = group.brushIds.mapNotNull(availableDockTips::get)
             if (tips.isEmpty()) null else DockTipGroup(group.id, group.name, tips)
         }
@@ -186,7 +187,9 @@ fun CanvasScreen(
     var hasSelection by remember { mutableStateOf(false) }
     var brushStudioOpen by remember { mutableStateOf(false) }
     var brushLibraryOpen by remember { mutableStateOf(false) }
+    var manageTipGroups by remember { mutableStateOf(false) }
     var brushToEdit by remember { mutableStateOf<BrushId?>(null) }
+    val openTipGroupManager = { manageTipGroups = true; brushToEdit = null; brushLibraryOpen = true }
     var brushHardness by remember { mutableFloatStateOf(initialBrushTuning.hardness) }
     var eraserHardness by remember { mutableFloatStateOf(initialEraserTuning.hardness) }
     var pressureSize by remember { mutableStateOf(initialBrushTuning.pressureSize) }
@@ -696,7 +699,7 @@ fun CanvasScreen(
             Modifier.fillMaxSize().safeDrawingPadding().then(if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp)),
         ) {
             BrushFavoritesDock(
-                selected = brush, favorites = favoriteBrushes, groups = tipGroups,
+                selected = brush, favorites = favoriteBrushes, groups = tipGroups, onManageGroups = openTipGroupManager,
                 brushActive = !colorPushing && !ribbon && !lassoFill && !erasing && !smudging && !selectToolActive && pixelTool == null,
                 toolLabel = when { colorPushing -> "Color push"; ribbon -> "Ribbon"; lassoFill -> "Lasso fill"; erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
                 onLibrary = { brushToEdit = null; brushLibraryOpen = true },
@@ -771,7 +774,7 @@ fun CanvasScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 BrushFavoritesDock(
-                    selected = brush, favorites = favoriteBrushes, groups = tipGroups, horizontal = !landscapeDock,
+                    selected = brush, favorites = favoriteBrushes, groups = tipGroups, onManageGroups = openTipGroupManager, horizontal = !landscapeDock,
                     brushActive = !colorPushing && !ribbon && !lassoFill && !erasing && !smudging && !selectToolActive && pixelTool == null,
                     toolLabel = when { colorPushing -> "Color push"; ribbon -> "Ribbon"; lassoFill -> "Lasso fill"; erasing -> "Eraser"; smudging -> "Smudge"; selectToolActive -> "Select"; else -> pixelTool?.displayName ?: "Tools" },
                     onLibrary = { brushToEdit = null; brushLibraryOpen = true },
@@ -1128,6 +1131,7 @@ fun CanvasScreen(
 
     if (brushLibraryOpen) BrushLibraryDialog(
         favoriteIds = favoriteIds, onCategoriesChanged = { categories = it }, editBrushId = brushToEdit,
+        initialGroupManagerOpen = manageTipGroups,
         onFavorites = { favoriteIds = it; shelfPreferences.save(it) },
         onLibraryChanged = { libraryBrushes = it },
         current = brush.copy(
@@ -1144,7 +1148,7 @@ fun CanvasScreen(
             brushPreferences.save(preset, preset.creatorTuning())
             selectRegularBrush(preset)
         },
-        onDismiss = { brushLibraryOpen = false; brushToEdit = null },
+        onDismiss = { brushLibraryOpen = false; manageTipGroups = false; brushToEdit = null },
     )
 
     LaunchedEffect(brushStudioOpen, brush.stamp, brush.ink) {

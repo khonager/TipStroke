@@ -49,6 +49,7 @@ internal fun BrushLibraryDialog(
     favoriteIds: List<String> = emptyList(), editBrushId: BrushId? = null,
     onCategoriesChanged: (List<BrushCategory>) -> Unit = {},
     onFavorites: (List<String>) -> Unit = {}, onLibraryChanged: (List<LibraryBrush>) -> Unit = {},
+    initialGroupManagerOpen: Boolean = false,
 ) {
     val context = LocalContext.current
     val orderPreferences = remember { context.getSharedPreferences("tip-library-order", android.content.Context.MODE_PRIVATE) }
@@ -74,7 +75,8 @@ internal fun BrushLibraryDialog(
     var section by remember { mutableStateOf("All tips") }
     val categoryStore = remember { BrushCategories(context) }
     var categories by remember { mutableStateOf(categoryStore.load()) }
-    var managingCategories by remember { mutableStateOf(false) }
+    var managingCategories by remember { mutableStateOf(initialGroupManagerOpen) }
+    var editingGroupId by remember { mutableStateOf<String?>(null) }
     var categorizing by remember { mutableStateOf<LibraryBrush?>(null) }
     var pendingPack by remember { mutableStateOf<ImportedBrushPack?>(null) }
     fun updateCategories(next: List<BrushCategory>) { categoryStore.save(next); categories = next; onCategoriesChanged(next) }
@@ -153,8 +155,6 @@ internal fun BrushLibraryDialog(
             }
         }
     }
-    if (managingCategories) BrushCategoryManager(categories, ::updateCategories) { managingCategories = false }
-    categorizing?.let { BrushCategoryMembership(it, categories, ::updateCategories) { categorizing = null } }
     Dialog(onDismissRequest = { if (!busy) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = 1040.dp).fillMaxWidth().fillMaxHeight(.98f), shape = MaterialTheme.shapes.large) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -251,7 +251,7 @@ internal fun BrushLibraryDialog(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 TipAction("Import", Icons.Outlined.FileOpen, enabled = ready && !busy, onClick = { importer.launch(arrayOf("*/*")) })
-                                ActionIconButton(enabled = ready && !busy, onClick = { managingCategories = true }, label = "Categories", icon = Icons.Outlined.Folder)
+                                ActionIconButton(enabled = ready && !busy, onClick = { managingCategories = true }, label = "Manage tip groups", icon = Icons.Outlined.Folder)
                                 val sections = listOf("All tips" to "All tips") + categories.map { it.id to it.name } +
                                     listOf("My tips" to "My tips", "Favorites" to "Favorites")
                                 sections.forEach { (id, name) ->
@@ -359,6 +359,18 @@ internal fun BrushLibraryDialog(
             }
         }
     }
+    if (managingCategories && ready) {
+        val group = categories.firstOrNull { it.id == editingGroupId }
+        if (group == null) {
+            BrushCategoryManager(categories, ::updateCategories, { editingGroupId = it }) { managingCategories = false }
+        } else {
+            val tips = (BrushPreset.libraryBuiltIns + brushes.map { it.preset }).distinctBy { it.id }
+            BrushGroupMembers(group, tips, { updated ->
+                updateCategories(categories.map { if (it.id == updated.id) updated else it })
+            }) { editingGroupId = null }
+        }
+    }
+    categorizing?.let { BrushCategoryMembership(it, categories, ::updateCategories) { categorizing = null } }
     if (choosingCreator) AlertDialog(
         onDismissRequest = { choosingCreator = false }, title = { Text("Create a tip") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
