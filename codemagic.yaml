@@ -4,7 +4,7 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     environment:
-      xcode: "26.0"
+      xcode: "27.0"
       java: 17
     cache:
       cache_paths:
@@ -58,7 +58,7 @@ workflows:
     integrations:
       app_store_connect: app-store-connect
     environment:
-      xcode: "26.0"
+      xcode: "27.0"
       java: 17
       ios_signing:
         distribution_type: app_store

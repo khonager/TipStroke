@@ -102,7 +102,6 @@ fun CanvasScreen(
     var perspectiveMode by remember { mutableStateOf(dev.tipstroke.core.geometry.PerspectiveMode.OFF) }
     var mirrorCopies by remember { mutableIntStateOf(1) }
     var assists by remember { mutableStateOf(dev.tipstroke.core.drawing.BrushAssists()) }
-    var ribbon by remember { mutableStateOf(false) }
     var lassoFill by remember { mutableStateOf(false) }
     var colorizeOpen by remember { mutableStateOf(false) }
     var adjustmentsOpen by remember { mutableStateOf(false) }
@@ -295,7 +294,7 @@ fun CanvasScreen(
             )
             this.assists = assists
             sizeUnit = brushSizeUnit
-            sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.smudging = smudging; this.colorPushing = colorPushing; this.lassoFill = lassoFill; this.ribbon = ribbon
+            sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.smudging = smudging; this.colorPushing = colorPushing; this.lassoFill = lassoFill
             this.eraserHardness = eraserHardness; this.debug = debug; gestures = effectiveGestureSettings
         }
         surface?.setMirrorCopies(mirrorCopies)
@@ -316,7 +315,6 @@ fun CanvasScreen(
     }
     fun toggleEraser() {
         colorPushing = false
-        ribbon = false
         lassoFill = false
         smudging = false
         imageTransforming = false
@@ -327,7 +325,6 @@ fun CanvasScreen(
     }
     fun selectPixelTool(tool: PixelTool) {
         colorPushing = false
-        ribbon = false
         lassoFill = false
         smudging = false
         imageTransforming = false
@@ -343,7 +340,6 @@ fun CanvasScreen(
             return
         }
         colorPushing = false
-        ribbon = false
         lassoFill = false
         smudging = false
         imageTransforming = false
@@ -355,7 +351,6 @@ fun CanvasScreen(
     }
     fun selectSelectionTool() {
         colorPushing = false
-        ribbon = false
         lassoFill = false
         smudging = false; erasing = false
         selectToolActive = true; selectionMode = true; movingSelection = false
@@ -383,7 +378,6 @@ fun CanvasScreen(
         imageTransforming || selectionTransformOpen -> "Transform"
         selectToolActive -> "Select"
         colorPushing -> "Color push"
-        ribbon -> "Ribbon"
         lassoFill -> "Lasso fill"
         erasing -> "Eraser"
         smudging -> "Smudge"
@@ -391,21 +385,13 @@ fun CanvasScreen(
     }
     fun selectLassoFill() {
         colorPushing = false
-        ribbon = false
         erasing = false; smudging = false; pixelTool = null
         selectToolActive = false; selectionMode = false; movingSelection = false
         imageTransforming = false; lassoFill = true
         sync()
     }
-    fun selectRibbon() {
-        selectLassoFill()
-        lassoFill = false; ribbon = true
-        size = size.coerceIn(8f, 256f)
-        sync()
-    }
     fun selectSmudge() {
         colorPushing = false
-        ribbon = false
         lassoFill = false
         selectToolActive = false; selectionMode = false; movingSelection = false
         imageTransforming = false
@@ -436,7 +422,7 @@ fun CanvasScreen(
             StylusButtonAction.DISABLED -> Unit
         }
     }
-    LaunchedEffect(brush, erasing, colorPushing, ribbon, lassoFill, smudging, pixelTool, brushSizeUnit, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
+    LaunchedEffect(brush, erasing, colorPushing, lassoFill, smudging, pixelTool, brushSizeUnit, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(surface, originalImageColors) { surface?.setOriginalImageColors(originalImageColors) }
     LaunchedEffect(surface, debug) {
@@ -461,7 +447,7 @@ fun CanvasScreen(
             pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent,
             speedTaperAmount,
         )
-        if (pixelTool == null && !smudging && !lassoFill && !ribbon && !colorPushing) {
+        if (pixelTool == null && !smudging && !lassoFill && !colorPushing) {
             if (erasing) brushPreferences.saveEraser(tuning) else brushPreferences.save(brush, tuning)
         }
     }
@@ -745,7 +731,7 @@ fun CanvasScreen(
                 perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                     onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
                     onAdjustments = { adjustmentsOpen=true }, onColorizeMask = { colorizeOpen=true },
-                    onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
+                    onLassoFill = ::selectLassoFill, onColorPush = ::selectColorPush,
                 assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                     mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
                     onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
@@ -764,8 +750,8 @@ fun CanvasScreen(
                 opacityLabel = if (colorPushing) "Strength" else "Opacity",
                 size = size, opacity = opacity, color = color, frequentColors = if (colorShelf.recent) colorHistory else drawingPalette,
                 sizeRange = if (smudging || colorPushing) 2f..192f else if (pixelTool != null) 1f..32f else 1f..maxOf(4096f, kotlin.math.hypot(editorWidthPx.toFloat(), editorHeightPx.toFloat()) * 2f).coerceAtMost(65536f),
-                sizeUnit = if (pixelTool != null || smudging || colorPushing || ribbon) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
-                onSizeUnit = if (pixelTool != null || smudging || colorPushing || ribbon) null else { unit ->
+                sizeUnit = if (pixelTool != null || smudging || colorPushing) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
+                onSizeUnit = if (pixelTool != null || smudging || colorPushing) null else { unit ->
                     brushSizeUnit = unit
                     brushPreferences.saveSizeUnit(unit)
                     surface?.settings?.sizeUnit = unit
@@ -820,7 +806,7 @@ fun CanvasScreen(
                     perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                 onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
                 onAdjustments = { adjustmentsOpen=true }, onColorizeMask = { colorizeOpen=true },
-                onLassoFill = ::selectLassoFill, onRibbon = ::selectRibbon, onColorPush = ::selectColorPush,
+                onLassoFill = ::selectLassoFill, onColorPush = ::selectColorPush,
                     assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                     mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
                     onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
@@ -839,8 +825,8 @@ fun CanvasScreen(
                 opacityLabel = if (colorPushing) "Strength" else "Opacity",
                 size = size,
                 sizeRange = if (smudging || colorPushing) 2f..192f else if (pixelTool != null) 1f..32f else 1f..maxOf(4096f, kotlin.math.hypot(editorWidthPx.toFloat(), editorHeightPx.toFloat()) * 2f).coerceAtMost(65536f),
-                sizeUnit = if (pixelTool != null || smudging || colorPushing || ribbon) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
-                onSizeUnit = if (pixelTool != null || smudging || colorPushing || ribbon) null else { unit ->
+                sizeUnit = if (pixelTool != null || smudging || colorPushing) dev.tipstroke.core.drawing.BrushSizeUnit.CANVAS_PIXELS else brushSizeUnit,
+                onSizeUnit = if (pixelTool != null || smudging || colorPushing) null else { unit ->
                     brushSizeUnit = unit
                     brushPreferences.saveSizeUnit(unit)
                     surface?.settings?.sizeUnit = unit

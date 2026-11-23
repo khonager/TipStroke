@@ -13,6 +13,12 @@ final class EditorFlowTests: XCTestCase {
         create.tap()
         let gallery = app.buttons["Gallery"]
         XCTAssertTrue(gallery.waitForExistence(timeout: 10))
+        app.buttons["Tips"].tap()
+        XCTAssertTrue(app.navigationBars["Tip library"].waitForExistence(timeout: 10))
+        app.navigationBars.buttons["Done"].tap()
+        app.buttons["Tip groups"].tap()
+        app.buttons["Manga"].tap()
+        app.buttons["Manga hatching"].tap()
         let tools = app.buttons["Drawing tools"]
         tools.tap()
         XCTAssertEqual(tools.value as? String, "Eraser")
@@ -32,6 +38,15 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertFalse(app.buttons["Smudge"].exists)
         app.buttons["Freehand selection"].tap()
         XCTAssertEqual(movingTools.value as? String, "Freehand selection")
+        let drawingArea = app.descendants(matching: .any)["Drawing canvas"]
+        let point = drawingArea.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.45))
+        movingTools.tap()
+        app.buttons["Rectangle selection"].tap()
+        point.press(forDuration: 0.15, thenDragTo: drawingArea.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.55)))
+        let deselect = app.buttons["Deselect"]
+        XCTAssertTrue(deselect.waitForExistence(timeout: 5))
+        deselect.tap()
+        XCTAssertFalse(deselect.exists)
         app.segmentedControls["Drawing tool"].buttons["Ink"].tap()
         let canvas = app.descendants(matching: .any)["Drawing canvas"]
         let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.40, dy: 0.45))

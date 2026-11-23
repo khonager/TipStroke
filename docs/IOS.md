@@ -87,7 +87,7 @@ preset uses the iOS resident tile budget or Android’s app heap budget.
 | Animation and video | Work with disk-backed cels, change resolution, record motion, scrub GIF and video sources, edit clips and crossfades, and navigate drawing coverage. Photo motion uses keyframes. |
 | Process recording | Preview, scrub and export saved replay. Native Android command streams from older files are preserved for Android playback. New portable recordings include raster updates. |
 | Project exchange | Import and export Android project archives. Native metadata preserves iOS-specific locks and frame masks through an Android save. The local gallery also keeps its versioned native format. |
-| Gallery and editor | Named stacks, batch sharing, adaptive controls and quick-color drag-to-fill. Both platforms separate Drawing tools from Moving tools and support holding and sliding to select a tool. Android offers a dedicated Tip groups picker with customizable membership and visibility, individual favorite shortcuts, and a canvas Deselect shortcut. iOS offers its tip library and Deselect in Selection actions. |
+| Gallery and editor | Named stacks, batch sharing, adaptive controls and quick-color drag-to-fill. Both platforms separate Drawing tools from Moving tools and support holding and sliding to select a tool. Both offer direct Tips and Tip groups pickers, individual favorites, and a canvas Deselect shortcut while a selection exists. Tap or hold Tip groups to choose from a visible group. Manage tip groups changes names, order, membership and visibility. |
 
 Adding a feature only to `app/` or `drawing-android/` still does not port it to iOS.
 Keep portable rules in `core`, reusable controls in `shared-ui`, and provide both
@@ -140,17 +140,17 @@ For direct registered-device distribution, change the release workflow's
 `distribution_type` to `ad_hoc` and provide the matching profile containing those
 devices. This is a signing choice, not an application-code change.
 
-Codemagic pins Xcode 26.0 and Java 17; Kotlin 2.2.21 adds Xcode 26 support.
-Avoid changing Xcode to `latest` without checking Kotlin/Native compatibility.
-The integration follows [Kotlin direct integration](https://kotlinlang.org/docs/multiplatform/multiplatform-direct-integration.html)
-and [Kotlin 2.2.21's Xcode support](https://kotlinlang.org/docs/whatsnew2220.html).
+Codemagic pins Xcode 27.0 and Java 17. Xcode 27 supplies the iOS 27 SDK
+required for App Store Connect uploads starting April 2027. TipStroke targets
+iOS 16 and later. GitHub Actions still uses Xcode 26.0 for its Apple checks.
+The framework uses [Kotlin direct integration](https://kotlinlang.org/docs/multiplatform/multiplatform-direct-integration.html).
 The configuration follows Codemagic's [native iOS build guide](https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/)
 and [signing instructions](https://docs.codemagic.io/yaml-code-signing/signing-ios/).
 No Codemagic build or Apple submission is performed merely by adding these files.
 
 ## Local macOS development
 
-Install JDK 17 and Xcode 26.0 (Kotlin 2.2.21), then open
+Install JDK 17 and Xcode 27.0 to match Codemagic, then open
 `ios/TipStroke.xcodeproj`, choose **TipStroke**, and run
 an iPhone or iPad simulator. For a physical device, select your Apple development
 team in Signing & Capabilities. Xcode resolves the pinned ZIPFoundation package for project exchange. Gradle downloads Kotlin/Compose
@@ -184,9 +184,10 @@ The editor shows tool and control names on pointer dwell.
 
 ## Creative tools on iOS
 
-- **Drawing tools → More tools → Paint tools**: live Lasso fill, Ribbon and Color push alongside Brush,
-  Fill and Smudge. Lasso/Ribbon use native display-link previews; Color push uses
+- **Drawing tools → More tools → Paint tools**: live Lasso fill and Color push alongside Brush,
+  Fill and Smudge. Lasso fill uses native display-link previews; Color push uses
   a bounded local inverse warp, with size as diameter and opacity as strength.
+- **Tip library → Calligraphy** uses the shared angled nib and pressure curve with native stamp rendering.
 - **Drawing tools → Brush aids**: temporary Paint inside, hold-and-bend Elastic line,
   Mirror wheel (Off/2/4/6/8/12, movable center), and magnetic one/two-point rulers.
   Paint inside preserves existing soft alpha and overrides reference constraints.

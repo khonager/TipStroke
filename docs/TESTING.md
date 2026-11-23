@@ -535,7 +535,7 @@ checks a comparison's single undo step, selection changes and no-op comparisons.
 
 ## Integrated Apple/shared controls checks
 
-Codemagic's `ios-simulator` workflow uses JDK 17 and Xcode 26.0. It runs common
+Codemagic's `ios-simulator` workflow uses JDK 17 and Xcode 27.0. It runs common
 Kotlin tests on Apple Silicon, then `tools/ios-test.sh` on iPhone and iPad and an
 unsigned device build. The app build invokes the shared Kotlin framework itself.
 The UI test opens the shared brush and color panels, draws, undoes/redoes, rotates,
@@ -582,12 +582,10 @@ narrow iPad windows. Native brush quality and all remaining `IOS.md` gaps must b
 resolved before claiming the two apps have full feature or visual parity.
 
 The creative-tools regression suite includes `PaintInsideTest`, `ElasticLineInputTest`,
-`MirrorWheelTest`, `RibbonRenderingTest`, `ColorPushTest`, and `ShadowPullTest` in
-`:drawing-android`, plus portable curve/ribbon geometry tests in `:core`.
+`MirrorWheelTest`, `ColorPushTest`, and `ShadowPullTest` in
+`:drawing-android`, plus portable curve geometry tests in `:core`.
 These cover native input cancellation, transient preview, sparse tile boundaries,
 selection/alpha constraints, exact recording patches, and one-gesture undo.
-Ribbon edge comparisons allow Skia's clipped antialias coverage rounding (8/255);
-filled interiors retain the requested opacity.
 
 Colorize/effects/ruler regressions: `MangaTipsTest`, `PerspectiveRulerTest`,
 `RasterEffectsTest`, and `ColorizeMaskTest` exercise portable rules. Android adds
@@ -605,10 +603,13 @@ save/reopen and compound undo, and manga grain registration across strokes.
 
 Run the existing `ios-simulator` Codemagic workflow or `./tipstroke ios-test` on
 macOS for UIKit compilation and XCTest. Before device signoff, use Pencil and
-finger input to check lasso backtracking, Ribbon loops, Elastic hold/bend/lift,
+finger input to check lasso backtracking, Calligraphy hairlines and broad downstrokes, Elastic hold/bend/lift,
 mirror placement, off-canvas ruler coordinates, Shadow pull Cancel, and effect /
 colorize Preview → Cancel/Apply → Undo/Redo. Test at tile boundaries and zoomed in.
 Swift syntax parsing and JVM success on Linux do not execute these UIKit tests.
+
+The iOS editor flow also opens Tips, selects a Manga tip from the native group
+menu, makes a rectangular selection, and clears it with the canvas shortcut.
 
 ### Mirror eraser and sliding picker
 

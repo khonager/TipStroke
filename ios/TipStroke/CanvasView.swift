@@ -121,7 +121,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private var fitted = false
     private var previewLink: CADisplayLink?
     private var previewPending = false
-    private var liveFill: Bool { mode == .lassoFill || mode == .ribbon }
+    private var liveFill: Bool { mode == .lassoFill }
     @objc private func renderLivePreview() {
         guard previewPending, pointer != nil else { return }
         previewPending = false
@@ -139,14 +139,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 let points = elasticShape.bend(x: Float(delta.x - bendAnchor.x), y: Float(delta.y - bendAnchor.y)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
                 try paintFitted(points)
             } else {
-            let path: CGPath
-            if mode == .ribbon {
-                let tracker = NativeShapeTracker()
-                for p in gesturePoints { tracker.append(x: Float(p.x), y: Float(p.y)) }
-                let outline = tracker.ribbon(width: Float(strokeSize)).points.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
-                let ribbon = CGMutablePath(); ribbon.addLines(between: outline); ribbon.closeSubpath(); path = ribbon
-            } else { path = mode.outline(gesturePoints) }
-            try document.paintPath(path, color: strokeColor.withAlphaComponent(strokeOpacity), width: 0, filled: true)
+                try document.paintPath(mode.outline(gesturePoints), color: strokeColor.withAlphaComponent(strokeOpacity), width: 0, filled: true)
             }
             if restoresPreview { refresh(document.strokePreviewBounds) }
             else if let previous { refresh(CGRect(x: previous.x, y: previous.y, width: 1, height: 1).insetBy(dx: -min(96, strokeSize / 2) - 2, dy: -min(96, strokeSize / 2) - 2)) }

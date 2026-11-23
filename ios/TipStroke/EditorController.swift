@@ -110,11 +110,16 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         movingToolsButton = movingTools
         updateToolValue()
         let bottomActions = UIStackView(arrangedSubviews: [color, tools, movingTools, settings]); bottomActions.distribution = .equalSpacing
+        let tips = button("Tips", symbol: "square.grid.2x2") { [weak self] in self?.showBrushLibrary() }
+        let groups = button("Tip groups", symbol: "folder") {}
+        groups.menu = tipGroupsMenu()
+        groups.showsMenuAsPrimaryAction = true
         let quickColors = sharedControls.quickColorsController()
         quickShelf = quickColors.view
         addChild(quickColors)
         quickColors.view.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        let bottom = UIStackView(arrangedSubviews: [toolPicker, quickColors.view, bottomActions]); bottom.spacing = 4
+        let shelf = UIStackView(arrangedSubviews: [tips, groups, quickColors.view])
+        let bottom = UIStackView(arrangedSubviews: [toolPicker, shelf, bottomActions]); bottom.spacing = 4
         quickColors.didMove(toParent: self)
         bottom.axis = .vertical
 
@@ -156,6 +161,22 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             hint.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
             hint.widthAnchor.constraint(lessThanOrEqualTo: safe.widthAnchor, constant: -16)
         ])
+        let deselect = button("Deselect", symbol: "xmark") { [weak self] in
+            guard let self else { return }
+            self.finishCanvasInteraction()
+            self.document.selection = nil
+            self.viewport.canvas.refreshSelection()
+        }
+        deselect.backgroundColor = .secondarySystemBackground
+        deselect.layer.cornerRadius = 10
+        deselect.translatesAutoresizingMaskIntoConstraints = false
+        deselect.isHidden = document.selection == nil
+        view.addSubview(deselect)
+        NSLayoutConstraint.activate([
+            deselect.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -8),
+            deselect.topAnchor.constraint(equalTo: safe.topAnchor, constant: 56)
+        ])
+        document.onSelectionPresenceChanged = { [weak deselect] selected in deselect?.isHidden = !selected }
         viewport.canvas.onInteractionHint = { [weak hint] text in hint?.setTitle(text, for: .normal); hint?.isHidden = text == nil }
         viewport.canvas.onCommit = { [weak self] in self?.sharedControls.recordColor(); self?.changed(redraw: false) }
         viewport.canvas.onPickColor = { [weak self] color in
@@ -324,7 +345,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private weak var toolsButton: UIButton?
     private weak var movingToolsButton: UIButton?
     private let drawingModes: [(CanvasMode, String)] = [(.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
-            (.ribbon, "scribble.variable"), (.colorPush, "hand.draw"),
+            (.colorPush, "hand.draw"),
             (.pixel, "pencil"), (.pixelLine, "line.diagonal"), (.dither, "circle.grid.3x3.fill"), (.fill, "paintbrush")]
     private let selectionModes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.rectangleSelection, "rectangle.dashed"),
             (.ellipseSelection, "circle.dashed")]

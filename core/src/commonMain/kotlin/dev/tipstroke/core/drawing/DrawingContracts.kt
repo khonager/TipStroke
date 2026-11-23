@@ -39,9 +39,6 @@ data class StrokeStyle(
     val referenceStrokes: StrokeCoverage? = null,
     /** Fill the sampled polygon, closed from the current tip to its start, using even-odd coverage. */
     val lassoFill: Boolean = false,
-    val ribbon: Boolean = false,
-    /** Internal handedness used when reflecting a ribbon stroke. */
-    val ribbonMirrored: Boolean = false,
     val mirrorWheel: MirrorWheel? = null,
 )
 data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeStyle) {
@@ -49,8 +46,6 @@ data class CompletedStroke(val samples: List<StrokeSample>, val style: StrokeSty
     val isClosed: Boolean get() = samples.size > 3 && samples.first().position == samples.last().position
     val bounds: Rect by lazy {
         require(samples.isNotEmpty())
-        if (style.ribbon) return@lazy Rect(samples.minOf { it.position.x }, samples.minOf { it.position.y },
-            samples.maxOf { it.position.x }, samples.maxOf { it.position.y }).expanded(style.sizePx.coerceAtLeast(1f) + 1f)
         if (style.lassoFill) return@lazy Rect(samples.minOf { it.position.x }, samples.minOf { it.position.y },
             samples.maxOf { it.position.x }, samples.maxOf { it.position.y }).expanded(1f)
         // Custom tips can extend beyond half of the nominal brush size. Keep bounds

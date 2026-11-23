@@ -22,6 +22,30 @@ class StampBrushRenderingTest {
         return CompletedStroke(samples, StrokeStyle(brush, 42f, .8f, RgbaColor(.2f, .3f, .8f), BlendBehavior.PAINT))
     }
 
+    @Test fun calligraphyMakesHairlinesBroadStrokesAndOpenCounters() {
+        val brush = BrushPreset.Calligraphy
+        val style = StrokeStyle(brush, brush.baseSizePx, 1f, RgbaColor(0f, 0f, 0f), BlendBehavior.PAINT)
+        fun render(points: List<Point>): Bitmap {
+            val samples = points.mapIndexed { i, point ->
+                StrokeSample(0, point, .8f, 0f, 0f, i * 16_000_000L, 0, PointerKind.FINGER)
+            }
+            return Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888).also {
+                StrokeCanvasPainter.draw(Canvas(it), CompletedStroke(samples, style))
+            }
+        }
+        val hairline = render(listOf(Point(30f, 115f), Point(130f, 45f)))
+        val broad = render(listOf(Point(45f, 30f), Point(115f, 130f)))
+        val thinWidth = (55..105).count { Color.alpha(hairline.getPixel(80, it)) >= 128 }
+        val broadWidth = (55..105).count { Color.alpha(broad.getPixel(it, 80)) >= 128 }
+        assertTrue("Hairline $thinWidth, broad stroke $broadWidth", thinWidth > 0 && broadWidth >= 4 * thinWidth)
+        val loop = render((0..64).map {
+            val angle = it * Math.PI / 32
+            Point(80f + 24f * kotlin.math.cos(angle).toFloat(), 80f + 40f * kotlin.math.sin(angle).toFloat())
+        })
+        assertEquals(0, Color.alpha(loop.getPixel(80, 80)))
+        assertTrue(Color.alpha(loop.getPixel(104, 80)) > 200)
+    }
+
     @Test fun liveAndCommittedStampsMatchAcrossTilesAndUndoAsOneStroke() {
         val brush = BrushPreset.Blank.copy(stamp = StampBrush(shape = StampShape.SQUARE, grain = StampGrain.PAPER,
             rotationJitter = 50f, scatter = .6f, count = 2, hueJitter = .3f))

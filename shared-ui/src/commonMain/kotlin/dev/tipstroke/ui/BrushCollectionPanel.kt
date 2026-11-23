@@ -16,7 +16,8 @@ import dev.tipstroke.core.model.*
 fun BrushCollectionPanel(brushes: List<LibraryBrush>, current: BrushPreset, onSelect: (BrushPreset) -> Unit,
     onSave: (BrushPreset, String) -> Unit, onDelete: (BrushPreset) -> Unit, onImport: () -> Unit, onExport: (BrushPreset) -> Unit,
     pins: List<String> = emptyList(), onPins: ((List<String>) -> Unit)? = null,
-    groups: Map<String, List<String>> = emptyMap(), onGroups: ((Map<String, List<String>>) -> Unit)? = null) {
+    groups: Map<String, List<String>> = emptyMap(), onGroups: ((Map<String, List<String>>) -> Unit)? = null,
+    onManageGroups: (() -> Unit)? = null) {
     var name by remember(current.id) { mutableStateOf(current.displayName) }
     var favoritesOnly by remember { mutableStateOf(false) }
     var group by remember { mutableStateOf<String?>(null) }
@@ -41,6 +42,7 @@ fun BrushCollectionPanel(brushes: List<LibraryBrush>, current: BrushPreset, onSe
                 groups.keys.sorted().forEach { title ->
                     FilterChip(group == title, { group = title; favoritesOnly = false }, { Text(title) })
                 }
+                if (onManageGroups != null) TextButton(onClick = onManageGroups) { Text("Manage tip groups") }
                 TextButton(onClick = { organize = true }) { Text("Organize tip") }
             }
             if (organize) AlertDialog(onDismissRequest = { organize = false }, title = { Text(current.displayName) },
@@ -55,13 +57,13 @@ fun BrushCollectionPanel(brushes: List<LibraryBrush>, current: BrushPreset, onSe
                         items(groups.keys.sorted()) { title ->
                             val ids = groups.getValue(title)
                             val included = current.id.value in ids
-                            TextButton(onClick = { onGroups(groups + (title to if (included) ids - current.id.value else ids + current.id.value)) }) {
+                            TextButton(enabled = included || ids.size < 200, onClick = { onGroups(groups + (title to if (included) ids - current.id.value else ids + current.id.value)) }) {
                                 Text((if (included) "✓ " else "") + title)
                             }
                         }
                         item {
                             OutlinedTextField(newGroup, { newGroup = it.take(80) }, label = { Text("New category") }, singleLine = true)
-                            TextButton(enabled = newGroup.isNotBlank() && newGroup.trim() !in groups && groups.size < 64, onClick = {
+                            TextButton(enabled = newGroup.isNotBlank() && groups.keys.none { it.equals(newGroup.trim(), true) } && groups.size < 64, onClick = {
                                 onGroups(groups + (newGroup.trim() to listOf(current.id.value))); newGroup = ""
                             }) { Text("Create with current tip") }
                         }

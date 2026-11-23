@@ -23,6 +23,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import dev.tipstroke.core.editor.NativeBrush
+import dev.tipstroke.core.brush.BrushCategory
+import dev.tipstroke.core.brush.BrushCategoriesData
 import dev.tipstroke.core.brush.BrushPackage
 import dev.tipstroke.core.brush.LibraryBrush
 import dev.tipstroke.core.brush.BrushCollection
@@ -61,6 +63,31 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     private var paletteCount by mutableIntStateOf(4)
     private val defaults = NSUserDefaults.standardUserDefaults
     private var pins by mutableStateOf(defaults.stringArrayForKey("tip.pins")?.filterIsInstance<String>().orEmpty())
+    private var groups by mutableStateOf(loadGroups())
+    private fun loadGroups(): List<BrushCategory> {
+        defaults.stringForKey("tip.groups.v2")?.let { data ->
+            runCatching { BrushCategoriesData.decode(data) }.getOrNull()?.let { return it }
+        }
+        val legacy = defaults.dictionaryForKey("tip.groups").orEmpty().entries.mapNotNull { (key, value) ->
+            val name = key as? String ?: return@mapNotNull null
+            BrushCategory(name = name, brushIds = (value as? List<*>)?.filterIsInstance<String>().orEmpty().distinct().take(200))
+        }.sortedBy { it.name }.take(64)
+        return legacy + BrushCategoriesData.defaults().filter { default ->
+            legacy.none { it.name.equals(default.name, true) }
+        }.take(64 - legacy.size)
+    }
+    private fun saveGroups(value: List<BrushCategory>) {
+        defaults.setObject(BrushCategoriesData.encode(value), forKey = "tip.groups.v2")
+        groups = value
+    }
+    fun dockGroups(): List<BrushCategory> {
+        val ids = (BrushPreset.libraryBuiltIns + library.map { it.preset }).map { it.id.value }.toSet()
+        return groups.filter { it.showInDock }.map { it.copy(brushIds = it.brushIds.filter(ids::contains)) }
+            .filter { it.brushIds.isNotEmpty() }
+    }
+    fun dockBrushNames(): Map<String, String> =
+        (BrushPreset.libraryBuiltIns + library.map { it.preset }).associate { it.id.value to it.displayName }
+
     private var brushInitialized = false
     private var history by mutableStateOf(decodeColors(defaults.stringForKey("colors.recent").orEmpty()).take(10))
     private val shelf = ColorShelf(defaults.stringForKey("colors.saved").orEmpty(),
@@ -130,12 +157,23 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         updateBrush(brush.copy(stamp = if (grain) stamp.copy(grainTexture = changed) else stamp.copy(shapeTexture = changed)))
     }
     fun libraryData(): String = BrushCollection.encode(library)
-    fun libraryController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
+    fun libraryController(callbacks: AppleBrushLibraryActions, openGroups: Boolean): UIViewController = ComposeUIViewController {
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
-                val groups = remember { defaults.dictionaryForKey("tip.groups").orEmpty().entries.mapNotNull { (name, values) ->
-                    (name as? String)?.let { it to (values as? List<*>)?.filterIsInstance<String>().orEmpty() }
-                }.toMutableStateMap() }
+                var manage by remember { mutableStateOf(openGroups) }
+                var editing by remember { mutableStateOf<String?>(null) }
+                if (manage) {
+                    val group = groups.find { it.id == editing }
+                    if (group == null) {
+                        BrushCategoryManager(groups, ::saveGroups, { editing = it }, { manage = false }) { _, label, enabled, click ->
+                            TextButton(onClick = click, enabled = enabled) { Text(label) }
+                        }
+                    } else {
+                        BrushGroupMembers(group, BrushPreset.libraryBuiltIns + library.map { it.preset }, { updated ->
+                            saveGroups(groups.map { if (it.id == updated.id) updated else it })
+                        }) { editing = null }
+                    }
+                }
                 BrushCollectionPanel(library, brush, ::selectPreset,
                     onSave = { preset, name ->
                         if (library.size >= 200) return@BrushCollectionPanel
@@ -148,13 +186,16 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                         defaults.removeObjectForKey("tip.tuning." + id)
                         pins = pins - id
                         defaults.setObject(pins, forKey = "tip.pins")
-                        for (name in groups.keys.toList()) groups[name] = groups.getValue(name) - id
-                        defaults.setObject(groups.toMap(), forKey = "tip.groups")
+                        saveGroups(groups.map { it.copy(brushIds = it.brushIds - id) })
                         callbacks.librarySaved(libraryData())
                     },
                     onImport = callbacks::importFromFile, onExport = { callbacks.exportToFile(BrushPackage.encode(LibraryBrush(it))) },
                     pins = pins, onPins = { pins = it; defaults.setObject(it, forKey = "tip.pins") },
-                    groups = groups.toMap(), onGroups = { groups.clear(); groups.putAll(it); defaults.setObject(it, forKey = "tip.groups") })
+                    groups = groups.associate { it.name to it.brushIds }, onGroups = { updated ->
+                        saveGroups(updated.map { (name, ids) ->
+                            groups.find { it.name == name }?.copy(brushIds = ids) ?: BrushCategory(name = name, brushIds = ids)
+                        })
+                    }, onManageGroups = { manage = true })
             }
         }
     }

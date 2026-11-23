@@ -7,6 +7,9 @@ import java.io.File
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import dev.tipstroke.ui.BrushCategoryManager
+import dev.tipstroke.ui.BrushGroupMembers
+import dev.tipstroke.ui.GroupAction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
@@ -362,7 +365,16 @@ internal fun BrushLibraryDialog(
     if (managingCategories && ready) {
         val group = categories.firstOrNull { it.id == editingGroupId }
         if (group == null) {
-            BrushCategoryManager(categories, ::updateCategories, { editingGroupId = it }) { managingCategories = false }
+            BrushCategoryManager(categories, ::updateCategories, { editingGroupId = it }, { managingCategories = false }) { action, label, enabled, click ->
+                val icon = when (action) {
+                    GroupAction.MEMBERS -> Icons.Outlined.Checklist
+                    GroupAction.RENAME -> Icons.Outlined.Edit
+                    GroupAction.EARLIER -> Icons.Outlined.KeyboardArrowUp
+                    GroupAction.LATER -> Icons.Outlined.KeyboardArrowDown
+                    GroupAction.REMOVE -> Icons.Outlined.Delete
+                }
+                ActionIconButton(onClick = click, label = label, enabled = enabled, icon = icon)
+            }
         } else {
             val tips = (BrushPreset.libraryBuiltIns + brushes.map { it.preset }).distinctBy { it.id }
             BrushGroupMembers(group, tips, { updated ->
