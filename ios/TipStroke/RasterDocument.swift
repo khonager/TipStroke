@@ -22,8 +22,12 @@ final class RasterDocument {
             return t.translatedBy(x: -center.x, y: -center.y)
         }
     }
+    var onSelectionPresenceChanged: ((Bool) -> Void)?
     var selection: CanvasSelection? {
-        didSet { if let selection { previousSelection = (selection, bounds.size) } }
+        didSet {
+            if let selection { previousSelection = (selection, bounds.size) }
+            if (oldValue == nil) != (selection == nil) { onSelectionPresenceChanged?(selection != nil) }
+        }
     }
     private var previousSelection: (CanvasSelection, CGSize)?
     var selectionOperation: SelectionOperation = .replace

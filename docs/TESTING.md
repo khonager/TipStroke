@@ -608,6 +608,9 @@ mirror placement, off-canvas ruler coordinates, Shadow pull Cancel, and effect /
 colorize Preview → Cancel/Apply → Undo/Redo. Test at tile boundaries and zoomed in.
 Swift syntax parsing and JVM success on Linux do not execute these UIKit tests.
 
+The iOS editor flow also opens Tips, selects a Manga tip from the native group
+menu, makes a rectangular selection, and clears it with the canvas shortcut.
+
 ### Mirror eraser and sliding picker
 
 On a fresh Android API 35 emulator installation, create a 1200×800 white canvas.

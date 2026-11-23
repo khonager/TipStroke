@@ -73,9 +73,33 @@ extension EditorController: AppleBrushLibraryActions {
             showShared(sharedControls.brushController(), title: "Brush settings")
         } catch { showError(error) }
     }
-    func showBrushLibrary() {
+    func tipGroupsMenu() -> UIMenu {
+        let contents = UIDeferredMenuElement.uncached { [weak self] complete in
+            guard let self else { complete([]); return }
+            let names = self.sharedControls.dockBrushNames()
+            var elements: [UIMenuElement] = self.sharedControls.dockGroups().map { group in
+                let members: [UIAction] = group.brushIds.compactMap { id in
+                    guard let name = names[id] else { return nil }
+                    return UIAction(title: name, state: self.viewport.canvas.mode == .paint &&
+                        self.viewport.canvas.tool != .eraser && self.viewport.canvas.brush.id == id ? .on : .off) { [weak self] _ in
+                        guard let self else { return }
+                        self.viewport.canvas.tool = .ink
+                        self.sharedControls.selectBrush(id: id)
+                    }
+                }
+                return UIMenu(title: group.name, image: UIImage(systemName: "folder"), children: members)
+            }
+            elements.append(UIAction(title: "Manage tip groups", image: UIImage(systemName: "slider.horizontal.3")) { [weak self] _ in
+                self?.showBrushLibrary(openGroups: true)
+            })
+            complete(elements)
+        }
+        return UIMenu(title: "Tip groups", children: [contents])
+    }
+
+    func showBrushLibrary(openGroups: Bool = false) {
         viewport.canvas.cancelStroke()
-        showShared(sharedControls.libraryController(callbacks: self), title: "Tip library")
+        showShared(sharedControls.libraryController(callbacks: self, openGroups: openGroups), title: "Tip library")
     }
     func librarySaved(data: String) { saveBrushLibrary(data) }
     func exportToFile(data: String) { shareBrush(data) }
