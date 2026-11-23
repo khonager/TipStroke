@@ -110,10 +110,19 @@ class StampBrushRenderingTest {
         assertFalse(blank.sameAs(grain))
     }
 
-    @Test fun mangaStrokeKeepsEarlierTilesVisibleBeforeLiftOnGpuEligibleDevices() {
+    @Test fun stampTipsKeepEarlierMarksVisibleUntilLift() {
+        val presets = BrushPreset.libraryBuiltIns.filter { it.stamp != null } + BrushPreset.Blank
+        presets.forEach { assertLiveStrokeVisible(it) }
+    }
+
+    private fun assertLiveStrokeVisible(preset: BrushPreset) {
+        org.robolectric.shadows.ShadowBuild.setFingerprint("robolectric")
         val surface = DrawingSurface(org.robolectric.RuntimeEnvironment.getApplication()).apply {
-            layout(0, 0, 800, 800); configureBlank(512, 512)
-            settings.brush = MangaTips.presets.first()
+            val exact = android.view.View.MeasureSpec.makeMeasureSpec(800, android.view.View.MeasureSpec.EXACTLY)
+            measure(exact, exact)
+            layout(0, 0, 800, 800)
+            configureBlank(512, 512)
+            settings.brush = preset
             settings.sizePx = 32f
         }
         // Exercise device stroke routing after setup, which prewarms native Ink on hardware.
@@ -128,13 +137,23 @@ class StampBrushRenderingTest {
             val event = android.view.MotionEvent.obtain(down, down + time, action, 1, arrayOf(properties), arrayOf(point), 0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_STYLUS, 0)
             try { surface.dispatchTouchEvent(event) } finally { event.recycle() }
         }
+        fun frame() = Bitmap.createBitmap(800, 800, Bitmap.Config.ARGB_8888).also { raster.draw(Canvas(it)) }
+        fun earlyRegion(frame: Bitmap) = Bitmap.createBitmap(frame, 288, 392, 60, 16)
+        val blank = earlyRegion(frame())
         event(android.view.MotionEvent.ACTION_DOWN, 280f, 0)
         event(android.view.MotionEvent.ACTION_MOVE, 480f, 10)
         val store = requireNotNull(raster.layerStack.selectedStore())
-        val firstTile = store.snapshotTiles().entries.first { it.key.x == 0 }
+        val firstTile = store.snapshotTiles().entries.firstOrNull { it.key.x == 0 }
+            ?: throw AssertionError("${preset.displayName} lost its starting tile before lift")
+        val firstFrame = frame()
+        val earlyMark = earlyRegion(firstFrame)
+        assertFalse("${preset.displayName} was invisible during the stroke", earlyMark.sameAs(blank))
         event(android.view.MotionEvent.ACTION_MOVE, 550f, 15)
         val wet = store.snapshotTiles()
         assertTrue(firstTile.value.sameAs(wet.getValue(firstTile.key)))
+        val laterFrame = frame()
+        assertTrue("${preset.displayName} lost its first marks on screen",
+            earlyMark.sameAs(earlyRegion(laterFrame)))
         assertFalse(canUndo)
         assertNull(raster.previewStroke)
         event(android.view.MotionEvent.ACTION_UP, 550f, 20)
@@ -144,6 +163,7 @@ class StampBrushRenderingTest {
             val result = dry[key] ?: Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
             assertTrue(bitmap.sameAs(result))
         }
+        assertTrue("${preset.displayName} changed on lift", laterFrame.sameAs(frame()))
         assertTrue(canUndo)
         surface.undo()
         assertEquals(0, store.allocatedTileCount)

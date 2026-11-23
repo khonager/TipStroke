@@ -73,8 +73,6 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
             if (value == null) airbrushPreview.close()
             postInvalidateOnAnimation()
         }
-    internal var gpuStampPreview: GpuStampPreview? = null
-    internal var gpuStampLayerId: dev.tipstroke.core.model.LayerId? = null
     private var pencilPreviewStore: TileStore? = null
     private var pencilPreviewLayerId: LayerId? = null
     var adjustmentPreviewStroke: CompletedStroke? = null
@@ -257,7 +255,6 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                     is RasterLayerRuntime -> {
                         val preview = pencilPreviewStore?.takeIf { layer.id == pencilPreviewLayerId }
                         val strokePreview = previewStroke?.takeIf { layer.id == layerStack.selectedId }
-                        val gpu = gpuStampPreview?.takeIf { layer.id == gpuStampLayerId }
                         val movingPath = movingSelectionPath.takeIf { layer.id in movingLayerIds }
                         val shadow = shadowPreview?.takeIf { it.layer.id == layer.id }
                         val adjustment=adjustmentPreview?.takeIf { it.layer.id==layer.id }
@@ -275,14 +272,13 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                             canvas.restoreToCount(saved)
                         } else if (movingPath != null) {
                             drawMovingRaster(canvas, layer, movingPath)
-                        } else if (preview == null && gpu == null && strokePreview == null) {
+                        } else if (preview == null && strokePreview == null) {
                             bitmapPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
                             layer.tiles.draw(canvas, bitmapPaint)
                         } else if (layer.opacity >= .999f && strokePreview?.style?.blend != BlendBehavior.ERASE) {
                             bitmapPaint.alpha = 255
                             layer.tiles.draw(canvas, bitmapPaint)
                             preview?.draw(canvas, bitmapPaint)
-                            gpu?.drawPreview(canvas, transform.scale)
                             strokePreview?.let { drawStrokePreview(canvas, it) }
                         } else {
                             layerOpacityPaint.alpha = (layer.opacity * 255).toInt().coerceIn(0, 255)
@@ -295,7 +291,6 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
                             bitmapPaint.alpha = 255
                             layer.tiles.draw(canvas, bitmapPaint)
                             preview?.draw(canvas, bitmapPaint)
-                            gpu?.drawPreview(canvas, transform.scale)
                             strokePreview?.let { drawStrokePreview(canvas, it) }
                             canvas.restoreToCount(group)
                         }

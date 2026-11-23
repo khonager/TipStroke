@@ -332,16 +332,11 @@ Ink handoff. The S25 comparison (SM-S931B, API 37) measured the GPU stamp/Ink ch
 The tablet was then reconnected for final native eraser, frame batching, Airbrush
 commit and memory tests. The S25 report predates these final raster-path changes.
 
-On Android 14+, ordinary custom stamp painting now records **new stamps only** into
-native RenderNodes and displays them at the current camera scale. Pen-up renders
-the same display lists into full-resolution sparse tiles through the bounded atlas.
-Stamp count, spacing, shape, scatter, grain and pressure sampling are unchanged;
-GPU/software antialiasing can differ slightly. Selection and layer clipping remain
-in force. Reference masks and live animation recording retain the existing raster
-path. Cancellation discards provisional nodes. The display list is capped at
-2,048 batches / 65,536 stamps; exceeding it replays into the existing incremental
-raster path for the rest of that gesture, preserving one undo transaction.
-No full canvas bitmap or per-sample Compose state is introduced.
+Ordinary freehand stamp tips now use the incremental sparse raster painter on
+all Android versions. Each batch updates only the tiles reached by new stamps.
+The canvas displays those same tiles while drawing and after lift. This replaces
+the GPU display-list preview measured above, which could lose earlier marks
+until lift. The historical GPU timings do not measure the current stamp path.
 
 Solid Ink particles retain native geometry: a textured-quad experiment improved
 short strokes but regressed sustained coverage on the tablet and was removed.

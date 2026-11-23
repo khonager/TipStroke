@@ -181,7 +181,6 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var rasterFramePending = false
     private val rasterFrame = Runnable { flushRasterSamples() }
     private var customPreviewStyle: StrokeStyle? = null
-    private var gpuStampPreview: GpuStampPreview? = null
     private var rasterPreviewStyle: StrokeStyle? = null
     private var pencilPreviewStyle: StrokeStyle? = null
     private var pencilPreviewStore: TileStore? = null
@@ -612,12 +611,8 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         animation?.storageEnabled = false
         if (toolSmudgePointer != null) finishSmudgeTool()
         clearShapeHold()
-        if (gpuStampPreview != null) {
-            pendingSamples.remove(activeDrawingPointerId)
-            pendingTargets.remove(activeDrawingPointerId)
-            activeDrawingPointerId = null
-            shapeStyle = null
-            clearGpuStampPreview()
+        if (customPreviewStyle?.brush?.stamp != null) {
+            activeDrawingPointerId?.let { cancelActiveStroke(null, it) }
         }
         cancelFill()
         cancelMultiErase()
@@ -2257,15 +2252,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 if (rulerStroke != null || style.lassoFill || elasticStroke || style.mirrorWheel != null) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
-                } else if (Build.VERSION.SDK_INT >= 34 && !Build.FINGERPRINT.contains("robolectric", true) &&
-                    style.brush.stamp?.let { it.grain != StampGrain.IMAGE || it.grainPlacement != GrainPlacement.CANVAS } == true &&
-                    style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
-                    style.referenceStrokes == null && strokeRecording == null) {
-                    gpuStampPreview = GpuStampPreview(style, target.store.canvasWidth, target.store.canvasHeight).also {
-                        rasterView.gpuStampPreview = it; rasterView.gpuStampLayerId = layerStack.selectedId
-                        rasterView.invalidateTiles(it.append(pendingSamples.getValue(pointerId)))
-                    }
-                } else if ((style.brush.ink != null || style.brush.engine == BrushEngine.INK) && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
+                } else if (style.brush.stamp == null && (style.brush.ink != null || style.brush.engine == BrushEngine.INK) && style.blend == BlendBehavior.PAINT && style.pixelTool == null &&
                     (style.referenceStrokes != null || layerStack.selected().clipSourceId != null || layerStack.selected().blendMode != LayerBlendMode.NORMAL)) {
                     rasterPreviewStyle = style
                     rasterView.previewStroke = CompletedStroke(pendingSamples.getValue(pointerId), style)
@@ -2307,9 +2294,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     }
                     appendSamples(pointerId, list, additions)
                     updateChromeOcclusion(event, index)
-                    if (gpuStampPreview != null || customPreviewStyle != null || rasterPreviewStyle != null) {
-                        Unit
-                    } else {
+                    if (customPreviewStyle == null && rasterPreviewStyle == null) {
                         val prediction = if (settings.smudging) null else predictor?.predict()
                         try { liveView.addToStroke(event, pointerId, prediction) } finally { prediction?.recycle() }
                     }
@@ -2346,16 +2331,13 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                         layerStack.selectedId == it.layerId && style.blend == BlendBehavior.PAINT }
                         ?.copy(downAt = strokeDownAt)
                     if (target != null) {
-                        if (Build.VERSION.SDK_INT >= 34 && gpuStampPreview != null) {
-                            val preview = requireNotNull(gpuStampPreview)
-                            target.store.commitGpuStamp(CompletedStroke(samples, style), preview)
-                            clearGpuStampPreview()
-                            rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers()
-                            drawnColorListener?.invoke(style.color)
-                        } else if (customPreviewStyle != null) {
+                        if (customPreviewStyle != null) {
                             if (samples.size == 1) invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
                             if (reveal != null) target.store.cancelLiveStroke()
-                            else target.store.finishLiveStroke(CompletedStroke(samples, style))
+                            else {
+                                target.store.finishLiveStroke(CompletedStroke(samples, style))
+                                if (style.brush.stamp != null && style.blend == BlendBehavior.PAINT) drawnColorListener?.invoke(style.color)
+                            }
                             rasterView.invalidate()
                             notifyHistory()
                             notifyVisiblePalette()
@@ -2394,9 +2376,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     }
                     publishAnimation()
                 }
-                if (shapeStyle?.brush?.stamp != null && customPreviewStyle == null && rasterPreviewStyle == null) {
-                    clearGpuStampPreview()
-                } else if (customPreviewStyle != null) {
+                if (customPreviewStyle != null) {
                     customPreviewStyle = null
                 } else if (rasterPreviewStyle != null) {
                     rasterPreviewStyle = null
@@ -2987,18 +2967,6 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (additions.isEmpty()) return
         val previous = samples.lastOrNull()
         samples += additions
-        gpuStampPreview?.let { preview ->
-            rasterView.invalidateTiles(preview.append(if (previous != null) listOf(previous) + additions else additions))
-            if (preview.capacityReached) {
-                val target = pendingTargets.getValue(pointerId)
-                val style = preview.style
-                clearGpuStampPreview()
-                customPreviewStyle = style
-                target.store.beginLiveStroke()
-                invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(samples, style)))
-            }
-            return
-        }
         rasterPreviewStyle?.let { style ->
             // Input and onDraw share the UI thread. Keep the list, avoiding an O(n)
             // copy on every MotionEvent; freeze it only when completing the gesture.
@@ -3047,11 +3015,6 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                 CompletedStroke(samples.subList(start, samples.size).toList(), style)))
         }
         rasterSamplesRendered = samples.size
-    }
-
-    private fun clearGpuStampPreview() {
-        rasterView.gpuStampPreview = null; rasterView.gpuStampLayerId = null
-        gpuStampPreview?.close(); gpuStampPreview = null
     }
 
     private fun clearShapeHold() {
@@ -3171,7 +3134,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         gestureMoved = false
     }
 
-    private fun cancelActiveStroke(event: MotionEvent, pointerId: Int) {
+    private fun cancelActiveStroke(event: MotionEvent?, pointerId: Int) {
         removeCallbacks(rasterFrame)
         rasterFramePending = false
         clearShapeHold()
@@ -3181,13 +3144,12 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         fittedSamples = emptyList()
         shapeStyle = null
         if (multiEraseTargets.isNotEmpty()) { cancelMultiErase(); return }
-        if (gpuStampPreview == null && customPreviewStyle == null && rasterPreviewStyle == null) {
+        if (event != null && customPreviewStyle == null && rasterPreviewStyle == null) {
             liveView.cancelStroke(event, pointerId)
         }
         if (customPreviewStyle != null) {
             pendingTargets[pointerId]?.let { target -> invalidateTarget(target, target.store.cancelLiveStroke()) }
         }
-        clearGpuStampPreview()
         customPreviewStyle = null
         rasterPreviewStyle = null
         pencilPreviewStyle = null

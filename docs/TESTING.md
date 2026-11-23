@@ -492,9 +492,10 @@ November 8, 2026 implementation checks, so device timings remain to be collected
 For physical-device brush profiling at the maximum one-layer tablet reproduction
 size (5632 square), run `ScreenStrokePerformanceTest`. It writes
 `brush-qa/screen-strokes.txt` to connected-test additional output. Use
-`GpuStampInstrumentedTest` for shape/grain/rotation coverage and exact undo/redo,
+`LiveStampInstrumentedTest` for shape/grain/rotation coverage and exact undo/redo,
 `JetpackInkInstrumentedTest` for native Ink/GPU handoff and touch cancellation,
 and `OneLayerMemoryInstrumentedTest` for fully painted one-layer memory headroom.
+`StampBrushRenderingTest` draws across tiles through the normal input path for every bundled stamp tip and the custom tip template. It compares the visible frames before and after lift and verifies undo.
 The landscape Ink Studio layout is covered by `BrushCreatorFlowTest`, which saves
 `app/build/qa/ink-studio-landscape.png`. Synthetic event timings exclude physical
 input and display scanout; they cannot prove a no-lag stylus experience.

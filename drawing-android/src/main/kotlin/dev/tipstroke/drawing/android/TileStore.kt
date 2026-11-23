@@ -412,28 +412,6 @@ class TileStore(
         return dirty
     }
 
-    @androidx.annotation.RequiresApi(34)
-    internal fun commitGpuStamp(stroke: CompletedStroke, preview: GpuStampPreview): Set<TileCoordinate> {
-        val dirty = preview.dirtyTiles.toSet()
-        if (dirty.isEmpty()) return emptySet()
-        val before = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        try {
-            GpuTileRasterizer(if (dirty.size >= 128) 2048 else 1024).use { gpu ->
-                gpu.rasterize(dirty, tileSize, preview::draw) { coordinate, pixels, source ->
-                    val bitmap = writableTile(coordinate)
-                    Canvas(bitmap).drawBitmap(pixels, source, Rect(0, 0, tileSize, tileSize), null)
-                    if (bitmap.isFullyTransparent()) removeTile(coordinate)
-                }
-            }
-        } catch (error: Exception) {
-            restore(before); before.values.forEach { it?.recycle() }; throw error
-        }
-        val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
-        history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke), listOf(ReplayPaint(stroke))))
-        lastDirtyTiles = dirty
-        return dirty
-    }
-
     /** Rasterizes Ink's finalized mesh into pixels, then lets the caller discard the Ink stroke. */
     fun commitInk(stroke: CompletedStroke, inkStroke: Stroke, renderer: CanvasStrokeRenderer): Set<TileCoordinate> {
         // Use the finalized geometry, not the worst possible brush/tilt radius around

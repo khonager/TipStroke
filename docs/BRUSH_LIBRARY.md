@@ -128,18 +128,14 @@ The checkmark applies the source; the close icon cancels that source edit.
 `BrushPreset.stamp` supplies the new tip definition, with platform-independent,
 immutable coverage sources in `:core`. `StampPath` samples arc length with a
 one-document-pixel minimum step, carrying spacing and deterministic randomness
-across event batches. Each update renders only new stamps. On Android 14+, ordinary
-painting records native GPU display lists for wet rendering, then commits them to
-intersecting 256 px tiles; constrained/recording paths and older Android retain
-incremental raster painting. No full layer copies or per-sample IO are introduced. Undo is one bounded
+across event batches. Each update renders only new stamps. Android paints freehand stamps
+directly into intersecting 256 px raster tiles during input. Undo is one bounded
 sparse transaction, and cancellation restores the before snapshots.
 
 The stamp renderer composites a shape mask and a repeating grain mask in document
 coordinates, with bounded size, tilt, scatter, and count. Extremely large corrupt
 input jumps are bounded to 8,192 path steps per segment. Blank faded stamps do not
-allocate tiles. Wet and permanent rendering share the same stamps; GPU versus
-software antialiasing may differ slightly. Display-list retention is bounded, with
-a raster fallback for long gestures. Custom paint is
+allocate tiles. The live pixels become the permanent stroke on lift. Custom paint is
 recorded as exact sparse patches using the existing replay format; the frozen v1
 tip renderer is not changed, and its codec refuses custom tip commands.
 

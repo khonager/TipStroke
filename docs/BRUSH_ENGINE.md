@@ -175,12 +175,11 @@ agreement, and undo/redo; host tests cannot load Android Ink's JNI implementatio
 
 ## Android device-driven acceleration
 
-On Android 14+, ordinary custom stamp paint uses bounded GPU RenderNode batches
-for wet feedback, then a 1024 px sparse tile atlas for permanent pixels. Round
-accumulating Jetpack Ink particles use a circular mask on quads to reduce geometry.
-Existing stamp parameters and sampling are retained; GPU antialiasing may differ
-slightly from software. Reference-constrained and recording paths retain the
-existing painter, and long display lists fall back to incremental raster painting.
+Freehand stamp tips, including Calligraphy, Manga, and imported tips, accumulate
+each new batch directly in the active layer’s sparse tiles on every Android
+version. Moving into another tile keeps the earlier marks visible. Lift retains
+the painted pixels as one undo transaction and cancellation restores the touched
+tiles. Jetpack Ink particles use a circular mask on quads to reduce geometry.
 
 Pencil and ordinary eraser raster work is grouped once per display frame while
 preserving every input sample. Pencil allocates tiles from its actual contact
