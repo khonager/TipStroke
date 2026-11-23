@@ -1479,8 +1479,12 @@ private fun PhoneEditorChrome(
             }
             PhoneIconAction("Undo", canUndo, onUndo) { UndoIcon() }
             PhoneIconAction("Redo", canRedo, onRedo) { RedoIcon() }
-            TipAction(if (touchDrawing) "Touch draws; switch to navigation" else "Touch navigates; switch to drawing",
-                if (touchDrawing) Icons.Outlined.Draw else Icons.Outlined.PanTool) { onTouchDrawing(!touchDrawing) }
+            CompositionLocalProvider(LocalContentColor provides Color.White) {
+                TipAction(
+                    if (touchDrawing) "Touch draws; switch to navigation" else "Touch navigates; switch to drawing",
+                    if (touchDrawing) Icons.Outlined.Draw else Icons.Outlined.PanTool,
+                ) { onTouchDrawing(!touchDrawing) }
+            }
             Box(
                 Modifier.size(30.dp).clip(CircleShape)
                     .background(Color(color.red, color.green, color.blue, color.alpha))
