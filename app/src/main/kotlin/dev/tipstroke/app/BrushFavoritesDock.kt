@@ -51,7 +51,7 @@ internal fun BrushFavoritesDock(
     val aidsActive = perspectiveMode != dev.tipstroke.core.geometry.PerspectiveMode.OFF || assists.paintInside || assists.elasticLine || mirrorCopies > 1
     Surface(modifier, color = Color(0xE6202125), shape = MaterialTheme.shapes.large,
         border = BorderStroke(1.dp, Color(0xB345474D))) {
-        BoxWithConstraints(Modifier.padding(4.dp)) {
+        BoxWithConstraints(Modifier.padding(4.dp), contentAlignment = Alignment.Center) {
             val available = if (horizontal) maxWidth.value + 8f else maxHeight.value + 8f
             val fixedSpace = 8f + (BRUSH_DOCK_FIXED_CELLS - 1) * 2f
             val slot = minOf(48f, ((available - fixedSpace) / BRUSH_DOCK_FIXED_CELLS).coerceAtLeast(1f))
