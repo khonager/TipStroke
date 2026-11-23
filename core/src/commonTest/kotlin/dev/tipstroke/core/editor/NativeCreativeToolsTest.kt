@@ -3,16 +3,13 @@ package dev.tipstroke.core.editor
 import kotlin.test.*
 
 class NativeCreativeToolsTest {
-    @Test fun elasticKeepsEndpointsAndRibbonHasTwoEdges() {
+    @Test fun elasticKeepsEndpoints() {
         val tracker = NativeShapeTracker()
         for (i in 0..100) tracker.append(i.toFloat(), 0f)
         val bent = tracker.elastic().bend(0f, 20f).points
         assertEquals(0f, bent.first().y)
         assertEquals(0f, bent.last().y)
         assertEquals(20f, bent[bent.size / 2].y)
-        val ribbon = tracker.ribbon(12f).points
-        assertEquals(202, ribbon.size)
-        assertEquals(12f, ribbon.last().y)
     }
     @Test fun perspectiveLocksDirectionAndPushIsBounded() {
         val ruler = NativePerspectiveRuler(1, 0f, 0f, 100f, 0f, 4f)

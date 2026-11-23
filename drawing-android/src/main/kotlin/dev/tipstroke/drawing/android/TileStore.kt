@@ -218,7 +218,7 @@ class TileStore(
         }
         val after = dirty.associateWith { tiles[it]?.copy(Bitmap.Config.ARGB_8888, false) }
         history.push(TileSnapshotTransaction(this, before, after, usageFor(stroke),
-            if (blockAirbrush || stroke.style.lassoFill || stroke.style.ribbon || stroke.style.mirrorWheel != null) null else listOf(ReplayPaint(stroke))))
+            if (blockAirbrush || stroke.style.lassoFill || stroke.style.mirrorWheel != null) null else listOf(ReplayPaint(stroke))))
         lastDirtyTiles = dirty
         return dirty
     }

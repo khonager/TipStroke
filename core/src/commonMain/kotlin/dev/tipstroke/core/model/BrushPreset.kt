@@ -105,7 +105,13 @@ data class BrushPreset(
                 baseSizePx = 96f, spacing = .02f,
                 ink = InkBrush(texture = InkTexture.SOFT, particles = true, accumulate = true, flow = .03f)),
         )
-        val libraryBuiltIns by lazy { builtIns + jetpackInk + MangaTips.presets }
+        val Calligraphy = Blank.copy(
+            id = BrushId("calligraphy-v1"), displayName = "Calligraphy",
+            baseSizePx = 18f, spacing = .025f, stabilization = .18f,
+            pressureToSize = PressureCurve(.62f, 1f, .85f),
+            stamp = StampBrush(aspectRatio = .16f, rotationDegrees = -35f, flow = 1f),
+        )
+        val libraryBuiltIns by lazy { builtIns + Calligraphy + jetpackInk + MangaTips.presets }
     }
 }
 

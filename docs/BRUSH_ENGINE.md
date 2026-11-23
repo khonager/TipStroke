@@ -84,6 +84,10 @@ tiles; pen-up commits one undo transaction without rerendering the stroke. Sourc
 are decoded before selection, with no pointer-time file IO. Stroke bounds cover
 maximum size/tilt/scatter. Reference and selection clipping retain their native paths.
 
+The built-in Calligraphy tip uses a smooth elliptical stamp with a 0.16 aspect
+ratio and a fixed −35° rotation in document coordinates. Pressure scales the nib
+from 62% to full width at constant ink flow.
+
 Custom rendering dispatch precedes the legacy engine selection. Process recording
 captures exact sparse patches for these strokes, and the frozen v1 command codec
 rejects a stamp definition rather than dropping it. Existing recorded v1 brush

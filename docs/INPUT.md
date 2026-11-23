@@ -499,12 +499,10 @@ remain in document coordinates. Only copy footprints allocate tiles; recordings
 use exact patches. This session setting applies to raster brushes and lasso fill,
 not imported-image masks or smudge.
 
-**Ribbon** is a tool in the drawing menu. Size controls the trailing-edge distance
-in document pixels; color and opacity control its fill. Turning the pen folds the
-closed band. It is a flat fill, independent of saved tip texture/pressure curves,
-and works with selection clips, Paint inside, and Mirror wheel. Preview is native
-and transient until lift; undo and process recording use one raster edit. Elastic
-line is inactive for Ribbon. The trailing-edge geometry is portable core code.
+**Calligraphy** is a built-in brush tip. The flattened nib sits at a 35° angle:
+rising strokes along the nib make fine hairlines, while strokes across the nib
+lay down broad ink. Pressure varies the width and keeps the ink solid. Choose
+it in the Tip library and adjust size and color as with other tips.
 
 **Color push** is a local raster warp, separate from Smudge. Size sets its circular
 diameter (up to 192 document pixels); Strength controls displacement. Native input
@@ -541,7 +539,7 @@ chooses vertical or either vanishing-point ray. After 4 screen dp of movement th
 chosen guide stays locked until lift. Guides are transient and never exported.
 Native samples are projected through core geometry and previewed on the native
 canvas; selection, undo, and brush pressure still apply. Rulers take priority over
-Elastic line and do not constrain lasso fill, Ribbon, Color push, or Smudge.
+Elastic line and do not constrain lasso fill, Color push, or Smudge.
 
 ### Blur and bloom
 
@@ -587,8 +585,6 @@ bends it with fixed endpoints; native stamp brushes retain their tip/grain.
 iOS Mirror wheel repeats native brush geometry inside one tile transaction, while
 selection/reference clips remain in document coordinates. Drawing tools → Brush aids →
 Mirror wheel offers Off/2/4/6/8/12 copies and next-touch center placement.
-iOS Ribbon uses the shared trailing-edge outline and native even-odd fill. Width
-uses brush size; color/opacity are flat. Mirror transforms preserve handedness.
 iOS Selection actions → Shadow pull captures selected sparse pixels once. Drag
 previews a current-color shadow behind pixels on the same layer. Lift commits;
 Cancel/Undo restores the transaction. Opaque paint on that layer hides shadows.

@@ -184,9 +184,10 @@ The editor shows tool and control names on pointer dwell.
 
 ## Creative tools on iOS
 
-- **Drawing tools → More tools → Paint tools**: live Lasso fill, Ribbon and Color push alongside Brush,
-  Fill and Smudge. Lasso/Ribbon use native display-link previews; Color push uses
+- **Drawing tools → More tools → Paint tools**: live Lasso fill and Color push alongside Brush,
+  Fill and Smudge. Lasso fill uses native display-link previews; Color push uses
   a bounded local inverse warp, with size as diameter and opacity as strength.
+- **Tip library → Calligraphy** uses the shared angled nib and pressure curve with native stamp rendering.
 - **Drawing tools → Brush aids**: temporary Paint inside, hold-and-bend Elastic line,
   Mirror wheel (Off/2/4/6/8/12, movable center), and magnetic one/two-point rulers.
   Paint inside preserves existing soft alpha and overrides reference constraints.

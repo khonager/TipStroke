@@ -31,7 +31,7 @@ extension EditorController {
         menu.addAction(UIAlertAction(title: "Manga tips · Screentone & hatching", style: .default) { [weak self] _ in self?.mangaTips() })
         menu.addAction(UIAlertAction(title: "Brush shape / grain sources", style: .default) { [weak self] _ in self?.brushSources() })
         let groups: [(String, [CanvasMode])] = [
-            ("Paint tools", [.paint, .fill, .lassoFill, .ribbon, .smudge, .colorPush]),
+            ("Paint tools", [.paint, .fill, .lassoFill, .smudge, .colorPush]),
             ("Pixel tools", [.pixel, .pixelLine, .dither]),
             ("Shapes", [.line, .rectangle, .ellipse, .triangle, .arrow])
         ]

@@ -324,7 +324,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private weak var toolsButton: UIButton?
     private weak var movingToolsButton: UIButton?
     private let drawingModes: [(CanvasMode, String)] = [(.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
-            (.ribbon, "scribble.variable"), (.colorPush, "hand.draw"),
+            (.colorPush, "hand.draw"),
             (.pixel, "pencil"), (.pixelLine, "line.diagonal"), (.dither, "circle.grid.3x3.fill"), (.fill, "paintbrush")]
     private let selectionModes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.rectangleSelection, "rectangle.dashed"),
             (.ellipseSelection, "circle.dashed")]

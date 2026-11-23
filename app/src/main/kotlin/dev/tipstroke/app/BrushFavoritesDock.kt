@@ -37,7 +37,7 @@ internal fun BrushFavoritesDock(
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String? = null,
     onReselect: () -> Unit = {}, onTransform: () -> Unit = {}, onFitCanvas: () -> Unit = {},
     onAdjustments: () -> Unit = {}, onColorizeMask: () -> Unit = {},
-    onLassoFill: () -> Unit = {}, onRibbon: () -> Unit = {}, onColorPush: () -> Unit = {},
+    onLassoFill: () -> Unit = {}, onColorPush: () -> Unit = {},
     assists: dev.tipstroke.core.drawing.BrushAssists = dev.tipstroke.core.drawing.BrushAssists(),
     onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
     perspectiveMode: dev.tipstroke.core.geometry.PerspectiveMode = dev.tipstroke.core.geometry.PerspectiveMode.OFF,
@@ -70,7 +70,6 @@ internal fun BrushFavoritesDock(
                         add(DockTool("Eraser", EraserIcon) { if (toolLabel != "Eraser") onEraser() })
                         add(DockTool("Smudge", Icons.Outlined.BlurOn, onSmudge))
                         add(DockTool("Lasso fill", Icons.Outlined.FormatColorFill, onLassoFill))
-                        add(DockTool("Ribbon", Icons.Outlined.Gesture, onRibbon))
                         add(DockTool("Color push", Icons.Outlined.TouchApp, onColorPush))
                         if (pixelToolsAvailable) {
                             add(DockTool("Pixel pencil", Icons.Outlined.Edit) { onPixelTool(PixelTool.PENCIL) })

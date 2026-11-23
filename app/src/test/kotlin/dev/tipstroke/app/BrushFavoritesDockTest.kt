@@ -32,13 +32,12 @@ class BrushFavoritesDockTest {
     @Test fun brushAidsCanBeToggledAndToolChoicesRemainReachable() {
         var assists by mutableStateOf(dev.tipstroke.core.drawing.BrushAssists())
         var copies by mutableStateOf(1)
-        var ribbon = false
         var push = false
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme {
                 BrushFavoritesDock(BrushPreset.Ink, emptyList(), true, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
                     Modifier.width(400.dp), assists = assists, onAssists = { assists = it },
-                    mirrorCopies = copies, onMirrorCopies = { copies = it }, onRibbon = { ribbon = true }, onColorPush = { push = true })
+                    mirrorCopies = copies, onMirrorCopies = { copies = it }, onColorPush = { push = true })
             }
         }
         compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
@@ -48,9 +47,7 @@ class BrushFavoritesDockTest {
         compose.onNodeWithText("Mirror wheel: 6 copies").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(assists.paintInside); assertTrue(assists.elasticLine); assertEquals(6, copies) }
         compose.onNodeWithText("Back to drawing tools").performScrollTo().performClick()
-        compose.onNodeWithContentDescription("Ribbon").performClick()
-        compose.runOnIdle { assertTrue(ribbon) }
-        compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
+        compose.onNodeWithContentDescription("Ribbon").assertDoesNotExist()
         compose.onNodeWithContentDescription("Color push").performClick()
         compose.runOnIdle { assertTrue(push) }
         compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
