@@ -76,6 +76,9 @@ readout for single-unit adjustments. Size can use document pixels or screen
 points for regular brushes and erasers. The eraser keeps its own tuning. Tips
 opens the full collection. The picker, library, dock and brush settings show
 pressure-sweep samples rendered into small, isolated native raster documents.
+Brush settings keep the current sample visible above the scrolling controls, with
+minimum and maximum specimens beside the parameter tracks. Eraser samples cut
+through a gray strip so you can see how much each tip removes.
 Drawing tools → More tools → Use solid controls switches the editor dock
 backgrounds between translucent material and an opaque system color.
 

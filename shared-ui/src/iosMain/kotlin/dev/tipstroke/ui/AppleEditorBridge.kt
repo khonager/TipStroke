@@ -59,7 +59,7 @@ interface AppleLayerBlendActions {
 }
 
 interface AppleEditorActions {
-    fun strokePreview(brush: NativeBrush): NSData?
+    fun strokePreview(brush: NativeBrush, eraser: Boolean): NSData?
     fun eraserChanged()
     fun brushChanged(brush: NativeBrush)
     fun colorChanged(red: Float, green: Float, blue: Float)
@@ -201,11 +201,11 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     fun libraryData(): String = BrushCollection.encode(library)
     @Composable
-    private fun BrushTheme(content: @Composable () -> Unit) {
+    private fun BrushTheme(eraser: Boolean = false, content: @Composable () -> Unit) {
         CompositionLocalProvider(LocalStrokePreview provides { tip, modifier ->
-            val image by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, tip) {
+            val image by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, tip, eraser) {
                 value = withContext(Dispatchers.Default) {
-                    val data = actions.strokePreview(NativeBrush(tip)) ?: return@withContext null
+                    val data = actions.strokePreview(NativeBrush(tip), eraser) ?: return@withContext null
                     val bytes = data.bytes?.reinterpret<ByteVar>()?.readBytes(data.length.toInt())
                     bytes?.let { SkiaImage.makeFromEncoded(it).toComposeImageBitmap() }
                 }
@@ -262,7 +262,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     fun pickerController(callbacks: AppleBrushLibraryActions, eraser: Boolean, pinLimit: Int): UIViewController = ComposeUIViewController {
         val tips = BrushPreset.libraryBuiltIns + library.map { it.preset }
-        BrushTheme {
+        BrushTheme(eraser) {
             Surface(Modifier.fillMaxSize()) {
                 TipPicker(if (eraser) eraserPosition else drawingPosition, eraser,
                     if (eraser) defaults.stringForKey("tip.eraser") ?: BrushPreset.Ink.id.value else brush.id.value,
@@ -299,7 +299,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     fun brushController(): UIViewController = settingsController(false)
     fun settingsController(eraser: Boolean): UIViewController = ComposeUIViewController {
-        BrushTheme {
+        BrushTheme(eraser) {
             Surface(Modifier.fillMaxSize()) {
                 Column {
                     var eraserPreset by remember { mutableStateOf(if (eraser) eraserSource() else brush) }

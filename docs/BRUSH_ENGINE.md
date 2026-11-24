@@ -105,7 +105,8 @@ across canvas resolutions and zoom levels. Pressure/tilt still shape that nomina
 tip. Hover and adjustment previews use the same conversion. The stroke retains its
 resolved size through completion. The number is reinterpreted when switching units;
 existing artwork and brush packages are not resized. Pixel tools and the bounded
-smudge tool always use canvas pixels. This preference is Android-only.
+smudge tool always use canvas pixels. The iOS dock offers the same choice using
+UIKit screen points. It divides the point size by the native viewport zoom at touch-down.
 
 Custom stamps without effective grain use a filtered shape-bitmap blit and reuse
 unchanged tint filters. Fixed size/angle/tint tips additionally bake that transform

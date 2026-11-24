@@ -28,19 +28,24 @@ fun PrecisionSlider(
     onAdjustmentEnd: () -> Unit,
     modifier: Modifier = Modifier,
     valueContent: (@Composable () -> Unit)? = null,
+    endpoint: (@Composable (Float) -> Unit)? = null,
 ) {
     Column(modifier) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, color = Color(0xFFE7E7E5), fontSize = 12.sp, fontWeight = FontWeight.Medium)
             if (valueContent != null) valueContent() else Text(valueLabel, color = Color(0xFFED6A5A), fontSize = 12.sp)
         }
-        Slider(
-            value = sliderFraction(value, range),
-            onValueChange = { onAdjustmentStart(); onValue(sliderValue(it, range)) },
-            onValueChangeFinished = onAdjustmentEnd,
-            valueRange = 0f..1f,
-            modifier = Modifier.fillMaxWidth().height(44.dp),
-        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            endpoint?.invoke(range.start)
+            Slider(
+                value = sliderFraction(value, range),
+                onValueChange = { onAdjustmentStart(); onValue(sliderValue(it, range)) },
+                onValueChangeFinished = onAdjustmentEnd,
+                valueRange = 0f..1f,
+                modifier = Modifier.weight(1f).height(44.dp),
+            )
+            endpoint?.invoke(range.endInclusive)
+        }
         StepButtons(value, range, step, onValue, onAdjustmentStart, onAdjustmentEnd)
     }
 }

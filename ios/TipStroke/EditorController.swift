@@ -721,7 +721,7 @@ private extension NSLayoutConstraint {
 private final class EditorActions: NSObject, AppleEditorActions {
     weak var editor: EditorController?
     init(_ editor: EditorController) { self.editor = editor }
-    func strokePreview(brush: NativeBrush) -> Data? { try? BrushSpecimen.image(brush) }
+    func strokePreview(brush: NativeBrush, eraser: Bool) -> Data? { try? BrushSpecimen.image(brush, eraser: eraser) }
     func eraserChanged() { editor?.activateEraserBrush() }
     func brushChanged(brush: NativeBrush) { editor?.applyBrush(brush) }
     func colorChanged(red: Float, green: Float, blue: Float) {

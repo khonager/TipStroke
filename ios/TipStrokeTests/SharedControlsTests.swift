@@ -7,7 +7,7 @@ final class SharedControlsTests: XCTestCase {
     private final class Actions: NSObject, AppleEditorActions {
         var brush: NativeBrush?
         var finger = false
-        func strokePreview(brush: NativeBrush) -> Data? { try? BrushSpecimen.image(brush) }
+        func strokePreview(brush: NativeBrush, eraser: Bool) -> Data? { try? BrushSpecimen.image(brush, eraser: eraser) }
         func eraserChanged() {}
         func brushChanged(brush: NativeBrush) { self.brush = brush }
         func colorChanged(red: Float, green: Float, blue: Float) {}
@@ -30,6 +30,24 @@ final class SharedControlsTests: XCTestCase {
         XCTAssertEqual(actions.brush?.engine, "PENCIL")
         XCTAssertEqual(actions.brush?.size, 32)
         XCTAssertFalse(bridge.restoreBrush(data: "broken"))
+    }
+
+    func testNativeStrokePreviewsShowPaintAndErasure() throws {
+        let ink = NativeBrush.companion.builtIn(id: "ink-v1")
+        func pixels(eraser: Bool) throws -> [UInt8] {
+            let data = try XCTUnwrap(try BrushSpecimen.image(ink, eraser: eraser))
+            let image = try XCTUnwrap(UIImage(data: data)?.cgImage)
+            let context = try RasterDocument.context(width: image.width, height: image.height)
+            RasterDocument.draw(image, in: context, rect: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            let bytes = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+            return (0..<image.width).map { bytes[(image.width * image.height / 2 + $0) * 4] }
+        }
+        let paint = try pixels(eraser: false)
+        XCTAssertGreaterThan(Int(paint.max()!) - Int(paint.min()!), 40)
+        let erase = try pixels(eraser: true)
+        // Inside the gray strip, the stroke cuts back through to charcoal.
+        let strip = erase.dropFirst(4).dropLast(4)
+        XCTAssertGreaterThan(Int(strip.max()!) - Int(strip.min()!), 40)
     }
 
     func testImportedStampSourceRendersAcrossTilesAndLibraryRoundTrips() throws {
