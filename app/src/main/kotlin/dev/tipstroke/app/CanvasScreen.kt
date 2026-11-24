@@ -210,6 +210,8 @@ fun CanvasScreen(
     var phoneChromeManuallyHidden by rememberSaveable { mutableStateOf(false) }
     var phoneChromeOccludedByStroke by remember { mutableStateOf(false) }
     var phoneAdjustmentsOpen by rememberSaveable { mutableStateOf(false) }
+    var canvasPreviewOpen by rememberSaveable(documentId) { mutableStateOf(false) }
+    val previewMenuLabel = if (canvasPreviewOpen) "Hide canvas preview" else "Canvas preview"
     var phoneMenuOpen by remember { mutableStateOf(false) }
     var touchDrawing by rememberSaveable { mutableStateOf(gestureSettings.oneFingerDrag == FingerAction.DRAW) }
     val lastStylusButtonAt = remember { longArrayOf(Long.MIN_VALUE, Long.MIN_VALUE) }
@@ -663,6 +665,7 @@ fun CanvasScreen(
 
         if (!resizeOpen && !compactPhone) {
             EditorChrome(
+                previewLabel = previewMenuLabel, onPreview = { canvasPreviewOpen = !canvasPreviewOpen },
                 canUndo = canUndo, canRedo = canRedo, debug = debug,
                 zoomPercent = (diagnostics.zoom * 100).roundToInt(),
                 onUndo = { surface?.undo() }, onRedo = { surface?.redo() },
@@ -682,6 +685,7 @@ fun CanvasScreen(
             )
         } else if (!resizeOpen && phoneChromeVisible) {
             PhoneEditorChrome(
+                previewLabel = previewMenuLabel, onPreview = { canvasPreviewOpen = !canvasPreviewOpen },
                 canUndo = canUndo,
                 canRedo = canRedo,
                 touchDrawing = touchDrawing,
@@ -927,6 +931,21 @@ fun CanvasScreen(
                 if(photoTool in listOf(PhotoEditTool.PUSH,PhotoEditTool.BULGE,PhotoEditTool.PINCH)) {
                     Text("${photoTool.transformLabel()} · Area size ${(photoRadius*100).roundToInt()}%",color=Color.White,fontSize=12.sp)
                     Slider(photoRadius,{ photoRadius=it },valueRange=.08f..1f)
+                }
+            }
+        }
+
+        if (canvasPreviewOpen) {
+            val placement = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+            if (!resizeOpen && !(compactPhone && phoneChromeManuallyHidden)) placement.SaveableStateProvider("placement") {
+                surface?.let { view ->
+                    dev.tipstroke.ui.CanvasPreviewOverlay(
+                        aspectRatio = editorWidthPx.toFloat() / editorHeightPx,
+                        onRemove = { canvasPreviewOpen = false },
+                        trashIcon = { Icon(Icons.Outlined.DeleteOutline, "Remove preview", tint = Color.White) },
+                        modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+                        edgeGestureModifier = Modifier.systemGestureExclusion(),
+                    ) { CanvasPreviewArtwork(view) }
                 }
             }
         }
@@ -1394,6 +1413,7 @@ fun CanvasScreen(
 
 @Composable
 private fun EditorChrome(
+    previewLabel: String, onPreview: () -> Unit,
     canUndo: Boolean,
     canRedo: Boolean,
     debug: Boolean,
@@ -1436,8 +1456,14 @@ private fun EditorChrome(
             CompositionLocalProvider(LocalContentColor provides if (animationOpen) Color(0xFFED6A5A) else Color.White) {
                 TipAction("Animate", Icons.Outlined.Movie, onClick = onAnimation)
             }
-            CompositionLocalProvider(LocalContentColor provides if (debug) Color(0xFFED6A5A) else Color.White) {
-                TipAction(if (debug) "Hide debug overlay" else "Show debug overlay", Icons.Outlined.BugReport, onClick = onDebug)
+            var menuOpen by remember { mutableStateOf(false) }
+            Box {
+                IconAction("More canvas actions", true, { menuOpen = true }) { MoreIcon() }
+                DropdownMenu(menuOpen, { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text(previewLabel) }, onClick = { menuOpen = false; onPreview() })
+                    DropdownMenuItem(text = { Text(if (debug) "Hide diagnostics" else "Diagnostics") },
+                        onClick = { menuOpen = false; onDebug() })
+                }
             }
         }
     }
@@ -1445,6 +1471,7 @@ private fun EditorChrome(
 
 @Composable
 private fun PhoneEditorChrome(
+    previewLabel: String, onPreview: () -> Unit,
     canUndo: Boolean,
     canRedo: Boolean,
     touchDrawing: Boolean,
@@ -1503,6 +1530,7 @@ private fun PhoneEditorChrome(
                 ) { MoreIcon() } }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
                     DropdownMenuItem(text = { Text("Fit canvas") }, onClick = { onMenuOpenChange(false); onReset() })
+                    DropdownMenuItem(text = { Text(previewLabel) }, onClick = { onMenuOpenChange(false); onPreview() })
                     DropdownMenuItem(text = { Text("Export") }, onClick = { onMenuOpenChange(false); onExport() })
                     DropdownMenuItem(text = { Text("Resize canvas") }, onClick = { onMenuOpenChange(false); onResize() })
                     DropdownMenuItem(text = { Text("Animate") }, onClick = { onMenuOpenChange(false); onAnimation() })
@@ -1579,4 +1607,30 @@ private fun formatBytes(bytes: Long): String = when {
     bytes >= 1024L * 1024 * 1024 -> "%.1f GiB".format(bytes / (1024.0 * 1024 * 1024))
     bytes >= 1024L * 1024 -> "%.0f MiB".format(bytes / (1024.0 * 1024))
     else -> "${bytes / 1024} KiB"
+}
+
+
+@Composable
+private fun CanvasPreviewArtwork(surface: DrawingSurface) {
+    var image by remember(surface) { mutableStateOf<ImageBitmap?>(null) }
+    DisposableEffect(surface) {
+        var pending = false
+        val refresh = Runnable {
+            pending = false
+            image = surface.renderCanvasPreview().asImageBitmap()
+        }
+        val request = {
+            if (!pending) {
+                pending = true
+                surface.postOnAnimation(refresh)
+            }
+        }
+        surface.canvasPreviewInvalidated = request
+        request()
+        onDispose {
+            surface.canvasPreviewInvalidated = null
+            surface.removeCallbacks(refresh)
+        }
+    }
+    image?.let { Image(it, null, Modifier.fillMaxSize()) }
 }

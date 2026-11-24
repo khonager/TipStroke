@@ -102,6 +102,23 @@ internal class LayerStack(
         layer.id to renderPreview(layer, sizePx.coerceAtLeast(1))
     }
 
+    fun canvasPreview(size: Int, media: MediaSource?, frame: Bitmap?): Bitmap {
+        val scale = minOf(1f, size.toFloat() / maxOf(canvasWidth, canvasHeight))
+        val preview = Bitmap.createBitmap((canvasWidth * scale).roundToInt().coerceAtLeast(1),
+            (canvasHeight * scale).roundToInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(preview)
+        canvas.scale(preview.width.toFloat() / canvasWidth, preview.height.toFloat() / canvasHeight)
+        canvas.drawColor((backgroundColor and 0x00ffffff) or ((backgroundOpacity * 255).roundToInt() shl 24))
+        if (media != null && frame != null) {
+            canvas.drawBitmap(frame, null, RectF(0f, 0f, media.width * media.canvasScale, media.height * media.canvasScale),
+                Paint(Paint.FILTER_BITMAP_FLAG))
+        }
+        for (layer in layers) {
+            if (layer.visible && layer.opacity > 0f) drawLayerContent(canvas, layer, composite = true)
+        }
+        return preview
+    }
+
     /** Small composite preview for a timeline frame, without installing its cels. */
     fun renderAnimationFrameThumbnail(animation: AnimationRuntime, frameId: FrameId, sizePx: Int, mediaBitmap: Bitmap? = null): Bitmap {
         val size = sizePx.coerceAtLeast(1)
@@ -698,10 +715,11 @@ internal class LayerStack(
     }
 
     /** Raw painted coverage ignores layer visibility/opacity but follows nested clipping. */
-    private fun drawLayerContent(canvas: Canvas, layer: CanvasLayerRuntime) {
+    private fun drawLayerContent(canvas: Canvas, layer: CanvasLayerRuntime, composite: Boolean = false) {
         if (!layer.activeAtFrame) return
-        withClip(canvas, layer) {
+        withClip(canvas, layer, blend = composite) {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            if (composite) paint.alpha = (layer.opacity * 255).roundToInt()
             when (layer) {
                 is RasterLayerRuntime -> layer.tiles.draw(canvas, paint)
                 is ImageLayerRuntime -> layer.source.bitmapOrRequest()?.let { source ->

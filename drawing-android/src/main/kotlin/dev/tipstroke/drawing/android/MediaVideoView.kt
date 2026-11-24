@@ -28,9 +28,9 @@ internal class MediaVideoView(
 
     init { addView(texture, LayoutParams(source.width, source.height)); clipChildren = false }
 
-    fun colorSnapshot(): android.graphics.Bitmap? {
+    fun colorSnapshot(maxSize: Int = 1280): android.graphics.Bitmap? {
         if (!texture.isAvailable) return null
-        val scale = minOf(1f, 1280f / maxOf(source.width, source.height))
+        val scale = minOf(1f, maxSize.toFloat() / maxOf(source.width, source.height))
         return texture.getBitmap((source.width * scale).toInt().coerceAtLeast(1), (source.height * scale).toInt().coerceAtLeast(1))
     }
 

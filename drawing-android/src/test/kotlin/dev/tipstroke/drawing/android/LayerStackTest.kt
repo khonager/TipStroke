@@ -72,6 +72,24 @@ class LayerStackTest {
         assertEquals(Color.BLUE, original.tiles.colorAt(200, 210))
     }
 
+    @Test fun canvasPreviewFitsTheDocumentAndCompositesVisibleLayers() {
+        val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 1024, 512) {}
+        stack.setBackground(color = Color.WHITE, opacity = 1f)
+        val paint = stack.selectedRaster()!!
+        val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        paint.tiles.replaceTiles(mapOf(TileCoordinate(3, 1) to tile))
+        stack.setOpacity(.5f)
+        val preview = stack.canvasPreview(128, null, null)
+        assertEquals(128, preview.width)
+        assertEquals(64, preview.height)
+        assertEquals(Color.WHITE, preview.getPixel(16, 16))
+        val ink = preview.getPixel(112, 48)
+        assertEquals(255, Color.red(ink))
+        assertTrue(Color.green(ink) in 126..129)
+        stack.toggleVisible(paint.id)
+        assertEquals(Color.WHITE, stack.canvasPreview(128, null, null).getPixel(112, 48))
+    }
+
     @Test fun layerPreviewFitsSparseContentInsteadOfTheWholeCanvas() {
         val stack = LayerStack(RuntimeEnvironment.getApplication().contentResolver, 2048, 2048) {}
         val tile = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {

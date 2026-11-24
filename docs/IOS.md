@@ -82,6 +82,7 @@ preset uses the iOS resident tile budget or Android’s app heap budget.
 
 | Workflow | iOS behavior |
 | --- | --- |
+| Floating canvas preview | Available on Android. The iOS editor does not yet host the shared draggable preview and edge drop. |
 | Brush input | Core Graphics uses shared contact, grain and stamp rules for graphite, airbrush and imported tips. Jetpack Ink brushes use native approximations. Wet-stroke appearance, latency and Pencil sensor behavior need physical-device comparison. |
 | Selection and images | Preview and apply or cancel transforms, edit source-backed photos and masks, and use freeform, perspective, mesh and local deformation. PNG export samples the original within a bounded decode budget. |
 | Animation and video | Work with disk-backed cels, change resolution, record motion, scrub GIF and video sources, edit clips and crossfades, and navigate drawing coverage. Photo motion uses keyframes. |

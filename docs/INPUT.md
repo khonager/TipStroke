@@ -606,3 +606,13 @@ the input thread and uses at most a 1024×1024 analysis grid.
 iOS tools are grouped into Paint tools, Pixel tools, Shapes and Select an area.
 Shadow pull and point placement show a temporary cancellable prompt. Perspective
 settings also accept document-coordinate vanishing points outside the canvas.
+
+## Floating canvas preview (Android)
+
+Choose **Canvas preview** from **More canvas actions** to see the whole drawing
+while keeping the main canvas zoomed in. Drag the artwork to move the preview, or drag any corner
+to resize it while preserving its proportions. Push it past either side and
+release to tuck it into a small drop. Pull the drop inward to restore the preview.
+During a move, a trash target appears at the bottom. Release there to dismiss the
+preview, or choose **Hide canvas preview** in the menu. Both actions affect only
+the editor overlay. Committed drawing changes refresh the visible thumbnail.

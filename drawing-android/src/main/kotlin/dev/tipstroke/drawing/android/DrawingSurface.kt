@@ -1698,6 +1698,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
             pendingSamples.isNotEmpty() || finishedSamples.isNotEmpty()
     }
     private fun publishAnimation() {
+        if (animation != null) canvasPreviewInvalidated?.invoke()
         updateAnimationStoragePins()
         if (!animationPlaying || strokeRecording != null) {
             processRecorder?.sync(layerStack, animation != null, animation = animation)
@@ -3310,7 +3311,20 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val history = layerStack.selectedStore()?.history
         historyListener?.invoke(history?.canUndo() == true, history?.canRedo() == true)
     }
+    var canvasPreviewInvalidated: (() -> Unit)? = null
+
+    fun renderCanvasPreview(): android.graphics.Bitmap {
+        val size = 384
+        val video = videoView?.colorSnapshot(size)
+        return try {
+            layerStack.canvasPreview(size, animation?.media, video ?: animation?.mediaPreview?.bitmap)
+        } finally {
+            video?.recycle()
+        }
+    }
+
     private fun notifyLayers() {
+        canvasPreviewInvalidated?.invoke()
         if (animation != null && !switchingAnimationFrame && !imageGestureInProgress) {
             animationThumbnails.clear()
             thumbnailRevision++
