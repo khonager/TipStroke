@@ -34,6 +34,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import dev.tipstroke.core.drawing.PixelTool
 import dev.tipstroke.core.model.*
 import dev.tipstroke.drawing.android.*
+import kotlinx.coroutines.launch
+import dev.tipstroke.ui.TipPicker
+import dev.tipstroke.ui.TipPickerPosition
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -73,13 +76,25 @@ fun CanvasScreen(
     val availableDockTips = remember(presetsById) {
         presetsById.filterValues { it.ink == null || android.os.Build.VERSION.SDK_INT >= 34 }
     }
-    val favoriteBrushes = favoriteIds.mapNotNull(availableDockTips::get)
-    val tipGroups = remember(categories, availableDockTips) {
-        categories.mapNotNull { group ->
-            if (!group.showInDock) return@mapNotNull null
-            val tips = group.brushIds.mapNotNull(availableDockTips::get)
-            if (tips.isEmpty()) null else DockTipGroup(group.id, group.name, tips)
-        }
+    var pinIds by remember { mutableStateOf(shelfPreferences.loadPins()) }
+    val pinnedBrushes = pinIds.mapNotNull(availableDockTips::get)
+    val pickerPreferences = remember { context.getSharedPreferences("tip-picker", android.content.Context.MODE_PRIVATE) }
+    var eraserId by remember { mutableStateOf(pickerPreferences.getString("eraser", null)) }
+    val eraserPreset = remember(eraserId, availableDockTips) { availableDockTips[eraserId]?.let { dev.tipstroke.core.editor.NativeBrush(it).eraserPreset() } }
+    var pickingEraser by remember { mutableStateOf<Boolean?>(null) }
+    val drawingPosition = remember { TipPickerPosition() }
+    val eraserPosition = remember { TipPickerPosition() }
+    val pickerScope = rememberCoroutineScope()
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val pinLimit = remember(config) {
+        val metrics = context.resources.displayMetrics
+        val bounds = if (android.os.Build.VERSION.SDK_INT >= 30) context.getSystemService(android.view.WindowManager::class.java).maximumWindowMetrics.bounds else null
+        val width = (bounds?.width() ?: metrics.widthPixels) / metrics.density
+        val height = (bounds?.height() ?: metrics.heightPixels) / metrics.density
+        val short = minOf(width, height)
+        val long = maxOf(width, height)
+        val available = if (short < 600) (short - 8) else maxOf(short - 110, (long - 430).coerceIn(170f,440f))
+        brushFavoriteCapacity(available).coerceAtLeast(1)
     }
     val drawingUiPreferences = remember { DrawingUiPreferences(context) }
     val colorShelf = remember { ColorShelf(context) }
@@ -186,9 +201,8 @@ fun CanvasScreen(
     var hasSelection by remember { mutableStateOf(false) }
     var brushStudioOpen by remember { mutableStateOf(false) }
     var brushLibraryOpen by remember { mutableStateOf(false) }
-    var manageTipGroups by remember { mutableStateOf(false) }
     var brushToEdit by remember { mutableStateOf<BrushId?>(null) }
-    val openTipGroupManager = { manageTipGroups = true; brushToEdit = null; brushLibraryOpen = true }
+
     var brushHardness by remember { mutableFloatStateOf(initialBrushTuning.hardness) }
     var eraserHardness by remember { mutableFloatStateOf(initialEraserTuning.hardness) }
     var pressureSize by remember { mutableStateOf(initialBrushTuning.pressureSize) }
@@ -297,7 +311,7 @@ fun CanvasScreen(
             this.assists = assists
             sizeUnit = brushSizeUnit
             sizePx = size; this.opacity = opacity; this.color = color; this.erasing = erasing; this.smudging = smudging; this.colorPushing = colorPushing; this.lassoFill = lassoFill
-            this.eraserHardness = eraserHardness; this.debug = debug; gestures = effectiveGestureSettings
+            this.eraserBrush = eraserPreset; this.eraserHardness = eraserHardness; this.debug = debug; gestures = effectiveGestureSettings
         }
         surface?.setMirrorCopies(mirrorCopies)
         surface?.setPixelTool(pixelTool)
@@ -424,7 +438,7 @@ fun CanvasScreen(
             StylusButtonAction.DISABLED -> Unit
         }
     }
-    LaunchedEffect(brush, erasing, colorPushing, lassoFill, smudging, pixelTool, brushSizeUnit, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
+    LaunchedEffect(eraserPreset, brush, erasing, colorPushing, lassoFill, smudging, pixelTool, brushSizeUnit, size, opacity, color, brushHardness, eraserHardness, pressureSize, pressureOpacity, speedTaper, pressureSizeStart, pressureSizeExponent, pressureOpacityStart, pressureOpacityExponent, speedTaperAmount, pencilPointSize, pencilTiltSensitivity, pencilShadeSize, pencilShadeOpacity, pencilGrain, pencilTiltMode, pencilShadeStartRadians, pencilShadeTransitionRadians, debug, effectiveGestureSettings, surface) { sync() }
     LaunchedEffect(surface, paletteColorCount) { surface?.setPaletteColorCount(paletteColorCount) }
     LaunchedEffect(surface, originalImageColors) { surface?.setOriginalImageColors(originalImageColors) }
     LaunchedEffect(surface, debug) {
@@ -725,13 +739,13 @@ fun CanvasScreen(
             Modifier.fillMaxSize().safeDrawingPadding().then(if (portrait) Modifier else Modifier.padding(top = 66.dp, bottom = 16.dp)),
         ) {
             BrushFavoritesDock(
-                selected = brush, favorites = favoriteBrushes, groups = tipGroups, onManageGroups = openTipGroupManager,
+                selected = brush, favorites = pinnedBrushes,
                 brushActive = activeDockTool == null, toolLabel = activeDockTool,
-                onLibrary = { brushToEdit = null; brushLibraryOpen = true },
+                onLibrary = { pickingEraser = false },
                 onBrush = ::selectRegularBrush, onSelect = ::selectSelectionTool,
                 onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
                 onTransform = ::transformFromDock, onFitCanvas = { surface?.resetView() },
-                onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
+                onEraser = { if (erasing) pickingEraser = true else toggleEraser() }, onSmudge = ::selectSmudge,
                 perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                     onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
                     onAdjustments = { adjustmentsOpen=true }, onColorizeMask = { colorizeOpen=true },
@@ -800,13 +814,13 @@ fun CanvasScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 BrushFavoritesDock(
-                    selected = brush, favorites = favoriteBrushes, groups = tipGroups, onManageGroups = openTipGroupManager, horizontal = !landscapeDock,
+                    selected = brush, favorites = pinnedBrushes, horizontal = !landscapeDock,
                     brushActive = activeDockTool == null, toolLabel = activeDockTool,
-                    onLibrary = { brushToEdit = null; brushLibraryOpen = true },
+                    onLibrary = { pickingEraser = false },
                     onBrush = ::selectRegularBrush, onSelect = ::selectSelectionTool,
                     onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
                     onTransform = ::transformFromDock, onFitCanvas = { surface?.resetView() },
-                    onEraser = ::toggleEraser, onSmudge = ::selectSmudge,
+                    onEraser = { if (erasing) pickingEraser = true else toggleEraser() }, onSmudge = ::selectSmudge,
                     perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                 onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
                 onAdjustments = { adjustmentsOpen=true }, onColorizeMask = { colorizeOpen=true },
@@ -1163,11 +1177,42 @@ fun CanvasScreen(
 
     } // Color-drop callbacks shared by portrait and landscape color circles.
 
+    pickingEraser?.let { erase ->
+        androidx.compose.ui.window.Dialog(onDismissRequest = { pickingEraser = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.widthIn(max = 640.dp).fillMaxWidth().fillMaxHeight(.8f), shape = MaterialTheme.shapes.large) {
+                TipPicker(if (erase) eraserPosition else drawingPosition, erase, if (erase) eraserId.orEmpty() else brush.id.value,
+                    availableDockTips.values.toList(), favoriteIds, pinIds, pinLimit, categories,
+                    { favoriteIds = it; shelfPreferences.save(it) }, { pinIds = it; shelfPreferences.savePins(it) },
+                    { categories = it; categoryStore.save(it) }, onPick = { preset ->
+                        if (erase) {
+                            eraserId = preset.id.value
+                            pickerPreferences.edit().putString("eraser", eraserId).apply()
+                        } else selectRegularBrush(preset)
+                        pickingEraser = null
+                    }, onLibrary = { pickingEraser = null; brushToEdit = null; brushLibraryOpen = true },
+                    onClose = { pickingEraser = null }, canRename = { p -> libraryBrushes.any { it.preset.id == p.id } },
+                    onRename = { preset, name ->
+                        pickerScope.launch {
+                            val store = BrushLibrary(context)
+                            val result = withContext(Dispatchers.IO) { runCatching {
+                                store.load().map { if (it.preset.id == preset.id) it.copy(preset = it.preset.copy(displayName = name)) else it }.also(store::save)
+                            } }
+                            result.onSuccess { libraryBrushes = it }.onFailure { message = "Could not rename tip." }
+                        }
+                    })
+            }
+        }
+    }
     if (brushLibraryOpen) BrushLibraryDialog(
         favoriteIds = favoriteIds, onCategoriesChanged = { categories = it }, editBrushId = brushToEdit,
-        initialGroupManagerOpen = manageTipGroups,
         onFavorites = { favoriteIds = it; shelfPreferences.save(it) },
-        onLibraryChanged = { libraryBrushes = it },
+        onLibraryChanged = { updated ->
+            libraryBrushes = updated
+            val ids = (BrushPreset.libraryBuiltIns + updated.map { it.preset }).map { it.id.value }.toSet()
+            val remaining = pinIds.filter(ids::contains)
+            if (remaining != pinIds) { pinIds = remaining; shelfPreferences.savePins(remaining) }
+        },
         current = brush.copy(
             baseSizePx = size.coerceIn(2f, 65536f), opacity = opacity.coerceIn(.05f, 1f), hardness = brushHardness,
             pressureToSize = if (pressureSize) PressureCurve(pressureSizeStart, 1f, pressureSizeExponent) else PressureCurve(1f, 1f, 1f),
@@ -1182,7 +1227,7 @@ fun CanvasScreen(
             brushPreferences.save(preset, preset.creatorTuning())
             selectRegularBrush(preset)
         },
-        onDismiss = { brushLibraryOpen = false; manageTipGroups = false; brushToEdit = null },
+        onDismiss = { brushLibraryOpen = false; brushToEdit = null },
     )
 
     LaunchedEffect(brushStudioOpen, brush.stamp, brush.ink) {

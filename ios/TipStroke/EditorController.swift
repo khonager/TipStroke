@@ -94,7 +94,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let settings = button("Brush size, opacity and finger drawing", symbol: "slider.horizontal.3") { [weak self] in self?.brushSettings() }
         let tools = button("Drawing tools", symbol: "eraser") { [weak self] in
             guard let self else { return }
-            if self.holdTools { self.toggleEraser() } else { self.openPalette() }
+            if self.viewport.canvas.tool == .eraser { self.showTipPicker(eraser: true) }
+            else if self.holdTools { self.toggleEraser() }
+            else { self.openPalette() }
         }
         tools.accessibilityHint = "Tap for the default action or open the drawing tool palette."
         tools.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Open drawing tools") { [weak self] _ in
@@ -110,16 +112,17 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         movingToolsButton = movingTools
         updateToolValue()
         let bottomActions = UIStackView(arrangedSubviews: [color, tools, movingTools, settings]); bottomActions.distribution = .equalSpacing
-        let tips = button("Tips", symbol: "square.grid.2x2") { [weak self] in self?.showBrushLibrary() }
-        let groups = button("Tip groups", symbol: "folder") {}
-        groups.menu = tipGroupsMenu()
-        groups.showsMenuAsPrimaryAction = true
+        let tips = button("Tips", symbol: "square.grid.2x2") { [weak self] in self?.showTipPicker(eraser: false) }
+        let pinned = sharedControls.pinsController(callbacks: self)
+        addChild(pinned)
+        pinned.view.heightAnchor.constraint(equalToConstant: 44).isActive = true
         let quickColors = sharedControls.quickColorsController()
         quickShelf = quickColors.view
         addChild(quickColors)
         quickColors.view.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        let shelf = UIStackView(arrangedSubviews: [tips, groups, quickColors.view])
-        let bottom = UIStackView(arrangedSubviews: [toolPicker, shelf, bottomActions]); bottom.spacing = 4
+        let shelf = UIStackView(arrangedSubviews: [tips, quickColors.view])
+        let bottom = UIStackView(arrangedSubviews: [toolPicker, shelf, pinned.view!, bottomActions]); bottom.spacing = 4
+        pinned.didMove(toParent: self)
         quickColors.didMove(toParent: self)
         bottom.axis = .vertical
 
@@ -288,7 +291,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if tool == .eraser && viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
         viewport.canvas.tool = tool
         viewport.canvas.mode = .paint
-        if tool != .eraser { sharedControls.selectBrush(id: tool.brushID) }
+        if tool != .eraser { sharedControls.selectBrush(id: tool.brushID) } else { activateEraserBrush() }
         updateToolValue()
     }
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
@@ -310,10 +313,22 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private func toggleEraser() {
         finishCanvasInteraction()
         viewport.canvas.mode = .paint
-        if viewport.canvas.tool == .eraser { viewport.canvas.tool = previousTool }
-        else { previousTool = viewport.canvas.tool; viewport.canvas.tool = .eraser }
+        if viewport.canvas.tool == .eraser {
+            viewport.canvas.tool = previousTool
+            applyBrush(sharedControls.currentDrawingBrush())
+        } else {
+            previousTool = viewport.canvas.tool
+            viewport.canvas.tool = .eraser
+            activateEraserBrush()
+        }
         toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
         updateToolValue()
+    }
+    func activateEraserBrush() {
+        let tip = sharedControls.eraserBrush()
+        viewport.canvas.brush = tip
+        viewport.canvas.brushSize = CGFloat(tip.size)
+        viewport.canvas.brushOpacity = CGFloat(tip.opacity)
     }
     private let dropSwatch = UIView()
     private weak var quickShelf: UIView?

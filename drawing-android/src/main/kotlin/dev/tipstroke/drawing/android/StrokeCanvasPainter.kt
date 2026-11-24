@@ -139,7 +139,7 @@ internal object StrokeCanvasPainter {
             stroke.mirrorCopies().forEach { draw(canvas, it, preparePaint(it), airbrushBlockSize) }
             return
         }
-        if (!stroke.style.lassoFill && stroke.style.brush.stamp != null && stroke.style.blend == BlendBehavior.PAINT && stroke.style.pixelTool == null) {
+        if (!stroke.style.lassoFill && stroke.style.brush.stamp != null && stroke.style.pixelTool == null) {
             StampBrushRenderer(stroke.style).use { it.drawClipped(canvas, it.path.append(stroke.samples)) }
             return
         }

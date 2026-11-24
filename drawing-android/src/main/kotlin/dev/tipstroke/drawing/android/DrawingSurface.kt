@@ -994,9 +994,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         if (settings.lassoFill || activeDrawingPointerId != null || width == 0 || height == 0) return
         val center = rasterView.screenToDocument(width / 2f, height / 2f)
         val erasing = settings.erasing
-        val previewBrush = settings.brush.copy(
-            hardness = if (erasing) settings.eraserHardness else settings.brush.hardness,
-        )
+        val previewBrush = if (erasing) settings.eraserBrush ?: BrushPreset.Airbrush.copy(hardness = settings.eraserHardness) else settings.brush
         val previewStyle = StrokeStyle(
             brush = previewBrush,
             sizePx = resolvedBrushSize(),
@@ -2261,7 +2259,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     ((style.referenceStrokes != null || layerStack.selected().clipSourceId != null) && style.pixelTool != PixelTool.LINE)) {
                     customPreviewStyle = style
                     target.store.beginLiveStroke()
-                    if (style.brush.stamp != null && style.blend == BlendBehavior.PAINT && style.pixelTool == null) {
+                    if (style.brush.stamp != null && style.pixelTool == null) {
                         invalidateTarget(target, target.store.appendLiveStroke(CompletedStroke(pendingSamples.getValue(pointerId), style)))
                     }
                 } else if (style.pixelTool != null || style.brush.engine == BrushEngine.AIRBRUSH) {
@@ -3189,7 +3187,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun currentStyle(event: MotionEvent, index: Int): StrokeStyle {
         val isHardwareEraser = index in 0 until event.pointerCount && event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
         val erasing = settings.erasing || isHardwareEraser
-        val brush = if (erasing) settings.brush.copy(hardness = settings.eraserHardness) else settings.brush
+        val brush = if (erasing) settings.eraserBrush ?: settings.brush.copy(hardness = settings.eraserHardness, stamp = null, ink = null) else settings.brush
         return StrokeStyle(brush, resolvedBrushSize(), settings.opacity, settings.color,
             if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT, selectionRegion,
             lassoFill = settings.lassoFill && !erasing,
@@ -3206,7 +3204,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         val image = target.image ?: return style.copy(referenceStrokes = (style.referenceStrokes as? ReferenceStrokes)?.forTarget(target.store))
         val localSelection = style.selection?.let { selection -> imageLocalSelection(image, selection) }
         return style.copy(
-            brush = style.brush.copy(engine = BrushEngine.AIRBRUSH, stamp = null, ink = null),
+            brush = if (style.brush.stamp != null) style.brush else style.brush.copy(engine = BrushEngine.AIRBRUSH, ink = null),
             sizePx = style.sizePx / image.transform.scale.coerceAtLeast(.02f),
             opacity = 1f,
             color = RgbaColor(1f, 1f, 1f),

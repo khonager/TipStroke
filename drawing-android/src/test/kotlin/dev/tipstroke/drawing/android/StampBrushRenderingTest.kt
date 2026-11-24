@@ -95,6 +95,19 @@ class StampBrushRenderingTest {
         wet.forEach { (key, bitmap) -> assertTrue(bitmap.sameAs(restored.getValue(key))) }
     }
 
+    @Test fun eraserUsesSelectedMaskAndLeavesItsHoleIntact() {
+        val mask = BrushTexture(16, 16, ByteArray(256) { i -> if (i % 16 in 5..10 && i / 16 in 5..10) 0 else -1 })
+        val preset = BrushPreset.Blank.copy(stamp = StampBrush(shape = StampShape.IMAGE, shapeTexture = mask))
+        val sample = StrokeSample(0, Point(64f, 64f), 1f, 0f, 0f, 0, 0, PointerKind.STYLUS)
+        val one = CompletedStroke(listOf(sample), stroke(preset).style.copy(blend = BlendBehavior.ERASE))
+        val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.WHITE)
+        StrokeCanvasPainter.draw(Canvas(bitmap), one)
+        assertEquals(255, Color.alpha(bitmap.getPixel(64, 64)))
+        assertTrue(Color.alpha(bitmap.getPixel(49, 64)) < 255)
+        bitmap.recycle()
+    }
+
     @Test fun arbitraryMaskAndGrainChangeTheActualPaintedPixels() {
         fun render(brush: BrushPreset): Bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888).also {
             val one = stroke(brush).copy(samples = listOf(StrokeSample(0, Point(64f, 64f), 1f, 0f, 0f, 0, 0, PointerKind.STYLUS)))

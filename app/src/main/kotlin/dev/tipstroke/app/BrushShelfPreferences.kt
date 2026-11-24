@@ -7,14 +7,20 @@ import org.json.JSONArray
 /** Ordered pins survive rotation; only the slots that fit the current dock are shown. */
 internal class BrushShelfPreferences(context: Context) {
     private val preferences = context.getSharedPreferences("brush-shelf", Context.MODE_PRIVATE)
-    fun load(): List<String> = runCatching {
-        val array = JSONArray(preferences.getString("favorites", null) ?: return BrushPreset.builtIns.map { it.id.value })
+    fun loadPins(): List<String> {
+        if (!preferences.contains("pins")) savePins(load())
+        return read("pins")
+    }
+    fun savePins(ids: List<String>) { preferences.edit().putString("pins", JSONArray(ids.distinct().take(200)).toString()).apply() }
+    fun load(): List<String> = read("favorites")
+    private fun read(key: String): List<String> = runCatching {
+        val array = JSONArray(preferences.getString(key, null) ?: return BrushPreset.builtIns.map { it.id.value })
         (0 until array.length().coerceAtMost(200)).map { array.getString(it) }.distinct()
     }.getOrElse { BrushPreset.builtIns.map { it.id.value } }
     fun save(ids: List<String>) { preferences.edit().putString("favorites", JSONArray(ids.distinct().take(200)).toString()).apply() }
 }
 
-internal const val BRUSH_DOCK_FIXED_CELLS = 5
+internal const val BRUSH_DOCK_FIXED_CELLS = 4
 
 internal fun brushFavoriteCapacity(availableDp: Float, slotDp: Float = 48f, gapDp: Float = 2f): Int =
     (((availableDp - 8f + gapDp) / (slotDp + gapDp)).toInt() - BRUSH_DOCK_FIXED_CELLS).coerceAtLeast(0)

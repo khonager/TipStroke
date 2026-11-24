@@ -16,13 +16,14 @@ internal class StampBrushRenderer(private val style: StrokeStyle) : AutoCloseabl
     private val shapeShader = BitmapShader(shape, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
     private val grainShader = grain?.let { BitmapShader(it, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        if (this@StampBrushRenderer.style.blend == BlendBehavior.ERASE && this@StampBrushRenderer.style.referenceStrokes == null) xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
         shader = grainShader?.let { ComposeShader(shapeShader, it, PorterDuff.Mode.DST_IN) }
     }
     private val hsv = FloatArray(3).also { Color.colorToHSV(Color.rgb((style.color.red * 255).roundToInt(), (style.color.green * 255).roundToInt(), (style.color.blue * 255).roundToInt()), it) }
     private val tint = FloatArray(3)
     private val matrix = Matrix()
     private var lastTint: Int? = null
-    private val fixedTipEligible = !hasGrain && config.rotationJitter == 0f && !config.followDirection &&
+    private val fixedTipEligible = style.blend == BlendBehavior.PAINT && !hasGrain && config.rotationJitter == 0f && !config.followDirection &&
         config.sizeJitter == 0f && config.tiltSize == 0f && config.startTaperPx == 0f &&
         config.hueJitter == 0f && config.saturationJitter == 0f && style.brush.speedTaper == 0f &&
         style.brush.pressureToSize.start == style.brush.pressureToSize.end
@@ -102,7 +103,7 @@ internal class StampBrushRenderer(private val style: StrokeStyle) : AutoCloseabl
         if (reference == null) { draw(canvas, stamps); return }
         val clip = canvas.clipBounds
         val saved = canvas.saveLayer(RectF(clip), Paint().apply {
-            xfermode = PorterDuffXfermode(if (reference.sameLayer) PorterDuff.Mode.SRC_ATOP else PorterDuff.Mode.SRC_OVER)
+            xfermode = PorterDuffXfermode(if (this@StampBrushRenderer.style.blend == BlendBehavior.ERASE) PorterDuff.Mode.DST_OUT else if (reference.sameLayer) PorterDuff.Mode.SRC_ATOP else PorterDuff.Mode.SRC_OVER)
         })
         draw(canvas, stamps)
         reference.drawCoverage(canvas, clip)

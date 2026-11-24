@@ -82,18 +82,23 @@ raster eraser. Imported image sources, scatter, and color jitter remain in the
 Custom tip creator. iOS integration is deferred; no cross-platform input path is
 introduced.
 
-## Favorites that fit
+## Favorites and pinned shortcuts
 
-The canvas dock contains a Tips library button, a Tip groups folder, individual
-favorites, Drawing tools, Moving tools, and Adjust. Drawing tools includes
-Eraser, Smudge, eligible pixel tools, and Tip Studio. Moving tools includes
-Select, Transform, Reselect previous area, and Fit canvas. Adjust toggles size and
-opacity controls on compact phones.
-There is no scrolling container in the dock.
+Open **Tips** to browse All, Favorites, Pinned, or a group. Groups and tips scroll vertically.
+Each tip's menu can star it for later or pin it to the dock independently. The Pinned view
+also lets you reorder pins. New pins fill available slots up to the device's maximum dock
+capacity. When full, choose which pin to replace. Existing favorites seed the ordered pins
+on migration.
 
-Individual favorites fill the remaining dock space using 48 dp cells,
-2 dp gaps and five reserved actions. Extra pins are available from **Favorites**
-in the tip library.
+If all pins fit, each is a direct drawing shortcut. Otherwise the last available slot opens
+a folder containing all remaining pins, in order. Its face shows up to four member swatches.
+With one slot, the folder contains every pin. Picking a member closes the folder and starts
+drawing without moving the pin. Window size changes only affect which pins fold into it.
+
+Tap Eraser to erase. Tap the active eraser to pick its independently remembered tip.
+Picking a drawing shortcut returns to painting. Each picker starts in Favorites and remembers
+its filter and scroll position while the editor stays open. **Library** opens creation,
+import, export and advanced editing.
 
 ## Visual controls and endpoint previews
 
@@ -198,14 +203,12 @@ Tips can be held and dragged to reorder. A floating stroke preview follows the p
 
 Library cards show edit, category, export, share and (for custom tips) duplicate/delete actions directly below the stroke preview. Cards do not expand; actions wrap on narrow screens. Tap the preview to use a tip.
 
-## Android dock groups
+## Group membership
 
-Tap or hold **Tip groups**, choose a folder, then choose a tip. Manga and Jetpack Ink
-(Android 14 and newer) are provided by default. **Manage tip groups** is available
-from the folder picker and library. Create, rename, reorder, or remove groups,
-choose which groups appear in the picker, and edit each group's membership.
-Hidden groups remain accessible in the library, where you can also drag tips
-into the desired order. Use the star on a library tip to pin it individually.
+Open **Tips → Groups** to search the directory. Tap a name to browse its members, or
+**Edit** to rename the group, add or remove tips, and change their order. Done saves the
+draft. Deleting a group keeps its tips, favorites, and pins. The tip menu's **Edit groups**
+changes one tip's membership across multiple groups.
 
 ## Manga tips
 

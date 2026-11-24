@@ -270,7 +270,7 @@ internal fun BrushLibraryDialog(
                             if (searchOpen) OutlinedTextField(query, { query = it }, label = { Text("Search tips") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             if (section == "builtin-ink") Text(
                                 if (android.os.Build.VERSION.SDK_INT < 34) "Jetpack Ink drawing requires Android 14 or newer. Existing custom tips are still available."
-                                else "Compare native Ink tips with your existing brushes. Soft is a spray-style brush; erasing keeps the current raster eraser.",
+                                else "Compare native Ink tips with your existing brushes. Soft is a spray-style brush; eraser tips use native raster masks.",
                                 style = MaterialTheme.typography.bodySmall)
                             if (section == "builtin-manga") Text("Use a selection or Paint inside to shade cleanly. Size changes the painted area; Grain scale changes pattern spacing. Keep opacity at 100% for crisp tones.", style = MaterialTheme.typography.bodySmall)
                             if (busy || !ready && message == null) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -299,7 +299,7 @@ internal fun BrushLibraryDialog(
                                         Text(if (item.preset.id == current.id) "Selected" else if (item.author.isNotBlank()) item.author else if (item.preset.ink != null) "Jetpack Ink" else "Custom tip",
                                             style = MaterialTheme.typography.bodySmall)
                                     }
-                                    TipAction(if (favorite) "Unpin favorite" else if (favoriteIds.size >= 200) "Favorites full" else "Pin favorite", if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, enabled = !busy && (favorite || favoriteIds.size < 200), onClick = {
+                                    TipAction(if (favorite) "Remove from favorites" else if (favoriteIds.size >= 200) "Favorites full" else "Add to favorites", if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, enabled = !busy && (favorite || favoriteIds.size < 200), onClick = {
                                         onFavorites(if (favorite) favoriteIds - item.preset.id.value else favoriteIds + item.preset.id.value)
                                     })
                                 }

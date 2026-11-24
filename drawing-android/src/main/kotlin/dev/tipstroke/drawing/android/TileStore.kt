@@ -233,7 +233,7 @@ class TileStore(
         stamps.forEach { stamp ->
             if (stamp.alpha < .5f / 255f) return@forEach
             TileGrid.intersecting(StampBrushRenderer.bounds(stamp), canvasWidth, canvasHeight, tileSize).forEach { coordinate ->
-                perTile.getOrPut(coordinate) { mutableListOf() }.add(stamp)
+                if (stroke.style.blend != dev.tipstroke.core.model.BlendBehavior.ERASE || coordinate in tiles) perTile.getOrPut(coordinate) { mutableListOf() }.add(stamp)
             }
         }
         perTile.forEach { (coordinate, batch) ->
@@ -258,7 +258,7 @@ class TileStore(
     /** Applies one new point or segment and returns only the tiles that need screen invalidation. */
     internal fun appendLiveStroke(stroke: CompletedStroke): Set<TileCoordinate> {
         val before = liveStrokeBefore ?: return emptySet()
-        if (stroke.style.brush.stamp != null && stroke.style.blend == dev.tipstroke.core.model.BlendBehavior.PAINT && stroke.style.pixelTool == null) {
+        if (stroke.style.brush.stamp != null && stroke.style.pixelTool == null) {
             return appendStampStroke(stroke)
         }
         if (recordingListener != null) replayLive.add(ReplayPaint(stroke))

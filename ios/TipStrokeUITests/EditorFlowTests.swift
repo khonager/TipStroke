@@ -14,13 +14,20 @@ final class EditorFlowTests: XCTestCase {
         let gallery = app.buttons["Gallery"]
         XCTAssertTrue(gallery.waitForExistence(timeout: 10))
         app.buttons["Tips"].tap()
-        XCTAssertTrue(app.navigationBars["Tip library"].waitForExistence(timeout: 10))
-        app.navigationBars.buttons["Done"].tap()
-        app.buttons["Tip groups"].tap()
-        app.buttons["Manga"].tap()
-        app.buttons["Manga hatching"].tap()
+        func element(_ label: String) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+        }
+        XCTAssertTrue(element("Choose drawing tip").waitForExistence(timeout: 10))
+        element("Groups").tap()
+        app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Manga")).firstMatch.tap()
+        element("Manga hatching").tap()
         let tools = app.buttons["Drawing tools"]
         tools.tap()
+        XCTAssertEqual(tools.value as? String, "Eraser")
+        tools.tap()
+        XCTAssertTrue(element("Choose eraser tip").waitForExistence(timeout: 10))
+        element("All").tap()
+        element("Pencil").tap()
         XCTAssertEqual(tools.value as? String, "Eraser")
         let anchor = tools.frame
         let origin = app.coordinate(withNormalizedOffset: .zero)

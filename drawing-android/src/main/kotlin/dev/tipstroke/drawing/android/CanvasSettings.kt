@@ -15,6 +15,7 @@ class CanvasSettings {
     @Volatile var sizePx: Float = BrushPreset.Ink.baseSizePx
     @Volatile var opacity: Float = 1f
     @Volatile var color: RgbaColor = RgbaColor(0.05f, 0.05f, 0.06f)
+    @Volatile var eraserBrush: BrushPreset? = null
     @Volatile var erasing: Boolean = false
     @Volatile var lassoFill: Boolean = false
     @Volatile var colorPushing: Boolean = false

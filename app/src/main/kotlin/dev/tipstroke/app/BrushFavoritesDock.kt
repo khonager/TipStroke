@@ -24,8 +24,6 @@ import dev.tipstroke.core.drawing.PixelTool
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.ui.HoldToolPicker
 
-internal data class DockTipGroup(val id: String, val name: String, val tips: List<BrushPreset>)
-
 /** Fixed cells only: the library owns scrolling, never the canvas favorites dock. */
 @Composable
 internal fun BrushFavoritesDock(
@@ -42,7 +40,6 @@ internal fun BrushFavoritesDock(
     onAssists: (dev.tipstroke.core.drawing.BrushAssists) -> Unit = {},
     perspectiveMode: dev.tipstroke.core.geometry.PerspectiveMode = dev.tipstroke.core.geometry.PerspectiveMode.OFF,
     onPerspectiveMode: (dev.tipstroke.core.geometry.PerspectiveMode) -> Unit = {}, onVanishingPoint: (Int) -> Unit = {},
-    groups: List<DockTipGroup> = emptyList(), onManageGroups: () -> Unit = {},
     mirrorCopies: Int = 1, onMirrorCopies: (Int) -> Unit = {}, onMirrorCenter: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -53,16 +50,16 @@ internal fun BrushFavoritesDock(
         border = BorderStroke(1.dp, Color(0xB345474D))) {
         BoxWithConstraints(Modifier.padding(4.dp), contentAlignment = Alignment.Center) {
             val available = if (horizontal) maxWidth.value + 8f else maxHeight.value + 8f
-            val fixedSpace = 8f + (BRUSH_DOCK_FIXED_CELLS - 1) * 2f
-            val slot = minOf(48f, ((available - fixedSpace) / BRUSH_DOCK_FIXED_CELLS).coerceAtLeast(1f))
-            val capacity = brushFavoriteCapacity(available, slot)
-            val visibleFavorites = favorites.distinctBy { it.id }.take(capacity)
+
+            val minimumCells = BRUSH_DOCK_FIXED_CELLS + if (favorites.isEmpty()) 0 else 1
+            val slot = minOf(48f, ((available - 8f - (minimumCells - 1) * 2f) / minimumCells).coerceAtLeast(1f))
+            val capacity = brushFavoriteCapacity(available, slot).coerceAtLeast(1)
+            val visibleFavorites = favorites.distinctBy { it.id }
             val favoriteSelected = visibleFavorites.any { it.id == selected.id }
-            val groupSelected = brushActive && !favoriteSelected && groups.any { group -> group.tips.any { it.id == selected.id } }
             val buttons: @Composable () -> Unit = {
-                DockCell("Tips", brushActive && !favoriteSelected && !groupSelected, slot, !horizontal, onLibrary, icon = Icons.Outlined.GridView)
-                TipGroupsPicker(groups, horizontal, slot, groupSelected, selected.displayName, onBrush, onManageGroups)
-                visibleFavorites.forEach { preset ->
+                DockCell("Tips", brushActive && !favoriteSelected, slot, !horizontal, onLibrary, icon = Icons.Outlined.GridView)
+
+                dev.tipstroke.ui.PinnedTipCells(visibleFavorites, capacity, slot.dp, onBrush) { preset ->
                     key(preset.id.value) { DockCell(preset.displayName, brushActive && preset.id == selected.id, slot, !horizontal, { onBrush(preset) }, preset = preset) }
                 }
                 Box {
@@ -123,41 +120,6 @@ internal fun BrushFavoritesDock(
 }
 
 @Composable
-private fun TipGroupsPicker(
-    groups: List<DockTipGroup>, horizontal: Boolean, slot: Float, selected: Boolean,
-    tipName: String, onBrush: (BrushPreset) -> Unit, onManage: () -> Unit,
-) {
-    var groupId by remember { mutableStateOf<String?>(null) }
-    var reopen by remember { mutableIntStateOf(0) }
-    val group = groups.firstOrNull { it.id == groupId }
-    val tips = group?.tips.orEmpty()
-    val labels = if (group == null) groups.map { it.name } + "Manage tip groups"
-        else tips.map { it.displayName } + "Back to tip groups"
-    HoldToolPicker(
-        labels = labels, horizontal = horizontal, holdEnabled = true, extent = slot.dp, reopen = reopen,
-        description = "Tip groups", menuTitle = group?.name ?: "Tip groups", showLabels = group == null,
-        stateLabel = if (selected) tipName else "Tip groups",
-        selected = selected, onClosed = { groupId = null },
-        onChoose = { index ->
-            when {
-                group == null && index == groups.size -> onManage()
-                group == null -> { groupId = groups[index].id; reopen++ }
-                index == tips.size -> reopen++
-                else -> onBrush(tips[index])
-            }
-        },
-        anchorIcon = { Icon(Icons.Outlined.Folder, null) },
-        toolIcon = { index ->
-            when {
-                group == null -> Icon(if (index == groups.size) Icons.Outlined.Settings else Icons.Outlined.Folder, null)
-                index == tips.size -> Icon(Icons.AutoMirrored.Outlined.ArrowBack, null)
-                else -> TipStrokeThumbnail(tips[index], Modifier.size(42.dp))
-            }
-        },
-    )
-}
-
-@Composable
 private fun DockCell(description: String, selected: Boolean, extent: Float, beside: Boolean, onClick: () -> Unit,
     icon: ImageVector? = null, preset: BrushPreset? = null) {
     TipHint(description, beside) { showHint ->
@@ -165,7 +127,7 @@ private fun DockCell(description: String, selected: Boolean, extent: Float, besi
             Box(Modifier.size(extent.dp).clip(MaterialTheme.shapes.small)
                 .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = showHint, onLongClickLabel = description)
                 .semantics { contentDescription = description; this.selected = selected }, contentAlignment = Alignment.Center) {
-                if (preset != null) TipStrokeThumbnail(preset, Modifier.fillMaxSize().padding(2.dp))
+                if (preset != null) dev.tipstroke.ui.TipSwatch(preset, Modifier.fillMaxSize().padding(2.dp))
                 else if (icon != null) Icon(icon, null, tint = if (selected) Color(0xFF17181B) else Color.White,
                     modifier = Modifier.size(minOf(24f, extent).dp))
             }

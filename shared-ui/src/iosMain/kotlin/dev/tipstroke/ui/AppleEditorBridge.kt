@@ -37,6 +37,9 @@ import platform.Foundation.NSUserDefaults
 /** Commands/settings only. UIKit owns touches, wet paint, tiles and viewport transforms. */
 interface AppleBrushLibraryActions {
     fun librarySaved(data: String)
+    fun pickedTip(id: String, eraser: Boolean)
+    fun closePicker()
+    fun openLibrary()
     fun importFromFile()
     fun exportToFile(data: String)
 }
@@ -63,6 +66,16 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     private var paletteCount by mutableIntStateOf(4)
     private val defaults = NSUserDefaults.standardUserDefaults
     private var pins by mutableStateOf(defaults.stringArrayForKey("tip.pins")?.filterIsInstance<String>().orEmpty())
+    private var dockPins by mutableStateOf(defaults.stringArrayForKey("tip.dockPins")?.filterIsInstance<String>()
+        ?: pins.toList().also { defaults.setObject(it, forKey = "tip.dockPins") })
+    private val drawingPosition = TipPickerPosition()
+    private val eraserPosition = TipPickerPosition()
+    fun currentDrawingBrush() = NativeBrush(brush)
+    fun eraserBrush(): NativeBrush {
+        val id = defaults.stringForKey("tip.eraser")
+        val preset = (BrushPreset.libraryBuiltIns + library.map { it.preset }).find { it.id.value == id } ?: BrushPreset.Ink
+        return NativeBrush(NativeBrush(preset).eraserPreset())
+    }
     private var groups by mutableStateOf(loadGroups())
     private fun loadGroups(): List<BrushCategory> {
         defaults.stringForKey("tip.groups.v2")?.let { data ->
@@ -184,6 +197,8 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                         library = library.filterNot { it.preset.id == preset.id }
                         if (brush.id == preset.id) selectBrush(BrushPreset.Ink.id.value)
                         defaults.removeObjectForKey("tip.tuning." + id)
+                        dockPins = dockPins - id
+                        defaults.setObject(dockPins, forKey = "tip.dockPins")
                         pins = pins - id
                         defaults.setObject(pins, forKey = "tip.pins")
                         saveGroups(groups.map { it.copy(brushIds = it.brushIds - id) })
@@ -196,6 +211,42 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                             groups.find { it.name == name }?.copy(brushIds = ids) ?: BrushCategory(name = name, brushIds = ids)
                         })
                     }, onManageGroups = { manage = true })
+            }
+        }
+    }
+    fun pickerController(callbacks: AppleBrushLibraryActions, eraser: Boolean, pinLimit: Int): UIViewController = ComposeUIViewController {
+        val tips = BrushPreset.libraryBuiltIns + library.map { it.preset }
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            Surface(Modifier.fillMaxSize()) {
+                TipPicker(if (eraser) eraserPosition else drawingPosition, eraser,
+                    if (eraser) defaults.stringForKey("tip.eraser") ?: BrushPreset.Ink.id.value else brush.id.value,
+                    tips, pins, dockPins, pinLimit, groups,
+                    { pins = it; defaults.setObject(it, forKey = "tip.pins") },
+                    { dockPins = it; defaults.setObject(it, forKey = "tip.dockPins") }, ::saveGroups,
+                    onPick = {
+                        if (eraser) defaults.setObject(it.id.value, forKey = "tip.eraser")
+                        callbacks.pickedTip(it.id.value, eraser)
+                        callbacks.closePicker()
+                    }, onLibrary = callbacks::openLibrary, onClose = callbacks::closePicker,
+                    canRename = { p -> library.any { it.preset.id == p.id } },
+                    onRename = { p, name ->
+                        library = library.map { if (it.preset.id == p.id) it.copy(preset = it.preset.copy(displayName = name)) else it }
+                        callbacks.librarySaved(libraryData())
+                    })
+            }
+        }
+    }
+    fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
+        val byId = (BrushPreset.libraryBuiltIns + library.map { it.preset }).associateBy { it.id.value }
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) {
+                    val pick: (BrushPreset) -> Unit = { callbacks.pickedTip(it.id.value, false) }
+                    PinnedTipCells(dockPins.mapNotNull(byId::get), (maxWidth / 44.dp).toInt().coerceAtLeast(1), 44.dp, pick) { tip ->
+                        TipSwatch(tip, Modifier.size(44.dp).clickable { pick(tip) }
+                            .semantics { contentDescription = tip.displayName }.padding(2.dp))
+                    }
+                }
             }
         }
     }
@@ -219,11 +270,6 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val choices = BrushPreset.libraryBuiltIns + library.map { it.preset }
-                    for (id in pins) {
-                        val preset = choices.firstOrNull { it.id.value == id } ?: continue
-                        TextButton(onClick = { selectPreset(preset) }) { Text(preset.displayName) }
-                    }
                     val quick = (listOf(color) + shelf.saved + if (shelf.recent) history else drawingColors).distinct().take(shelf.slots)
                     quick.forEachIndexed { index, value ->
                         var origin by remember { mutableStateOf(Offset.Zero) }

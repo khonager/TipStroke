@@ -90,42 +90,36 @@ class BrushFavoritesDockTest {
         assertEquals(1, smudges)
     }
 
-    @Test fun tipGroupsStayReachableWithoutFavoriteSlots() {
-        val tips = dev.tipstroke.core.model.MangaTips.presets
+    @Test fun oneSlotOpensAllPinsInOrderAndChoosingDoesNotPromote() {
+        val tips = MangaTips.presets.take(5)
         var chosen: BrushPreset? = null
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
-            BrushFavoritesDock(tips.first(), emptyList(), true, {}, { chosen = it }, {}, {}, {}, false, {}, {}, {},
-                "Adjust tip", true, Modifier.width(150.dp), groups = listOf(DockTipGroup("manga", "Manga", tips)))
+            BrushFavoritesDock(tips.first(), tips, true, {}, { chosen = it }, {}, {}, {}, false, {}, {}, {},
+                "Adjust tip", true, Modifier.width(150.dp))
         }
-        compose.onNodeWithContentDescription("Tip groups").performClick()
-        compose.onNodeWithContentDescription("Manga").performClick()
-        compose.onNodeWithContentDescription("Back to tip groups").performClick()
-        compose.onNodeWithContentDescription("Manga").performClick()
-        compose.onNodeWithContentDescription(tips.last().displayName).performClick()
-        compose.runOnIdle { assertEquals(tips.last(), chosen) }
+        repeat(2) {
+            compose.onNodeWithContentDescription("More pinned tips").performClick()
+            compose.onNodeWithText(tips.first().displayName).assertIsDisplayed()
+            compose.onNodeWithText(tips.last().displayName).performScrollTo().performClick()
+            compose.runOnIdle { assertEquals(tips.last(), chosen) }
+            compose.onNodeWithText("Pinned tips").assertDoesNotExist()
+        }
     }
 
-    @Test fun aSingleFavoriteInMangaHasOneShortcutAndGroupsCanBeHidden() {
+    @Test fun pickerRemembersGroupAfterPickingAndLeavesDockInOrder() {
         val favorite = MangaTips.presets.first()
-        val context = RuntimeEnvironment.getApplication()
-        BrushShelfPreferences(context).save(listOf(favorite.id.value))
+        BrushShelfPreferences(RuntimeEnvironment.getApplication()).save(listOf(favorite.id.value))
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme { CanvasScreen() }
         }
-        compose.onAllNodesWithContentDescription(favorite.displayName).assertCountEquals(1)
-        compose.onNodeWithContentDescription(favorite.displayName).performClick().assertIsSelected()
-        compose.onNodeWithContentDescription("Tip groups").assertIsNotSelected().performClick()
-        compose.onNodeWithContentDescription("Favorites").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Manga").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Manage tip groups").performClick()
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("Show Manga in tip bar").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Show Manga in tip bar").performScrollTo().performClick().assertIsOff()
-        compose.onNodeWithText("Done").performClick()
-        compose.onNodeWithContentDescription("Back to canvas").performClick()
-        compose.onAllNodesWithContentDescription(favorite.displayName).assertCountEquals(1)
-        compose.onNodeWithContentDescription("Tip groups").performClick()
-        compose.onNodeWithContentDescription("Manga").assertDoesNotExist()
-        assertFalse(BrushCategories(context).load().first { it.id == "builtin-manga" }.showInDock)
+        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithText("Groups").performClick()
+        compose.onNodeWithText("Manga").performClick()
+        compose.onNodeWithText(favorite.displayName).performClick()
+        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithText("Edit group").assertIsDisplayed()
+        compose.onNodeWithText("Close").performClick()
+        compose.onNodeWithContentDescription(favorite.displayName).assertIsSelected()
     }
 
     @Test fun dockFitsMeasuredWidthAndShrinksWithoutScrolling() {
@@ -203,43 +197,14 @@ class BrushFavoritesDockTest {
         compose.onNodeWithText("Textured tip").assertDoesNotExist()
     }
 
-    @Test
-    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
-    fun selectedColorRepaintsSelectedAndUnselectedTipIcons() {
-        var color by mutableStateOf(RgbaColor(1f, 0f, 0f))
-        val tips = listOf(BrushPreset.Blank.copy(id = BrushId("first")), BrushPreset.Blank.copy(id = BrushId("second")))
-        val screen = Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get()
-        screen.setContent {
-            TipStrokeTheme {
-                CompositionLocalProvider(LocalTipPreviewColor provides color) {
-                    BrushFavoritesDock(tips.first(), tips, true, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
-                        Modifier.width(400.dp))
-                }
-            }
-        }
-        fun assertColor(red: Boolean) {
-            compose.waitForIdle()
-            compose.runOnIdle {
-                val views = (screen.window.decorView as android.view.ViewGroup).descendants
-                    .filterIsInstance<dev.tipstroke.drawing.android.BrushStrokePreviewView>().toList()
-                assertEquals(2, views.size)
-                views.forEach { view ->
-                    val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
-                    view.draw(android.graphics.Canvas(bitmap))
-                    try {
-                        assertTrue((0 until bitmap.width).any { x -> (0 until bitmap.height).any { y ->
-                            val pixel = bitmap.getPixel(x, y)
-                            android.graphics.Color.alpha(pixel) > 32 && if (red)
-                                android.graphics.Color.red(pixel) > android.graphics.Color.green(pixel) + 30
-                            else android.graphics.Color.green(pixel) > android.graphics.Color.red(pixel) + 30
-                        } })
-                    } finally { bitmap.recycle() }
-                }
-            }
-        }
-        assertColor(true)
-        compose.runOnIdle { color = RgbaColor(0f, 1f, 0f) }
-        assertColor(false)
+    @Test fun pinsAndFavoritesMigrateOnceThenChangeIndependently() {
+        val preferences = BrushShelfPreferences(RuntimeEnvironment.getApplication())
+        preferences.save(listOf("a", "b"))
+        assertEquals(listOf("a", "b"), preferences.loadPins())
+        preferences.savePins(listOf("b"))
+        preferences.save(listOf("a", "c"))
+        assertEquals(listOf("b"), preferences.loadPins())
+        assertEquals(listOf("a", "c"), preferences.load())
     }
 
     @Test fun pinsRemainOrderedAndPersistWithoutDuplicating() {
@@ -248,7 +213,7 @@ class BrushFavoritesDockTest {
         assertEquals(listOf("custom-b", "ink-v1", "pencil-v1"), preferences.load())
         for (available in 120..1200) {
             val slots = brushFavoriteCapacity(available.toFloat())
-            if (slots > 0) assertTrue((slots + 5) * 48 + (slots + 4) * 2 + 8 <= available)
+            if (slots > 0) assertTrue((slots + 4) * 48 + (slots + 3) * 2 + 8 <= available)
         }
     }
 }

@@ -31,6 +31,23 @@ class NativeBrush(val preset: BrushPreset) {
             grain = if (ink.texture == InkTexture.GRAPHITE) StampGrain.PAPER else StampGrain.NONE),
             hardness = if (ink.texture == InkTexture.SOFT) .04f else preset.hardness)
     }
+    /** Raster mask used for destination-out strokes on both hosts. */
+    fun eraserPreset(): BrushPreset {
+        if (preset.stamp != null) return preset
+        val base = stampPreset()
+        val config = requireNotNull(base.stamp)
+        val ink = preset.ink
+        if (ink != null) {
+            val mask = BrushTip.inkShape(ink)
+            return base.copy(stamp = config.copy(shape = StampShape.IMAGE, shapeTexture = BrushTexture(
+                mask.width, mask.height, ByteArray(mask.width * mask.height) { mask.coverage(it).toByte() })))
+        }
+        return when (preset.engine) {
+            BrushEngine.PENCIL -> base.copy(stamp = config.copy(shape = StampShape.OVAL,
+                grain = StampGrain.PAPER, grainDepth = preset.pencilGrain))
+            else -> base
+        }
+    }
     fun shape(): BrushTip = preset.ink?.let { BrushTip.inkShape(it) } ?: BrushTip.shape(requireNotNull(stampPreset().stamp), stampPreset().hardness)
     fun grain(): BrushTip = if (preset.ink?.texture == InkTexture.GRAPHITE) Graphite.grain() else BrushTip.grain(requireNotNull(stampPreset().stamp))
     val hasGrain: Boolean get() = stampPreset().stamp!!.let { it.grain != StampGrain.NONE && it.grainDepth > 0 }

@@ -73,28 +73,27 @@ extension EditorController: AppleBrushLibraryActions {
             showShared(sharedControls.brushController(), title: "Brush settings")
         } catch { showError(error) }
     }
-    func tipGroupsMenu() -> UIMenu {
-        let contents = UIDeferredMenuElement.uncached { [weak self] complete in
-            guard let self else { complete([]); return }
-            let names = self.sharedControls.dockBrushNames()
-            var elements: [UIMenuElement] = self.sharedControls.dockGroups().map { group in
-                let members: [UIAction] = group.brushIds.compactMap { id in
-                    guard let name = names[id] else { return nil }
-                    return UIAction(title: name, state: self.viewport.canvas.mode == .paint &&
-                        self.viewport.canvas.tool != .eraser && self.viewport.canvas.brush.id == id ? .on : .off) { [weak self] _ in
-                        guard let self else { return }
-                        self.viewport.canvas.tool = .ink
-                        self.sharedControls.selectBrush(id: id)
-                    }
-                }
-                return UIMenu(title: group.name, image: UIImage(systemName: "folder"), children: members)
-            }
-            elements.append(UIAction(title: "Manage tip groups", image: UIImage(systemName: "slider.horizontal.3")) { [weak self] _ in
-                self?.showBrushLibrary(openGroups: true)
-            })
-            complete(elements)
+    func showTipPicker(eraser: Bool) {
+        finishCanvasInteraction()
+        let bounds = view.window?.screen.bounds ?? view.bounds
+        let shelfWidth = min(480, min(bounds.width, bounds.height) - 12) - 16
+        let controller = sharedControls.pickerController(callbacks: self, eraser: eraser,
+            pinLimit: Int32(max(1, Int(shelfWidth / 44))))
+        controller.modalPresentationStyle = .pageSheet
+        controller.sheetPresentationController?.detents = [.medium(), .large()]
+        present(controller, animated: true)
+    }
+    func pickedTip(id: String, eraser: Bool) {
+        finishCanvasInteraction()
+        if eraser { viewport.canvas.tool = .eraser; activateEraserBrush() }
+        else {
+            viewport.canvas.tool = .ink
+            sharedControls.selectBrush(id: id)
         }
-        return UIMenu(title: "Tip groups", children: [contents])
+    }
+    func closePicker() { presentedViewController?.dismiss(animated: true) }
+    func openLibrary() {
+        dismiss(animated: true) { [weak self] in self?.showBrushLibrary() }
     }
 
     func showBrushLibrary(openGroups: Bool = false) {

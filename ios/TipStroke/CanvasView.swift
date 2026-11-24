@@ -377,7 +377,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         let scale = viewport?.zoomScale ?? 1
         magneticRuler = mode == .paint && perspectiveMode > 0 ? NativePerspectiveRuler(mode: Int32(perspectiveMode), x1: Float(first.x), y1: Float(first.y), x2: Float(second.x), y2: Float(second.y), threshold: Float(4 / scale)) : nil
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
-        stampPath = brush.usesStamps && !(tool == .eraser && document.activePhoto != nil) ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
+        stampPath = brush.usesStamps ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
         airbrush.reset(); graphite.begin()
         strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
