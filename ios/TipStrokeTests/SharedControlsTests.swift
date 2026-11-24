@@ -53,6 +53,28 @@ final class SharedControlsTests: XCTestCase {
         XCTAssertFalse(restored.importBrushes(data: "not a brush"))
     }
 
+    func testStampEraserPreservesTransparentPartOfImportedTip() throws {
+        let actions = Actions()
+        let bridge = AppleEditorBridge(actions: actions)
+        var mask = Data(repeating: 255, count: 16 * 16)
+        for y in 5...10 { for x in 5...10 { mask[y * 16 + x] = 0 } }
+        XCTAssertTrue(bridge.setTexture(encoded: mask.base64EncodedString(), width: 16, height: 16, grain: false))
+        let brush = try XCTUnwrap(actions.brush)
+        let document = RasterDocument(name: "Erase stamp", width: 128, height: 128)
+        XCTAssertTrue(document.beginStroke())
+        _ = try document.paint(from: CGPoint(x: 32, y: 64), to: CGPoint(x: 96, y: 64),
+                               radius: 30, color: .red, erasing: false)
+        document.endStroke(cancelled: false)
+        let renderer = try NativeStampRenderer(brush: brush)
+        XCTAssertTrue(document.beginStroke())
+        _ = try renderer.paint(brush.path(size: 40, opacity: 1).append(x: 64, y: 64, pressure: 1, tilt: 0, time: 0),
+                               color: .white, document: document, erasing: true)
+        document.endStroke(cancelled: false)
+        let pixels = TilePixels(document.pixels[document.activeLayer] ?? [:])
+        XCTAssertEqual(try pixels.rgba(64, 64) & 255, 255)
+        XCTAssertLessThan(try pixels.rgba(49, 64) & 255, 255)
+    }
+
     @MainActor
     func testSharedPanelsCreateRealUIKitControllers() {
         let bridge = AppleEditorBridge(actions: Actions())

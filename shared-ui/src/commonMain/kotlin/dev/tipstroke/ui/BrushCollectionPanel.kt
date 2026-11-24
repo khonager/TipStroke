@@ -73,7 +73,10 @@ fun BrushCollectionPanel(brushes: List<LibraryBrush>, current: BrushPreset, onSe
         LazyColumn(Modifier.weight(1f)) {
             items(visible, key = { it.id.value }) { preset ->
                 Row(Modifier.fillMaxWidth()) {
-                    TextButton(onClick = { onSelect(preset) }, modifier = Modifier.weight(1f)) { Text(preset.displayName + if (preset.id == current.id) " ✓" else "") }
+                    TextButton(onClick = { onSelect(preset) }, modifier = Modifier.weight(1f)) {
+                        TipSwatch(preset, Modifier.size(36.dp))
+                        Text(preset.displayName + if (preset.id == current.id) " ✓" else "", Modifier.padding(start = 6.dp))
+                    }
                     if (brushes.any { it.preset.id == preset.id }) TextButton(onClick = { onDelete(preset) }) { Text("Delete") }
                 }
             }

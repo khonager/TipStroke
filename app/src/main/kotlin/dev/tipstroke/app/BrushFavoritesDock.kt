@@ -64,7 +64,7 @@ internal fun BrushFavoritesDock(
                 }
                 Box {
                     val tools = buildList {
-                        add(DockTool("Eraser", EraserIcon) { if (toolLabel != "Eraser") onEraser() })
+                        add(DockTool("Eraser", EraserIcon, onEraser))
                         add(DockTool("Smudge", Icons.Outlined.BlurOn, onSmudge))
                         add(DockTool("Lasso fill", Icons.Outlined.FormatColorFill, onLassoFill))
                         add(DockTool("Color push", Icons.Outlined.TouchApp, onColorPush))
@@ -82,7 +82,7 @@ internal fun BrushFavoritesDock(
                     val state = active?.label ?: "Drawing tools"
                     var reopen by remember { mutableIntStateOf(0) }
                     HoldToolPicker(
-                        labels = tools.map { it.label }, horizontal = horizontal, holdEnabled = holdPicker,
+                        labels = tools.map { it.label }, horizontal = horizontal, holdEnabled = holdPicker || toolLabel == "Eraser",
                         extent = slot.dp, reopen = reopen, stateLabel = if (aidsActive) "$state · brush aids active" else state,
                         selected = active != null || aidsActive, onTap = onEraser,
                         onChoose = { tools[it].action() },

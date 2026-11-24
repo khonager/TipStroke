@@ -170,7 +170,7 @@ the current no-network policy. The library includes actual bundled and local
 tips, with no fabricated popularity or publisher verification.
 
 
-Tip thumbnails in the favorites dock, library, and slider endpoints inherit the
+Native previews in the advanced library and slider endpoints inherit the
 current canvas drawing color, including changes from the color picker or eyedropper.
 Selection changes highlight the cell without replacing the stroke color. Native
 preview caches invalidate on color changes; contrasting neutral backdrops keep
@@ -191,7 +191,7 @@ the preview so the user can judge the appearance. Existing saved tip values are
 preserved. Full-canvas tablet benchmarks still show unacceptable latency for
 some tips; the creator does not certify them as fluid.
 
-Tip previews use fixed white strokes on a dark background, independent of the painting color. Color-wheel changes do not invalidate tip thumbnails.
+The picker and pinned shortcuts show white swatches on charcoal. The eye samples the selected tip’s erase mask.
 
 ### Custom categories and packs
 

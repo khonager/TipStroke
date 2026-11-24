@@ -65,7 +65,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     private var drawingColors by mutableStateOf(emptyList<RgbaColor>())
     private var paletteCount by mutableIntStateOf(4)
     private val defaults = NSUserDefaults.standardUserDefaults
-    private var pins by mutableStateOf(defaults.stringArrayForKey("tip.pins")?.filterIsInstance<String>().orEmpty())
+    private var pins by mutableStateOf(defaults.stringArrayForKey("tip.pins")?.filterIsInstance<String>() ?: BrushPreset.builtIns.map { it.id.value })
     private var dockPins by mutableStateOf(defaults.stringArrayForKey("tip.dockPins")?.filterIsInstance<String>()
         ?: pins.toList().also { defaults.setObject(it, forKey = "tip.dockPins") })
     private val drawingPosition = TipPickerPosition()
@@ -240,9 +240,10 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         val byId = (BrushPreset.libraryBuiltIns + library.map { it.preset }).associateBy { it.id.value }
         MaterialTheme(colorScheme = darkColorScheme()) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
+                val slots = (maxWidth / 44.dp).toInt().coerceAtLeast(1)
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) {
                     val pick: (BrushPreset) -> Unit = { callbacks.pickedTip(it.id.value, false) }
-                    PinnedTipCells(dockPins.mapNotNull(byId::get), (maxWidth / 44.dp).toInt().coerceAtLeast(1), 44.dp, pick) { tip ->
+                    PinnedTipCells(dockPins.mapNotNull(byId::get), slots, 44.dp, pick) { tip ->
                         TipSwatch(tip, Modifier.size(44.dp).clickable { pick(tip) }
                             .semantics { contentDescription = tip.displayName }.padding(2.dp))
                     }

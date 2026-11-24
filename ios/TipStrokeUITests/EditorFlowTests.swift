@@ -19,15 +19,15 @@ final class EditorFlowTests: XCTestCase {
         }
         XCTAssertTrue(element("Choose drawing tip").waitForExistence(timeout: 10))
         element("Groups").tap()
-        app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Manga")).firstMatch.tap()
-        element("Manga hatching").tap()
+        element("Open group Manga").tap()
+        element("Choose Manga hatching").tap()
         let tools = app.buttons["Drawing tools"]
         tools.tap()
         XCTAssertEqual(tools.value as? String, "Eraser")
         tools.tap()
         XCTAssertTrue(element("Choose eraser tip").waitForExistence(timeout: 10))
         element("All").tap()
-        element("Pencil").tap()
+        element("Choose Pencil").tap()
         XCTAssertEqual(tools.value as? String, "Eraser")
         let anchor = tools.frame
         let origin = app.coordinate(withNormalizedOffset: .zero)

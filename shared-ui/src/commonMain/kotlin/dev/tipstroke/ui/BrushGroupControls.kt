@@ -44,9 +44,6 @@ fun BrushCategoryManager(
             }
             categories.forEachIndexed { index, category ->
                 Text(category.name, style = MaterialTheme.typography.titleMedium)
-                GroupToggle("Show ${category.name} in tip bar", category.showInDock) { show ->
-                    onChange(categories.map { if (it.id == category.id) it.copy(showInDock = show) else it })
-                }
                 FlowRow {
                     action(GroupAction.MEMBERS, "Edit tips in ${category.name}", true) { onEditMembers(category.id) }
                     action(GroupAction.RENAME, "Rename ${category.name}", true) {
@@ -76,7 +73,7 @@ fun BrushGroupMembers(
                 items(tips.filter { it.displayName.contains(query, ignoreCase = true) }, key = { it.id.value }) { tip ->
                     val id = tip.id.value
                     val included = id in group.brushIds
-                    GroupToggle(tip.displayName, included, enabled = included || group.brushIds.size < 200) { include ->
+                    GroupToggle(tip.displayName, included, enabled = included || group.brushIds.size < 200, tip = tip) { include ->
                         onChange(group.copy(brushIds = if (include) group.brushIds + id else group.brushIds - id))
                     }
                 }
@@ -86,13 +83,14 @@ fun BrushGroupMembers(
 }
 
 @Composable
-fun GroupToggle(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+fun GroupToggle(label: String, checked: Boolean, enabled: Boolean = true, tip: BrushPreset? = null, onChange: (Boolean) -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(checked, enabled = enabled, role = Role.Checkbox, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Checkbox(checked, onCheckedChange = null, enabled = enabled)
+        if (tip != null) TipSwatch(tip, Modifier.size(36.dp))
         Text(label)
     }
 }

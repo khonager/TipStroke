@@ -2,7 +2,12 @@ package dev.tipstroke.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import org.junit.After
+import org.robolectric.Robolectric
+import org.robolectric.android.controller.ActivityController
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -14,12 +19,15 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w400dp-h800dp-port-mdpi")
 class CanvasPreviewTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createEmptyComposeRule()
+    private var activity: ActivityController<ComponentActivity>? = null
+    @After fun close() { activity?.close() }
     private val preview get() = compose.onNodeWithContentDescription("Canvas preview")
     private val drop get() = compose.onNodeWithContentDescription("Tucked canvas preview")
 
     private fun open() {
-        compose.setContent { CanvasScreen() }
+        activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        requireNotNull(activity).get().setContent { CanvasScreen() }
         drop.assertDoesNotExist()
         preview.assertDoesNotExist()
         compose.onNodeWithContentDescription("More canvas actions").performClick()
