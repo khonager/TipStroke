@@ -7,6 +7,8 @@ final class SharedControlsTests: XCTestCase {
     private final class Actions: NSObject, AppleEditorActions {
         var brush: NativeBrush?
         var finger = false
+        func strokePreview(brush: NativeBrush) -> Data? { try? BrushSpecimen.image(brush) }
+        func eraserChanged() {}
         func brushChanged(brush: NativeBrush) { self.brush = brush }
         func colorChanged(red: Float, green: Float, blue: Float) {}
         func swatchDrag(x: Float, y: Float, red: Float, green: Float, blue: Float, ended: Bool, cancelled: Bool) {}

@@ -2,6 +2,16 @@
 
 package dev.tipstroke.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.cinterop.readBytes
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.ByteVar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.jetbrains.skia.Image as SkiaImage
+import platform.Foundation.NSData
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,6 +59,8 @@ interface AppleLayerBlendActions {
 }
 
 interface AppleEditorActions {
+    fun strokePreview(brush: NativeBrush): NSData?
+    fun eraserChanged()
     fun brushChanged(brush: NativeBrush)
     fun colorChanged(red: Float, green: Float, blue: Float)
     fun fingerDrawingChanged(enabled: Boolean)
@@ -68,13 +80,21 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     private var pins by mutableStateOf(defaults.stringArrayForKey("tip.pins")?.filterIsInstance<String>() ?: BrushPreset.builtIns.map { it.id.value })
     private var dockPins by mutableStateOf(defaults.stringArrayForKey("tip.dockPins")?.filterIsInstance<String>()
         ?: pins.toList().also { defaults.setObject(it, forKey = "tip.dockPins") })
-    private val drawingPosition = TipPickerPosition()
+    private val drawingPosition = TipPickerPosition().apply { open("All") }
     private val eraserPosition = TipPickerPosition()
     fun currentDrawingBrush() = NativeBrush(brush)
-    fun eraserBrush(): NativeBrush {
+    private fun eraserSource(): BrushPreset {
         val id = defaults.stringForKey("tip.eraser")
         val preset = (BrushPreset.libraryBuiltIns + library.map { it.preset }).find { it.id.value == id } ?: BrushPreset.Ink
-        return NativeBrush(NativeBrush(preset).eraserPreset())
+        val saved = defaults.stringForKey("tip.eraserTuning." + preset.id.value)
+        return saved?.let { runCatching { BrushPackage.decode(it).preset }.getOrNull() } ?: preset
+    }
+    fun eraserBrush(): NativeBrush = NativeBrush(NativeBrush(eraserSource()).eraserPreset())
+    private fun saveEraser(value: BrushPreset) {
+        defaults.setObject(BrushPackage.encode(LibraryBrush(value)), forKey = "tip.eraserTuning." + value.id.value)
+    }
+    fun setEraserAdjustment(size: Float, opacity: Float) {
+        saveEraser(eraserSource().copy(baseSizePx = size, opacity = opacity))
     }
     private var groups by mutableStateOf(loadGroups())
     private fun loadGroups(): List<BrushCategory> {
@@ -143,6 +163,16 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         fingerDrawing = finger
         actions.fingerDrawingChanged(finger)
     }
+    fun setFingerDrawing(enabled: Boolean) {
+        fingerDrawing = enabled
+        actions.fingerDrawingChanged(enabled)
+    }
+
+    fun setDrawingAdjustment(size: Float, opacity: Float) {
+        // The native tool stays active (including shape and smudge modes).
+        brush = brush.copy(baseSizePx = size.coerceIn(2f, 512f), opacity = opacity.coerceIn(.05f, 1f))
+    }
+
     fun restoreLibrary(data: String): Boolean {
         val decoded = runCatching { BrushCollection.decode(data) }.getOrNull() ?: return false
         if (decoded.any { item -> BrushPreset.libraryBuiltIns.any { it.id == item.preset.id } }) return false
@@ -170,8 +200,24 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         updateBrush(brush.copy(stamp = if (grain) stamp.copy(grainTexture = changed) else stamp.copy(shapeTexture = changed)))
     }
     fun libraryData(): String = BrushCollection.encode(library)
+    @Composable
+    private fun BrushTheme(content: @Composable () -> Unit) {
+        CompositionLocalProvider(LocalStrokePreview provides { tip, modifier ->
+            val image by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, tip) {
+                value = withContext(Dispatchers.Default) {
+                    val data = actions.strokePreview(NativeBrush(tip)) ?: return@withContext null
+                    val bytes = data.bytes?.reinterpret<ByteVar>()?.readBytes(data.length.toInt())
+                    bytes?.let { SkiaImage.makeFromEncoded(it).toComposeImageBitmap() }
+                }
+            }
+            Box(modifier.background(Color(0xff303238))) {
+                image?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+            }
+        }) { MaterialTheme(colorScheme = darkColorScheme(), content = content) }
+    }
+
     fun libraryController(callbacks: AppleBrushLibraryActions, openGroups: Boolean): UIViewController = ComposeUIViewController {
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        BrushTheme {
             Surface(Modifier.fillMaxSize()) {
                 var manage by remember { mutableStateOf(openGroups) }
                 var editing by remember { mutableStateOf<String?>(null) }
@@ -187,7 +233,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                         }) { editing = null }
                     }
                 }
-                BrushCollectionPanel(library, brush, ::selectPreset,
+                else BrushCollectionPanel(library, brush, ::selectPreset,
                     onSave = { preset, name ->
                         if (library.size >= 200) return@BrushCollectionPanel
                         val saved = preset.copy(id = BrushId("custom-${Uuid.random()}"), displayName = name)
@@ -216,7 +262,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     fun pickerController(callbacks: AppleBrushLibraryActions, eraser: Boolean, pinLimit: Int): UIViewController = ComposeUIViewController {
         val tips = BrushPreset.libraryBuiltIns + library.map { it.preset }
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        BrushTheme {
             Surface(Modifier.fillMaxSize()) {
                 TipPicker(if (eraser) eraserPosition else drawingPosition, eraser,
                     if (eraser) defaults.stringForKey("tip.eraser") ?: BrushPreset.Ink.id.value else brush.id.value,
@@ -238,7 +284,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
         val byId = (BrushPreset.libraryBuiltIns + library.map { it.preset }).associateBy { it.id.value }
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        BrushTheme {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val slots = (maxWidth / 44.dp).toInt().coerceAtLeast(1)
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) {
@@ -251,17 +297,28 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             }
         }
     }
-    fun brushController(): UIViewController = ComposeUIViewController {
-        MaterialTheme(colorScheme = darkColorScheme()) {
+    fun brushController(): UIViewController = settingsController(false)
+    fun settingsController(eraser: Boolean): UIViewController = ComposeUIViewController {
+        BrushTheme {
             Surface(Modifier.fillMaxSize()) {
                 Column {
+                    var eraserPreset by remember { mutableStateOf(if (eraser) eraserSource() else brush) }
+                    val active = if (eraser) eraserPreset else brush
+                    TipSwatch(active, Modifier.fillMaxWidth().height(56.dp))
                     var hold by remember { mutableStateOf(defaults.objectForKey("holdDrawingTools") == null || defaults.boolForKey("holdDrawingTools")) }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Hold for drawing tools", Modifier.weight(1f))
                         Switch(hold, { hold = it; defaults.setBool(it, forKey = "holdDrawingTools") })
                     }
-                    BrushSettingsPanel(brush, { if (it.id == brush.id) updateBrush(it) else selectPreset(it) }, fingerDrawing) {
-                        fingerDrawing = it; actions.fingerDrawingChanged(it)
+                    BrushSettingsPanel(active, { next ->
+                        if (eraser) {
+                            if (next.id != eraserPreset.id) defaults.setObject(next.id.value, forKey = "tip.eraser")
+                            eraserPreset = if (next.id == eraserPreset.id) next else eraserSource()
+                            saveEraser(eraserPreset)
+                            actions.eraserChanged()
+                        } else if (next.id == brush.id) updateBrush(next) else selectPreset(next)
+                    }, fingerDrawing) {
+                        setFingerDrawing(it)
                     }
                 }
             }

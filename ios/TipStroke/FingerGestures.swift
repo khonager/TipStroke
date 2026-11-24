@@ -40,7 +40,9 @@ extension EditorController {
                 let options = UIAlertController(title: slot.rawValue, message: nil, preferredStyle: .actionSheet)
                 for command in slot.choices {
                     options.addAction(UIAlertAction(title: command.rawValue + (command == slot.command ? " ✓" : ""), style: .default) { _ in
-                        slot.set(command); self.viewport.canvas.configureInput()
+                        slot.set(command)
+                        if slot == .drag { self.sharedControls.setFingerDrawing(enabled: command != .navigate) }
+                        else { self.refreshFingerMode() }
                     })
                 }
                 options.addAction(UIAlertAction(title: "Cancel", style: .cancel)); self.anchor(options); self.present(options, animated: true)

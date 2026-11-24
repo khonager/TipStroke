@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.tipstroke.core.brush.BrushCategory
@@ -62,7 +63,7 @@ fun TipPicker(position: TipPickerPosition, eraser: Boolean, selectedId: String, 
             }
             LazyColumn(state = position.groupsScroll, modifier = Modifier.weight(1f)) {
                 items(groups.filter { it.name.contains(position.groupQuery, true) }, key = { it.id }) { group ->
-                    Row(Modifier.fillMaxWidth().clickable { position.open(group.id) }.semantics { contentDescription = "Open group ${group.name}" }.heightIn(min = 48.dp),
+                    Row(Modifier.fillMaxWidth().testTag("Open group ${group.name}").clickable { position.open(group.id) }.semantics { contentDescription = "Open group ${group.name}" }.heightIn(min = 48.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Text(group.name, Modifier.weight(1f))
                         group.brushIds.mapNotNull(byId::get).take(2).forEach { TipSwatch(it, Modifier.size(28.dp)) }
@@ -88,7 +89,7 @@ fun TipPicker(position: TipPickerPosition, eraser: Boolean, selectedId: String, 
                     var menu by remember { mutableStateOf(false) }
                     val id = tip.id.value
                     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(Modifier.weight(1f).clickable { onPick(tip) }.semantics { contentDescription = "Choose ${tip.displayName}" }.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f).testTag("Choose ${tip.displayName}").clickable { onPick(tip) }.semantics { contentDescription = "Choose ${tip.displayName}" }.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                             TipSwatch(tip, Modifier.size(36.dp))
                             Text(tip.displayName + if (selectedId == id) " ✓" else "", Modifier.padding(start = 5.dp), style = MaterialTheme.typography.bodySmall)
                         }

@@ -13,9 +13,27 @@ final class EditorFlowTests: XCTestCase {
         create.tap()
         let gallery = app.buttons["Gallery"]
         XCTAssertTrue(gallery.waitForExistence(timeout: 10))
+        let canvas = app.descendants(matching: .any)["Drawing canvas"]
+        let fingerMode = app.buttons["Finger mode"]
+        if fingerMode.value as? String != "Navigate canvas" { fingerMode.tap() }
+        let before = canvas.frame.midX
+        let finger = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.5))
+        finger.press(forDuration: 0.1, thenDragTo: finger.withOffset(CGVector(dx: 60, dy: 0)))
+        XCTAssertGreaterThan(canvas.frame.midX, before + 10)
+        XCTAssertFalse(app.buttons["Undo"].isEnabled)
+        app.buttons["Fit canvas"].tap()
+        fingerMode.tap()
+        XCTAssertEqual(fingerMode.value as? String, "Draw")
+        for label in ["Size", "Opacity"] {
+            let slider = app.sliders[label]
+            XCTAssertTrue(slider.isHittable)
+            let before = slider.value as? String
+            slider.adjust(toNormalizedSliderPosition: 0.65)
+            XCTAssertNotEqual(slider.value as? String, before)
+        }
         app.buttons["Tips"].tap()
         func element(_ label: String) -> XCUIElement {
-            app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+            app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", label, label)).firstMatch
         }
         XCTAssertTrue(element("Choose drawing tip").waitForExistence(timeout: 10))
         element("Groups").tap()
@@ -55,7 +73,6 @@ final class EditorFlowTests: XCTestCase {
         deselect.tap()
         XCTAssertFalse(deselect.exists)
         app.segmentedControls["Drawing tool"].buttons["Ink"].tap()
-        let canvas = app.descendants(matching: .any)["Drawing canvas"]
         let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.40, dy: 0.45))
         let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.60, dy: 0.55))
         start.press(forDuration: 0.2, thenDragTo: end)

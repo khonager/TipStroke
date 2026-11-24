@@ -319,9 +319,9 @@ controls, timing, and close. Stylus/mouse hover and touch long-press show action
 names; accessibility descriptions retain those names. Clip names, timestamps,
 and dialog confirmations remain text.
 
-### Size units (Android)
+### Size units
 
-Tap the size value to choose Canvas pixels or Screen size (dp). The choice persists
+Tap the size value to choose Canvas pixels or Screen size (dp on Android, points on iOS). The choice persists
 locally across canvases for regular/custom brushes and eraser. Screen size converts
 to document pixels using display density and camera zoom at touch-down; the current
 stroke keeps that resolved size even if controls change. Hover and size-adjustment

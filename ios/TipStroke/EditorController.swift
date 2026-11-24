@@ -16,10 +16,17 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let undoButton = UIButton(type: .system)
     private let redoButton = UIButton(type: .system)
     private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
+    private let fingerMode = UIButton(type: .system)
+    private let sizeControl = BrushAdjustmentView(title: "Size", isSize: true)
+    private let opacityControl = BrushAdjustmentView(title: "Opacity", isSize: false)
+    private lazy var adjustments = UIStackView(arrangedSubviews: [sizeControl, opacityControl])
+    private let adjustmentPreview = UIImageView()
     private var palette: ToolPalette?
     private var portraitLayout: [NSLayoutConstraint] = []
     private var landscapeLayout: [NSLayoutConstraint] = []
     private weak var actionStack: UIStackView?
+    private var navigator: CanvasNavigator?
+    private var panels: [UIVisualEffectView] = []
     private var sideDock = false
     private let saveLabel = UILabel()
     private let hoverName = UILabel()
@@ -41,7 +48,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     required init?(coder: NSCoder) { fatalError("Use init(document:)") }
     override func viewDidLoad() {
         super.viewDidLoad()
-        document.onCelReady = { [weak self] in self?.viewport.canvas.refresh(); self?.updateHistory() }
+        document.onCelReady = { [weak self] in self?.viewport.canvas.refresh(); self?.navigator?.refresh(); self?.updateHistory() }
         document.onDeferredHistoryChange = { [weak self] in self?.changed() }
         document.onCelError = { [weak self] error in self?.showError(error) }
         if let animation = document.record.animation, animation.onionSkin {
@@ -120,8 +127,37 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         quickShelf = quickColors.view
         addChild(quickColors)
         quickColors.view.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        let shelf = UIStackView(arrangedSubviews: [tips, quickColors.view])
-        let bottom = UIStackView(arrangedSubviews: [toolPicker, shelf, pinned.view!, bottomActions]); bottom.spacing = 4
+        configure(fingerMode, label: "Finger mode", symbol: "hand.draw") { [weak self] in
+            guard let self else { return }
+            self.finishCanvasInteraction()
+            let enable = !self.viewport.canvas.fingerDrawing || FingerBinding.drag.command == .navigate
+            if enable && FingerBinding.drag.command == .navigate { FingerBinding.drag.set(.draw) }
+            self.sharedControls.setFingerDrawing(enabled: enable)
+        }
+        tips.setTitle("Tips", for: .normal)
+        let shelf = UIStackView(arrangedSubviews: [tips, quickColors.view!, fingerMode])
+        adjustments.distribution = .fillEqually
+        adjustments.spacing = 8
+        sizeControl.adjusted = { [weak self] value in
+            self?.viewport.canvas.brushSize = CGFloat(value)
+            self?.previewAdjustment()
+        }
+        opacityControl.adjusted = { [weak self] value in
+            self?.viewport.canvas.brushOpacity = CGFloat(value)
+            self?.previewAdjustment()
+        }
+        sizeControl.screenUnitsChanged = { [weak self] enabled in
+            self?.viewport.canvas.sizeInScreenPoints = enabled
+            UserDefaults.standard.set(enabled, forKey: "brush.screenPoints")
+            self?.refreshAdjustments()
+        }
+        sizeControl.finished = { [weak self] in self?.finishAdjustment() }
+        opacityControl.finished = { [weak self] in self?.finishAdjustment() }
+        adjustmentPreview.isUserInteractionEnabled = false
+        adjustmentPreview.layer.shadowOpacity = 0.4
+        adjustmentPreview.layer.shadowRadius = 1
+        adjustmentPreview.layer.shadowOffset = .zero
+        let bottom = UIStackView(arrangedSubviews: [toolPicker, shelf, pinned.view!, adjustments, bottomActions]); bottom.spacing = 4
         pinned.didMove(toParent: self)
         quickColors.didMove(toParent: self)
         bottom.axis = .vertical
@@ -216,6 +252,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         guard useSideDock != sideDock else { return }
         NSLayoutConstraint.deactivate(sideDock ? landscapeLayout : portraitLayout)
         sideDock = useSideDock
+        adjustments.axis = useSideDock ? .vertical : .horizontal
+        adjustments.spacing = useSideDock ? 0 : 8
         actionStack?.axis = useSideDock ? .vertical : .horizontal
         for (index, symbol) in ["pencil", "paintbrush.pointed", "aqi.low", "eraser"].enumerated() {
             if useSideDock { toolPicker.setImage(UIImage(systemName: symbol), forSegmentAt: index) }
@@ -223,6 +261,11 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         NSLayoutConstraint.activate(useSideDock ? landscapeLayout : portraitLayout)
     }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        navigator?.constrainPosition()
+    }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
@@ -245,8 +288,58 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if isMovingFromParent { navigationController?.interactivePopGestureRecognizer?.isEnabled = true }
     }
     deinit { NotificationCenter.default.removeObserver(self); saveWork?.cancel() }
+    func refreshFingerMode() {
+        let canvas = viewport.canvas
+        canvas.configureInput()
+        let command: FingerCommand = canvas.fingerDrawing ? FingerBinding.drag.command : .navigate
+        fingerMode.setTitle(command == .navigate ? "Pan" : command.rawValue, for: .normal)
+        fingerMode.setImage(UIImage(systemName: command == .navigate ? "hand.raised" : "hand.draw"), for: .normal)
+        fingerMode.accessibilityValue = command.rawValue
+    }
+
+    private var pixelTool: Bool { [.pixel, .pixelLine, .dither].contains(viewport.canvas.mode) }
+
+    private func refreshAdjustments() {
+        let canvas = viewport.canvas
+        sizeControl.display(Float(canvas.brushSize), range: pixelTool ? 1...32 : 2...512,
+                            screenUnits: canvas.supportsScreenSize && canvas.sizeInScreenPoints, allowsUnits: canvas.supportsScreenSize)
+        opacityControl.display(Float(canvas.brushOpacity), range: 0.05...1)
+    }
+
+    private func previewAdjustment() {
+        let canvas = viewport.canvas
+        refreshAdjustments()
+        if adjustmentPreview.superview == nil {
+            let color = canvas.tool == .eraser ? UIColor.lightGray : canvas.brushColor
+            if let mask = try? NativeStampRenderer.image(canvas.brush.shape(), color: color) {
+                adjustmentPreview.image = UIImage(cgImage: mask)
+            }
+            view.addSubview(adjustmentPreview)
+        }
+        let width = canvas.resolvedBrushSize * viewport.zoomScale
+        adjustmentPreview.bounds.size = CGSize(width: width, height: width * CGFloat(canvas.brush.aspectRatio))
+        adjustmentPreview.center = viewport.convert(CGPoint(x: viewport.bounds.midX, y: viewport.bounds.midY), to: view)
+        adjustmentPreview.alpha = canvas.brushOpacity
+    }
+
+    private func finishAdjustment() {
+        adjustmentPreview.removeFromSuperview()
+        let canvas = viewport.canvas
+        let defaults = UserDefaults.standard
+        if canvas.tool == .eraser {
+            sharedControls.setEraserAdjustment(size: Float(canvas.brushSize), opacity: Float(canvas.brushOpacity))
+        } else if !pixelTool {
+            sharedControls.setDrawingAdjustment(size: Float(canvas.brushSize), opacity: Float(canvas.brushOpacity))
+            defaults.set(Float(canvas.brushSize), forKey: "brush.size")
+            defaults.set(Float(canvas.brushOpacity), forKey: "brush.opacity")
+            defaults.set(sharedControls.brushData(), forKey: "brush.data")
+        }
+    }
+
     private func panel(_ stack: UIStackView) -> UIView {
-        let panel = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        let panel = UIVisualEffectView()
+        panels.append(panel)
+        refreshPanelStyle()
         panel.layer.cornerRadius = 16; panel.clipsToBounds = true
         panel.translatesAutoresizingMaskIntoConstraints = false; stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(panel); panel.contentView.addSubview(stack)
@@ -256,6 +349,27 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             stack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -2)])
         return panel
     }
+    var solidControls: Bool { UserDefaults.standard.bool(forKey: "editor.solidControls") }
+    func togglePanelStyle() {
+        UserDefaults.standard.set(!solidControls, forKey: "editor.solidControls")
+        refreshPanelStyle()
+    }
+    private func refreshPanelStyle() {
+        for panel in panels {
+            panel.effect = solidControls ? nil : UIBlurEffect(style: .systemMaterial)
+            panel.backgroundColor = solidControls ? .secondarySystemBackground : .clear
+        }
+    }
+
+    private func toggleCanvasPreview() {
+        if let navigator { navigator.removeFromSuperview(); self.navigator = nil; return }
+        let preview = CanvasNavigator(viewport: viewport)
+        view.insertSubview(preview, aboveSubview: viewport)
+        navigator = preview
+        preview.constrainPosition()
+        preview.refresh()
+    }
+
     private func button(_ label: String, symbol: String, action: @escaping () -> Void) -> UIButton {
         let button = UIButton(type: .system); configure(button, label: label, symbol: symbol, action: action); return button
     }
@@ -329,6 +443,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.brush = tip
         viewport.canvas.brushSize = CGFloat(tip.size)
         viewport.canvas.brushOpacity = CGFloat(tip.opacity)
+        refreshAdjustments()
     }
     private let dropSwatch = UIView()
     private weak var quickShelf: UIView?
@@ -365,6 +480,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let selectionModes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.rectangleSelection, "rectangle.dashed"),
             (.ellipseSelection, "circle.dashed")]
     private func updateToolValue() {
+        refreshAdjustments()
         let mode = viewport.canvas.mode
         let drawingSymbol = drawingModes.first { $0.0 == mode }?.1 ?? (mode.isShape ? "scribble.variable" : "eraser")
         toolsButton?.setImage(UIImage(systemName: drawingSymbol), for: .normal)
@@ -418,6 +534,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         palette.add("Transform", "perspective") { [weak self] in self?.showTransformEditor() }
         palette.add("Selection actions", "ellipsis") { [weak self] in self?.selectionActions() }
+        palette.add(navigator == nil ? "Canvas preview" : "Hide canvas preview", "picture.in.picture") { [weak self] in self?.toggleCanvasPreview() }
         palette.add("Fit canvas", "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit() }
     }
 
@@ -427,8 +544,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if viewport.canvas.tool == .eraser { toggleEraser() }
         viewport.canvas.mode = mode
         if mode != .paint { toolPicker.selectedSegmentIndex = UISegmentedControl.noSegment }
+        if pixelTool { viewport.canvas.brushSize = 1 }
+        else { viewport.canvas.brushSize = CGFloat(sharedControls.currentDrawingBrush().size) }
         updateToolValue()
-        if [.pixel, .pixelLine, .dither].contains(mode) { viewport.canvas.brushSize = 1 }
     }
 
     @objc private func trackTools(_ recognizer: UILongPressGestureRecognizer) {
@@ -448,6 +566,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             viewport.canvas.bounds = document.bounds; viewport.contentSize = document.bounds.size; viewport.fit()
         }
         if redraw { viewport.canvas.refresh() }
+        navigator?.refresh()
         updateHistory(); saveLabel.text = "Unsaved changes"
         saveWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.saveNow() }
@@ -529,7 +648,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     private func brushSettings() {
         finishCanvasInteraction()
-        showShared(sharedControls.brushController(), title: "Brush settings")
+        showShared(sharedControls.settingsController(eraser: viewport.canvas.tool == .eraser), title: "Brush settings")
     }
     func showShared(_ controller: UIViewController, title: String) {
         controller.title = title
@@ -602,6 +721,8 @@ private extension NSLayoutConstraint {
 private final class EditorActions: NSObject, AppleEditorActions {
     weak var editor: EditorController?
     init(_ editor: EditorController) { self.editor = editor }
+    func strokePreview(brush: NativeBrush) -> Data? { try? BrushSpecimen.image(brush) }
+    func eraserChanged() { editor?.activateEraserBrush() }
     func brushChanged(brush: NativeBrush) { editor?.applyBrush(brush) }
     func colorChanged(red: Float, green: Float, blue: Float) {
         editor?.viewport.canvas.brushColor = UIColor(red: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: 1)
@@ -612,6 +733,7 @@ private final class EditorActions: NSObject, AppleEditorActions {
     }
     func fingerDrawingChanged(enabled: Bool) {
         editor?.viewport.canvas.fingerDrawing = enabled
+        editor?.refreshFingerMode()
         UserDefaults.standard.set(enabled, forKey: "fingerDrawing")
     }
 }

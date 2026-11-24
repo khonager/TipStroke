@@ -60,13 +60,24 @@ from `:shared-ui`, exporting `:core`. There is no account or network service.
   sharing. Thumbnail and encoding work runs away from the input thread.
 
 **Drawing tools → More tools → Finger gestures** configures one-finger drag and hold, the hold delay,
-and two- or three-finger tap actions. Finger drawing defaults on. Disable **Draw with finger** in brush settings for
-Pencil-only input. A second finger cancels provisional finger paint and starts
+and two- or three-finger tap actions. The editor’s **Draw / Pan** button switches
+one-finger input and remembers the choice. In Pan, drag anywhere in the viewport,
+including at Fit, and draw with Pencil. Fit recenters the sheet. Pinch can zoom
+out below Fit or enlarge a small pixel-art canvas up to 256×. A second finger cancels provisional finger paint and starts
 navigation. Pencil takes priority. Pressureless hardware, fingers and estimated
 force use the constant fallback. No predicted or late-corrected samples are baked
 into permanent tiles. On supported iPads, Pencil hover outlines the brush footprint. Pencil Pro barrel
 roll rotates the stamp tip. Squeeze can open drawing tools, show colors or toggle
 the eraser according to the system Pencil preference.
+
+The editor dock shows size and opacity alongside pinned tip samples. Drag either
+track to preview the colored footprint at the current zoom. Tap the numeric
+readout for single-unit adjustments. Size can use document pixels or screen
+points for regular brushes and erasers. The eraser keeps its own tuning. Tips
+opens the full collection. The picker, library, dock and brush settings show
+pressure-sweep samples rendered into small, isolated native raster documents.
+Drawing tools → More tools → Use solid controls switches the editor dock
+backgrounds between translucent material and an opaque system color.
 
 ## New drawing sizes
 
@@ -82,7 +93,7 @@ preset uses the iOS resident tile budget or Android’s app heap budget.
 
 | Workflow | iOS behavior |
 | --- | --- |
-| Floating canvas preview | Available on Android. The iOS editor does not yet host the shared draggable preview and edge drop. |
+| Floating canvas preview | Moving tools → Canvas preview opens an overview of the whole drawing. Drag to reposition, pinch to resize, drag to either edge to tuck, and tap to expand. Hide it from Moving tools. |
 | Brush input | Core Graphics uses shared contact, grain and stamp rules for graphite, airbrush and imported tips. Jetpack Ink brushes use native approximations. Wet-stroke appearance, latency and Pencil sensor behavior need physical-device comparison. |
 | Selection and images | Preview and apply or cancel transforms, edit source-backed photos and masks, and use freeform, perspective, mesh and local deformation. PNG export samples the original within a bounded decode budget. |
 | Animation and video | Work with disk-backed cels, change resolution, record motion, scrub GIF and video sources, edit clips and crossfades, and navigate drawing coverage. Photo motion uses keyframes. |

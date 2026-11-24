@@ -59,9 +59,16 @@ fun PinnedTipCells(tips: List<BrushPreset>, slots: Int, extent: Dp, onPick: (Bru
     }, confirmButton = { TextButton(onClick = { open = false }) { Text("Close") } })
 }
 
+internal val LocalStrokePreview = staticCompositionLocalOf<(@Composable (BrushPreset, Modifier) -> Unit)?> { null }
+
 /** Small cached white-on-charcoal specimen with the preset's shape erased into its broad end. */
 @Composable
 fun TipSwatch(tip: BrushPreset, modifier: Modifier = Modifier) {
+    val strokePreview = LocalStrokePreview.current
+    if (strokePreview != null) {
+        strokePreview(tip, modifier)
+        return
+    }
     val coveragePaths = remember(tip) {
         val side = 64
         val native = NativeBrush(NativeBrush(tip).eraserPreset())

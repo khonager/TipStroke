@@ -1,6 +1,8 @@
 package dev.tipstroke.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,9 +25,9 @@ fun BrushSettingsPanel(
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Brush", style = MaterialTheme.typography.headlineSmall)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BrushPreset.libraryBuiltIns.forEach { preset ->
-                FilterChip(brush.id == preset.id, onClick = { onBrush(preset) }, label = { Text(preset.displayName) })
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(BrushPreset.libraryBuiltIns, key = { it.id.value }) { preset ->
+                FilterChip(brush.id == preset.id, onClick = { onBrush(preset) }, leadingIcon = { TipSwatch(preset, Modifier.size(36.dp)) }, label = { Text(preset.displayName) })
             }
         }
         PrecisionSlider("Size", "${brush.baseSizePx.roundToInt()} px", brush.baseSizePx, 2f..512f, 1f,

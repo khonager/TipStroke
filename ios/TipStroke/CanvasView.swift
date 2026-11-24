@@ -158,6 +158,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private var stampPath: NativeStampPath?
     var brushColor: UIColor = .black
     var brushSize: CGFloat = 8
+    var sizeInScreenPoints = UserDefaults.standard.bool(forKey: "brush.screenPoints")
+    var supportsScreenSize: Bool { ![.pixel, .pixelLine, .dither, .smudge].contains(mode) }
+    var resolvedBrushSize: CGFloat {
+        sizeInScreenPoints && supportsScreenSize ? brushSize / max(0.001, viewport?.zoomScale ?? 1) : brushSize
+    }
     var brushOpacity: CGFloat = 1
     var fingerDrawing = true
     var onCommit: (() -> Void)?
@@ -225,7 +230,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             hoverLayer.path = nil
             return
         }
-        let width = max(1, brushSize)
+        let width = max(1, resolvedBrushSize)
         let height = brush.usesStamps ? width * CGFloat(brush.aspectRatio) : width
         let oval = UIBezierPath(ovalIn: CGRect(x: -width / 2, y: -height / 2, width: width, height: height))
         var pose = CGAffineTransform(translationX: point.x, y: point.y)
@@ -377,10 +382,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         let scale = viewport?.zoomScale ?? 1
         magneticRuler = mode == .paint && perspectiveMode > 0 ? NativePerspectiveRuler(mode: Int32(perspectiveMode), x1: Float(first.x), y1: Float(first.y), x2: Float(second.x), y2: Float(second.y), threshold: Float(4 / scale)) : nil
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
-        stampPath = brush.usesStamps ? brush.path(size: Float(brushSize), opacity: Float(brushOpacity)) : nil
+        stampPath = brush.usesStamps ? brush.path(size: Float(resolvedBrushSize), opacity: Float(brushOpacity)) : nil
         airbrush.reset(); graphite.begin()
         strokeBrush = brush
-        strokeTool = tool; strokeColor = brushColor; strokeSize = brushSize; strokeOpacity = brushOpacity
+        strokeTool = tool; strokeColor = brushColor; strokeSize = resolvedBrushSize; strokeOpacity = brushOpacity
         if liveFill || shadowPull || mode == .colorPush {
             previewLink = CADisplayLink(target: self, selector: #selector(renderLivePreview))
             previewLink?.add(to: .main, forMode: .common)
@@ -423,7 +428,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 if mode.isSelection { document.combineSelection(mode.outline(gesturePoints)) }
                 else if mode.isShape, document.beginStroke() {
                     if mode == .pixelLine { try document.paintPixelLine(from: gesturePoints[0], to: point, size: Int(brushSize), color: brushColor.withAlphaComponent(brushOpacity), dither: false) }
-                    else { try document.paintPath(mode.outline(gesturePoints), color: brushColor.withAlphaComponent(brushOpacity), width: brushSize, filled: filledShapes && [.rectangle, .ellipse, .triangle].contains(mode)) }
+                    else { try document.paintPath(mode.outline(gesturePoints), color: brushColor.withAlphaComponent(brushOpacity), width: strokeSize, filled: filledShapes && [.rectangle, .ellipse, .triangle].contains(mode)) }
                     document.endStroke(cancelled: false)
                 } else if mode == .transform {
                     try document.transformSelection(CGAffineTransform(translationX: point.x - gesturePoints[0].x, y: point.y - gesturePoints[0].y))
@@ -490,12 +495,16 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         performFingerCommand(holdCommand, gesture)
     }
     func configureInput() {
-        dragCommand = FingerBinding.drag.command; holdCommand = FingerBinding.hold.command
+        dragCommand = fingerDrawing ? FingerBinding.drag.command : .navigate
+        holdCommand = FingerBinding.hold.command
         holdGesture.isEnabled = holdCommand != .disabled
         let ms = UserDefaults.standard.integer(forKey: "finger.holdDelay")
         holdGesture.minimumPressDuration = Double(ms == 0 ? 550 : ms) / 1000
         commandDrag.isEnabled = [.pick, .undo, .redo].contains(dragCommand)
         viewport?.panGestureRecognizer.minimumNumberOfTouches = dragCommand == .navigate ? 1 : 2
+        accessibilityHint = dragCommand == .navigate
+            ? "Drag to pan. Pinch to zoom. Draw with Apple Pencil."
+            : "One-finger drag: " + dragCommand.rawValue + ". Use two fingers to pan and pinch to zoom."
     }
     @objc private func runDrag(_ gesture: UIPanGestureRecognizer) {
         performFingerCommand(dragCommand, gesture)
@@ -649,6 +658,9 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
         turn.delegate = self
         addGestureRecognizer(turn)
         rotationLocked = UserDefaults.standard.bool(forKey: "canvas.rotationLocked")
+        contentInsetAdjustmentBehavior = .never
+        showsHorizontalScrollIndicator = false
+        showsVerticalScrollIndicator = false
         delaysContentTouches = false
         panGestureRecognizer.minimumNumberOfTouches = 2
         panGestureRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
@@ -668,7 +680,7 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
         canvas.transform = transform
         canvas.center = CGPoint(x: box.width / 2, y: box.height / 2)
         contentSize = CGSize(width: box.width * zoomScale, height: box.height * zoomScale)
-        centerCanvas()
+        layoutNavigationArea()
     }
     @objc private func rotatePage(_ gesture: UIRotationGestureRecognizer) {
         guard gesture.state == .began || gesture.state == .changed else { return }
@@ -687,23 +699,28 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
             fittedSize = bounds.size
             fit()
         }
-        centerCanvas()
+        layoutNavigationArea()
         canvas.updateVisibleTiles()
     }
     func fit() {
         canvas.cancelStroke()
         angle = 0; layoutPage()
         let scale = min(bounds.width / canvas.bounds.width, bounds.height / canvas.bounds.height) * 0.95
-        minimumZoomScale = min(scale, 1)
-        maximumZoomScale = max(8, scale)
-        setZoomScale(minimumZoomScale, animated: false)
-        contentOffset = .zero
-        centerCanvas()
+        maximumZoomScale = max(256, scale)
+        minimumZoomScale = min(scale / 4, 1)
+        setZoomScale(scale, animated: false)
+        layoutNavigationArea()
+        contentOffset = CGPoint(x: (contentSize.width - bounds.width) / 2,
+                                y: (contentSize.height - bounds.height) / 2)
     }
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { centerCanvas(); canvas.updateVisibleTiles() }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { layoutNavigationArea(); canvas.updateVisibleTiles() }
     func scrollViewDidScroll(_ scrollView: UIScrollView) { canvas.updateVisibleTiles() }
-    private func centerCanvas() {
-        page.center = CGPoint(x: max(contentSize.width, bounds.width) / 2, y: max(contentSize.height, bounds.height) / 2)
+    private func layoutNavigationArea() {
+        page.center = CGPoint(x: contentSize.width / 2, y: contentSize.height / 2)
+        // Allow any edge of the sheet to reach the viewport center, even at Fit.
+        let margin = UIEdgeInsets(top: bounds.height / 2, left: bounds.width / 2,
+                                  bottom: bounds.height / 2, right: bounds.width / 2)
+        if contentInset != margin { contentInset = margin }
     }
     @objc private func navigationStarted(_ gesture: UIGestureRecognizer) {
         if gesture.state == .began { canvas.cancelFingerStroke() }
