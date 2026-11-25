@@ -41,10 +41,13 @@ final class EditorFlowTests: XCTestCase {
         }
         XCTAssertTrue(element("Choose drawing tip").waitForExistence(timeout: 10))
         element("All").tap()
-        let search = app.textFields.firstMatch
+        let search = element("tip-picker-search")
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
-        search.typeText("Pixel line")
-        element("Choose Pixel line").tap()
+        app.typeText("Pixel line")
+        let pixelLine = element("Choose Pixel line")
+        XCTAssertTrue(pixelLine.waitForExistence(timeout: 10))
+        pixelLine.tap()
         app.buttons["Tips"].tap()
         element("Groups").tap()
         element("Open group Manga").tap()

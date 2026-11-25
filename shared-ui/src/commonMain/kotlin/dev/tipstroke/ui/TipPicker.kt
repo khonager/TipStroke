@@ -81,7 +81,7 @@ fun TipPicker(position: TipPickerPosition, eraser: Boolean, selectedId: String, 
                     TextButton(onClick = { editGroup = group }) { Text("Edit group") }
                 }
             }
-            OutlinedTextField(position.query, { position.query = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search tips") })
+            OutlinedTextField(position.query, { position.query = it }, Modifier.fillMaxWidth().testTag("tip-picker-search"), singleLine = true, label = { Text("Search tips") })
             val ids = when (position.section) { "Favorites" -> favorites; "Pinned" -> pins; else -> currentGroup?.brushIds }
             val shown = (ids?.mapNotNull(byId::get) ?: tips).filter { it.displayName.contains(position.query, true) }
             if (shown.isEmpty()) Text(if (position.query.isBlank()) "No tips here yet" else "No matching tips", Modifier.padding(12.dp))
