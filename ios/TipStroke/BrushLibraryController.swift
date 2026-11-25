@@ -45,9 +45,10 @@ extension EditorController: AppleBrushLibraryActions {
         for grain in [false, true] {
             let name = grain ? "grain" : "shape"
             menu.addAction(UIAlertAction(title: "Import \(name) image", style: .default) { [weak self] _ in
-                guard let self else { return }; self.importingBrushTexture = grain
-                let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
-                picker.delegate = self; self.present(picker, animated: true)
+                self?.choosePhoto { [weak self] url, _ in
+                    let texture = try Self.readBrushTexture(url)
+                    return { self?.applyTexture(.success(texture), grain: grain) }
+                }
             })
             menu.addAction(UIAlertAction(title: "Capture selected layer as \(name)", style: .default) { [weak self] _ in self?.captureBrushTexture(grain: grain) })
             menu.addAction(UIAlertAction(title: "Invert \(name)", style: .default) { [weak self] _ in self?.sharedControls.editTexture(grain: grain, rotate: false) })
@@ -74,21 +75,14 @@ extension EditorController: AppleBrushLibraryActions {
         }
         return coverage.base64EncodedString()
     }
-    func importBrushTexture(_ url: URL, grain: Bool) {
-        ProjectStore.shared.queue.async {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            let result = Result { () -> String in
-                guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 16 * 1024 * 1024,
-                      let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                      let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 512] as CFDictionary) else {
-                    throw DrawingError.message("Choose a readable source image smaller than 16 MiB.")
-                }
-                return try Self.textureData(image)
-            }
-            DispatchQueue.main.async { self.applyTexture(result, grain: grain) }
+    private static func readBrushTexture(_ url: URL) throws -> String {
+        guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 16 * 1024 * 1024,
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: 512] as CFDictionary) else {
+            throw DrawingError.message("Choose a readable source image smaller than 16 MiB.")
         }
+        return try Self.textureData(image)
     }
     private func captureBrushTexture(grain: Bool) {
         viewport.canvas.cancelStroke()
@@ -140,7 +134,6 @@ extension EditorController: AppleBrushLibraryActions {
     func importFromFile() {
         dismiss(animated: true) { [weak self] in
             guard let self else { return }
-            self.importingBrush = true
             let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json, .data], asCopy: true)
             picker.delegate = self
             self.present(picker, animated: true)

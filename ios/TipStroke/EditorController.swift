@@ -1,9 +1,10 @@
 import UIKit
+import PhotosUI
 import TipStrokeShared
 import UniformTypeIdentifiers
 import ImageIO
 
-final class EditorController: UIViewController, UIPencilInteractionDelegate, UIDocumentPickerDelegate {
+final class EditorController: UIViewController, UIPencilInteractionDelegate, UIDocumentPickerDelegate, PHPickerViewControllerDelegate {
     let document: RasterDocument
     let viewport: CanvasViewport
     private let store = ProjectStore.shared
@@ -42,8 +43,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     var closingEditor: Bool { closeAfterSave }
     var exporting = false
     var importingMedia = false
-    var importingBrush = false
-    var importingBrushTexture: Bool?
+    // Read the provider's temporary file in its callback, then apply the edit on the main thread.
+    private weak var imageFilePicker: UIDocumentPickerViewController?
+    private var readPickedPhoto: ((URL, String) throws -> (() throws -> Void))?
     private var previousTool: CanvasView.Tool = .ink
 
     init(document: RasterDocument) {
@@ -92,8 +94,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             UIAction(title: "Share animation MP4") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimationVideo(smooth: $0) } },
             UIAction(title: "Share PNG sequence") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimation(pngSequence: true, smooth: $0) } },
             UIAction(title: "Share animation GIF") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimation(smooth: $0) } },
-            UIAction(title: "Import media clip") { [weak self] _ in self?.importMedia() },
-            UIAction(title: "Import image", image: UIImage(systemName: "photo")) { [weak self] _ in self?.importImage() }
+            UIAction(title: "Import media clip") { [weak self] _ in self?.importMedia() }
         ])
         let color = button("Brush color", symbol: "circle.lefthalf.filled") { [weak self] in
             guard let self else { return }; self.finishCanvasInteraction()
@@ -706,6 +707,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private func showLayers() {
         finishCanvasInteraction()
         let layers = LayersController(document: document, sharedControls: sharedControls)
+        layers.onImportImage = { [weak self] in self?.importImage() }
         layers.onChange = { [weak self] in self?.changed() }
         let navigation = UINavigationController(rootViewController: layers)
         navigation.modalPresentationStyle = .pageSheet
@@ -756,30 +758,87 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     private func importImage() {
         finishCanvasInteraction()
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
+        choosePhoto { [weak self] url, name in
+            let source = try PhotoSource(file: url)
+            return {
+                guard let self else { return }
+                try self.document.importPhoto(source, name: name)
+                self.changed()
+                self.showTransformEditor()
+            }
+        }
+    }
+
+    func choosePhoto(read: @escaping (URL, String) throws -> (() throws -> Void)) {
+        readPickedPhoto = read
+        if UserDefaults.standard.useFilesForImages {
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
+            imageFilePicker = picker
+            picker.delegate = self
+            present(picker, animated: true)
+            return
+        }
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        config.selectionLimit = 1
+        config.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
         present(picker, animated: true)
     }
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        importingMedia = false; importingBrush = false; importingBrushTexture = nil
-    }
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let url = urls.first else { return }
-        if importingMedia { importingMedia = false; addMediaFile(url); return }
-        if importingBrush { importingBrush = false; importBrushFile(url); return }
-        if let grain = importingBrushTexture { importingBrushTexture = nil; importBrushTexture(url, grain: grain); return }
-        // Read the original and prepare its bounded display cache off the input thread.
-        view.isUserInteractionEnabled = false
-        store.queue.async {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            let result = Result { try PhotoSource(file: url) }
-            DispatchQueue.main.async {
-                self.view.isUserInteractionEnabled = true
-                do { try self.document.importPhoto(result.get(), name: url.deletingPathExtension().lastPathComponent); self.changed(); self.showTransformEditor() }
-                catch { self.showError(error) }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        let read = readPickedPhoto
+        readPickedPhoto = nil
+        picker.dismiss(animated: true) {
+            guard let provider = results.first?.itemProvider, let read else { return }
+            guard let type = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true }) else {
+                self.showError(DrawingError.message("Choose a readable photo."))
+                return
+            }
+            let name = provider.suggestedName.map { ($0 as NSString).deletingPathExtension } ?? "Photo"
+            self.view.isUserInteractionEnabled = false
+            provider.loadFileRepresentation(forTypeIdentifier: type) { url, error in
+                let edit = Result {
+                    if let error { throw error }
+                    guard let url else { throw DrawingError.message("The selected photo could not be loaded.") }
+                    return try read(url, name)
+                }
+                self.finishImageImport(edit)
             }
         }
+    }
+
+    nonisolated private func finishImageImport(_ edit: Result<() throws -> Void, Error>) {
+        DispatchQueue.main.async {
+            self.view.isUserInteractionEnabled = true
+            do { try edit.get()() }
+            catch { self.showError(error) }
+        }
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        if controller === imageFilePicker { readPickedPhoto = nil }
+        importingMedia = false
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        if controller === imageFilePicker {
+            let read = readPickedPhoto
+            readPickedPhoto = nil
+            guard let read, let url = urls.first else { return }
+            view.isUserInteractionEnabled = false
+            store.queue.async {
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                self.finishImageImport(Result { try read(url, url.deletingPathExtension().lastPathComponent) })
+            }
+            return
+        }
+        let media = importingMedia
+        importingMedia = false
+        guard let url = urls.first else { return }
+        if media { addMediaFile(url) } else { importBrushFile(url) }
     }
     override var keyCommands: [UIKeyCommand]? {
         [UIKeyCommand(input: "z", modifierFlags: .command, action: #selector(keyUndo)),

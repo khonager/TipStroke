@@ -247,7 +247,7 @@ the mark for navigation. An extra finger never ends an active stylus stroke.
 
 ## Photo editing
 
-The Layers **＋ Layer** button immediately creates a paint layer; **Import** is a separate action. Imported photos open in photo editing mode, also reachable through an image layer's **Edit photo on canvas** action. **Done** returns the pen to drawing/erasing.
+The Layers **＋ Layer** button immediately creates a paint layer; **Import image** creates an image layer. On Android and iOS, **Gallery → Settings → Image import picker** saves your choice of Photos (default) or Files for layer images and brush shape/grain images. Android uses the system document picker on devices without a photo picker. Imported photos open in photo editing mode, also reachable through an image layer's **Edit photo on canvas** action. **Done** returns the pen to drawing/erasing.
 
 Photo edits use the native touch/stylus surface. Uniform supports one-pointer translation, corner-drag proportional scaling, and two-pointer scale/rotation. Freeform uses horizontal/vertical drags for independent image-axis scaling. Distort moves a corner with perspective; Warp moves control points on a selectable 2×2, 4×4, or 8×8 cell grid. Push moves a local area; Bulge enlarges features and creates spherical bulges; Pinch shrinks features. Adjust **Area size** to control the affected radius (relative to image height); the circle appears while dragging. Two fingers always move/scale/rotate the image regardless of the selected photo tool.
 

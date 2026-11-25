@@ -94,6 +94,17 @@ private fun SettingsContent(settings: GestureSettings, onChange: (GestureSetting
             Switch(holdPicker, { holdPicker = it; ui.holdToolPicker = it },
                 modifier = Modifier.semantics { contentDescription = "Hold for drawing tools" })
         }
+        var useFiles by remember { mutableStateOf(ui.useFilesForImages) }
+        Text("Image import picker", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 22.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (files in listOf(false, true)) {
+                FilterChip(selected = useFiles == files, onClick = {
+                    ui.useFilesForImages = files
+                    useFiles = files
+                }, label = { Text(if (files) "Files" else "Photos") })
+            }
+        }
         Text("Pen buttons", color = Color(0xFFF5F5F2), fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 22.dp))
         Text("Primary is normally nearest the tip. Xiaomi Pad 6 button key events are also supported.", color = Color(0xFFA9ABB1), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
         StylusButtonRow("Primary pen button", "Usually the lower button", settings.stylusPrimaryButton) { onSelect(SettingsSlot.Stylus(true)) }

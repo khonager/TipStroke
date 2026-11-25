@@ -6,6 +6,7 @@ final class LayersController: UITableViewController, UITableViewDragDelegate, UI
     private var generation = 0
     let document: RasterDocument
     var onChange: (() -> Void)?
+    var onImportImage: (() -> Void)?
     let sharedControls: AppleEditorBridge
     init(document: RasterDocument, sharedControls: AppleEditorBridge) {
         self.document = document; self.sharedControls = sharedControls; super.init(style: .insetGrouped)
@@ -14,6 +15,18 @@ final class LayersController: UITableViewController, UITableViewDragDelegate, UI
     override func viewDidLoad() {
         super.viewDidLoad(); title = "Layers"
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addLayer))
+        var configuration = UIButton.Configuration.plain()
+        configuration.title = "Import image"
+        configuration.image = UIImage(systemName: "photo.badge.plus")
+        configuration.imagePadding = 8
+        let importButton = UIButton(configuration: configuration)
+        importButton.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.dismiss(animated: true, completion: self.onImportImage)
+        }, for: .touchUpInside)
+        importButton.frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: 44)
+        importButton.isEnabled = document.record.layers.count < 32
+        tableView.tableHeaderView = importButton
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         let blend = UIBarButtonItem(title: "Blend", menu: UIMenu(children: [
             UIDeferredMenuElement.uncached { [weak self] complete in
@@ -71,7 +84,10 @@ final class LayersController: UITableViewController, UITableViewDragDelegate, UI
         guard document.addLayer() else { showError(DrawingError.message("A drawing can contain up to 32 layers.")); return }
         changed()
     }
-    private func changed() { generation += 1; previews.removeAll(); tableView.reloadData(); onChange?() }
+    private func changed() {
+        (tableView.tableHeaderView as? UIButton)?.isEnabled = document.record.layers.count < 32
+        generation += 1; previews.removeAll(); tableView.reloadData(); onChange?()
+    }
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { document.record.layers.count }
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         "Top layers paint above lower layers. Swipe right to select layers. Drop onto a thumbnail to group, or beside the name to reorder. Layer edits can be undone from the canvas."

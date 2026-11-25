@@ -125,6 +125,7 @@ final class EditorFlowTests: XCTestCase {
         XCUIDevice.shared.orientation = .landscapeLeft
         XCTAssertTrue(app.buttons["Layers"].isHittable)
         app.buttons["Layers"].tap()
+        XCTAssertTrue(app.buttons["Import image"].exists)
         app.navigationBars.buttons["Add"].tap()
         XCTAssertTrue(app.staticTexts["Layer 2"].exists)
         app.buttons["Choose blend mode"].tap()

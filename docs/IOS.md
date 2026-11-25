@@ -54,7 +54,10 @@ and the editor saves the current drawing when that scene deactivates.
   not hide that layer or exclude it from exports.
 - Eyedropper, shared saved palettes, persistent recent colors and a quick-color row.
   Drawing colors are sampled from a bounded thumbnail after saves and on opening
-  the color picker. Photo layers retain the imported original, transform and mask.
+  the color picker. **Layers → Import image** adds a source-backed layer and opens
+  its transform controls. In the gallery, **Settings → Image import picker**
+  selects Photos (default) or Files for layer images and brush shape/grain imports. Project packages,
+  brush packages and timeline media clips use Files.
 - Animation supports per-frame holds, loop/ping-pong/once playback, onion skins,
   shared backgrounds, motion recording and frame-aware undo. Inactive drawings
   move to disk. The timeline supports up to 10,000 frames within storage limits.
@@ -105,6 +108,17 @@ preset uses the iOS resident tile budget or Android’s app heap budget.
 | Process recording | Preview, scrub and export saved replay. Older v1 Android brush commands are decoded into local replay tiles, including selection, erasing and pixel tools. Jetpack Ink inputs use the native Apple brush approximation. Portable raster companions retain Android-rendered pixels and take precedence when present. |
 | Project exchange | Import and export Android project archives. Native metadata preserves iOS-specific locks and frame masks through an Android save. The local gallery also keeps its versioned native format. |
 | Gallery and editor | Named stacks, batch sharing, adaptive controls and quick-color drag-to-fill. Both platforms separate Drawing tools from Moving tools and support holding and sliding to select a tool. Both hosts use the shared visual tip picker, independent favorites, and ordered dock swatches that open their own picker on hold or a second tap. Slots remember previous tips across window sizes. The picker supports searchable groups and an independent eraser tip. Both editors offer a canvas Deselect shortcut while a selection exists. |
+
+### Android features and design differences
+
+| Area | Android | iPhone and iPad |
+| --- | --- | --- |
+| Gallery layout | An adaptive grid fits more drawing thumbnails across a wide window. | A single-column UIKit list shows drawings and stacks, with swipe actions. |
+| Start from media | The gallery’s **Image / GIF / video** action creates and opens a drawing from media. | Create or open a drawing first, then use **Import image** for a photo layer or **Import media clip** for the timeline. |
+| Settings layout | Gallery Settings places gesture choices beside their bindings on wide screens. | Finger gestures are configured in the editor using successive action sheets, including on iPad. |
+| Fill animation | Settings includes a fill-duration control. | The radial reveal lasts 0.5 seconds and respects Reduce Motion. |
+| Brush calibration | Tip Studio includes a live stylus hover tilt calibration pad. | Brush settings provide tilt parameters and stroke specimens. Live Pencil hover feedback is on the canvas. |
+| Troubleshooting | Settings provides a local crash and debug log that can be copied for a bug report. | The editor reports operation errors in alerts. There is no in-app log viewer. |
 
 Adding a feature only to `app/` or `drawing-android/` still does not port it to iOS.
 Keep portable rules in `core`, reusable controls in `shared-ui`, and provide both

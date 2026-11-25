@@ -247,7 +247,7 @@ fun CanvasScreen(
     val importTimelineMedia = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { surface?.addTimelineMedia(it); animationOpen = true }
     }
-    val importImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val importImage = rememberImageImportPicker { uri ->
         if (uri != null) {
             runCatching {
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1011,7 +1011,7 @@ fun CanvasScreen(
                     if (it) openImageTransform() else imageTransforming = false
                 },
                 onAddPaint = { imageTransforming = false; movingSelection = false; surface?.addPaintLayer() },
-                onImportImage = { message = null; importImage.launch(arrayOf("image/*")) },
+                onImportImage = { message = null; importImage() },
                 // The panel is front-to-back; above means after the target in painter order.
                 onReorder = { source, target, towardFront -> surface?.reorderLayer(source, target, towardFront) },
                 onGroup = { source, target -> surface?.groupLayer(source, target) },

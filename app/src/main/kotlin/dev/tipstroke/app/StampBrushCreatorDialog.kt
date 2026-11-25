@@ -1,7 +1,5 @@
 package dev.tipstroke.app
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -63,7 +61,7 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
         stamp(if (target == "Shape") current.copy(shape = StampShape.IMAGE, shapeTexture = texture)
             else current.copy(grain = StampGrain.IMAGE, grainTexture = texture))
     }
-    val importSource = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val importSource = rememberImageImportPicker { uri ->
         if (uri != null) {
             importing = true
             val target = sourceTarget
@@ -110,7 +108,7 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
                                 "Shape" -> {
                                     ChoiceRow(StampShape.entries.filter { it != StampShape.IMAGE || s.shapeTexture != null }, s.shape, { stamp(s.copy(shape = it)) })
                                     s.shapeTexture?.takeIf { s.shape == StampShape.IMAGE }?.let { TextureSwatch(it) }
-                                    SourceActions(importing, { sourceTarget = "Shape"; importSource.launch(arrayOf("image/*")) },
+                                    SourceActions(importing, { sourceTarget = "Shape"; importSource() },
                                         { sourceTarget = "Shape"; sourceDrawing = true }, s.shapeTexture?.let { { stamp(s.copy(shapeTexture = it.inverted())) } },
                                         s.shapeTexture?.let { { stamp(s.copy(shapeTexture = it.rotated())) } })
                                     Text("White paints; black cuts out. Transparent images use their alpha channel. Invert opaque dark-on-white artwork.", style = MaterialTheme.typography.bodySmall)
@@ -124,7 +122,7 @@ internal fun BrushCreatorDialog(initial: LibraryBrush, busy: Boolean, message: S
                                 "Grain" -> {
                                     ChoiceRow(StampGrain.entries.filter { it != StampGrain.IMAGE || s.grainTexture != null }, s.grain, { stamp(s.copy(grain = it)) })
                                     s.grainTexture?.takeIf { s.grain == StampGrain.IMAGE }?.let { TextureSwatch(it) }
-                                    SourceActions(importing, { sourceTarget = "Grain"; importSource.launch(arrayOf("image/*")) },
+                                    SourceActions(importing, { sourceTarget = "Grain"; importSource() },
                                         { sourceTarget = "Grain"; sourceDrawing = true }, s.grainTexture?.let { { stamp(s.copy(grainTexture = it.inverted())) } },
                                         s.grainTexture?.let { { stamp(s.copy(grainTexture = it.rotated())) } })
                                     Text("Grain repeats inside the shape. Canvas keeps it fixed like paper; Stamp moves it with each mark.", style = MaterialTheme.typography.bodySmall)

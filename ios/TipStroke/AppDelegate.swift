@@ -26,6 +26,17 @@ extension UIViewController {
     }
 }
 
+private enum ImagePickerSetting {
+    static let key = "useFilesForImages"
+}
+
+extension UserDefaults {
+    var useFilesForImages: Bool {
+        get { bool(forKey: ImagePickerSetting.key) }
+        set { set(newValue, forKey: ImagePickerSetting.key) }
+    }
+}
+
 final class GalleryController: UITableViewController, AppleNewDrawingActions {
     private let thumbnails = NSCache<NSUUID, UIImage>()
     private let store = ProjectStore.shared
@@ -83,7 +94,19 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
             })
             let select = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), primaryAction: UIAction { [weak self] _ in self?.setPicking(true) })
             select.accessibilityLabel = "Select drawings"
-            navigationItem.rightBarButtonItems = [UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(newDrawing)), select]
+            let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), menu: UIMenu(children: [
+                UIDeferredMenuElement.uncached { complete in
+                    let choices = [false, true].map { files in
+                        UIAction(title: files ? "Files" : "Photos",
+                                 state: files == UserDefaults.standard.useFilesForImages ? .on : .off) { _ in
+                            UserDefaults.standard.useFilesForImages = files
+                        }
+                    }
+                    complete([UIMenu(title: "Image import picker", options: .displayInline, children: choices)])
+                }
+            ]))
+            settings.accessibilityLabel = "Settings"
+            navigationItem.rightBarButtonItems = [UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(newDrawing)), select, settings]
         }
     }
     private func setPicking(_ enabled: Bool) {
