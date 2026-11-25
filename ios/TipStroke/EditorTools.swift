@@ -191,18 +191,16 @@ extension EditorController {
         present(alert, animated: true)
     }
     private func resizeCanvas() {
-        let alert = UIAlertController(title: "Resize canvas", message: "Crop or extend from the top-left. Existing pixels stay at their original resolution.", preferredStyle: .alert)
-        for value in [document.record.width, document.record.height] { alert.addTextField { $0.text = String(value); $0.keyboardType = .numberPad } }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Apply", style: .default) { [weak self, weak alert] _ in
-            guard let self, let fields = alert?.textFields, let width = Int(fields[0].text ?? ""), let height = Int(fields[1].text ?? ""),
-                  (16...8192).contains(width), (16...8192).contains(height) else { return }
-            let source = self.document.snapshot(), revision = self.document.revision
+        finishCanvasInteraction()
+        let source = document.snapshot(), revision = document.revision
+        let editor = ResizeCanvasController(snapshot: source)
+        editor.apply = { [weak self] rect in
+            guard let self else { return }
             self.view.isUserInteractionEnabled = false
             ProjectStore.shared.queue.async {
                 let result = Result { () -> DocumentSnapshot in
                     let working = RasterDocument(snapshot: source)
-                    try working.resize(width: width, height: height)
+                    try working.resize(width: Int(rect.width), height: Int(rect.height), left: Int(rect.minX), top: Int(rect.minY))
                     return working.snapshot()
                 }
                 DispatchQueue.main.async {
@@ -214,8 +212,8 @@ extension EditorController {
                     } catch { self.showError(error) }
                 }
             }
-        })
-        present(alert, animated: true)
+        }
+        present(UINavigationController(rootViewController: editor), animated: true)
     }
     func fill(at point: CGPoint, swatch: UIColor? = nil) {
         guard !fillPending else { return }

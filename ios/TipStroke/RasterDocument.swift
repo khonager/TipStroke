@@ -605,13 +605,41 @@ final class RasterDocument {
         selection = nil; endMetadataEdit()
     }
 
-    func resize(width: Int, height: Int) throws {
+    func resize(width: Int, height: Int, left: Int = 0, top: Int = 0) throws {
         guard (16...8192).contains(width), (16...8192).contains(height) else { return }
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         var changedTiles = 0
         func cropped(_ original: [UUID: [TileKey: CGImage]]) throws -> [UUID: [TileKey: CGImage]] {
             var replacement = original
             for (id, tiles) in original where record.layers.first(where: { $0.id == id })?.photo == nil {
+                if left != 0 || top != 0 {
+                    let sourceBounds = self.bounds
+                    var destinations = Set<TileKey>()
+                    for key in tiles.keys {
+                        let moved = key.rect.intersection(sourceBounds).offsetBy(dx: CGFloat(-left), dy: CGFloat(-top))
+                        destinations.formUnion(TileKey.intersecting(moved, width: width, height: height))
+                    }
+                    changedTiles += max(tiles.count, destinations.count)
+                    guard changedTiles * Self.tileBytes * 2 + 256 <= Self.historyBudget else {
+                        throw DrawingError.message("This resize exceeds the undo budget.")
+                    }
+                    var output: [TileKey: CGImage] = [:]
+                    for key in destinations {
+                        let sourceRect = key.rect.offsetBy(dx: CGFloat(left), dy: CGFloat(top))
+                        let context = try Self.context(width: 256, height: 256)
+                        context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
+                        context.clip(to: bounds)
+                        context.translateBy(x: CGFloat(-left), y: CGFloat(-top))
+                        context.clip(to: sourceBounds)
+                        for old in TileKey.intersecting(sourceRect, width: record.width, height: record.height) {
+                            if let image = tiles[old] { Self.draw(image, in: context, rect: old.rect) }
+                        }
+                        guard let image = context.makeImage() else { throw DrawingError.message("Could not move a painting tile.") }
+                        output[key] = image
+                    }
+                    replacement[id] = output
+                    continue
+                }
                 for (key, image) in tiles where !bounds.contains(key.rect) {
                     changedTiles += 1
                     guard changedTiles * Self.tileBytes * 2 + 256 <= Self.historyBudget else { throw DrawingError.message("This crop exceeds the undo budget.") }
@@ -635,6 +663,14 @@ final class RasterDocument {
         var archived = coldFrames
         for (frame, layers) in coldFrames {
             for (id, files) in layers where record.layers.first(where: { $0.id == id })?.photo == nil {
+                if left != 0 || top != 0 {
+                    guard (changedTiles + files.count) * Self.tileBytes * 2 + 256 <= Self.historyBudget else {
+                        throw DrawingError.message("This resize exceeds the undo budget.")
+                    }
+                    let decoded = try CelStorage.decode([id: files])
+                    archived[frame]?[id] = try CelStorage.encode(cropped(decoded))[id]
+                    continue
+                }
                 for (key, file) in files where !bounds.contains(key.rect) {
                     if !bounds.intersects(key.rect) { archived[frame]?[id]?[key] = nil; continue }
                     let croppedTile = try cropped([id: [key: CelStorage.read(file.url)]])
@@ -643,6 +679,20 @@ final class RasterDocument {
             }
         }
         beginMetadataEdit(); pixels = replacement; framePixels = frames; coldFrames = archived
+        if left != 0 || top != 0 {
+            let shift = CGAffineTransform(translationX: CGFloat(-left), y: CGFloat(-top))
+            for i in record.layers.indices {
+                if let pose = record.layers[i].photo?.transform { record.layers[i].photo?.transform = pose.concatenating(shift) }
+            }
+            if var animation = record.animation {
+                for i in animation.frames.indices {
+                    animation.frames[i].photoCels = animation.frames[i].photoCels?.mapValues { cel in
+                        var moved = cel; moved.transform = cel.transform.concatenating(shift); return moved
+                    }
+                }
+                record.animation = animation
+            }
+        }
         record.width = width; record.height = height; selection = nil; previousSelection = nil; endMetadataEdit()
     }
 

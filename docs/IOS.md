@@ -240,3 +240,5 @@ tools** for selection, selection recall, transform, selection actions, and Fit c
 Drag the iOS brush-color button onto a canvas region to fill it. The worker keeps
 the editor responsive and discards a stale result if the destination has changed.
 A radial reveal uses visible tile layers and respects Reduce Motion.
+
+Resize canvas opens an eight-handle crop and extension preview. Apply translates sparse raster tiles and photo poses across cels by the chosen left and top offsets. Cancel discards the preview.

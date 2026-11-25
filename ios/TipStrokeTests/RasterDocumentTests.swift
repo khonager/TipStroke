@@ -4,6 +4,21 @@ import ImageIO
 @testable import TipStroke
 
 final class RasterDocumentTests: XCTestCase {
+    func testResizeMovesSparsePixelsAcrossTileBoundaryAndUndoes() throws {
+        let doc = RasterDocument(name: "Crop", width: 512, height: 64)
+        XCTAssertTrue(doc.beginStroke())
+        let p = CGPoint(x: 250, y: 12)
+        _ = try doc.paint(from: p, to: p, radius: 3, color: .red, erasing: false)
+        doc.endStroke(cancelled: false)
+        try doc.resize(width: 530, height: 80, left: -18, top: -16)
+        let moved = TilePixels(doc.pixels[doc.activeLayer] ?? [:])
+        XCTAssertEqual(try moved.rgba(268, 28), 0xff0000ff)
+        XCTAssertEqual(try moved.rgba(250, 12), 0)
+        doc.undo()
+        XCTAssertEqual(doc.record.width, 512)
+        XCTAssertEqual(try TilePixels(doc.pixels[doc.activeLayer] ?? [:]).rgba(250,12), 0xff0000ff)
+    }
+
     func testTileBoundsClipNegativeCoordinatesAndExactEdges() {
         XCTAssertEqual(TileKey.intersecting(CGRect(x: -20, y: -20, width: 276, height: 276), width: 512, height: 512), [TileKey(x: 0, y: 0)])
         XCTAssertEqual(Set(TileKey.intersecting(CGRect(x: 255, y: 255, width: 2, height: 2), width: 512, height: 512)),
