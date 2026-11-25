@@ -35,10 +35,12 @@ final class EditorFlowTests: XCTestCase {
             XCTAssertNotEqual(low, high, "\(label) readout should follow the slider")
         }
         XCTAssertFalse(app.buttons["Pixel tips"].exists)
-        app.buttons["Tips"].tap()
         func element(_ label: String) -> XCUIElement {
             app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", label, label)).firstMatch
         }
+        let firstSlot = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "dock-tip-")).firstMatch
+        XCTAssertTrue(firstSlot.waitForExistence(timeout: 10))
+        firstSlot.press(forDuration: 0.8)
         XCTAssertTrue(element("Choose drawing tip").waitForExistence(timeout: 10))
         element("All").tap()
         let search = element("tip-picker-search")
@@ -48,10 +50,13 @@ final class EditorFlowTests: XCTestCase {
         let pixelLine = element("Choose Pixel line")
         XCTAssertTrue(pixelLine.waitForExistence(timeout: 10))
         pixelLine.tap()
-        app.buttons["Tips"].tap()
+        let pinnedLine = element("dock-tip-pixel-line-v1")
+        XCTAssertTrue(pinnedLine.waitForExistence(timeout: 10))
+        pinnedLine.tap()
         element("Groups").tap()
         element("Open group Manga").tap()
         element("Choose Manga hatching").tap()
+        XCTAssertTrue(element("dock-tip-manga-hatch-v1").waitForExistence(timeout: 10))
         let tools = app.buttons["Drawing tools"]
         tools.tap()
         XCTAssertEqual(tools.value as? String, "Eraser")

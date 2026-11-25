@@ -34,6 +34,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let hoverName = UILabel()
     private var hoverWork: DispatchWorkItem?
 
+    var brushLibrarySlot: Int32 = -1
     lazy var sharedControls = AppleEditorBridge(actions: EditorActions(self))
     var fillPending = false
     var closingEditor: Bool { closeAfterSave }
@@ -129,7 +130,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         movingToolsButton = movingTools
         updateToolValue()
         let bottomActions = UIStackView(arrangedSubviews: [color, tools, movingTools, settings]); bottomActions.distribution = .equalSpacing
-        let tips = button("Tips", symbol: "square.grid.2x2") { [weak self] in self?.showTipPicker(eraser: false) }
         let pinned = sharedControls.pinsController(callbacks: self)
         addChild(pinned)
         pinned.view.heightAnchor.constraint(equalToConstant: 44).isActive = true
@@ -144,8 +144,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             if enable && FingerBinding.drag.command == .navigate { FingerBinding.drag.set(.draw) }
             self.sharedControls.setFingerDrawing(enabled: enable)
         }
-        tips.setTitle("Tips", for: .normal)
-        let shelf = UIStackView(arrangedSubviews: [tips, quickColors.view!, fingerMode])
+        let shelf = UIStackView(arrangedSubviews: [quickColors.view!, fingerMode])
         adjustments.distribution = .fillEqually
         adjustments.spacing = 8
         sizeControl.adjusted = { [weak self] value in
@@ -170,7 +169,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         adjustmentPreview.layer.shadowOffset = .zero
         let pixelBrushes = [PixelTool.pencil, .line, .dither].map { NativeBrush(preset: $0.preset) }
         let pixelShortcut = tipFolder(tips: pixelBrushes, label: "Pixel tips", title: "Pixel tips")
-        shelf.insertArrangedSubview(pixelShortcut, at: 1)
+        shelf.insertArrangedSubview(pixelShortcut, at: 0)
         let shortcutWidth = pixelShortcut.widthAnchor.constraint(equalToConstant: 44)
         shortcutWidth.priority = .defaultHigh
         shortcutWidth.isActive = true
@@ -524,6 +523,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private func updateToolValue() {
         refreshAdjustments()
         let mode = viewport.canvas.mode
+        let activeTip = mode.pixelTip?.tipId ?? (mode == .paint ? viewport.canvas.brush.id : nil)
+        sharedControls.setDockSelection(id: viewport.canvas.tool == .eraser ? nil : activeTip)
         let drawingSymbol = drawingModes.first { $0.0 == mode }?.1 ?? (mode.isShape ? "scribble.variable" : "eraser")
         toolsButton?.setImage(UIImage(systemName: drawingSymbol), for: .normal)
         toolsButton?.accessibilityValue = mode.isSelection ? nil : (mode == .paint ? viewport.canvas.tool.rawValue : mode.rawValue)

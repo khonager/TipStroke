@@ -42,18 +42,22 @@ import dev.tipstroke.core.brush.BrushCollection
 import kotlin.uuid.Uuid
 import kotlin.io.encoding.Base64
 import dev.tipstroke.core.model.*
-import androidx.compose.ui.viewinterop.UIKitView
-import platform.UIKit.UIView
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.border
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import dev.tipstroke.core.brush.TipDock
 import platform.UIKit.UIViewController
 import platform.Foundation.NSUserDefaults
 
 /** Commands/settings only. UIKit owns touches, wet paint, tiles and viewport transforms. */
 interface AppleBrushLibraryActions {
-    fun pinFolder(tips: List<NativeBrush>): UIView
+    fun openTipSlot(slot: Int)
     fun librarySaved(data: String)
     fun pickedTip(id: String, eraser: Boolean)
     fun closePicker()
-    fun openLibrary()
+    fun openLibrary(slot: Int)
     fun importFromFile()
     fun exportToFile(data: String)
 }
@@ -82,8 +86,19 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     private var paletteCount by mutableIntStateOf(4)
     private val defaults = NSUserDefaults.standardUserDefaults
     private var pins by mutableStateOf(defaults.stringArrayForKey("tip.pins")?.filterIsInstance<String>() ?: BrushPreset.builtIns.map { it.id.value })
-    private var dockPins by mutableStateOf(defaults.stringArrayForKey("tip.dockPins")?.filterIsInstance<String>()
-        ?: pins.toList().also { defaults.setObject(it, forKey = "tip.dockPins") })
+    private var dock by mutableStateOf(TipDock.load(defaults.stringForKey("tip.dockSlots"),
+        (defaults.stringArrayForKey("tip.dockPins") ?: defaults.stringArrayForKey("tip.pins"))?.filterIsInstance<String>()
+    ).also { if (defaults.stringForKey("tip.dockSlots") == null) defaults.setObject(it.encode(), forKey = "tip.dockSlots") })
+    private val allTips get() = BrushPreset.libraryBuiltIns + PixelTool.presets + library.map { it.preset }
+    private fun saveDock(next: TipDock) {
+        dock = next
+        defaults.setObject(next.encode(), forKey = "tip.dockSlots")
+    }
+    private fun replaceSlot(slot: Int, id: String) {
+        if (slot >= 0) saveDock(dock.replace(slot, id, allTips.map { it.id.value }.toSet()))
+    }
+    private var activeDockTip by mutableStateOf<String?>(null)
+    fun setDockSelection(id: String?) { activeDockTip = id }
     private val drawingPosition = TipPickerPosition().apply { open("All") }
     private val eraserPosition = TipPickerPosition()
     fun currentDrawingBrush() = NativeBrush(brush)
@@ -220,7 +235,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         }) { TipStrokeTheme(content) }
     }
 
-    fun libraryController(callbacks: AppleBrushLibraryActions, openGroups: Boolean): UIViewController = ComposeUIViewController {
+    fun libraryController(callbacks: AppleBrushLibraryActions, openGroups: Boolean, slot: Int): UIViewController = ComposeUIViewController {
         BrushTheme {
             Surface(Modifier.fillMaxSize()) {
                 var manage by remember { mutableStateOf(openGroups) }
@@ -238,6 +253,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                     }
                 }
                 else BrushCollectionPanel(library, brush, { preset ->
+                    replaceSlot(slot, preset.id.value)
                     if (PixelTool.fromTipId(preset.id.value) != null) {
                         callbacks.pickedTip(preset.id.value, false)
                         callbacks.closePicker()
@@ -246,14 +262,15 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                     onSave = { preset, name ->
                         if (library.size >= 200) return@BrushCollectionPanel
                         val saved = preset.copy(id = BrushId("custom-${Uuid.random()}"), displayName = name)
-                        library = library + LibraryBrush(saved); updateBrush(saved); callbacks.librarySaved(libraryData())
+                        library = library + LibraryBrush(saved)
+                        replaceSlot(slot, saved.id.value)
+                        updateBrush(saved); callbacks.librarySaved(libraryData())
                     }, onDelete = { preset ->
                         val id = preset.id.value
                         library = library.filterNot { it.preset.id == preset.id }
                         if (brush.id == preset.id) selectBrush(BrushPreset.Ink.id.value)
                         defaults.removeObjectForKey("tip.tuning." + id)
-                        dockPins = dockPins - id
-                        defaults.setObject(dockPins, forKey = "tip.dockPins")
+                        saveDock(dock.without(setOf(id)))
                         pins = pins - id
                         defaults.setObject(pins, forKey = "tip.pins")
                         saveGroups(groups.map { it.copy(brushIds = it.brushIds - id) })
@@ -269,20 +286,23 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             }
         }
     }
-    fun pickerController(callbacks: AppleBrushLibraryActions, eraser: Boolean, pinLimit: Int, activePixelId: String?): UIViewController = ComposeUIViewController {
-        val tips = BrushPreset.libraryBuiltIns + (if (eraser) emptyList() else PixelTool.presets) + library.map { it.preset }
+    fun pickerController(callbacks: AppleBrushLibraryActions, eraser: Boolean, slot: Int): UIViewController = ComposeUIViewController {
+        val available = allTips.map { it.id.value }.toSet()
+        val dockPins = dock.ordered(available)
+        val tips = allTips.filter { !eraser || PixelTool.fromTipId(it.id.value) == null }
         BrushTheme(eraser) {
             Surface(Modifier.fillMaxSize()) {
                 TipPicker(if (eraser) eraserPosition else drawingPosition, eraser,
-                    if (eraser) defaults.stringForKey("tip.eraser") ?: BrushPreset.Ink.id.value else activePixelId ?: brush.id.value,
+                    if (eraser) defaults.stringForKey("tip.eraser") ?: BrushPreset.Ink.id.value else dockPins.getOrNull(slot).orEmpty(),
                     tips, pins, dockPins, groups,
                     { pins = it; defaults.setObject(it, forKey = "tip.pins") },
-                    { dockPins = it; defaults.setObject(it, forKey = "tip.dockPins") }, ::saveGroups,
+                    { saveDock(dock.reorder(it, available)) }, ::saveGroups,
                     onPick = {
                         if (eraser) defaults.setObject(it.id.value, forKey = "tip.eraser")
+                        else replaceSlot(slot, it.id.value)
                         callbacks.pickedTip(it.id.value, eraser)
                         callbacks.closePicker()
-                    }, onLibrary = callbacks::openLibrary, onClose = callbacks::closePicker,
+                    }, onLibrary = { callbacks.openLibrary(slot) }, onClose = callbacks::closePicker,
                     canRename = { p -> library.any { it.preset.id == p.id } },
                     onRename = { p, name ->
                         library = library.map { if (it.preset.id == p.id) it.copy(preset = it.preset.copy(displayName = name)) else it }
@@ -291,25 +311,25 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             }
         }
     }
-    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
-        val byId = (BrushPreset.libraryBuiltIns + PixelTool.presets + library.map { it.preset }).associateBy { it.id.value }
+        val byId = remember(library) { allTips.associateBy { it.id.value } }
+        val ordered = remember(dock, byId) { dock.ordered(byId.keys) }
         BrushTheme {
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val slots = (maxWidth / 44.dp).toInt().coerceAtLeast(1)
+                val capacity = (maxWidth / 44.dp).toInt().coerceAtLeast(1)
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) {
-                    val pick: (BrushPreset) -> Unit = { callbacks.pickedTip(it.id.value, false) }
-                    PinnedTipCells(dockPins.mapNotNull(byId::get), slots, 44.dp, pick, folder = { overflow ->
-                        key(overflow) {
-                                UIKitView(factory = { callbacks.pinFolder(overflow.map(::NativeBrush)) },
-                                    modifier = Modifier.size(44.dp),
-                                    properties = androidx.compose.ui.viewinterop.UIKitInteropProperties(
-                                        interactionMode = androidx.compose.ui.viewinterop.UIKitInteropInteractionMode.NonCooperative,
-                                        isNativeAccessibilityEnabled = true))
+                    ordered.take(capacity).forEachIndexed { slot, id ->
+                        val tip = byId.getValue(id)
+                        val active = id == activeDockTip
+                        key(id) {
+                            val border = if (active) Modifier.border(2.dp, MaterialTheme.colorScheme.primary,
+                                MaterialTheme.shapes.small) else Modifier
+                            TipSwatch(tip, Modifier.size(44.dp).then(border).testTag("dock-tip-$id")
+                                .combinedClickable(role = Role.Button, onLongClickLabel = "Choose tip",
+                                    onLongClick = { callbacks.openTipSlot(slot) },
+                                    onClick = { if (active) callbacks.openTipSlot(slot) else callbacks.pickedTip(id, false) })
+                                .semantics { contentDescription = tip.displayName; selected = active }.padding(3.dp))
                         }
-                    }) { tip ->
-                        TipSwatch(tip, Modifier.size(44.dp).clickable { pick(tip) }
-                            .semantics { contentDescription = tip.displayName }.padding(2.dp))
                     }
                 }
             }

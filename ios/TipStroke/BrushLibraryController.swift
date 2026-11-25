@@ -4,9 +4,8 @@ import UniformTypeIdentifiers
 import ImageIO
 
 extension EditorController: AppleBrushLibraryActions {
-    func pinFolder(tips: [NativeBrush]) -> UIView {
-        tipFolder(tips: tips, label: "More pinned tips", title: "Pinned tips")
-    }
+    func openTipSlot(slot: Int32) { showTipPicker(eraser: false, slot: slot) }
+
     func tipFolder(tips: [NativeBrush], label: String, title: String) -> UIView {
         let button = UIButton(type: .custom)
         button.accessibilityLabel = label
@@ -110,12 +109,9 @@ extension EditorController: AppleBrushLibraryActions {
             showShared(sharedControls.brushController(), title: "Brush settings")
         } catch { showError(error) }
     }
-    func showTipPicker(eraser: Bool) {
+    func showTipPicker(eraser: Bool, slot: Int32 = -1) {
         finishCanvasInteraction()
-        let bounds = view.window?.screen.bounds ?? view.bounds
-        let shelfWidth = min(480, min(bounds.width, bounds.height) - 12) - 16
-        let controller = sharedControls.pickerController(callbacks: self, eraser: eraser,
-            pinLimit: Int32(max(1, Int(shelfWidth / 44))), activePixelId: viewport.canvas.mode.pixelTip?.tipId)
+        let controller = sharedControls.pickerController(callbacks: self, eraser: eraser, slot: slot)
         controller.modalPresentationStyle = .pageSheet
         controller.sheetPresentationController?.detents = [.medium(), .large()]
         present(controller, animated: true)
@@ -130,13 +126,14 @@ extension EditorController: AppleBrushLibraryActions {
         }
     }
     func closePicker() { presentedViewController?.dismiss(animated: true) }
-    func openLibrary() {
-        dismiss(animated: true) { [weak self] in self?.showBrushLibrary() }
+    func openLibrary(slot: Int32) {
+        dismiss(animated: true) { [weak self] in self?.showBrushLibrary(slot: slot) }
     }
 
-    func showBrushLibrary(openGroups: Bool = false) {
+    func showBrushLibrary(openGroups: Bool = false, slot: Int32 = -1) {
+        brushLibrarySlot = slot
         viewport.canvas.cancelStroke()
-        showShared(sharedControls.libraryController(callbacks: self, openGroups: openGroups), title: "Tip library")
+        showShared(sharedControls.libraryController(callbacks: self, openGroups: openGroups, slot: slot), title: "Tip library")
     }
     func librarySaved(data: String) { saveBrushLibrary(data) }
     func exportToFile(data: String) { shareBrush(data) }
@@ -170,7 +167,7 @@ extension EditorController: AppleBrushLibraryActions {
                 do {
                     guard self.sharedControls.importBrushes(data: try result.get()) else { throw DrawingError.message("Unsupported, damaged or oversized tip library.") }
                     self.saveBrushLibrary(self.sharedControls.libraryData())
-                    self.showBrushLibrary()
+                    self.showBrushLibrary(slot: self.brushLibrarySlot)
                 } catch { self.showError(error) }
             }
         }

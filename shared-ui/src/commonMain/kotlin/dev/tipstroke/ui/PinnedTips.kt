@@ -12,32 +12,6 @@ import androidx.compose.ui.unit.*
 import dev.tipstroke.core.model.BrushPreset
 
 @Composable
-fun PinnedTipCells(
-    tips: List<BrushPreset>, slots: Int, extent: Dp, onPick: (BrushPreset) -> Unit,
-    horizontal: Boolean = true,
-    folder: (@Composable (List<BrushPreset>) -> Unit)? = null,
-    direct: @Composable (BrushPreset) -> Unit,
-) {
-    if (slots < 1) return
-    val directCount = if (tips.size <= slots) tips.size else slots - 1
-    tips.take(directCount).forEach { key(it.id) { direct(it) } }
-    val overflow = tips.drop(directCount)
-    if (overflow.isEmpty()) return
-    if (folder != null) {
-        folder(overflow)
-        return
-    }
-    HoldToolPicker(
-        labels = overflow.map { it.displayName }, horizontal = horizontal, holdEnabled = true,
-        extent = extent, reopen = 0, description = "More pinned tips", stateLabel = "Pinned tips",
-        menuTitle = "Pinned tips", showLabels = true, selected = false,
-        onChoose = { onPick(overflow[it]) },
-        anchorIcon = { TipFolderFace(overflow, extent) },
-        toolIcon = { TipSwatch(overflow[it], Modifier.size(48.dp, 26.dp)) },
-    )
-}
-
-@Composable
 fun TipFolderFace(overflow: List<BrushPreset>, extent: Dp) {
     Column(Modifier.size(extent).padding(3.dp)
         .background(Color(0xff36383c), MaterialTheme.shapes.small).padding(2.dp)) {
