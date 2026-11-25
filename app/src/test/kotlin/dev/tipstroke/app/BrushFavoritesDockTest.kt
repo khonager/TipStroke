@@ -1,5 +1,9 @@
 package dev.tipstroke.app
 
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
+import dev.tipstroke.drawing.android.DrawingSurface
 import androidx.core.view.descendants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -146,6 +150,27 @@ class BrushFavoritesDockTest {
         compose.onNodeWithText("All").performClick()
         compose.onNodeWithText("Search tips").performTextInput("Pixel line")
         compose.onNodeWithTag("Choose Pixel line").performClick()
+        compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithTag("Choose Pixel line").assertIsSelected()
+        compose.onNodeWithText("Close").performClick()
+        val surface = compose.runOnIdle {
+            activity!!.get().findViewById<android.view.ViewGroup>(android.R.id.content)
+                .descendants.filterIsInstance<DrawingSurface>().single()
+        }
+        compose.runOnIdle {
+            val coords = MotionEvent.PointerCoords().apply {
+                x = surface.width / 2f
+                y = surface.height / 2f
+                setAxisValue(MotionEvent.AXIS_VSCROLL, 50f)
+            }
+            val pointer = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_MOUSE }
+            val wheel = MotionEvent.obtain(100, 100, MotionEvent.ACTION_SCROLL, 1, arrayOf(pointer), arrayOf(coords),
+                KeyEvent.META_CTRL_ON, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0)
+            try { surface.dispatchGenericMotionEvent(wheel) } finally { wheel.recycle() }
+        }
+        compose.onNodeWithContentDescription("Pixel tips").assertIsDisplayed()
+        compose.runOnIdle { surface.resetView() }
         compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
         compose.onNodeWithContentDescription("Tips").performClick()
         compose.onNodeWithTag("Choose Pixel line").assertIsSelected()

@@ -50,6 +50,46 @@ final class SharedControlsTests: XCTestCase {
         XCTAssertGreaterThan(Int(strip.max()!) - Int(strip.min()!), 40)
     }
 
+    func testPixelSpecimensHaveDistinctGridMarksWithClearEnds() throws {
+        var samples: [[UInt8]] = []
+        for tip in [PixelTool.pencil, .line, .dither] {
+            let data = try XCTUnwrap(BrushSpecimen.image(NativeBrush(preset: tip.preset), eraser: false))
+            let image = try XCTUnwrap(UIImage(data: data)?.cgImage)
+            let context = try RasterDocument.context(width: image.width, height: image.height)
+            RasterDocument.draw(image, in: context, rect: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            let bytes = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+            let red = (0..<image.width * image.height).map { bytes[$0 * 4] }
+            XCTAssertEqual(Set(red).count, 2, tip.displayName)
+            for y in 0..<image.height {
+                XCTAssertEqual(red[y * image.width], red[0])
+                XCTAssertEqual(red[(y + 1) * image.width - 1], red[0])
+            }
+            XCTAssertFalse(samples.contains(red), tip.displayName)
+            samples.append(red)
+        }
+    }
+
+    @MainActor
+    func testNativeZoomHidesPixelFolderAndPreservesPickedTip() throws {
+        let editor = EditorController(document: RasterDocument(name: "Zoom test", width: 512, height: 512))
+        editor.loadViewIfNeeded()
+        editor.viewport.frame = CGRect(x: 0, y: 0, width: 400, height: 400)
+        editor.viewport.layoutIfNeeded()
+        func folder(in view: UIView) -> UIView? {
+            if view.accessibilityLabel == "Pixel tips" { return view }
+            return view.subviews.lazy.compactMap { folder(in: $0) }.first
+        }
+        let shortcut = try XCTUnwrap(folder(in: editor.view))
+        editor.viewport.fit()
+        XCTAssertTrue(shortcut.isHidden)
+        editor.pickedTip(id: PixelTool.line.tipId, eraser: false)
+        editor.viewport.setZoomScale(8, animated: false)
+        XCTAssertFalse(shortcut.isHidden)
+        editor.viewport.fit()
+        XCTAssertTrue(shortcut.isHidden)
+        XCTAssertEqual(editor.viewport.canvas.mode, .pixelLine)
+    }
+
     func testImportedStampSourceRendersAcrossTilesAndLibraryRoundTrips() throws {
         let actions = Actions()
         let bridge = AppleEditorBridge(actions: actions)
