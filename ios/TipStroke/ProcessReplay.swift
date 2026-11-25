@@ -64,12 +64,13 @@ extension ProjectStore {
 final class ProcessRecorder {
     private let store: ProjectStore
     private let folder: URL
+    private let id: UUID
     private var last: DocumentSnapshot?
     private var pending = 0
     private var accepting = true
     private var index: ReplayIndex?
     private var failed = false // worker-owned; preserve a contiguous prefix
-    init(store: ProjectStore, id: UUID) { self.store = store; folder = store.replayFolder(id) }
+    init(store: ProjectStore, id: UUID) { self.store = store; self.id = id; folder = store.replayFolder(id) }
 
     func capture(_ document: RasterDocument) {
         guard accepting else { return }
@@ -130,6 +131,7 @@ final class ProcessRecorder {
     private var needsBaseline = true
     private func open(width: Int, height: Int) throws {
         guard index == nil else { return }
+        try? store.recoverLegacyProgress(id: id)
         try ReplayFiles.fm.createDirectory(at: folder, withIntermediateDirectories: true)
         index = ReplayFiles.fm.fileExists(atPath: ReplayFiles.indexURL(folder).path) ? try ReplayFiles.index(folder) : ReplayIndex(width: width, height: height)
         if index?.stopped != nil {

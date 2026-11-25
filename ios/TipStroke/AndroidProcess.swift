@@ -1,4 +1,5 @@
 import UIKit
+import TipStrokeShared
 import ImageIO
 import Compression
 
@@ -18,6 +19,28 @@ private struct ReplayBytes {
     mutating func integer() throws -> Int {
         let a = try byte(), b = try byte(), c = try byte(), d = try byte()
         return Int(Int32(bitPattern: UInt32(a << 24 | b << 16 | c << 8 | d)))
+    }
+    mutating func number() throws -> CGFloat {
+        let value = Float(bitPattern: UInt32(truncatingIfNeeded: try integer()))
+        guard value.isFinite else { throw AndroidProcess.invalid }
+        return CGFloat(value)
+    }
+    mutating func time() throws -> Double {
+        let hi = try integer(), lo = UInt32(truncatingIfNeeded: try integer())
+        return Double(hi) * 4294967296 + Double(lo)
+    }
+    mutating func count(_ max: Int) throws -> Int {
+        let n = try integer()
+        guard (0...max).contains(n) else { throw AndroidProcess.invalid }
+        return n
+    }
+    mutating func flag() throws -> Bool {
+        let value = try byte(); guard value < 2 else { throw AndroidProcess.invalid }; return value == 1
+    }
+    mutating func point() throws -> CGPoint {
+        let x = try number(), y = try number()
+        guard abs(x) <= 32768, abs(y) <= 32768 else { throw AndroidProcess.invalid }
+        return CGPoint(x: x, y: y)
     }
     mutating func text() throws -> String {
         let length = try byte() << 8 | byte()
@@ -231,7 +254,29 @@ private final class AndroidReplayScene {
             stores = stores.filter { keep.contains($0.key) || ($0.key.hasSuffix(":mask") && keep.contains(String($0.key.dropLast(5)))) }
             images = images.filter { keep.contains($0.key) }
         case 1:
-            throw DrawingError.message("This recording uses Android brush commands. Export the project again with an updated Android app for portable playback.")
+            let id = try input.text(), count = try input.count(250_000)
+            guard count > 0 else { throw AndroidProcess.invalid }
+            let doc = RasterDocument(name: "Replay", width: width, height: height)
+            let base = doc.activeLayer
+            doc.pixels[base] = stores[id] ?? [:]
+            let overlay = RasterDocument(name: "Overlay", width: width, height: height)
+            for _ in 0..<count {
+                let command = try LegacyReplayPaint(input: &input)
+                let target = command.overlay ? overlay : doc
+                let rect = try command.draw(in: target)
+                dirty.formUnion(TileKey.intersecting(rect, width: width, height: height))
+            }
+            var tiles = doc.pixels[base] ?? [:]
+            for (key, top) in overlay.pixels[overlay.activeLayer] ?? [:] {
+                let ctx = try RasterDocument.context(width: 256, height: 256)
+                let box = CGRect(x: 0, y: 0, width: 256, height: 256)
+                if let old = tiles[key] { RasterDocument.draw(old, in: ctx, rect: box) }
+                RasterDocument.draw(top, in: ctx, rect: box)
+                guard let tile = ctx.makeImage() else { throw AndroidProcess.invalid }
+                tiles[key] = tile
+            }
+            stores[id] = tiles; dirtyStore = id
+            guard stores.values.reduce(0, { $0 + $1.count * RasterDocument.tileBytes }) + images.values.reduce(0, { $0 + $1.bytes }) <= 128 * 1024 * 1024 else { throw AndroidProcess.invalid }
         case 2:
             let id = try input.text(), count = try input.integer()
             guard (0...1024).contains(count) else { throw AndroidProcess.invalid }
@@ -294,5 +339,128 @@ private final class AndroidReplayScene {
         let alpha = metadata["opacity"] as? Double ?? 1
         guard alpha.isFinite, (0...1).contains(alpha) else { throw AndroidProcess.invalid }
         return ReplayStep(reset: reset, paper: bg, opacity: alpha, patches: patches)
+    }
+}
+
+/// Decoder for the frozen DataOutputStream ReplayCodec.writePaint v1 layout.
+private struct LegacyReplayPaint {
+    struct Sample {
+        var point: CGPoint
+        var pressure: CGFloat
+        var tilt: CGFloat
+        var angle: CGFloat
+        var seconds: Double
+        var opacityPressure: CGFloat
+    }
+    let overlay: Bool
+    let capStart: Bool, capEnd: Bool, skipFirst: Bool
+    let brush: NativeBrush
+    var size: CGFloat
+    let opacity: CGFloat
+    var color: UIColor
+    let erases: Bool
+    let pixel: String
+    let selection: CGPath?
+    var samples: [Sample] = []
+
+    init(input: inout ReplayBytes) throws {
+        guard try input.integer() == 1 else { throw AndroidProcess.invalid }
+        overlay = try input.flag(); capStart = try input.flag(); capEnd = try input.flag(); skipFirst = try input.flag()
+        var fields: JSONObject = ["format":"tipstroke-brush", "version":2, "author":"", "description":""]
+        fields["schemaVersion"] = try input.integer()
+        for key in ["id","name","engine"] { fields[key] = try input.text() }
+        for key in ["size","opacity","hardness","spacing","stabilization","pressureSizeStart","pressureSizeEnd",
+                    "pressureSizeExponent","pressureOpacityStart","pressureOpacityEnd","pressureOpacityExponent",
+                    "speedTaper","pointSize","tiltSensitivity","shadeSize","shadeOpacity","grain"] {
+            fields[key] = try input.number()
+        }
+        fields["tiltMode"] = try input.text(); fields["shadeStart"] = try input.number(); fields["shadeTransition"] = try input.number()
+        let json = try JSONSerialization.data(withJSONObject: fields)
+        guard let preset = NativeBrush.companion.fromPackage(data: String(decoding: json, as: UTF8.self)) else { throw AndroidProcess.invalid }
+        brush = preset
+        size = try input.number(); opacity = try input.number()
+        guard size > 0, size <= 65536, (0...1).contains(opacity) else { throw AndroidProcess.invalid }
+        let channels = try (0..<4).map { _ in try input.number() }
+        guard channels.allSatisfy({ (0...1).contains($0) }) else { throw AndroidProcess.invalid }
+        color = UIColor(red: channels[0], green: channels[1], blue: channels[2], alpha: channels[3])
+        let blend = try input.text()
+        guard ["PAINT","ERASE"].contains(blend) else { throw AndroidProcess.invalid }
+        erases = blend == "ERASE"; pixel = try input.text()
+        guard ["","PENCIL","LINE","DITHER"].contains(pixel) else { throw AndroidProcess.invalid }
+        let vertices = try input.count(100_000)
+        if vertices > 0 {
+            let path = CGMutablePath()
+            for i in 0..<vertices {
+                let p = try input.point()
+                if i == 0 { path.move(to: p) } else { path.addLine(to: p) }
+            }
+            path.closeSubpath(); selection = path
+        } else { selection = nil }
+        let count = try input.count(250_000)
+        guard count > 0 else { throw AndroidProcess.invalid }
+        for _ in 0..<count {
+            _ = try input.integer()
+            let p = try input.point(), pressure = try input.number(), tilt = try input.number(), angle = try input.number()
+            let time = try input.time() / 1e9
+            _ = try input.integer(); _ = try input.text()
+            samples.append(Sample(point: p, pressure: pressure, tilt: tilt, angle: angle, seconds: time, opacityPressure: try input.number()))
+        }
+        if try input.flag() {
+            guard try input.text() == "androidx-ink-1.1.0-alpha08" else { throw AndroidProcess.invalid }
+            let argb = UInt32(truncatingIfNeeded: try input.integer())
+            color = UIColor(red: CGFloat((argb >> 16) & 255)/255, green: CGFloat((argb >> 8) & 255)/255,
+                            blue: CGFloat(argb & 255)/255, alpha: CGFloat(argb >> 24)/255)
+            size = try input.number(); _ = try input.number(); _ = try input.integer()
+            guard size > 0, size <= 65536, try input.number() == 0 else { throw AndroidProcess.invalid }
+            let n = try input.count(250_000)
+            var ink: [Sample] = []
+            for i in 0..<n {
+                _ = try input.integer()
+                let p = try input.point(), time = try input.time() / 1000
+                _ = try input.number()
+                let pressure = try input.number(), tilt = try input.number(), angle = try input.number()
+                var source = samples[min(samples.count - 1, i * samples.count / n)]
+                source.point = p; source.seconds = time
+                if (0...1).contains(pressure) { source.pressure = pressure }
+                if tilt >= 0 { source.tilt = tilt }
+                if angle >= 0 { source.angle = angle }
+                ink.append(source)
+            }
+            if !ink.isEmpty { samples = ink }
+        }
+    }
+
+    func draw(in doc: RasterDocument) throws -> CGRect {
+        doc.selection = selection.map { CanvasSelection(path: $0) }
+        guard doc.beginStroke() else { throw AndroidProcess.invalid }
+        let coverage = StrokeCoverage(), graphite = GraphiteRenderer()
+        let points = pixel == "LINE" ? [samples[0], samples[samples.count - 1]] : samples
+        var previous: Sample?
+        for (i, s) in points.enumerated() {
+            defer { previous = s }
+            if overlay && ((i == 0 && !capStart && !(points.count == 1 && capEnd)) || (i == 1 && skipFirst)) { continue }
+            let start = previous?.point ?? s.point
+            let velocity = hypot(s.point.x-start.x, s.point.y-start.y) / max(0.001, s.seconds - (previous?.seconds ?? s.seconds))
+            let speed = 1 - CGFloat(brush.speedTaper) * min(0.85, velocity / 2500)
+            let radius = max(0.25, size * speed * CGFloat(brush.sizeResponse(pressure: Float(s.pressure))) / 2)
+            let alpha = opacity * CGFloat(brush.opacityResponse(pressure: Float(s.opacityPressure)))
+            if !pixel.isEmpty {
+                let width = max(1, min(32, Int(size.rounded())))
+                let offset = CGFloat((width - 1) / 2)
+                func grid(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x.rounded() - offset, y: p.y.rounded() - offset) }
+                try doc.paintPixelLine(from: grid(start), to: grid(s.point), size: width,
+                    color: color.withAlphaComponent(opacity * color.cgColor.alpha), dither: pixel == "DITHER", erasing: erases)
+            } else if brush.engine == "PENCIL" && !erases {
+                _ = try graphite.paint(document: doc, brush: brush, point: s.point, size: size, pressure: s.pressure,
+                    tilt: Float(s.tilt), angle: s.angle, speed: speed, color: color, opacity: opacity)
+            } else {
+                _ = try coverage.paint(document: doc, from: start, to: s.point, radius: radius,
+                    alpha: alpha, hardness: erases || brush.engine == "AIRBRUSH" ? CGFloat(brush.hardness) : 1,
+                    color: color, erasing: erases)
+            }
+        }
+        let changed = doc.strokePreviewBounds
+        doc.endStroke(cancelled: false)
+        return changed
     }
 }

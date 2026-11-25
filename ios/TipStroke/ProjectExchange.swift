@@ -108,6 +108,35 @@ extension ProjectStore {
         root.appendingPathComponent(id.uuidString).appendingPathComponent("exchange", isDirectory: true)
     }
 
+    // Older builds kept the source TSR and began a fresh iOS progress log. Prepend
+    // the recovered steps once, preserving any drawings made since the import.
+    func recoverLegacyProgress(id: UUID) throws {
+        let fm = FileManager.default, folder = replayFolder(id)
+        let note = folder.appendingPathComponent("import-note.txt")
+        let base = packageBase(id)
+        guard fm.fileExists(atPath: note.path),
+              (try String(contentsOf: note, encoding: .utf8)).contains("uses Android brush commands") else { return }
+        let original = base.appendingPathComponent("original/process.tsr")
+        guard fm.fileExists(atPath: original.path) else { return }
+        let stage = folder.deletingLastPathComponent().appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: stage) }
+        try AndroidProcess.importRecording(original, to: stage)
+        var recovered = try ReplayFiles.index(stage)
+        let prefix = recovered.count
+        if fm.fileExists(atPath: ReplayFiles.indexURL(folder).path) {
+            let current = try ReplayFiles.index(folder)
+            guard current.width == recovered.width, current.height == recovered.height,
+                  recovered.count + current.count <= ReplayFiles.maxSteps, recovered.bytes + current.bytes <= ReplayFiles.limit else { return }
+            for i in 0..<current.count {
+                try fm.copyItem(at: ReplayFiles.step(folder, i), to: ReplayFiles.step(stage, recovered.count + i))
+            }
+            recovered.count += current.count; recovered.bytes += current.bytes; recovered.stopped = current.stopped
+            try ReplayFiles.write(recovered, stage)
+        }
+        try PackageIO.write(["count": prefix], at: stage.appendingPathComponent("android-prefix.json"))
+        _ = try fm.replaceItemAt(folder, withItemAt: stage)
+    }
+
     func copyPackageBase(from id: UUID, to copy: UUID) throws {
         let src = packageBase(id)
         if FileManager.default.fileExists(atPath: src.path) { try FileManager.default.copyItem(at: src, to: packageBase(copy)) }
@@ -367,8 +396,7 @@ extension ProjectStore {
             let native = directory.appendingPathComponent("process.tsr")
             let source = FileManager.default.fileExists(atPath: annotated.path) ? annotated : native
             if FileManager.default.fileExists(atPath: source.path) {
-                // Preserve the original recording independently even when a legacy native
-                // brush command requires re-exporting the package on Android.
+                // Preserve the original independently of the native playback cache.
                 do { try AndroidProcess.importRecording(source, to: replayFolder(state.id)) }
                 catch { try AndroidProcess.noteUnavailable(error, in: replayFolder(state.id)) }
             }
@@ -563,7 +591,8 @@ extension ProjectStore {
             try fm.copyItem(at: replay, to: target.appendingPathComponent("ios-progress"))
             let tsr = target.appendingPathComponent("process.tsr")
             if fm.fileExists(atPath: tsr.path) {
-                let anchor = base.appendingPathComponent("process-anchor.json")
+                let migrated = replay.appendingPathComponent("android-prefix.json")
+                let anchor = fm.fileExists(atPath: migrated.path) ? migrated : base.appendingPathComponent("process-anchor.json")
                 let count = fm.fileExists(atPath: anchor.path) ? try PackageIO.json(anchor)["count"] as? Int ?? 0 : 0
                 // Conversion of an optional future or damaged replay must not block artwork transfer.
                 // Its original bytes still occupy the destination unless conversion completes atomically.

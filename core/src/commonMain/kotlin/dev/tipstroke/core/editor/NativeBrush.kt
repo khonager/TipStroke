@@ -78,6 +78,9 @@ class NativeBrush(val preset: BrushPreset) {
     fun path(size: Float, opacity: Float): NativeStampPath = NativeStampPath(stampPreset(), size, opacity)
 
     companion object {
+        fun fromPackage(data: String): NativeBrush? = runCatching {
+            NativeBrush(dev.tipstroke.core.brush.BrushPackage.decode(data).preset)
+        }.getOrNull()
         fun builtIn(id: String): NativeBrush = NativeBrush(
             BrushPreset.libraryBuiltIns.firstOrNull { it.id.value == id } ?: BrushPreset.Ink,
         )
