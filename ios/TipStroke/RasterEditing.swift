@@ -105,11 +105,11 @@ extension RasterDocument {
         }
     }
 
-    func paintPixelLine(from: CGPoint, to: CGPoint, size: Int, color: UIColor, dither: Bool) throws {
+    func paintPixelLine(from: CGPoint, to: CGPoint, size: Int, color: UIColor, dither: Bool, erasing: Bool = false) throws {
         let size = max(1, min(64, size))
         let x0 = Int(floor(from.x)), y0 = Int(floor(from.y)), x1 = Int(floor(to.x)), y1 = Int(floor(to.y))
         let area = CGRect(x: min(x0, x1), y: min(y0, y1), width: abs(x1 - x0) + size, height: abs(y1 - y0) + size)
-        try editTiles(in: area) { context in
+        try editTiles(in: area, erasing: erasing) { context in
             context.setShouldAntialias(false); context.setFillColor(color.cgColor)
             var x = x0, y = y0
             let dx = abs(x1 - x0), dy = -abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1

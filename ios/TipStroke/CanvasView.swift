@@ -157,6 +157,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     private var stampRenderer: NativeStampRenderer?
     private var stampPath: NativeStampPath?
     var brushColor: UIColor = .black
+    var pixelErasing = false
     var brushSize: CGFloat = 8
     var sizeInScreenPoints = UserDefaults.standard.bool(forKey: "brush.screenPoints")
     var supportsScreenSize: Bool { ![.pixel, .pixelLine, .dither, .smudge].contains(mode) }
@@ -375,7 +376,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             do { try advanceRecording(at: touch.timestamp, resumeStroke: false); document.checkpointRecordingGesture() }
             catch { stopLiveDrawing(); onError?(error); return }
         }
-        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull, brushAids: mode != .colorPush && !shadowPull, photoErase: mode == .paint && tool == .eraser && !shadowPull) { document.finishRecordingGesture(cancelled: true); return }
+        if (mode.streamsPaint || liveFill || shadowPull || mode == .colorPush) && !document.beginStroke(mirrored: mode != .smudge && mode != .colorPush && !shadowPull, brushAids: mode != .colorPush && !shadowPull, photoErase: (mode == .paint && tool == .eraser && !shadowPull) || (pixelErasing && [.pixel, .dither].contains(mode))) { document.finishRecordingGesture(cancelled: true); return }
         pointer = touch; previous = nil; previousTimestamp = -1
         let first = vanishingPoint1 ?? CGPoint(x: bounds.width * 0.25, y: bounds.height * 0.35)
         let second = vanishingPoint2 ?? CGPoint(x: bounds.width * 0.75, y: bounds.height * 0.35)
@@ -426,8 +427,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             do {
                 if mode == .lasso { gesturePoints.append(point) } else { gesturePoints = [gesturePoints[0], point] }
                 if mode.isSelection { document.combineSelection(mode.outline(gesturePoints)) }
-                else if mode.isShape, document.beginStroke() {
-                    if mode == .pixelLine { try document.paintPixelLine(from: gesturePoints[0], to: point, size: Int(brushSize), color: brushColor.withAlphaComponent(brushOpacity), dither: false) }
+                else if mode.isShape, document.beginStroke(photoErase: mode == .pixelLine && pixelErasing) {
+                    if mode == .pixelLine { try document.paintPixelLine(from: gesturePoints[0], to: point, size: Int(brushSize), color: brushColor.withAlphaComponent(brushOpacity), dither: false, erasing: pixelErasing) }
                     else { try document.paintPath(mode.outline(gesturePoints), color: brushColor.withAlphaComponent(brushOpacity), width: strokeSize, filled: filledShapes && [.rectangle, .ellipse, .triangle].contains(mode)) }
                     document.endStroke(cancelled: false)
                 } else if mode == .transform {
@@ -624,7 +625,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                         alpha: alpha, hardness: CGFloat(strokeBrush.hardness), color: strokeColor))
                 } else if mode == .smudge { try document.smudge(from: previous ?? point, to: point, radius: strokeSize / 2, strength: strokeOpacity) }
                 else if mode == .pixel || mode == .dither {
-                    try document.paintPixelLine(from: previous ?? point, to: point, size: Int(strokeSize), color: strokeColor.withAlphaComponent(strokeOpacity), dither: mode == .dither)
+                    try document.paintPixelLine(from: previous ?? point, to: point, size: Int(strokeSize), color: strokeColor.withAlphaComponent(strokeOpacity), dither: mode == .dither, erasing: pixelErasing)
                 } else {
                     dirty = dirty.union(try document.paint(from: previous ?? point, to: point, radius: radius,
                         color: color, erasing: strokeTool == .eraser,
@@ -728,7 +729,8 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
         contentOffset = CGPoint(x: (contentSize.width - bounds.width) / 2,
                                 y: (contentSize.height - bounds.height) / 2)
     }
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { layoutNavigationArea(); canvas.updateVisibleTiles() }
+    var onZoom: (() -> Void)?
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { layoutNavigationArea(); canvas.updateVisibleTiles(); onZoom?() }
     func scrollViewDidScroll(_ scrollView: UIScrollView) { canvas.updateVisibleTiles() }
     private func layoutNavigationArea() {
         page.center = CGPoint(x: contentSize.width / 2, y: contentSize.height / 2)
