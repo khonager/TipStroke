@@ -18,6 +18,7 @@ import dev.tipstroke.core.model.BlendBehavior
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.core.model.RgbaColor
+import dev.tipstroke.core.model.StampGrain
 import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.sin
@@ -80,11 +81,33 @@ class BrushStrokePreviewView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
-    private fun renderPreview(width: Int, height: Int): Bitmap =
+    private fun renderPreview(width: Int, height: Int): Bitmap {
+        val grain = brush.stamp?.grain
+        val longestSide = max(width, height)
+        if (thumbnail && grain != null && grain != StampGrain.NONE && longestSide < 96) {
+            // Resolve sparse grain before reducing it to a folder cell. Each 2:1
+            // filtered step averages four pixels, preserving even isolated dots.
+            var factor = 2
+            while (longestSide * factor < 96) factor *= 2
+            var sample = renderStrokeBitmap(width * factor, height * factor)
+            while (factor > 1) {
+                factor /= 2
+                val smaller = Bitmap.createScaledBitmap(sample, width * factor, height * factor, true)
+                sample.recycle()
+                sample = smaller
+            }
+            return sample
+        }
+        return renderStrokeBitmap(width, height)
+    }
+
+    private fun renderStrokeBitmap(width: Int, height: Int): Bitmap =
         Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            // This cache already matches the measured view in physical pixels.
+            bitmap.density = Bitmap.DENSITY_NONE
             val canvas = Canvas(bitmap)
             // A fixed document-space sample keeps grain, spacing, taper and speed independent
-            // of display density and thumbnail size. Only the cached output bitmap is allocated.
+            // of display density and thumbnail size.
             val pixelTip = PixelTool.fromTipId(brush.id.value)
             val sampleHeight = when {
                 !thumbnail -> height

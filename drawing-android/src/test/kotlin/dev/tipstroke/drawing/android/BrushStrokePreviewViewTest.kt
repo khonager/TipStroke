@@ -46,6 +46,7 @@ class BrushStrokePreviewViewTest {
             layout(0, 0, 20, 20)
         }
         val bitmap = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888)
+        bitmap.density = 640
         view.draw(Canvas(bitmap))
         fun painted(x: Int) = (0 until bitmap.height).any { Color.alpha(bitmap.getPixel(x, it)) > 0 }
         assertTrue(painted(10))

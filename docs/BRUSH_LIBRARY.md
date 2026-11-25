@@ -113,7 +113,10 @@ representative stroke through `BrushStrokePreviewView` and the native raster
 painter. Custom image shape and grain sources use the same path as painted strokes.
 The sample varies pressure, speed, and tilt, including tilt for custom stamp tips.
 A fixed 400 × 160 document-space sample makes texture and dynamics independent of
-screen density. Each view caches only its output-sized bitmap and invalidates it
+screen density. Small grained swatches sample the stroke at higher resolution
+and average it down so sparse dots remain visible in folder cells. Android draws
+the cached bitmap at its measured pixel dimensions on every display. Each view
+caches only its output-sized bitmap and invalidates it
 when its preset, color, opacity, rendering mode, or dimensions change.
 
 Slider endpoints are pure copies of the current definition at that control's
