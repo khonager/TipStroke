@@ -1,7 +1,7 @@
 import XCTest
 
 final class EditorFlowTests: XCTestCase {
-    func testCreateDrawUndoRedoSaveReopenAndRotate() {
+    func testCreateDrawUndoRedoSaveReopenAndRotate() throws {
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launch()
@@ -27,9 +27,12 @@ final class EditorFlowTests: XCTestCase {
         for label in ["Size", "Opacity"] {
             let slider = app.sliders[label]
             XCTAssertTrue(slider.isHittable)
-            let before = slider.value as? String
-            slider.adjust(toNormalizedSliderPosition: 0.65)
-            XCTAssertNotEqual(slider.value as? String, before)
+            let readout = app.buttons[label + " readout"]
+            slider.adjust(toNormalizedSliderPosition: 0.25)
+            let low = try XCTUnwrap(readout.value as? String)
+            slider.adjust(toNormalizedSliderPosition: 0.75)
+            let high = try XCTUnwrap(readout.value as? String)
+            XCTAssertNotEqual(low, high, "\(label) readout should follow the slider")
         }
         let special = app.buttons["Special tools"]
         XCTAssertTrue(special.isHittable)

@@ -36,7 +36,7 @@ final class BrushAdjustmentView: UIStackView {
         addArrangedSubview(minus)
         addArrangedSubview(track)
         addArrangedSubview(plus)
-        slider.accessibilityLabel = title
+        slider.accessibilityIdentifier = title
         slider.addTarget(self, action: #selector(changed), for: .valueChanged)
         slider.addTarget(self, action: #selector(ended), for: [.touchUpInside, .touchUpOutside, .touchCancel])
         heightAnchor.constraint(greaterThanOrEqualToConstant: 40).isActive = true
@@ -89,7 +89,11 @@ final class BrushAdjustmentView: UIStackView {
         }
         readout.menu = items.isEmpty ? nil : UIMenu(children: items)
         readout.isUserInteractionEnabled = allowsUnits
-        slider.accessibilityValue = number
+        // Keep UISlider’s native accessibility value in track coordinates. Size uses
+        // a logarithmic scale, so its brush value cannot describe the thumb position.
+        slider.accessibilityLabel = "\(title), \(number)"
+        readout.accessibilityIdentifier = title + " readout"
+        readout.accessibilityValue = number
     }
     @objc private func changed() {
         let value = isSize ? (range.lowerBound * pow(range.upperBound / range.lowerBound, slider.value)).rounded()
