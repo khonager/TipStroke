@@ -2,11 +2,10 @@ import XCTest
 
 final class EditorFlowTests: XCTestCase {
     func testCreateDrawUndoRedoSaveReopenAndRotate() throws {
+        continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
         app.launch()
-        let galleryCells = app.tables.cells.matching(NSPredicate(format: "identifier BEGINSWITH %@", "gallery-"))
-        let existingIDs = galleryCells.allElementsBoundByIndex.map(\.identifier)
         app.navigationBars.buttons["Add"].tap()
         let create = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Create")).firstMatch
         XCTAssertTrue(create.waitForExistence(timeout: 10))
@@ -14,6 +13,7 @@ final class EditorFlowTests: XCTestCase {
         let gallery = app.buttons["Gallery"]
         XCTAssertTrue(gallery.waitForExistence(timeout: 10))
         let canvas = app.descendants(matching: .any)["Drawing canvas"]
+        let drawingID = try XCTUnwrap(UUID(uuidString: canvas.identifier))
         let fingerMode = app.buttons["Finger mode"]
         if fingerMode.value as? String != "Navigate canvas" { fingerMode.tap() }
         let before = canvas.frame.midX
@@ -115,12 +115,14 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Layer 2"].exists)
         app.navigationBars.buttons["Done"].tap()
         gallery.tap()
-        let newDrawing = galleryCells.matching(NSPredicate(format: "NOT (identifier IN %@)", existingIDs)).firstMatch
-        XCTAssertTrue(newDrawing.waitForExistence(timeout: 15))
-        let drawingID = newDrawing.identifier
+        let savedDrawing = app.cells["gallery-\(drawingID.uuidString)"]
+        XCTAssertTrue(savedDrawing.waitForExistence(timeout: 15))
         app.terminate(); app.launch()
-        app.cells[drawingID].tap()
-        XCTAssertTrue(app.buttons["Gallery"].waitForExistence(timeout: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: savedDrawing)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed, "Saved drawing should be available in the gallery")
+        savedDrawing.tap()
+        let reopenedCanvas = app.descendants(matching: .any)[drawingID.uuidString]
+        XCTAssertTrue(reopenedCanvas.waitForExistence(timeout: 10), "One tap should reopen the same drawing.\n\(app.debugDescription)")
         app.buttons["Layers"].tap()
         XCTAssertTrue(app.staticTexts["Layer 2"].exists)
         XCUIDevice.shared.orientation = .portrait

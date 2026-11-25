@@ -34,7 +34,10 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
     private var exportingDrawings = false
     var layout = UserDefaults.standard.data(forKey: "gallery.stacks").flatMap { try? JSONDecoder().decode(GalleryStacks.self, from: $0) } ?? GalleryStacks()
     var openStack: UUID?
-    var displayed: [UUID] { openStack.flatMap { layout.stacks[$0]?.members } ?? layout.order }
+    var displayed: [UUID] {
+        guard !records.isEmpty else { return [] }
+        return openStack.flatMap { layout.stacks[$0]?.members } ?? layout.order
+    }
     private var records: [UUID: DocumentRecord] = [:]
     func saveLayout() {
         if let data = try? JSONEncoder().encode(layout) { UserDefaults.standard.set(data, forKey: "gallery.stacks") }
@@ -58,6 +61,7 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         let empty = UILabel()
         empty.text = "Your drawings stay on this device.\nTap + to open a new canvas."
         empty.numberOfLines = 0; empty.textAlignment = .center; empty.textColor = .secondaryLabel
+        empty.isHidden = true
         tableView.backgroundView = empty
     }
     private func updateGalleryActions() {
@@ -196,10 +200,11 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
                 let image = try? self.store.thumbnail(drawing.id)
                 DispatchQueue.main.async {
                     guard let image else { return }; self.thumbnails.setObject(image, forKey: drawing.id as NSUUID)
-                    if let visible = self.tableView.indexPathsForVisibleRows, visible.contains(indexPath),
-                       self.displayed.indices.contains(indexPath.row), self.displayed[indexPath.row] == drawing.id {
-                        self.tableView.reloadRows(at: [indexPath], with: .none)
-                    }
+                    guard let cell = self.tableView.cellForRow(at: indexPath),
+                          cell.accessibilityIdentifier == "gallery-\(drawing.id.uuidString)",
+                          var content = cell.contentConfiguration as? UIListContentConfiguration else { return }
+                    content.image = image
+                    cell.contentConfiguration = content
                 }
             }
         }

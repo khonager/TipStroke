@@ -205,6 +205,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         clipsToBounds = true
         isAccessibilityElement = true
         accessibilityLabel = "Drawing canvas"
+        accessibilityIdentifier = document.record.id.uuidString
         let picker = UILongPressGestureRecognizer(target: self, action: #selector(pickColor(_:)))
         holdGesture = picker
         picker.minimumPressDuration = 0.55

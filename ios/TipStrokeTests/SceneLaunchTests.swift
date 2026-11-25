@@ -4,6 +4,14 @@ import XCTest
 
 final class SceneLaunchTests: XCTestCase {
     @MainActor
+    func testGalleryWaitsForDocumentRecordsBeforeShowingSavedRows() {
+        let gallery = GalleryController()
+        let id = UUID()
+        gallery.layout = GalleryStacks(order: [id])
+        XCTAssertEqual(gallery.tableView(gallery.tableView, numberOfRowsInSection: 0), 0)
+    }
+
+    @MainActor
     func testApplicationSceneOwnsGalleryWindow() throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
