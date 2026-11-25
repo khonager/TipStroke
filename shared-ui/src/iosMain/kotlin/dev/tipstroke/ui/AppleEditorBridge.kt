@@ -41,11 +41,14 @@ import dev.tipstroke.core.brush.BrushCollection
 import kotlin.uuid.Uuid
 import kotlin.io.encoding.Base64
 import dev.tipstroke.core.model.*
+import androidx.compose.ui.viewinterop.UIKitView
+import platform.UIKit.UIView
 import platform.UIKit.UIViewController
 import platform.Foundation.NSUserDefaults
 
 /** Commands/settings only. UIKit owns touches, wet paint, tiles and viewport transforms. */
 interface AppleBrushLibraryActions {
+    fun pinFolder(tips: List<NativeBrush>): UIView
     fun librarySaved(data: String)
     fun pickedTip(id: String, eraser: Boolean)
     fun closePicker()
@@ -282,6 +285,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             }
         }
     }
+    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
         val byId = (BrushPreset.libraryBuiltIns + library.map { it.preset }).associateBy { it.id.value }
         BrushTheme {
@@ -289,7 +293,15 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                 val slots = (maxWidth / 44.dp).toInt().coerceAtLeast(1)
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) {
                     val pick: (BrushPreset) -> Unit = { callbacks.pickedTip(it.id.value, false) }
-                    PinnedTipCells(dockPins.mapNotNull(byId::get), slots, 44.dp, pick) { tip ->
+                    PinnedTipCells(dockPins.mapNotNull(byId::get), slots, 44.dp, pick, folder = { overflow ->
+                        key(overflow) {
+                                UIKitView(factory = { callbacks.pinFolder(overflow.map(::NativeBrush)) },
+                                    modifier = Modifier.size(44.dp),
+                                    properties = androidx.compose.ui.viewinterop.UIKitInteropProperties(
+                                        interactionMode = androidx.compose.ui.viewinterop.UIKitInteropInteractionMode.NonCooperative,
+                                        isNativeAccessibilityEnabled = true))
+                        }
+                    }) { tip ->
                         TipSwatch(tip, Modifier.size(44.dp).clickable { pick(tip) }
                             .semantics { contentDescription = tip.displayName }.padding(2.dp))
                     }

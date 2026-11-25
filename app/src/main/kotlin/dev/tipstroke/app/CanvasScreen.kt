@@ -421,7 +421,6 @@ fun CanvasScreen(
         smudging = false; colorPushing = true
         sync()
     }
-    val pixelToolsAvailable = smallCanvas || diagnostics.zoom >= 8f || pixelTool != null
     fun performStylusButton(button: StylusButton) {
         val now = android.os.SystemClock.uptimeMillis()
         val buttonIndex = button.ordinal
@@ -753,7 +752,7 @@ fun CanvasScreen(
                 assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                     mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
                     onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
-                pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
+                onPixelTool = ::selectPixelTool,
                 onStudio = { brushStudioOpen = true }, onTune = { brushStudioOpen = true },
                 tuneDescription = "Adjust tip", horizontal = portrait,
                 modifier = Modifier.align(if (portrait) Alignment.BottomStart else Alignment.CenterStart)
@@ -828,7 +827,7 @@ fun CanvasScreen(
                     assists = assists, onAssists = { assists = it; surface?.settings?.assists = it },
                     mirrorCopies = mirrorCopies, onMirrorCopies = { mirrorCopies = it; surface?.setMirrorCopies(it) },
                     onMirrorCenter = { surface?.placeMirrorCenter(); message = "Tap the canvas to place the mirror center." },
-                    pixelToolsAvailable = pixelToolsAvailable, onPixelTool = ::selectPixelTool,
+                    onPixelTool = ::selectPixelTool,
                     onStudio = { brushStudioOpen = true },
                     onTune = { phoneAdjustmentsOpen = !phoneAdjustmentsOpen },
                     tuneDescription = if (phoneAdjustmentsOpen) "Hide size and opacity" else "Show size and opacity",

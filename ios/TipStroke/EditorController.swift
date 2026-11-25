@@ -19,7 +19,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
     private let fingerMode = UIButton(type: .system)
     private let pixelModes: [CanvasMode] = [.pixel, .pixelLine, .dither]
-    private let pixelPicker = UISegmentedControl(items: ["Pixel", "Line", "Shade"])
+    private let specialTools = UIButton(type: .system)
     private var gridSize: CGFloat = 1
     private let sizeControl = BrushAdjustmentView(title: "Size", isSize: true)
     private let opacityControl = BrushAdjustmentView(title: "Opacity", isSize: false)
@@ -170,12 +170,15 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         adjustmentPreview.layer.shadowOpacity = 0.4
         adjustmentPreview.layer.shadowRadius = 1
         adjustmentPreview.layer.shadowOffset = .zero
-        pixelPicker.accessibilityLabel = "Pixel tools"
-        pixelPicker.addAction(UIAction { [weak self] _ in
-            guard let self else { return }; self.activateMode(self.pixelModes[self.pixelPicker.selectedSegmentIndex])
-        }, for: .valueChanged)
-        viewport.onZoom = { [weak self] in self?.refreshPixelPicker() }
-        let bottom = UIStackView(arrangedSubviews: [toolPicker, pixelPicker, shelf, pinned.view!, adjustments, bottomActions]); bottom.spacing = 4
+        specialTools.accessibilityLabel = "Special tools"
+        specialTools.setImage(UIImage(systemName: "square.grid.3x3.fill"), for: .normal)
+        specialTools.showsMenuAsPrimaryAction = true
+        specialTools.menu = UIMenu(title: "Pixel tools", children: pixelModes.map { mode in
+            UIAction(title: mode.rawValue) { [weak self] _ in self?.activateMode(mode) }
+        })
+        shelf.insertArrangedSubview(specialTools, at: 1)
+        specialTools.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        let bottom = UIStackView(arrangedSubviews: [toolPicker, shelf, pinned.view!, adjustments, bottomActions]); bottom.spacing = 4
         pinned.didMove(toParent: self)
         quickColors.didMove(toParent: self)
         bottom.axis = .vertical
@@ -261,7 +264,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             finger: defaults.object(forKey: "fingerDrawing") as? Bool ?? true)
         if let data = savedBrush { _ = sharedControls.restoreBrush(data: data) }
         if max(document.record.width, document.record.height) <= 128 { activateMode(.pixel) }
-        refreshPixelPicker()
+        specialTools.accessibilityValue = pixelTool ? viewport.canvas.mode.rawValue : "Pixel tools"
         refreshDrawingColors()
         recorder.capture(document)
         updateHistory(); saveLabel.text = "Saved on this device"
@@ -321,10 +324,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
 
     private var pixelTool: Bool { [.pixel, .pixelLine, .dither].contains(viewport.canvas.mode) }
 
-    private func refreshPixelPicker() {
-        pixelPicker.isHidden = !pixelTool && max(document.record.width, document.record.height) > 128 && viewport.zoomScale < 8
-        pixelPicker.selectedSegmentIndex = pixelModes.firstIndex(of: viewport.canvas.mode) ?? UISegmentedControl.noSegment
-    }
     private func refreshAdjustments() {
         let canvas = viewport.canvas
         sizeControl.display(Float(canvas.brushSize), range: pixelTool ? 1...32 : 2...512,
@@ -512,11 +511,11 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private weak var movingToolsButton: UIButton?
     private let drawingModes: [(CanvasMode, String)] = [(.smudge, "drop"), (.lassoFill, "paintbrush.fill"),
             (.colorPush, "hand.draw"),
-            (.pixel, "pencil"), (.pixelLine, "line.diagonal"), (.dither, "circle.grid.3x3.fill"), (.fill, "paintbrush")]
+            (.fill, "paintbrush")]
     private let selectionModes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.rectangleSelection, "rectangle.dashed"),
             (.ellipseSelection, "circle.dashed")]
     private func updateToolValue() {
-        refreshPixelPicker()
+        specialTools.accessibilityValue = pixelTool ? viewport.canvas.mode.rawValue : "Pixel tools"
         refreshAdjustments()
         let mode = viewport.canvas.mode
         let drawingSymbol = drawingModes.first { $0.0 == mode }?.1 ?? (mode.isShape ? "scribble.variable" : "eraser")

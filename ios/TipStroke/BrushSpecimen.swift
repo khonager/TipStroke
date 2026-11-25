@@ -27,7 +27,7 @@ enum BrushSpecimen {
                 point = CGPoint(x: previous.x + response * (point.x - previous.x),
                                 y: previous.y + response * (point.y - previous.y))
             }
-            let pressure = 0.12 + 0.88 * t
+            let pressure = 0.12 + 0.88 * sin(.pi * t)
             let radius = speed * size * CGFloat(brush.sizeResponse(pressure: Float(pressure))) / 2
             let alpha = CGFloat(brush.opacity * brush.opacityResponse(pressure: Float(pressure)))
             if brush.usesSweptTip {

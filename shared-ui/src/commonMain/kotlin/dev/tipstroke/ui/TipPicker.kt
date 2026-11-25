@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
@@ -89,9 +90,9 @@ fun TipPicker(position: TipPickerPosition, eraser: Boolean, selectedId: String, 
                     var menu by remember { mutableStateOf(false) }
                     val id = tip.id.value
                     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(Modifier.weight(1f).testTag("Choose ${tip.displayName}").clickable { onPick(tip) }.semantics { contentDescription = "Choose ${tip.displayName}" }.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TipSwatch(tip, Modifier.size(36.dp))
-                            Text(tip.displayName + if (selectedId == id) " ✓" else "", Modifier.padding(start = 5.dp), style = MaterialTheme.typography.bodySmall)
+                        Row(Modifier.weight(1f).testTag("Choose ${tip.displayName}").clickable { onPick(tip) }.semantics { contentDescription = "Choose ${tip.displayName}"; selected = selectedId == id }.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CompositionLocalProvider(LocalEraserPreview provides eraser) { TipSwatch(tip, Modifier.size(42.dp, 36.dp)) }
+                            TipName(tip, selectedId == id, id in favorites, Modifier.padding(start = 5.dp))
                         }
                         Box {
                             IconButton(onClick = { menu = true }, modifier = Modifier.width(36.dp).semantics { contentDescription = "Actions for ${tip.displayName}" }) { Text("⋯") }

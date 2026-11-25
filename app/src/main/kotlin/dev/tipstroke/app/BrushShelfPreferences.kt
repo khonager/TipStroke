@@ -20,7 +20,7 @@ internal class BrushShelfPreferences(context: Context) {
     fun save(ids: List<String>) { preferences.edit().putString("favorites", JSONArray(ids.distinct().take(200)).toString()).apply() }
 }
 
-internal const val BRUSH_DOCK_FIXED_CELLS = 4
+internal const val BRUSH_DOCK_FIXED_CELLS = 5
 
 internal fun brushFavoriteCapacity(availableDp: Float, slotDp: Float = 48f, gapDp: Float = 2f): Int =
     (((availableDp - 8f + gapDp) / (slotDp + gapDp)).toInt() - BRUSH_DOCK_FIXED_CELLS).coerceAtLeast(0)

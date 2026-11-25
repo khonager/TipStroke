@@ -295,8 +295,9 @@ internal fun BrushLibraryDialog(
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(item.preset.displayName, style = MaterialTheme.typography.titleMedium)
-                                        Text(if (item.preset.id == current.id) "Selected" else if (item.author.isNotBlank()) item.author else if (item.preset.ink != null) "Jetpack Ink" else "Custom tip",
+                                        Text(item.preset.displayName, style = MaterialTheme.typography.titleMedium,
+                                            color = if (item.preset.id == current.id) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                                        Text(if (item.author.isNotBlank()) item.author else if (item.preset.ink != null) "Jetpack Ink" else "Custom tip",
                                             style = MaterialTheme.typography.bodySmall)
                                     }
                                     TipAction(if (favorite) "Remove from favorites" else if (favoriteIds.size >= 200) "Favorites full" else "Add to favorites", if (favorite) Icons.Outlined.Star else Icons.Outlined.StarBorder, enabled = !busy && (favorite || favoriteIds.size < 200), onClick = {

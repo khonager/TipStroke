@@ -35,7 +35,7 @@ class BrushFavoritesDockTest {
         var push = false
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme {
-                BrushFavoritesDock(BrushPreset.Ink, emptyList(), true, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                BrushFavoritesDock(BrushPreset.Ink, emptyList(), true, {}, {}, {}, {}, {}, {}, {}, {}, "Adjust tip", true,
                     Modifier.width(400.dp), assists = assists, onAssists = { assists = it },
                     mirrorCopies = copies, onMirrorCopies = { copies = it }, onColorPush = { push = true })
             }
@@ -64,7 +64,7 @@ class BrushFavoritesDockTest {
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             Box(Modifier.fillMaxSize()) {
                 BrushFavoritesDock(BrushPreset.Ink, emptyList(), false, {}, {}, {}, { erases++ }, { smudges++ },
-                    false, {}, {}, {}, "Adjust tip", true, Modifier.height(300.dp))
+                    {}, {}, {}, "Adjust tip", true, Modifier.height(300.dp))
             }
         }
         val dock = compose.onNodeWithContentDescription("Drawing tools")
@@ -94,16 +94,43 @@ class BrushFavoritesDockTest {
         val tips = MangaTips.presets.take(5)
         var chosen: BrushPreset? = null
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
-            BrushFavoritesDock(tips.first(), tips, true, {}, { chosen = it }, {}, {}, {}, false, {}, {}, {},
+            BrushFavoritesDock(tips.first(), tips, true, {}, { chosen = it }, {}, {}, {}, {}, {}, {},
                 "Adjust tip", true, Modifier.width(150.dp))
         }
         repeat(2) {
             compose.onNodeWithContentDescription("More pinned tips").performClick()
-            compose.onNodeWithText(tips.first().displayName).assertIsDisplayed()
-            compose.onNodeWithText(tips.last().displayName).performScrollTo().performClick()
+            compose.onNodeWithContentDescription(tips.first().displayName).assertIsDisplayed()
+            compose.onNodeWithContentDescription(tips.last().displayName).performClick()
             compose.runOnIdle { assertEquals(tips.last(), chosen) }
             compose.onNodeWithText("Pinned tips").assertDoesNotExist()
         }
+    }
+
+    @Test fun pinFolderSelectsOnReleaseAndSpecialToolsStayReachable() {
+        val tips = MangaTips.presets.take(5)
+        var chosen: BrushPreset? = null
+        var pixelTool: dev.tipstroke.core.drawing.PixelTool? = null
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            Box(Modifier.fillMaxSize()) {
+                BrushFavoritesDock(tips.first(), tips, false, {}, { chosen = it }, {}, {}, {}, { pixelTool = it }, {}, {},
+                    "Adjust tip", true, Modifier.height(320.dp))
+            }
+        }
+        val folder = compose.onNodeWithContentDescription("More pinned tips")
+        folder.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(750)
+        val cell = compose.onNodeWithContentDescription(tips.last().displayName).fetchSemanticsNode()
+        val target = cell.layoutInfo.coordinates.localToScreen(androidx.compose.ui.geometry.Offset(20f, 20f))
+        val local = folder.fetchSemanticsNode().layoutInfo.coordinates.screenToLocal(target)
+        folder.performTouchInput { moveTo(local) }
+        compose.runOnIdle { assertNull(chosen) }
+        folder.performTouchInput { up() }
+        compose.runOnIdle { assertEquals(tips.last(), chosen) }
+        compose.onNodeWithContentDescription("Special tools").performClick()
+        compose.onNodeWithContentDescription("Pixel pencil").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Dither").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Pixel line").performClick()
+        compose.runOnIdle { assertEquals(dev.tipstroke.core.drawing.PixelTool.LINE, pixelTool) }
     }
 
     @Test fun pickerRemembersGroupAfterPickingAndLeavesDockInOrder() {
@@ -127,17 +154,17 @@ class BrushFavoritesDockTest {
         val favorites = List(20) { BrushPreset.Blank.copy(id = BrushId("pin-$it"), displayName = "Pinned $it") }
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme {
-                BrushFavoritesDock(favorites.first(), favorites, true, {}, {}, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                BrushFavoritesDock(favorites.first(), favorites, true, {}, {}, {}, {}, {}, {}, {}, {}, "Adjust tip", true,
                     Modifier.width(width.dp))
             }
         }
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("Pinned 2").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Pinned 1").assertIsDisplayed()
         compose.onNodeWithContentDescription("Pinned 3").assertDoesNotExist()
         compose.onAllNodes(hasScrollAction()).assertCountEquals(0)
         compose.runOnIdle { width = 320 }
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("Pinned 0").assertIsDisplayed()
+        compose.onNodeWithContentDescription("More pinned tips").assertIsDisplayed()
         compose.onNodeWithContentDescription("Pinned 1").assertDoesNotExist()
         compose.onNodeWithContentDescription("Tips").assertIsDisplayed()
         compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
@@ -151,7 +178,7 @@ class BrushFavoritesDockTest {
         screen.setContent {
             MaterialTheme {
                 Box(Modifier.fillMaxSize()) {
-                    BrushFavoritesDock(tip, listOf(tip), false, {}, { selected++ }, {}, {}, {}, false, {}, {}, {}, "Adjust tip", true,
+                    BrushFavoritesDock(tip, listOf(tip), false, {}, { selected++ }, {}, {}, {}, {}, {}, {}, "Adjust tip", true,
                         Modifier.height(350.dp))
                 }
             }
@@ -213,7 +240,7 @@ class BrushFavoritesDockTest {
         assertEquals(listOf("custom-b", "ink-v1", "pencil-v1"), preferences.load())
         for (available in 120..1200) {
             val slots = brushFavoriteCapacity(available.toFloat())
-            if (slots > 0) assertTrue((slots + 4) * 48 + (slots + 3) * 2 + 8 <= available)
+            if (slots > 0) assertTrue((slots + 5) * 48 + (slots + 4) * 2 + 8 <= available)
         }
     }
 }

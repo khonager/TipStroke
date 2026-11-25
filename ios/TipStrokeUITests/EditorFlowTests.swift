@@ -31,6 +31,11 @@ final class EditorFlowTests: XCTestCase {
             slider.adjust(toNormalizedSliderPosition: 0.65)
             XCTAssertNotEqual(slider.value as? String, before)
         }
+        let special = app.buttons["Special tools"]
+        XCTAssertTrue(special.isHittable)
+        special.tap()
+        app.buttons["Pixel line"].tap()
+        XCTAssertEqual(special.value as? String, "Pixel line")
         app.buttons["Tips"].tap()
         func element(_ label: String) -> XCUIElement {
             app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", label, label)).firstMatch
@@ -52,7 +57,7 @@ final class EditorFlowTests: XCTestCase {
         // Smudge is the second cell in the first row, below the palette caption.
         let cellSize: CGFloat = 48
         let captionHeight: CGFloat = 24
-        let gridHeight = 4 * cellSize + captionHeight
+        let gridHeight = 3 * cellSize + captionHeight
         let smudge = origin.withOffset(CGVector(dx: anchor.midX - cellSize / 2 - app.frame.minX,
             dy: anchor.minY - gridHeight + captionHeight + cellSize / 2 - app.frame.minY))
         let toolCenter = tools.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))

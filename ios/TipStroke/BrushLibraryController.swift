@@ -4,6 +4,40 @@ import UniformTypeIdentifiers
 import ImageIO
 
 extension EditorController: AppleBrushLibraryActions {
+    func pinFolder(tips: [NativeBrush]) -> UIView {
+        let button = UIButton(type: .custom)
+        button.accessibilityLabel = "More pinned tips"
+        button.showsMenuAsPrimaryAction = true
+        button.backgroundColor = UIColor(white: 0.2, alpha: 1)
+        button.layer.cornerRadius = 7
+        func thumbnail(_ tip: NativeBrush) -> UIImage? {
+            (try? BrushSpecimen.image(tip, eraser: false)).flatMap { UIImage(data: $0) }?
+                .preparingThumbnail(of: CGSize(width: 48, height: 32))?.withRenderingMode(.alwaysOriginal)
+        }
+        for (index, tip) in tips.prefix(4).enumerated() {
+            let cell = UIImageView(frame: CGRect(x: 2 + (index % 2) * 20, y: 2 + (index / 2) * 20,
+                                                 width: 19, height: 19))
+            cell.contentMode = .scaleAspectFit
+            button.addSubview(cell)
+            DispatchQueue.global(qos: .userInitiated).async {
+                let image = thumbnail(tip)
+                DispatchQueue.main.async { cell.image = image }
+            }
+        }
+        let contents = UIDeferredMenuElement { [weak self] complete in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let images = tips.map(thumbnail)
+                DispatchQueue.main.async {
+                    complete(zip(tips, images).map { tip, image in
+                        UIAction(title: tip.name, image: image) { [weak self] _ in self?.pickedTip(id: tip.id, eraser: false) }
+                    })
+                }
+            }
+        }
+        button.menu = UIMenu(title: "Pinned tips", children: [contents])
+        return button
+    }
+
     func brushSources() {
         let menu = UIAlertController(title: "Brush sources", message: "Transparent images use their alpha. Opaque images use brightness: white paints, black is empty. Draw a source on a transparent layer, then capture it here.", preferredStyle: .actionSheet)
         for grain in [false, true] {

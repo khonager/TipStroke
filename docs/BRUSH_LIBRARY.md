@@ -191,7 +191,7 @@ the preview so the user can judge the appearance. Existing saved tip values are
 preserved. Full-canvas tablet benchmarks still show unacceptable latency for
 some tips; the creator does not certify them as fluid.
 
-The picker and pinned shortcuts show white swatches on charcoal. The eye samples the selected tip’s erase mask.
+The picker and pinned shortcuts show white pressure strokes on charcoal, rendered with the native brush engine. The stroke broadens in the middle and tapers at the ends. The selected name uses the accent color and favorites have a star.
 
 ### Custom categories and packs
 

@@ -84,11 +84,11 @@ class BrushStrokePreviewView @JvmOverloads constructor(
             val canvas = Canvas(bitmap)
             // A fixed document-space sample keeps grain, spacing, taper and speed independent
             // of display density and thumbnail size. Only the cached output bitmap is allocated.
-            val sampleWidth = if (thumbnail) 400 else width
+            val sampleWidth = if (thumbnail) (160f * width / height).coerceIn(160f, 400f).toInt() else width
             val sampleHeight = if (thumbnail) 160 else height
             if (thumbnail) {
-                val scale = minOf(width / 400f, height / 160f)
-                canvas.translate((width - 400f * scale) / 2f, (height - 160f * scale) / 2f)
+                val scale = minOf(width.toFloat() / sampleWidth, height.toFloat() / sampleHeight)
+                canvas.translate((width - sampleWidth * scale) / 2f, (height - sampleHeight * scale) / 2f)
                 canvas.scale(scale, scale)
             }
             if (erasing) drawEraserSample(canvas, sampleWidth, sampleHeight)
@@ -96,7 +96,7 @@ class BrushStrokePreviewView @JvmOverloads constructor(
         }
 
     private fun previewStroke(width: Int, height: Int): CompletedStroke {
-        val left = if (thumbnail) 40f else max(5f, width * .015f)
+        val left = if (thumbnail) width * .1f else max(5f, width * .015f)
         val right = width - left
         val centerY = height * .5f
         val segmentCount = max(96, width / 3)

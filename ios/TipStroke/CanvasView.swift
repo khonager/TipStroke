@@ -729,8 +729,7 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
         contentOffset = CGPoint(x: (contentSize.width - bounds.width) / 2,
                                 y: (contentSize.height - bounds.height) / 2)
     }
-    var onZoom: (() -> Void)?
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { layoutNavigationArea(); canvas.updateVisibleTiles(); onZoom?() }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { layoutNavigationArea(); canvas.updateVisibleTiles() }
     func scrollViewDidScroll(_ scrollView: UIScrollView) { canvas.updateVisibleTiles() }
     private func layoutNavigationArea() {
         page.center = CGPoint(x: contentSize.width / 2, y: contentSize.height / 2)
