@@ -1,5 +1,6 @@
 import UIKit
 import ImageIO
+import libwebp
 import UniformTypeIdentifiers
 
 // All methods execute on queue. Save publishes one atomic revision pointer only after every file exists.
@@ -217,13 +218,19 @@ final class ProjectStore {
     func delete(_ id: UUID) throws { try FileManager.default.removeItem(at: folder(id)) }
 
     func exportPNG(_ snapshot: DocumentSnapshot, transparent: Bool = false) throws -> URL {
+        try exportImage(snapshot, options: StillExport(transparent: transparent))
+    }
+    func exportImage(_ snapshot: DocumentSnapshot, options: StillExport) throws -> URL {
         let record = snapshot.record
-        let context = try RasterDocument.context(width: record.width, height: record.height)
+        let width = max(1, Int((CGFloat(record.width) * options.scale).rounded()))
+        let height = max(1, Int((CGFloat(record.height) * options.scale).rounded()))
+        let context = try RasterDocument.context(width: width, height: height)
+        context.scaleBy(x: CGFloat(width) / CGFloat(record.width), y: CGFloat(height) / CGFloat(record.height))
         let bounds = CGRect(x: 0, y: 0, width: record.width, height: record.height)
-        if !transparent { context.setFillColor(record.paperColor.cgColor); context.fill(bounds) }
+        if options.format == .jpeg { context.setFillColor(UIColor.white.cgColor); context.fill(bounds) }
+        if !options.transparent || options.format == .jpeg { context.setFillColor(record.paperColor.cgColor); context.fill(bounds) }
         if let track = snapshot.record.media { try MediaFrameReader(track: track).draw(time: track.positionUs, canvas: bounds, in: context) }
         try RasterDocument.composite(snapshot, in: context, visible: bounds, exportPhotoDetail: true)
-        guard let image = context.makeImage() else { throw DrawingError.message("Could not render the drawing.") }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("TipStrokeExports", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // Keep only recent exports, avoiding unlimited temporary disk growth.
@@ -231,8 +238,33 @@ final class ProjectStore {
             if let date = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
                date < Date().addingTimeInterval(-86400) { try? FileManager.default.removeItem(at: file) }
         }
-        let url = directory.appendingPathComponent("TipStroke-\(UUID().uuidString).png")
-        try Self.writePNG(image, to: url)
+        let folder = directory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let cleaned = options.name.components(separatedBy: CharacterSet(charactersIn: "/:\\").union(.controlCharacters)).joined(separator: "-").trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = cleaned.isEmpty || cleaned.allSatisfy({ $0 == "." }) ? "TipStroke" : String(cleaned.prefix(60))
+        let url = folder.appendingPathComponent(name).appendingPathExtension(options.format.rawValue)
+        if options.format == .webp {
+            let rgba = context.data!.assumingMemoryBound(to: UInt8.self)
+            for i in stride(from: 0, to: width * height * 4, by: 4) {
+                let a = Int(rgba[i + 3])
+                if a > 0 && a < 255 {
+                    for ch in i..<i+3 { rgba[ch] = UInt8(min(255, (Int(rgba[ch]) * 255 + a / 2) / a)) }
+                }
+            }
+            var encoded: UnsafeMutablePointer<UInt8>?
+            let length = WebPEncodeRGBA(rgba, Int32(width), Int32(height), Int32(width * 4), Float(options.quality * 100), &encoded)
+            guard length > 0, let encoded else { throw DrawingError.message("Could not encode WebP.") }
+            defer { WebPFree(encoded) }
+            try Data(bytesNoCopy: encoded, count: length, deallocator: .none).write(to: url)
+        } else {
+            guard let image = context.makeImage() else { throw DrawingError.message("Could not render the drawing.") }
+            if options.format == .png { try Self.writePNG(image, to: url) }
+            else {
+                guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { throw DrawingError.message("Could not create JPEG.") }
+                CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: options.quality] as CFDictionary)
+                guard CGImageDestinationFinalize(dest) else { throw DrawingError.message("Could not save JPEG.") }
+            }
+        }
         return url
     }
     static func writePNG(_ image: CGImage, to url: URL) throws {

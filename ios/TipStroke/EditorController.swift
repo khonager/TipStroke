@@ -72,7 +72,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let share = button("Share PNG", symbol: "square.and.arrow.up") { [weak self] in self?.export() }
         share.showsMenuAsPrimaryAction = true
         share.menu = UIMenu(children: [
-            UIAction(title: "Share PNG", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.export() },
+            UIAction(title: "Export image…", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.showImageExport() },
             UIAction(title: "Drawing progress", image: UIImage(systemName: "play.rectangle")) { [weak self] _ in
                 guard let self else { return }
                 self.finishCanvasInteraction()
@@ -648,11 +648,18 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private func close() {
         finishCanvasInteraction(); closeAfterSave = true; view.isUserInteractionEnabled = false; saveNow()
     }
-    private func export(transparent: Bool = false) {
+    private func showImageExport() {
+        finishCanvasInteraction()
+        let options = StillExportController(record: document.record)
+        options.onExport = { [weak self] in self?.export(options: $0) }
+        present(UINavigationController(rootViewController: options), animated: true)
+    }
+    private func export(transparent: Bool = false) { export(options: StillExport(transparent: transparent)) }
+    private func export(options: StillExport) {
         finishCanvasInteraction()
         let snapshot = document.snapshot()
         store.queue.async {
-            let result = Result { try self.store.exportPNG(snapshot, transparent: transparent) }
+            let result = Result { try self.store.exportImage(snapshot, options: options) }
             DispatchQueue.main.async {
                 switch result {
                 case .failure(let error): self.showError(error)

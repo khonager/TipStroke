@@ -4,6 +4,19 @@ import ImageIO
 @testable import TipStroke
 
 final class RasterDocumentTests: XCTestCase {
+    func testStillExportCodecsAndScale() throws {
+        let doc = RasterDocument(name: "Export", width: 64, height: 32)
+        for format in StillExport.Format.allCases {
+            let url = try ProjectStore.shared.exportImage(doc.snapshot(),
+                options: StillExport(format: format, scale: 0.5, quality: 0.75, transparent: true, name: "Page"))
+            defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+            let image = try XCTUnwrap(UIImage(contentsOfFile: url.path)?.cgImage)
+            XCTAssertEqual(image.width, 32)
+            XCTAssertEqual(image.height, 16)
+            XCTAssertEqual(url.lastPathComponent, "Page." + format.rawValue)
+        }
+    }
+
     func testResizeMovesSparsePixelsAcrossTileBoundaryAndUndoes() throws {
         let doc = RasterDocument(name: "Crop", width: 512, height: 64)
         XCTAssertTrue(doc.beginStroke())
