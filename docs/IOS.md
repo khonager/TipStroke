@@ -5,6 +5,9 @@ TipStroke has a native iOS/iPadOS 16+ target in `ios/TipStroke.xcodeproj`, with 
 and sparse raster painting. Xcode builds and links `TipStrokeShared.framework`
 from `:shared-ui`, exporting `:core`. There is no account or network service.
 
+UIKit connects a single window scene on launch. Its delegate opens the gallery,
+and the editor saves the current drawing when that scene deactivates.
+
 ## Shared implementation
 
 - The Compose color picker, saved palette shelf, precision sliders and blend-mode

@@ -61,7 +61,9 @@ private final class PhotoMotionView: UIView {
         cancel.configuration = .tinted(); cancel.translatesAutoresizingMaskIntoConstraints = false; addSubview(cancel)
         NSLayoutConstraint.activate([cancel.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 6),
             cancel.centerXAnchor.constraint(equalTo: safeAreaLayoutGuide.centerXAnchor)])
-        NotificationCenter.default.addObserver(self, selector: #selector(close), name: UIApplication.willResignActiveNotification, object: nil)
+        if let scene = editor.view.window?.windowScene {
+            NotificationCenter.default.addObserver(self, selector: #selector(close), name: UIScene.willDeactivateNotification, object: scene)
+        }
     }
     required init?(coder: NSCoder) { fatalError("Use init(editor:photo:end:realTime:)") }
     deinit { NotificationCenter.default.removeObserver(self) }

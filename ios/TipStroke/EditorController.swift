@@ -250,7 +250,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.onError = { [weak self] error in self?.showError(error) }
         configureFingerGestures()
         let pencil = UIPencilInteraction(); pencil.delegate = self; viewport.addInteraction(pencil)
-        NotificationCenter.default.addObserver(self, selector: #selector(backgrounded), name: UIApplication.willResignActiveNotification, object: nil)
         ProjectStore.shared.queue.async {
             let url = ProjectStore.shared.root.appendingPathComponent("brush-library.json")
             if let data = try? String(contentsOf: url, encoding: .utf8) {
@@ -295,6 +294,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
         navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+    }
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        let center = NotificationCenter.default
+        center.removeObserver(self, name: UIScene.willDeactivateNotification, object: nil)
+        if let scene = view.window?.windowScene {
+            center.addObserver(self, selector: #selector(backgrounded), name: UIScene.willDeactivateNotification, object: scene)
+        }
     }
     func finishCanvasInteraction() {
         viewport.canvas.stopLiveDrawing()
