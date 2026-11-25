@@ -14,13 +14,17 @@ enum BrushSpecimen {
         }
         let graphite = GraphiteRenderer()
         let roundStroke = StrokeCoverage()
-        let size = min(40, max(2, 4.5 * log2(CGFloat(brush.size))))
+        let stamp = brush.preset.stamp
+        let spread = CGFloat(1 + (stamp?.tiltSize ?? brush.sweepTilt)) * CGFloat(1 + (stamp?.scatter ?? 0))
+        let radiusFactor = max(1, spread, CGFloat(brush.pencilPointSize * (1 + 9 * brush.pencilShadeSize)) * 0.1)
+        let size = min(40 / radiusFactor, max(2, 4.5 * log2(CGFloat(brush.size))))
+        let inset = max(10, 2 + size * radiusFactor)
         let path = brush.path(size: Float(size), opacity: brush.opacity)
         var stamps: [BrushStamp] = []
         var previous: CGPoint?
         for index in 0...28 {
             let t = CGFloat(index) / 28
-            var point = CGPoint(x: 10 + 92 * t, y: 24 - 9 * sin(2 * .pi * t))
+            var point = CGPoint(x: inset + (112 - 2 * inset) * t, y: 24 - 9 * sin(2 * .pi * t))
             let speed = 1 - CGFloat(brush.speedTaper) * (0.15 + 0.65 * t)
             if let previous {
                 let response = 1 - CGFloat(brush.stabilization) * 0.85

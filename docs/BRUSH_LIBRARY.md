@@ -117,8 +117,9 @@ screen density. Each view caches only its output-sized bitmap and invalidates it
 when its preset, color, opacity, rendering mode, or dimensions change.
 
 Slider endpoints are pure copies of the current definition at that control's
-minimum/maximum. They never modify the draft. The size slider uses the actual size;
-other thumbnails use a common display size to make texture and dynamics legible.
+minimum/maximum. They never modify the draft. The size slider uses the actual size. Other thumbnails use a common display size
+to make texture and dynamics legible. Toolbar and picker thumbnails leave room
+for the tip footprint at both ends, including in the pinned folder.
 A shared blue sample makes hue/saturation changes visible. Equal-looking endpoints
 are possible: rotation of a round shape or grain controls with grain disabled do
 not change the result. Hover, hold, or tap an endpoint to read its value. The native

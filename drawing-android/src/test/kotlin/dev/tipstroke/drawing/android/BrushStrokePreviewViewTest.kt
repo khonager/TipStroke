@@ -39,6 +39,19 @@ class BrushStrokePreviewViewTest {
         assertTrue(alphaValues.any { it in 1..64 })
     }
 
+    @Test fun folderThumbnailFitsWideStampAtBothEnds() {
+        val tip = BrushPreset.Blank.copy(pressureToSize = PressureCurve(1f, 1f, 1f))
+        val view = BrushStrokePreviewView(RuntimeEnvironment.getApplication()).apply {
+            setPreview(tip, false, 1f, RgbaColor(1f, 1f, 1f), thumbnail = true)
+            layout(0, 0, 20, 20)
+        }
+        val bitmap = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
+        fun painted(x: Int) = (0 until bitmap.height).any { Color.alpha(bitmap.getPixel(x, it)) > 0 }
+        assertTrue(painted(10))
+        assertTrue(!painted(0) && !painted(19))
+    }
+
     @Test fun creatorPreviewUsesActualPresetSize() {
         val brush = BrushPreset.Pencil.copy(pencilShadeSize = 0f, pencilGrain = 0f)
         val small = render(brush.copy(baseSizePx = 4f), usePresetSize = true)

@@ -86,13 +86,22 @@ class BrushStrokePreviewView @JvmOverloads constructor(
             // of display density and thumbnail size. Only the cached output bitmap is allocated.
             val sampleWidth = if (thumbnail) (160f * width / height).coerceIn(160f, 400f).toInt() else width
             val sampleHeight = if (thumbnail) 160 else height
-            if (thumbnail) {
+            val stroke = previewStroke(sampleWidth, sampleHeight)
+            if (thumbnail && !usePresetSize) {
+                val bounds = stroke.bounds
+                val frame = RectF(0f, 0f, sampleWidth.toFloat(), sampleHeight.toFloat())
+                frame.union(bounds.left, bounds.top, bounds.right, bounds.bottom)
+                val scale = minOf(width / frame.width(), height / frame.height()) * .94f
+                canvas.translate(width / 2f, height / 2f)
+                canvas.scale(scale, scale)
+                canvas.translate(-frame.centerX(), -frame.centerY())
+            } else if (thumbnail) {
                 val scale = minOf(width.toFloat() / sampleWidth, height.toFloat() / sampleHeight)
                 canvas.translate((width - sampleWidth * scale) / 2f, (height - sampleHeight * scale) / 2f)
                 canvas.scale(scale, scale)
             }
             if (erasing) drawEraserSample(canvas, sampleWidth, sampleHeight)
-            StrokeCanvasPainter.draw(canvas, previewStroke(sampleWidth, sampleHeight))
+            StrokeCanvasPainter.draw(canvas, stroke)
         }
 
     private fun previewStroke(width: Int, height: Int): CompletedStroke {
