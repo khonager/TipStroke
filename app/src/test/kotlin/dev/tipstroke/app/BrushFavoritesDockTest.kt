@@ -109,11 +109,12 @@ class BrushFavoritesDockTest {
     @Test fun pinFolderSelectsOnReleaseAndSpecialToolsStayReachable() {
         val tips = MangaTips.presets.take(5)
         var chosen: BrushPreset? = null
+        val showPixelTips = androidx.compose.runtime.mutableStateOf(false)
         var pixelTool: dev.tipstroke.core.drawing.PixelTool? = null
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             Box(Modifier.fillMaxSize()) {
                 BrushFavoritesDock(tips.first(), tips, false, {}, { chosen = it }, {}, {}, {}, { pixelTool = it }, {}, {},
-                    "Adjust tip", true, Modifier.height(320.dp))
+                    "Adjust tip", true, Modifier.height(320.dp), showPixelTips = showPixelTips.value)
             }
         }
         val folder = compose.onNodeWithContentDescription("More pinned tips")
@@ -126,11 +127,28 @@ class BrushFavoritesDockTest {
         compose.runOnIdle { assertNull(chosen) }
         folder.performTouchInput { up() }
         compose.runOnIdle { assertEquals(tips.last(), chosen) }
-        compose.onNodeWithContentDescription("Special tools").performClick()
+        compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
+        compose.runOnIdle { showPixelTips.value = true }
+        compose.onNodeWithContentDescription("Pixel tips").performClick()
         compose.onNodeWithContentDescription("Pixel pencil").assertIsDisplayed()
         compose.onNodeWithContentDescription("Dither").assertIsDisplayed()
         compose.onNodeWithContentDescription("Pixel line").performClick()
-        compose.runOnIdle { assertEquals(dev.tipstroke.core.drawing.PixelTool.LINE, pixelTool) }
+        compose.runOnIdle { assertEquals(dev.tipstroke.core.drawing.PixelTool.LINE, pixelTool); showPixelTips.value = false }
+        compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
+    }
+
+    @Test fun pixelTipCanBeChosenAtFitZoomAndStaysSelectedInPicker() {
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { CanvasScreen() }
+        }
+        compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithText("All").performClick()
+        compose.onNodeWithText("Search tips").performTextInput("Pixel line")
+        compose.onNodeWithTag("Choose Pixel line").performClick()
+        compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithTag("Choose Pixel line").assertIsSelected()
     }
 
     @Test fun pickerRemembersGroupAfterPickingAndLeavesDockInOrder() {

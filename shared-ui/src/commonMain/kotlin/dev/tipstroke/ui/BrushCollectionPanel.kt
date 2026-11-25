@@ -23,7 +23,7 @@ fun BrushCollectionPanel(brushes: List<LibraryBrush>, current: BrushPreset, onSe
     var group by remember { mutableStateOf<String?>(null) }
     var organize by remember { mutableStateOf(false) }
     var newGroup by remember { mutableStateOf("") }
-    val presets = BrushPreset.libraryBuiltIns + brushes.map { it.preset }
+    val presets = BrushPreset.libraryBuiltIns + dev.tipstroke.core.drawing.PixelTool.presets + brushes.map { it.preset }
     val visible = when {
         favoritesOnly -> pins.mapNotNull { id -> presets.find { it.id.value == id } }
         group != null -> presets.filter { it.id.value in groups[group].orEmpty() }

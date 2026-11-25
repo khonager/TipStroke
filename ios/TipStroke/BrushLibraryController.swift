@@ -5,8 +5,11 @@ import ImageIO
 
 extension EditorController: AppleBrushLibraryActions {
     func pinFolder(tips: [NativeBrush]) -> UIView {
+        tipFolder(tips: tips, label: "More pinned tips", title: "Pinned tips")
+    }
+    func tipFolder(tips: [NativeBrush], label: String, title: String) -> UIView {
         let button = UIButton(type: .custom)
-        button.accessibilityLabel = "More pinned tips"
+        button.accessibilityLabel = label
         button.showsMenuAsPrimaryAction = true
         button.backgroundColor = UIColor(white: 0.2, alpha: 1)
         button.layer.cornerRadius = 7
@@ -34,7 +37,7 @@ extension EditorController: AppleBrushLibraryActions {
                 }
             }
         }
-        button.menu = UIMenu(title: "Pinned tips", children: [contents])
+        button.menu = UIMenu(title: title, children: [contents])
         return button
     }
 
@@ -112,7 +115,7 @@ extension EditorController: AppleBrushLibraryActions {
         let bounds = view.window?.screen.bounds ?? view.bounds
         let shelfWidth = min(480, min(bounds.width, bounds.height) - 12) - 16
         let controller = sharedControls.pickerController(callbacks: self, eraser: eraser,
-            pinLimit: Int32(max(1, Int(shelfWidth / 44))))
+            pinLimit: Int32(max(1, Int(shelfWidth / 44))), activePixelId: viewport.canvas.mode.pixelTip?.tipId)
         controller.modalPresentationStyle = .pageSheet
         controller.sheetPresentationController?.detents = [.medium(), .large()]
         present(controller, animated: true)
@@ -120,6 +123,7 @@ extension EditorController: AppleBrushLibraryActions {
     func pickedTip(id: String, eraser: Bool) {
         finishCanvasInteraction()
         if eraser { viewport.canvas.tool = .eraser; activateEraserBrush() }
+        else if let mode = CanvasMode.allCases.first(where: { $0.pixelTip?.tipId == id }) { activateMode(mode) }
         else {
             viewport.canvas.tool = .ink
             sharedControls.selectBrush(id: id)

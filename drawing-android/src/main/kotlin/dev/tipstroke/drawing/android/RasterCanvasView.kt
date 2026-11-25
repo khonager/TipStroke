@@ -83,7 +83,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     var pixelToolActive = false
         set(value) { if (field != value) { field = value; invalidate() } }
     private val pixelArtCanvas get() =
-        pixelToolActive || (layerStack.canvasWidth <= 128 && layerStack.canvasHeight <= 128) || transform.scale >= 8f
+        pixelToolActive || (layerStack.canvasWidth <= 128 && layerStack.canvasHeight <= 128) || transform.scale >= dev.tipstroke.core.drawing.PixelTool.SHORTCUT_ZOOM
     var transformChangedListener: ((CanvasTransform) -> Unit)? = null
 
     internal data class FillFeedback(val x: Float, val y: Float, val color: Int, val startedAt: Long)

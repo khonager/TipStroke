@@ -52,6 +52,22 @@ class BrushStrokePreviewViewTest {
         assertTrue(!painted(0) && !painted(19))
     }
 
+    @Test fun pixelThumbnailsHaveDistinctHardEdgedStrokes() {
+        val images = dev.tipstroke.core.drawing.PixelTool.entries.map { tool ->
+            val view = BrushStrokePreviewView(RuntimeEnvironment.getApplication()).apply {
+                setPreview(tool.preset, false, 1f, RgbaColor(1f, 1f, 1f), thumbnail = true)
+                layout(0, 0, 96, 48)
+            }
+            Bitmap.createBitmap(96, 48, Bitmap.Config.ARGB_8888).also { bitmap ->
+                view.draw(Canvas(bitmap))
+                val pixels = IntArray(96 * 48)
+                bitmap.getPixels(pixels, 0, 96, 0, 0, 96, 48)
+                assertTrue(pixels.map(Color::alpha).toSet() == setOf(0, 255))
+            }
+        }
+        assertTrue(!images[0].sameAs(images[1]) && !images[0].sameAs(images[2]) && !images[1].sameAs(images[2]))
+    }
+
     @Test fun creatorPreviewUsesActualPresetSize() {
         val brush = BrushPreset.Pencil.copy(pencilShadeSize = 0f, pencilGrain = 0f)
         val small = render(brush.copy(baseSizePx = 4f), usePresetSize = true)

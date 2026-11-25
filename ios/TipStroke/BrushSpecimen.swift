@@ -5,7 +5,8 @@ import TipStrokeShared
 enum BrushSpecimen {
     static func image(_ source: NativeBrush, eraser: Bool) throws -> Data? {
         let brush = eraser ? source.asEraser() : source
-        let document = RasterDocument(name: "", width: 112, height: 48)
+        let pixel = PixelTool.companion.fromTipId(id: brush.id)
+        let document = RasterDocument(name: "", width: pixel == nil ? 112 : 28, height: pixel == nil ? 48 : 12)
         document.record.backgroundARGB = 0xff303238
         guard document.beginStroke() else { return nil }
         if eraser {
@@ -25,6 +26,13 @@ enum BrushSpecimen {
         for index in 0...28 {
             let t = CGFloat(index) / 28
             var point = CGPoint(x: inset + (112 - 2 * inset) * t, y: 24 - 9 * sin(2 * .pi * t))
+            if let pixel {
+                point = CGPoint(x: 2 + 23 * t, y: pixel == .line ? 3 + 5 * t : 5 - 2.5 * sin(2 * .pi * t))
+                try document.paintPixelLine(from: previous ?? point, to: point, size: pixel == .dither ? 3 : 1,
+                                            color: .white, dither: pixel == .dither)
+                previous = point
+                continue
+            }
             let speed = 1 - CGFloat(brush.speedTaper) * (0.15 + 0.65 * t)
             if let previous {
                 let response = 1 - CGFloat(brush.stabilization) * 0.85
@@ -55,6 +63,10 @@ enum BrushSpecimen {
         }
         document.endStroke(cancelled: false)
         let context = try RasterDocument.context(width: 112, height: 48)
+        if pixel != nil {
+            context.interpolationQuality = .none
+            context.scaleBy(x: 4, y: 4)
+        }
         context.setFillColor(document.record.paperColor.cgColor)
         context.fill(document.bounds)
         try RasterDocument.composite(document.snapshot(), in: context, visible: document.bounds)

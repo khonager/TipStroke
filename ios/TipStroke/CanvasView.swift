@@ -650,6 +650,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
 }
 
 final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
+    var onZoom: ((CGFloat) -> Void)?
     private let page = UIView()
     private var angle: CGFloat = 0
     private var turn: UIRotationGestureRecognizer!
@@ -729,7 +730,11 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
         contentOffset = CGPoint(x: (contentSize.width - bounds.width) / 2,
                                 y: (contentSize.height - bounds.height) / 2)
     }
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { layoutNavigationArea(); canvas.updateVisibleTiles() }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        layoutNavigationArea()
+        canvas.updateVisibleTiles()
+        onZoom?(zoomScale)
+    }
     func scrollViewDidScroll(_ scrollView: UIScrollView) { canvas.updateVisibleTiles() }
     private func layoutNavigationArea() {
         page.center = CGPoint(x: contentSize.width / 2, y: contentSize.height / 2)

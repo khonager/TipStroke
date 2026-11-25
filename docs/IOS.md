@@ -245,6 +245,6 @@ Resize canvas opens an eight-handle crop and extension preview. Apply translates
 
 Layers show artwork thumbnails. Swipe right to change multi-selection, drag onto a thumbnail to join its group, or drop beside a name to reorder above or below its group.
 
-The Special tools button opens Pixel pencil, Pixel line and Dither at any zoom or canvas size. Small sheets open with the 1 px Pixel tool. Eraser follows the selected grid tool.
+Pixel pencil, Pixel line and Dither appear in the tip picker and library at any zoom. The Pixel tips folder appears in the dock at 8× zoom and hides below it. Small sheets open with the 1 px Pixel tool. Eraser follows the selected grid tool.
 
 Export image supports PNG, JPEG and WebP with a file name and 100%, 50% or 25% scale. JPEG and WebP offer quality controls; PNG and WebP can omit the paper. WebP encoding uses the bundled libwebp library.

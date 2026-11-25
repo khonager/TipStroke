@@ -32,13 +32,13 @@ fun PinnedTipCells(
         extent = extent, reopen = 0, description = "More pinned tips", stateLabel = "Pinned tips",
         menuTitle = "Pinned tips", showLabels = true, selected = false,
         onChoose = { onPick(overflow[it]) },
-        anchorIcon = { PinFolderFace(overflow, extent) },
+        anchorIcon = { TipFolderFace(overflow, extent) },
         toolIcon = { TipSwatch(overflow[it], Modifier.size(48.dp, 26.dp)) },
     )
 }
 
 @Composable
-internal fun PinFolderFace(overflow: List<BrushPreset>, extent: Dp) {
+fun TipFolderFace(overflow: List<BrushPreset>, extent: Dp) {
     Column(Modifier.size(extent).padding(3.dp)
         .background(Color(0xff36383c), MaterialTheme.shapes.small).padding(2.dp)) {
         repeat(2) { row ->

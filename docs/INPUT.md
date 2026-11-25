@@ -19,7 +19,7 @@
 - A completed lasso owns a copy of its sampled points, so clearing the temporary gesture buffer cannot invalidate later hit testing or movement. Moving a large selection visits only tiles that contain selected pixels and their destination tiles.
 - Animation recording starts from the compact timeline. Image motion uses the existing finger drag/pinch/twist transform route and captures transform samples through finger-up; it requires at least two frames and offers Fit Range or Real Time timing. Record drawing live starts playback at the selected frame, advances at the chosen FPS, and adds frames as needed. Recorded drawing carries forward into each new frame, and each stroke progressively appears according to its sampled time. The native pen/touch route stays active for as many strokes as the artist draws. Stop recording keeps all captured frames and cels. Selecting another frame or pausing playback also ends the session.
 - Canvas navigation supports up to 256× view scale so 16 px pixel-art canvases can fit the screen and still zoom further without a jump when pinching or using a wheel.
-- The dedicated Special tools button opens Pixel pencil, Pixel line, and Dither at every canvas size and zoom. Small canvases open with the 1 px Pixel tool. Picking a regular tip returns to painting. Pixel tool size can be adjusted from 1 to 32 px. Line previews a straight line from the first contact to the current contact, and Shade uses an anchored checkerboard dither. Eraser uses the same integer grid when a pixel tool is active.
+- Pixel pencil, Pixel line, and Dither appear in the drawing tip list at every zoom. Their previews show the integer-cell stroke. At 8× zoom and above, the dock also shows a Pixel tips shortcut. Zooming back out hides the shortcut and keeps the selected tip. Small canvases open with the 1 px Pixel pencil. Pixel tips support sizes from 1 to 32 px. Pixel line connects the first contact to the current contact, and Dither paints an anchored checkerboard. Eraser uses the same integer grid when a pixel tip is active.
 - Primary mouse drag paints through the same native stroke pipeline at full pressure. Secondary or middle drag pans the canvas. Wheel or two-finger trackpad scroll pans; holding Ctrl/Meta zooms around the pointer, and Shift converts a vertical wheel to horizontal pan.
 - The Android Emulator presents an ordinary host click as a touchscreen contact. On emulator builds, a single such contact is treated as a full-pressure mouse stroke; adding a second simulated contact cancels the provisional stroke and switches to normal multi-touch navigation.
 - Pen tablets use full pressure, tilt, orientation, eraser, and side-button data whenever Android reports `TOOL_TYPE_STYLUS`/`TOOL_TYPE_ERASER`. A host or emulator that reduces the tablet to mouse events can still draw, but only at full pressure.
@@ -603,7 +603,7 @@ Drawing tools → Colorize mask can reopen hints, set magenta transparent seeds,
 shared bounded region propagation, and apply with a single compound undo entry.
 It supports still drawings, gap 0–4 and ink threshold 0.02–1. Generation runs off
 the input thread and uses at most a 1024×1024 analysis grid.
-iOS tools are grouped into Paint tools, Pixel tools, Shapes and Select an area.
+iOS tools are grouped into Paint tools, Shapes and Select an area.
 Shadow pull and point placement show a temporary cancellable prompt. Perspective
 settings also accept document-coordinate vanishing points outside the canvas.
 

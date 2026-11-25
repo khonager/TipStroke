@@ -5,12 +5,28 @@ import dev.tipstroke.core.geometry.Rect
 import dev.tipstroke.core.geometry.SelectionRegion
 import dev.tipstroke.core.geometry.TileCoordinate
 import dev.tipstroke.core.model.BlendBehavior
+import dev.tipstroke.core.model.BrushId
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.core.model.BrushEngine
 import dev.tipstroke.core.model.RgbaColor
 
 enum class PointerKind { STYLUS, ERASER_STYLUS, FINGER, MOUSE, UNKNOWN }
-enum class PixelTool { PENCIL, LINE, DITHER }
+enum class PixelTool(val tipId: String, val displayName: String) {
+    PENCIL("pixel-pencil-v1", "Pixel pencil"),
+    LINE("pixel-line-v1", "Pixel line"),
+    DITHER("pixel-dither-v1", "Dither");
+
+    val preset by lazy {
+        BrushPreset.Ink.copy(id = BrushId(tipId), displayName = displayName, baseSizePx = 1f)
+    }
+
+    companion object {
+        const val SHORTCUT_ZOOM = 8f
+        fun showsShortcut(zoom: Float) = zoom >= SHORTCUT_ZOOM
+        val presets by lazy { entries.map { it.preset } }
+        fun fromTipId(id: String) = entries.firstOrNull { it.tipId == id }
+    }
+}
 data class StrokeSample(
     val pointerId: Int,
     val position: Point,

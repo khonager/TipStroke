@@ -32,6 +32,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
+import dev.tipstroke.core.drawing.PixelTool
 import dev.tipstroke.core.editor.NativeBrush
 import dev.tipstroke.core.brush.BrushCategory
 import dev.tipstroke.core.brush.BrushCategoriesData
@@ -231,12 +232,17 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                             TextButton(onClick = click, enabled = enabled) { Text(label) }
                         }
                     } else {
-                        BrushGroupMembers(group, BrushPreset.libraryBuiltIns + library.map { it.preset }, { updated ->
+                        BrushGroupMembers(group, BrushPreset.libraryBuiltIns + PixelTool.presets + library.map { it.preset }, { updated ->
                             saveGroups(groups.map { if (it.id == updated.id) updated else it })
                         }) { editing = null }
                     }
                 }
-                else BrushCollectionPanel(library, brush, ::selectPreset,
+                else BrushCollectionPanel(library, brush, { preset ->
+                    if (PixelTool.fromTipId(preset.id.value) != null) {
+                        callbacks.pickedTip(preset.id.value, false)
+                        callbacks.closePicker()
+                    } else selectPreset(preset)
+                },
                     onSave = { preset, name ->
                         if (library.size >= 200) return@BrushCollectionPanel
                         val saved = preset.copy(id = BrushId("custom-${Uuid.random()}"), displayName = name)
@@ -263,12 +269,12 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             }
         }
     }
-    fun pickerController(callbacks: AppleBrushLibraryActions, eraser: Boolean, pinLimit: Int): UIViewController = ComposeUIViewController {
-        val tips = BrushPreset.libraryBuiltIns + library.map { it.preset }
+    fun pickerController(callbacks: AppleBrushLibraryActions, eraser: Boolean, pinLimit: Int, activePixelId: String?): UIViewController = ComposeUIViewController {
+        val tips = BrushPreset.libraryBuiltIns + (if (eraser) emptyList() else PixelTool.presets) + library.map { it.preset }
         BrushTheme(eraser) {
             Surface(Modifier.fillMaxSize()) {
                 TipPicker(if (eraser) eraserPosition else drawingPosition, eraser,
-                    if (eraser) defaults.stringForKey("tip.eraser") ?: BrushPreset.Ink.id.value else brush.id.value,
+                    if (eraser) defaults.stringForKey("tip.eraser") ?: BrushPreset.Ink.id.value else activePixelId ?: brush.id.value,
                     tips, pins, dockPins, pinLimit, groups,
                     { pins = it; defaults.setObject(it, forKey = "tip.pins") },
                     { dockPins = it; defaults.setObject(it, forKey = "tip.dockPins") }, ::saveGroups,
@@ -287,7 +293,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
-        val byId = (BrushPreset.libraryBuiltIns + library.map { it.preset }).associateBy { it.id.value }
+        val byId = (BrushPreset.libraryBuiltIns + PixelTool.presets + library.map { it.preset }).associateBy { it.id.value }
         BrushTheme {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val slots = (maxWidth / 44.dp).toInt().coerceAtLeast(1)

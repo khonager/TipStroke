@@ -541,8 +541,9 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         rasterView.transformChangedListener = { transform ->
             videoView?.updateTransform(rasterView.transformMatrix, canvasWidthPx, canvasHeightPx)
             val percent = (transform.scale * 100f).roundToInt()
+            val crossedPixelThreshold = PixelTool.showsShortcut(lastDiagnostics.zoom) != PixelTool.showsShortcut(transform.scale)
             lastDiagnostics = lastDiagnostics.copy(zoom = transform.scale)
-            if (percent != publishedZoomPercent) {
+            if (percent != publishedZoomPercent || crossedPixelThreshold) {
                 publishedZoomPercent = percent
                 diagnosticsListener?.invoke(lastDiagnostics)
             }

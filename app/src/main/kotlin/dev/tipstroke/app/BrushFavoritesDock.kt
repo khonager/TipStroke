@@ -3,7 +3,6 @@ package dev.tipstroke.app
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ShowChart
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -33,6 +32,7 @@ internal fun BrushFavoritesDock(
     onPixelTool: (PixelTool) -> Unit,
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String? = null,
+    showPixelTips: Boolean = false,
     onReselect: () -> Unit = {}, onTransform: () -> Unit = {}, onFitCanvas: () -> Unit = {},
     onAdjustments: () -> Unit = {}, onColorizeMask: () -> Unit = {},
     onLassoFill: () -> Unit = {}, onColorPush: () -> Unit = {},
@@ -51,9 +51,10 @@ internal fun BrushFavoritesDock(
         BoxWithConstraints(Modifier.padding(4.dp), contentAlignment = Alignment.Center) {
             val available = if (horizontal) maxWidth.value + 8f else maxHeight.value + 8f
 
-            val minimumCells = BRUSH_DOCK_FIXED_CELLS + if (favorites.isEmpty()) 0 else 1
+            val fixedCells = brushDockFixedCells(showPixelTips)
+            val minimumCells = fixedCells + if (favorites.isEmpty()) 0 else 1
             val slot = minOf(48f, ((available - 8f - (minimumCells - 1) * 2f) / minimumCells).coerceAtLeast(1f))
-            val capacity = brushFavoriteCapacity(available, slot).coerceAtLeast(1)
+            val capacity = brushFavoriteCapacity(available, slot, fixedCells = fixedCells).coerceAtLeast(1)
             val visibleFavorites = favorites.distinctBy { it.id }
             val favoriteSelected = visibleFavorites.any { it.id == selected.id }
             val buttons: @Composable () -> Unit = {
@@ -91,20 +92,18 @@ internal fun BrushFavoritesDock(
                             { index -> aidsOpen = false; onVanishingPoint(index) })
                     }
                 }
-                val specialTools = listOf(
-                    DockTool("Pixel pencil", Icons.Outlined.Edit) { onPixelTool(PixelTool.PENCIL) },
-                    DockTool("Pixel line", Icons.AutoMirrored.Outlined.ShowChart) { onPixelTool(PixelTool.LINE) },
-                    DockTool("Dither", Icons.Outlined.Grain) { onPixelTool(PixelTool.DITHER) },
-                )
-                val special = specialTools.find { !brushActive && it.label == toolLabel }
-                HoldToolPicker(
-                    labels = specialTools.map { it.label }, horizontal = horizontal, holdEnabled = true,
-                    extent = slot.dp, reopen = 0, description = "Special tools", menuTitle = "Pixel tools",
-                    stateLabel = special?.label ?: "Pixel tools", selected = special != null,
-                    onChoose = { specialTools[it].action() },
-                    anchorIcon = { Icon(special?.icon ?: Icons.Outlined.GridOn, null) },
-                    toolIcon = { Icon(specialTools[it].icon, null) },
-                )
+                if (showPixelTips) {
+                    val entries = PixelTool.entries
+                    val active = entries.find { it.displayName == toolLabel }
+                    HoldToolPicker(
+                        labels = entries.map { it.displayName }, horizontal = horizontal, holdEnabled = true,
+                        extent = slot.dp, reopen = 0, description = "Pixel tips", stateLabel = active?.displayName ?: "Pixel tips",
+                        showLabels = true, selected = active != null,
+                        onChoose = { onPixelTool(entries[it]) },
+                        anchorIcon = { dev.tipstroke.ui.TipFolderFace(PixelTool.presets, slot.dp) },
+                        toolIcon = { dev.tipstroke.ui.TipSwatch(entries[it].preset, Modifier.size(48.dp, 26.dp)) },
+                    )
+                }
                 val movingTools = listOf(
                     DockTool("Select", Icons.Outlined.SelectAll, onSelect),
                     DockTool("Transform", Icons.Outlined.Transform, onTransform),

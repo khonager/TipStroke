@@ -40,6 +40,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.tipstroke.core.model.*
+import dev.tipstroke.core.drawing.PixelTool
 import dev.tipstroke.drawing.android.BrushStrokePreviewView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -112,8 +113,11 @@ internal fun BrushLibraryDialog(
                 val result = withContext(Dispatchers.IO) { runCatching {
                     val pack = BrushPack.read(requireNotNull(context.contentResolver.openInputStream(uri)))
                     require(pack.name == null || categories.size < 64) { "Remove a category before importing another pack." }
-                    val imported = pack.brushes.map { BrushLibrary.copyOf(it) }
-                    val next = brushes + imported
+                    val imported = pack.brushes.map { item ->
+                        val pixel = PixelTool.fromTipId(item.preset.id.value)
+                        if (pixel == null) BrushLibrary.copyOf(item) else LibraryBrush(pixel.preset)
+                    }
+                    val next = brushes + imported.filter { PixelTool.fromTipId(it.preset.id.value) == null }
                     library.save(next)
                     Pair(next, pack.name?.let { BrushCategory(name = it, brushIds = imported.map { brush -> brush.preset.id.value }) })
                 } }
@@ -172,7 +176,7 @@ internal fun BrushLibraryDialog(
                     })
                     TipAction("Back to canvas", Icons.Outlined.Close, enabled = !busy, onClick = onDismiss)
                 }
-                val all = (BrushPreset.libraryBuiltIns.map { LibraryBrush(it, "TipStroke") } + brushes)
+                val all = ((BrushPreset.libraryBuiltIns + PixelTool.presets).map { LibraryBrush(it, "TipStroke") } + brushes)
                     .sortedBy { libraryOrder.indexOf(it.preset.id.value).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
                 val shown = (when (section) {
                     "My tips" -> all.filter { entry -> brushes.any { it.preset.id == entry.preset.id } }
@@ -279,7 +283,8 @@ internal fun BrushLibraryDialog(
                     }
                     if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Text(if (query.isBlank()) "Your tips will appear here. Create a new shape-and-grain tip or import a shared file." else "No matching tips.") }
                     items(shown, key = { it.preset.id.value }) { item ->
-                        val featured = item.preset.id in BrushPreset.libraryBuiltIns.map { it.id }
+                        val pixel = PixelTool.fromTipId(item.preset.id.value) != null
+                        val featured = pixel || item.preset.id in BrushPreset.libraryBuiltIns.map { it.id }
                         val favorite = item.preset.id.value in favoriteIds
                         val usable = item.preset.ink == null || android.os.Build.VERSION.SDK_INT >= 34
                         OutlinedCard(Modifier.fillMaxWidth().animateItem()
@@ -308,13 +313,13 @@ internal fun BrushLibraryDialog(
                                     .clickable(enabled = !busy && usable, onClickLabel = "Use tip") { onUse(item.preset); onDismiss() }
                                     .semantics { contentDescription = "Select ${item.preset.displayName}" })
                                 FlowRow {
-                                    TipAction(if (featured) "Customize" else "Edit", Icons.Outlined.Edit, enabled = ready && !busy, onClick = { editing = if (featured) BrushLibrary.copyOf(item) else item })
+                                    if (!pixel) TipAction(if (featured) "Customize" else "Edit", Icons.Outlined.Edit, enabled = ready && !busy, onClick = { editing = if (featured) BrushLibrary.copyOf(item) else item })
                                     TipAction("Categories", Icons.Outlined.Folder, enabled = !busy, onClick = { categorizing = item })
-                                        TipAction("Export", Icons.Outlined.FileDownload, enabled = !busy, onClick = {
+                                        if (!pixel) TipAction("Export", Icons.Outlined.FileDownload, enabled = !busy, onClick = {
                                             pendingExport = item
                                             exporter.launch("${item.preset.displayName.replace(Regex("[^a-zA-Z0-9 _-]"), "_")}.tipbrush")
                                         })
-                                        TipAction("Share", Icons.Outlined.Share, enabled = !busy, onClick = {
+                                        if (!pixel) TipAction("Share", Icons.Outlined.Share, enabled = !busy, onClick = {
                                             busy = true
                                             scope.launch {
                                                 val result = withContext(Dispatchers.IO) { runCatching {
@@ -377,7 +382,7 @@ internal fun BrushLibraryDialog(
                 ActionIconButton(onClick = click, label = label, enabled = enabled, icon = icon)
             }
         } else {
-            val tips = (BrushPreset.libraryBuiltIns + brushes.map { it.preset }).distinctBy { it.id }
+            val tips = (BrushPreset.libraryBuiltIns + PixelTool.presets + brushes.map { it.preset }).distinctBy { it.id }
             BrushGroupMembers(group, tips, { updated ->
                 updateCategories(categories.map { if (it.id == updated.id) updated else it })
             }) { editingGroupId = null }

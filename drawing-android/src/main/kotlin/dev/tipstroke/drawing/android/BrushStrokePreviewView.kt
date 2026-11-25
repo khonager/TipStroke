@@ -9,6 +9,7 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import dev.tipstroke.core.drawing.CompletedStroke
+import dev.tipstroke.core.drawing.PixelTool
 import dev.tipstroke.core.drawing.PointerKind
 import dev.tipstroke.core.drawing.StrokeSample
 import dev.tipstroke.core.drawing.StrokeStyle
@@ -84,9 +85,14 @@ class BrushStrokePreviewView @JvmOverloads constructor(
             val canvas = Canvas(bitmap)
             // A fixed document-space sample keeps grain, spacing, taper and speed independent
             // of display density and thumbnail size. Only the cached output bitmap is allocated.
-            val sampleWidth = if (thumbnail) (160f * width / height).coerceIn(160f, 400f).toInt() else width
-            val sampleHeight = if (thumbnail) 160 else height
-            val stroke = previewStroke(sampleWidth, sampleHeight)
+            val pixelTip = PixelTool.fromTipId(brush.id.value)
+            val sampleHeight = when {
+                !thumbnail -> height
+                pixelTip != null -> 14
+                else -> 160
+            }
+            val sampleWidth = if (thumbnail) (sampleHeight * (width.toFloat() / height).coerceIn(1f, 2.5f)).toInt() else width
+            val stroke = previewStroke(sampleWidth, sampleHeight, pixelTip)
             if (thumbnail && !usePresetSize) {
                 val bounds = stroke.bounds
                 val frame = RectF(0f, 0f, sampleWidth.toFloat(), sampleHeight.toFloat())
@@ -104,7 +110,7 @@ class BrushStrokePreviewView @JvmOverloads constructor(
             StrokeCanvasPainter.draw(canvas, stroke)
         }
 
-    private fun previewStroke(width: Int, height: Int): CompletedStroke {
+    private fun previewStroke(width: Int, height: Int, pixelTip: PixelTool?): CompletedStroke {
         val left = if (thumbnail) width * .1f else max(5f, width * .015f)
         val right = width - left
         val centerY = height * .5f
@@ -118,7 +124,8 @@ class BrushStrokePreviewView @JvmOverloads constructor(
                 pointerId = 0,
                 position = Point(
                     left + (right - left) * progress,
-                    centerY + sin(progress * PI * 2).toFloat() * height * .09f,
+                    centerY + if (pixelTip == PixelTool.LINE) (progress - .5f) * height * .5f
+                    else sin(progress * PI * 2).toFloat() * height * (if (pixelTip != null) .22f else .09f),
                 ),
                 pressure = pressure,
                 tiltRadians = if (!erasing && (brush.engine == BrushEngine.PENCIL || brush.stamp != null || brush.ink != null)) {
@@ -134,7 +141,10 @@ class BrushStrokePreviewView @JvmOverloads constructor(
                 kind = PointerKind.STYLUS,
             )
         }
-        val nominalSize = when {
+        val sampleSize = when {
+            pixelTip == PixelTool.DITHER -> 3f
+            pixelTip != null -> 1f
+            usePresetSize -> brush.baseSizePx
             erasing -> height * .24f
             brush.stamp != null -> height * .35f
             brush.engine == BrushEngine.PENCIL -> height * .29f
@@ -145,7 +155,8 @@ class BrushStrokePreviewView @JvmOverloads constructor(
             samples,
             StrokeStyle(
                 brush = brush,
-                sizePx = if (usePresetSize) brush.baseSizePx else nominalSize,
+                pixelTool = pixelTip,
+                sizePx = sampleSize,
                 opacity = opacity,
                 color = color,
                 blend = if (erasing) BlendBehavior.ERASE else BlendBehavior.PAINT,

@@ -18,8 +18,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let redoButton = UIButton(type: .system)
     private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
     private let fingerMode = UIButton(type: .system)
-    private let pixelModes: [CanvasMode] = [.pixel, .pixelLine, .dither]
-    private let specialTools = UIButton(type: .system)
     private var gridSize: CGFloat = 1
     private let sizeControl = BrushAdjustmentView(title: "Size", isSize: true)
     private let opacityControl = BrushAdjustmentView(title: "Opacity", isSize: false)
@@ -170,14 +168,17 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         adjustmentPreview.layer.shadowOpacity = 0.4
         adjustmentPreview.layer.shadowRadius = 1
         adjustmentPreview.layer.shadowOffset = .zero
-        specialTools.accessibilityLabel = "Special tools"
-        specialTools.setImage(UIImage(systemName: "square.grid.3x3.fill"), for: .normal)
-        specialTools.showsMenuAsPrimaryAction = true
-        specialTools.menu = UIMenu(title: "Pixel tools", children: pixelModes.map { mode in
-            UIAction(title: mode.rawValue) { [weak self] _ in self?.activateMode(mode) }
-        })
-        shelf.insertArrangedSubview(specialTools, at: 1)
-        specialTools.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        let pixelBrushes = [PixelTool.pencil, .line, .dither].map { NativeBrush(preset: $0.preset) }
+        let pixelShortcut = tipFolder(tips: pixelBrushes, label: "Pixel tips", title: "Pixel tips")
+        shelf.insertArrangedSubview(pixelShortcut, at: 1)
+        let shortcutWidth = pixelShortcut.widthAnchor.constraint(equalToConstant: 44)
+        shortcutWidth.priority = .defaultHigh
+        shortcutWidth.isActive = true
+        let updatePixelShortcut: (CGFloat) -> Void = { [weak pixelShortcut] zoom in
+            pixelShortcut?.isHidden = !PixelTool.companion.showsShortcut(zoom: Float(zoom))
+        }
+        viewport.onZoom = updatePixelShortcut
+        updatePixelShortcut(viewport.zoomScale)
         let bottom = UIStackView(arrangedSubviews: [toolPicker, shelf, pinned.view!, adjustments, bottomActions]); bottom.spacing = 4
         pinned.didMove(toParent: self)
         quickColors.didMove(toParent: self)
@@ -264,7 +265,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             finger: defaults.object(forKey: "fingerDrawing") as? Bool ?? true)
         if let data = savedBrush { _ = sharedControls.restoreBrush(data: data) }
         if max(document.record.width, document.record.height) <= 128 { activateMode(.pixel) }
-        specialTools.accessibilityValue = pixelTool ? viewport.canvas.mode.rawValue : "Pixel tools"
         refreshDrawingColors()
         recorder.capture(document)
         updateHistory(); saveLabel.text = "Saved on this device"
@@ -515,7 +515,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let selectionModes: [(CanvasMode, String)] = [(.lasso, "lasso"), (.rectangleSelection, "rectangle.dashed"),
             (.ellipseSelection, "circle.dashed")]
     private func updateToolValue() {
-        specialTools.accessibilityValue = pixelTool ? viewport.canvas.mode.rawValue : "Pixel tools"
         refreshAdjustments()
         let mode = viewport.canvas.mode
         let drawingSymbol = drawingModes.first { $0.0 == mode }?.1 ?? (mode.isShape ? "scribble.variable" : "eraser")

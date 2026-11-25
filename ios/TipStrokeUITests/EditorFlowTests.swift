@@ -34,16 +34,18 @@ final class EditorFlowTests: XCTestCase {
             let high = try XCTUnwrap(readout.value as? String)
             XCTAssertNotEqual(low, high, "\(label) readout should follow the slider")
         }
-        let special = app.buttons["Special tools"]
-        XCTAssertTrue(special.isHittable)
-        special.tap()
-        app.buttons["Pixel line"].tap()
-        XCTAssertEqual(special.value as? String, "Pixel line")
+        XCTAssertFalse(app.buttons["Pixel tips"].exists)
         app.buttons["Tips"].tap()
         func element(_ label: String) -> XCUIElement {
             app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", label, label)).firstMatch
         }
         XCTAssertTrue(element("Choose drawing tip").waitForExistence(timeout: 10))
+        element("All").tap()
+        let search = app.textFields.firstMatch
+        search.tap()
+        search.typeText("Pixel line")
+        element("Choose Pixel line").tap()
+        app.buttons["Tips"].tap()
         element("Groups").tap()
         element("Open group Manga").tap()
         element("Choose Manga hatching").tap()

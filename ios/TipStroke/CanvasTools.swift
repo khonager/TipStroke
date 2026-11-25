@@ -1,4 +1,5 @@
 import UIKit
+import TipStrokeShared
 
 enum CanvasMode: String, CaseIterable {
     case colorPush = "Color push"
@@ -8,6 +9,14 @@ enum CanvasMode: String, CaseIterable {
     case line = "Line", rectangle = "Rectangle", ellipse = "Ellipse", triangle = "Triangle", arrow = "Arrow"
     case lasso = "Freehand selection", rectangleSelection = "Rectangle selection", ellipseSelection = "Ellipse selection"
     case transform = "Move selection"
+    var pixelTip: PixelTool? {
+        switch self {
+        case .pixel: return .pencil
+        case .pixelLine: return .line
+        case .dither: return .dither
+        default: return nil
+        }
+    }
     var isSelection: Bool { self == .lasso || self == .rectangleSelection || self == .ellipseSelection }
     var isShape: Bool { [.line, .rectangle, .ellipse, .triangle, .arrow, .pixelLine].contains(self) }
     var streamsPaint: Bool { [.paint, .smudge, .pixel, .dither].contains(self) }
