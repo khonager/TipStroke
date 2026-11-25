@@ -252,7 +252,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         guard useSideDock != sideDock else { return }
         NSLayoutConstraint.deactivate(sideDock ? landscapeLayout : portraitLayout)
         sideDock = useSideDock
-        adjustments.axis = useSideDock ? .vertical : .horizontal
+        sizeControl.setVertical(useSideDock)
+        opacityControl.setVertical(useSideDock)
         adjustments.spacing = useSideDock ? 0 : 8
         actionStack?.axis = useSideDock ? .vertical : .horizontal
         for (index, symbol) in ["pencil", "paintbrush.pointed", "aqi.low", "eraser"].enumerated() {
@@ -349,15 +350,17 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             stack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -2)])
         return panel
     }
-    var solidControls: Bool { UserDefaults.standard.bool(forKey: "editor.solidControls") }
+    var solidControls: Bool { UserDefaults.standard.object(forKey: "editor.solidControls") as? Bool ?? true }
     func togglePanelStyle() {
         UserDefaults.standard.set(!solidControls, forKey: "editor.solidControls")
         refreshPanelStyle()
     }
     private func refreshPanelStyle() {
+        overrideUserInterfaceStyle = solidControls ? .dark : .unspecified
+        view.tintColor = solidControls ? UIColor(red: 0.93, green: 0.41, blue: 0.35, alpha: 1) : nil
         for panel in panels {
             panel.effect = solidControls ? nil : UIBlurEffect(style: .systemMaterial)
-            panel.backgroundColor = solidControls ? .secondarySystemBackground : .clear
+            panel.backgroundColor = solidControls ? UIColor(white: 0.14, alpha: 1) : .clear
         }
     }
 

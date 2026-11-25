@@ -71,15 +71,15 @@ roll rotates the stamp tip. Squeeze can open drawing tools, show colors or toggl
 the eraser according to the system Pencil preference.
 
 The editor dock shows size and opacity alongside pinned tip samples. Drag either
-track to preview the colored footprint at the current zoom. Tap the numeric
-readout for single-unit adjustments. Size can use document pixels or screen
+track to preview the colored footprint at the current zoom. Use the visible minus and plus buttons for single-unit adjustments. Landscape places
+the two vertical tracks side by side. The default editor uses dark solid panels and a coral accent. Size can use document pixels or screen
 points for regular brushes and erasers. The eraser keeps its own tuning. Tips
 opens the full collection. The picker, library, dock and brush settings show
 pressure-sweep samples rendered into small, isolated native raster documents.
 Brush settings keep the current sample visible above the scrolling controls, with
 minimum and maximum specimens beside the parameter tracks. Eraser samples cut
 through a gray strip so you can see how much each tip removes.
-Drawing tools → More tools → Use solid controls switches the editor dock
+Drawing tools → More tools → Use translucent controls or Use solid controls switches the editor dock
 backgrounds between translucent material and an opaque system color.
 
 ## New drawing sizes
