@@ -27,8 +27,10 @@ enum BrushSpecimen {
             let t = CGFloat(index) / 28
             var point = CGPoint(x: inset + (112 - 2 * inset) * t, y: 24 - 9 * sin(2 * .pi * t))
             if let pixel {
-                point = CGPoint(x: 2 + 23 * t, y: pixel == .line ? 3 + 5 * t : 5 - 2.5 * sin(2 * .pi * t))
-                try document.paintPixelLine(from: previous ?? point, to: point, size: pixel == .dither ? 3 : 1,
+                let footprint = pixel == .dither ? 3 : 1
+                let travel = document.bounds.width - 4 - CGFloat(footprint)
+                point = CGPoint(x: 2 + travel * t, y: pixel == .line ? 3 + 5 * t : 5 - 2.5 * sin(2 * .pi * t))
+                try document.paintPixelLine(from: previous ?? point, to: point, size: footprint,
                                             color: .white, dither: pixel == .dither)
                 previous = point
                 continue
