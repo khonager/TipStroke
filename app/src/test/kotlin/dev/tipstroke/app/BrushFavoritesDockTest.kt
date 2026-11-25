@@ -167,6 +167,22 @@ class BrushFavoritesDockTest {
         compose.onNodeWithContentDescription(favorite.displayName).assertIsSelected()
     }
 
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h900dp-port-mdpi")
+    fun phoneCentersBothRowsOfControls() {
+        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
+            TipStrokeTheme { CanvasScreen(onBackToGallery = {}) }
+        }
+        val center = compose.onRoot().fetchSemanticsNode().boundsInRoot.center.x
+        fun assertCentered(first: String, last: String) {
+            val left = compose.onNodeWithContentDescription(first).fetchSemanticsNode().boundsInRoot.left
+            val right = compose.onNodeWithContentDescription(last).fetchSemanticsNode().boundsInRoot.right
+            assertEquals(center, (left + right) / 2, 2f)
+        }
+        assertCentered("Back to gallery", "More canvas actions")
+        assertCentered("Ink", "Show size and opacity")
+    }
+
     @Test fun dockFitsMeasuredWidthAndShrinksWithoutScrolling() {
         var width by mutableStateOf(420)
         val favorites = List(20) { BrushPreset.Blank.copy(id = BrushId("pin-$it"), displayName = "Pinned $it") }

@@ -835,7 +835,7 @@ fun CanvasScreen(
                     onStudio = { brushStudioOpen = true },
                     onTune = { phoneAdjustmentsOpen = !phoneAdjustmentsOpen },
                     tuneDescription = if (phoneAdjustmentsOpen) "Hide size and opacity" else "Show size and opacity",
-                    modifier = if (landscapeDock) Modifier.fillMaxHeight() else Modifier.widthIn(max = 520.dp).fillMaxWidth(),
+                    modifier = if (landscapeDock) Modifier.fillMaxHeight() else Modifier.widthIn(max = 520.dp),
                 )
             }
         }
@@ -1546,7 +1546,7 @@ private fun PhoneEditorChrome(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier.then(if (vertical) Modifier else Modifier.widthIn(max = 520.dp).fillMaxWidth()),
+        modifier.then(if (vertical) Modifier else Modifier.widthIn(max = 520.dp)),
         color = Color(0xE6202125),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, Color(0xB345474D)),
