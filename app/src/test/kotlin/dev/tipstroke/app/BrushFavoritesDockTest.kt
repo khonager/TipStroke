@@ -94,43 +94,18 @@ class BrushFavoritesDockTest {
         assertEquals(1, smudges)
     }
 
-    @Test fun oneSlotOpensAllPinsInOrderAndChoosingDoesNotPromote() {
+    @Test fun oneSlotShowsItsPreviewAndOpensItsPicker() {
         val tips = MangaTips.presets.take(5)
-        var chosen: BrushPreset? = null
-        Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
-            BrushFavoritesDock(tips.first(), tips, true, {}, { chosen = it }, {}, {}, {}, {}, {}, {},
-                "Adjust tip", true, Modifier.width(150.dp))
-        }
-        repeat(2) {
-            compose.onNodeWithContentDescription("More pinned tips").performClick()
-            compose.onNodeWithContentDescription(tips.first().displayName).assertIsDisplayed()
-            compose.onNodeWithContentDescription(tips.last().displayName).performClick()
-            compose.runOnIdle { assertEquals(tips.last(), chosen) }
-            compose.onNodeWithText("Pinned tips").assertDoesNotExist()
-        }
-    }
-
-    @Test fun pinFolderSelectsOnReleaseAndSpecialToolsStayReachable() {
-        val tips = MangaTips.presets.take(5)
-        var chosen: BrushPreset? = null
-        val showPixelTips = androidx.compose.runtime.mutableStateOf(false)
+        var opened: Int? = null
         var pixelTool: dev.tipstroke.core.drawing.PixelTool? = null
+        val showPixelTips = mutableStateOf(false)
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
-            Box(Modifier.fillMaxSize()) {
-                BrushFavoritesDock(tips.first(), tips, false, {}, { chosen = it }, {}, {}, {}, { pixelTool = it }, {}, {},
-                    "Adjust tip", true, Modifier.height(320.dp), showPixelTips = showPixelTips.value)
-            }
+            BrushFavoritesDock(tips.first(), tips, true, { opened = it }, {}, {}, {}, {}, { pixelTool = it }, {}, {},
+                "Adjust tip", true, Modifier.width(150.dp), showPixelTips = showPixelTips.value)
         }
-        val folder = compose.onNodeWithContentDescription("More pinned tips")
-        folder.performTouchInput { down(center) }
-        compose.mainClock.advanceTimeBy(750)
-        val cell = compose.onNodeWithContentDescription(tips.last().displayName).fetchSemanticsNode()
-        val target = cell.layoutInfo.coordinates.localToScreen(androidx.compose.ui.geometry.Offset(20f, 20f))
-        val local = folder.fetchSemanticsNode().layoutInfo.coordinates.screenToLocal(target)
-        folder.performTouchInput { moveTo(local) }
-        compose.runOnIdle { assertNull(chosen) }
-        folder.performTouchInput { up() }
-        compose.runOnIdle { assertEquals(tips.last(), chosen) }
+        compose.onNodeWithContentDescription(tips.first().displayName).performClick()
+        compose.runOnIdle { assertEquals(0, opened) }
+        compose.onNodeWithContentDescription(tips.last().displayName).assertDoesNotExist()
         compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
         compose.runOnIdle { showPixelTips.value = true }
         compose.onNodeWithContentDescription("Pixel tips").performClick()
@@ -146,12 +121,12 @@ class BrushFavoritesDockTest {
             TipStrokeTheme { CanvasScreen() }
         }
         compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithContentDescription("Ink").performClick()
         compose.onNodeWithText("All").performClick()
         compose.onNodeWithText("Search tips").performTextInput("Pixel line")
         compose.onNodeWithTag("Choose Pixel line").performClick()
         compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithContentDescription("Pixel line").performClick()
         compose.onNodeWithTag("Choose Pixel line").assertIsSelected()
         compose.onNodeWithText("Close").performClick()
         val surface = compose.runOnIdle {
@@ -172,7 +147,7 @@ class BrushFavoritesDockTest {
         compose.onNodeWithContentDescription("Pixel tips").assertIsDisplayed()
         compose.runOnIdle { surface.resetView() }
         compose.onNodeWithContentDescription("Pixel tips").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithContentDescription("Pixel line").performClick()
         compose.onNodeWithTag("Choose Pixel line").assertIsSelected()
     }
 
@@ -182,11 +157,11 @@ class BrushFavoritesDockTest {
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get().setContent {
             MaterialTheme { CanvasScreen() }
         }
-        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithContentDescription(favorite.displayName).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
         compose.onNodeWithText("Groups").performClick()
         compose.onNodeWithText("Manga").performClick()
         compose.onNodeWithText(favorite.displayName).performClick()
-        compose.onNodeWithContentDescription("Tips").performClick()
+        compose.onNodeWithContentDescription(favorite.displayName).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
         compose.onNodeWithText("Edit group").assertIsDisplayed()
         compose.onNodeWithText("Close").performClick()
         compose.onNodeWithContentDescription(favorite.displayName).assertIsSelected()
@@ -203,25 +178,26 @@ class BrushFavoritesDockTest {
         }
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Pinned 1").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Pinned 3").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Pinned 4").assertIsDisplayed()
         compose.onAllNodes(hasScrollAction()).assertCountEquals(0)
         compose.runOnIdle { width = 320 }
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("More pinned tips").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Pinned 1").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Tips").assertIsDisplayed()
+        compose.onNodeWithContentDescription("More pinned tips").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Pinned 3").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Pinned 2").assertIsDisplayed()
         compose.onNodeWithContentDescription("Drawing tools").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnLongClick)
         compose.onNodeWithContentDescription("Eraser").assertIsDisplayed()
     }
 
     @Test fun stylusHoverWaitsCancelsOnExitAndStillAllowsSelection() {
+        var opened = 0
         var selected = 0
         val tip = BrushPreset.Blank.copy(displayName = "Textured tip")
         val screen = Robolectric.buildActivity(ComponentActivity::class.java).also { activity = it }.setup().get()
         screen.setContent {
             MaterialTheme {
                 Box(Modifier.fillMaxSize()) {
-                    BrushFavoritesDock(tip, listOf(tip), false, {}, { selected++ }, {}, {}, {}, {}, {}, {}, "Adjust tip", true,
+                    BrushFavoritesDock(BrushPreset.Ink, listOf(tip), false, { opened++ }, { selected++ }, {}, {}, {}, {}, {}, {}, "Adjust tip", true,
                         Modifier.height(350.dp))
                 }
             }
@@ -260,20 +236,18 @@ class BrushFavoritesDockTest {
         compose.onNodeWithContentDescription("Textured tip").performClick()
         assertEquals(1, selected)
         compose.onNodeWithContentDescription("Textured tip").performTouchInput { longClick() }
-        compose.mainClock.advanceTimeBy(32)
-        compose.onNodeWithText("Textured tip").assertIsDisplayed()
+        assertEquals(1, opened)
         assertEquals(1, selected)
-        compose.mainClock.advanceTimeBy(2100)
-        compose.onNodeWithText("Textured tip").assertDoesNotExist()
     }
 
     @Test fun pinsAndFavoritesMigrateOnceThenChangeIndependently() {
         val preferences = BrushShelfPreferences(RuntimeEnvironment.getApplication())
         preferences.save(listOf("a", "b"))
-        assertEquals(listOf("a", "b"), preferences.loadPins())
-        preferences.savePins(listOf("b"))
+        val available = setOf("a", "b", "c")
+        assertEquals(listOf("a", "b"), preferences.loadDock().ordered(available))
+        preferences.saveDock(preferences.loadDock().replace(0, "c", available))
         preferences.save(listOf("a", "c"))
-        assertEquals(listOf("b"), preferences.loadPins())
+        assertEquals(listOf("c", "b"), preferences.loadDock().ordered(available))
         assertEquals(listOf("a", "c"), preferences.load())
     }
 
@@ -283,7 +257,7 @@ class BrushFavoritesDockTest {
         assertEquals(listOf("custom-b", "ink-v1", "pencil-v1"), preferences.load())
         for (available in 120..1200) {
             val slots = brushFavoriteCapacity(available.toFloat())
-            if (slots > 0) assertTrue((slots + 5) * 48 + (slots + 4) * 2 + 8 <= available)
+            if (slots > 0) assertTrue((slots + 4) * 48 + (slots + 3) * 2 + 8 <= available)
         }
     }
 }

@@ -27,7 +27,7 @@ import dev.tipstroke.ui.HoldToolPicker
 @Composable
 internal fun BrushFavoritesDock(
     selected: BrushPreset, favorites: List<BrushPreset>, horizontal: Boolean,
-    onLibrary: () -> Unit, onBrush: (BrushPreset) -> Unit,
+    onLibrary: (Int) -> Unit, onBrush: (BrushPreset) -> Unit,
     onSelect: () -> Unit, onEraser: () -> Unit, onSmudge: () -> Unit,
     onPixelTool: (PixelTool) -> Unit,
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
@@ -56,12 +56,14 @@ internal fun BrushFavoritesDock(
             val slot = minOf(48f, ((available - 8f - (minimumCells - 1) * 2f) / minimumCells).coerceAtLeast(1f))
             val capacity = brushFavoriteCapacity(available, slot, fixedCells = fixedCells).coerceAtLeast(1)
             val visibleFavorites = favorites.distinctBy { it.id }
-            val favoriteSelected = visibleFavorites.any { it.id == selected.id }
             val buttons: @Composable () -> Unit = {
-                DockCell("Tips", brushActive && !favoriteSelected, slot, !horizontal, onLibrary, icon = Icons.Outlined.GridView)
-
-                dev.tipstroke.ui.PinnedTipCells(visibleFavorites, capacity, slot.dp, onBrush, horizontal) { preset ->
-                    key(preset.id.value) { DockCell(preset.displayName, brushActive && preset.id == selected.id, slot, !horizontal, { onBrush(preset) }, preset = preset) }
+                visibleFavorites.take(capacity).forEachIndexed { index, preset ->
+                    val active = brushActive && preset.id == selected.id
+                    key(preset.id) {
+                        DockCell(preset.displayName, active, slot, !horizontal,
+                            { if (active) onLibrary(index) else onBrush(preset) }, preset = preset,
+                            onHold = { onLibrary(index) })
+                    }
                 }
                 Box {
                     val tools = buildList {
@@ -129,11 +131,11 @@ internal fun BrushFavoritesDock(
 
 @Composable
 private fun DockCell(description: String, selected: Boolean, extent: Float, beside: Boolean, onClick: () -> Unit,
-    icon: ImageVector? = null, preset: BrushPreset? = null) {
+    icon: ImageVector? = null, preset: BrushPreset? = null, onHold: (() -> Unit)? = null) {
     TipHint(description, beside) { showHint ->
         Surface(color = if (selected) Color(0xFFF4F4F2) else Color.Transparent, shape = MaterialTheme.shapes.small) {
             Box(Modifier.size(extent.dp).clip(MaterialTheme.shapes.small)
-                .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = showHint, onLongClickLabel = description)
+                .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onHold ?: showHint, onLongClickLabel = if (onHold != null) "Choose tip" else description)
                 .semantics { contentDescription = description; this.selected = selected }, contentAlignment = Alignment.Center) {
                 if (preset != null) dev.tipstroke.ui.TipSwatch(preset, Modifier.fillMaxSize().padding(2.dp))
                 else if (icon != null) Icon(icon, null, tint = if (selected) Color(0xFF17181B) else Color.White,

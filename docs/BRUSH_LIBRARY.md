@@ -1,6 +1,6 @@
 # Android tip creation, selection, and sharing
 
-Open **Tips** directly from the canvas dock. The library has All tips,
+Hold a dock swatch and choose **Library**. The library has All tips,
 Jetpack Ink, My tips, and Favorites sections, stroke previews, search, import, and
 **Create tip**. Tip selection is independent of the adjustment controls.
 
@@ -84,16 +84,15 @@ introduced.
 
 ## Favorites and pinned shortcuts
 
-Open **Tips** to browse All, Favorites, Pinned, or a group. Groups and tips scroll vertically.
-Each tip's menu can star it for later or pin it to the dock independently. The Pinned view
-also lets you reorder pins. New pins fill available slots up to the device's maximum dock
-capacity. When full, choose which pin to replace. Existing favorites seed the ordered pins
-on migration.
+Tap a dock swatch to draw with its tip. Tap the active swatch again, or hold any swatch,
+to browse All, Favorites, Pinned, or a group. Choosing a tip replaces the swatch in that
+position and equips it immediately. Favorites are independent of the dock. Use a tip’s
+menu to star it or move its pin earlier or later.
 
-If all pins fit, each is a direct drawing shortcut. Otherwise the last available slot opens
-a folder containing all remaining pins, in order. Its face shows up to four member swatches.
-With one slot, the folder contains every pin. Picking a member closes the folder and starts
-drawing without moving the pin. Window size changes only affect which pins fold into it.
+A smaller window shows the leading swatches. The rest return in order when space permits.
+If you move a tip to another slot, its former slot restores its most recent available tip,
+then falls back to the first unused starter brush. New docks start with Ink, Pencil,
+Airbrush (soft), Hard airbrush and Calligraphy. Existing pins keep their order.
 
 Tap Eraser to erase. Tap the active eraser to pick its independently remembered tip.
 Picking a drawing shortcut returns to painting. Each picker starts in Favorites and remembers
@@ -122,7 +121,7 @@ when its preset, color, opacity, rendering mode, or dimensions change.
 Slider endpoints are pure copies of the current definition at that control's
 minimum/maximum. They never modify the draft. The size slider uses the actual size. Other thumbnails use a common display size
 to make texture and dynamics legible. Toolbar and picker thumbnails leave room
-for the tip footprint at both ends, including in the pinned folder.
+for the tip footprint at both ends, including in the dock.
 A shared blue sample makes hue/saturation changes visible. Equal-looking endpoints
 are possible: rotation of a round shape or grain controls with grain disabled do
 not change the result. Hover, hold, or tap an endpoint to read its value. The native

@@ -81,6 +81,7 @@ data class BrushPreset(
         val Airbrush = BrushPreset(id = BrushId("airbrush-v1"), displayName = "Airbrush", engine = BrushEngine.AIRBRUSH,
             baseSizePx = 96f, opacity = .28f, hardness = .06f, spacing = .08f, stabilization = .1f,
             pressureToSize = PressureCurve(.48f, 1f, .9f), pressureToOpacity = PressureCurve(.26f, 1f, .78f))
+        val HardAirbrush = Airbrush.copy(id = BrushId("hard-airbrush-v1"), displayName = "Hard airbrush", hardness = .88f)
         val Blank = Ink.copy(id = BrushId("blank-stamp"), displayName = "New tip",
             baseSizePx = 32f, spacing = .15f, stabilization = 0f, speedTaper = 0f,
             pressureToSize = PressureCurve(.2f, 1f, 1f), pressureToOpacity = PressureCurve(1f, 1f, 1f),
@@ -111,7 +112,7 @@ data class BrushPreset(
             pressureToSize = PressureCurve(.62f, 1f, .85f),
             stamp = StampBrush(aspectRatio = .16f, rotationDegrees = -35f, flow = 1f),
         )
-        val libraryBuiltIns by lazy { builtIns + Calligraphy + jetpackInk + MangaTips.presets }
+        val libraryBuiltIns by lazy { builtIns + HardAirbrush + Calligraphy + jetpackInk + MangaTips.presets }
     }
 }
 

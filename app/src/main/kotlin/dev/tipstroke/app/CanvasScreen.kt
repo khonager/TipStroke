@@ -76,7 +76,14 @@ fun CanvasScreen(
     val availableDockTips = remember(presetsById) {
         presetsById.filterValues { it.ink == null || android.os.Build.VERSION.SDK_INT >= 34 }
     }
-    var pinIds by remember { mutableStateOf(shelfPreferences.loadPins()) }
+    var dock by remember { mutableStateOf(shelfPreferences.loadDock()) }
+    fun saveDock(next: dev.tipstroke.core.brush.TipDock) {
+        dock = next
+        shelfPreferences.saveDock(next)
+    }
+    val pinIds = remember(dock, availableDockTips) { dock.ordered(availableDockTips.keys) }
+    var pickerSlot by remember { mutableIntStateOf(0) }
+    var librarySlot by remember { mutableStateOf<Int?>(null) }
     val pinnedBrushes = pinIds.mapNotNull(availableDockTips::get)
     val pickerPreferences = remember { context.getSharedPreferences("tip-picker", android.content.Context.MODE_PRIVATE) }
     var eraserId by remember { mutableStateOf(pickerPreferences.getString("eraser", null)) }
@@ -85,19 +92,8 @@ fun CanvasScreen(
     val drawingPosition = remember { TipPickerPosition() }
     val eraserPosition = remember { TipPickerPosition() }
     val pickerScope = rememberCoroutineScope()
-    val config = androidx.compose.ui.platform.LocalConfiguration.current
     var diagnostics by remember { mutableStateOf(CanvasDiagnostics()) }
     val showPixelTips = PixelTool.showsShortcut(diagnostics.zoom)
-    val pinLimit = remember(config, showPixelTips) {
-        val metrics = context.resources.displayMetrics
-        val bounds = if (android.os.Build.VERSION.SDK_INT >= 30) context.getSystemService(android.view.WindowManager::class.java).maximumWindowMetrics.bounds else null
-        val width = (bounds?.width() ?: metrics.widthPixels) / metrics.density
-        val height = (bounds?.height() ?: metrics.heightPixels) / metrics.density
-        val short = minOf(width, height)
-        val long = maxOf(width, height)
-        val available = if (short < 600) (short - 8) else maxOf(short - 110, (long - 430).coerceIn(170f,440f))
-        brushFavoriteCapacity(available, fixedCells = brushDockFixedCells(showPixelTips)).coerceAtLeast(1)
-    }
     val drawingUiPreferences = remember { DrawingUiPreferences(context) }
     val colorShelf = remember { ColorShelf(context) }
     val colorHistoryPreferences = remember { ColorHistoryPreferences(context) }
@@ -747,7 +743,7 @@ fun CanvasScreen(
                 selected = pixelTool?.preset ?: brush, favorites = pinnedBrushes,
                 showPixelTips = showPixelTips,
                 brushActive = activeDockTool == null || activeDockTool == pixelTool?.displayName, toolLabel = activeDockTool,
-                onLibrary = { pickingEraser = false },
+                onLibrary = { pickerSlot = it; pickingEraser = false },
                 onBrush = ::selectDrawingTip, onSelect = ::selectSelectionTool,
                 onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
                 onTransform = ::transformFromDock, onFitCanvas = { surface?.resetView() },
@@ -823,7 +819,7 @@ fun CanvasScreen(
                     selected = pixelTool?.preset ?: brush, favorites = pinnedBrushes, horizontal = !landscapeDock,
                     showPixelTips = showPixelTips,
                     brushActive = activeDockTool == null || activeDockTool == pixelTool?.displayName, toolLabel = activeDockTool,
-                    onLibrary = { pickingEraser = false },
+                    onLibrary = { pickerSlot = it; pickingEraser = false },
                     onBrush = ::selectDrawingTip, onSelect = ::selectSelectionTool,
                     onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
                     onTransform = ::transformFromDock, onFitCanvas = { surface?.resetView() },
@@ -1188,16 +1184,19 @@ fun CanvasScreen(
         androidx.compose.ui.window.Dialog(onDismissRequest = { pickingEraser = null },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.widthIn(max = 640.dp).fillMaxWidth().fillMaxHeight(.8f), shape = MaterialTheme.shapes.large) {
-                TipPicker(if (erase) eraserPosition else drawingPosition, erase, if (erase) eraserId.orEmpty() else pixelTool?.tipId ?: brush.id.value,
-                    availableDockTips.values.filter { !erase || PixelTool.fromTipId(it.id.value) == null }, favoriteIds, pinIds, pinLimit, categories,
-                    { favoriteIds = it; shelfPreferences.save(it) }, { pinIds = it; shelfPreferences.savePins(it) },
+                TipPicker(if (erase) eraserPosition else drawingPosition, erase, if (erase) eraserId.orEmpty() else pinIds.getOrNull(pickerSlot).orEmpty(),
+                    availableDockTips.values.filter { !erase || PixelTool.fromTipId(it.id.value) == null }, favoriteIds, pinIds, categories,
+                    { favoriteIds = it; shelfPreferences.save(it) }, { saveDock(dock.reorder(it, availableDockTips.keys)) },
                     { categories = it; categoryStore.save(it) }, onPick = { preset ->
                         if (erase) {
                             eraserId = preset.id.value
                             pickerPreferences.edit().putString("eraser", eraserId).apply()
-                        } else selectDrawingTip(preset)
+                        } else {
+                            saveDock(dock.replace(pickerSlot, preset.id.value, availableDockTips.keys))
+                            selectDrawingTip(preset)
+                        }
                         pickingEraser = null
-                    }, onLibrary = { pickingEraser = null; brushToEdit = null; brushLibraryOpen = true },
+                    }, onLibrary = { librarySlot = pickerSlot.takeUnless { erase }; pickingEraser = null; brushToEdit = null; brushLibraryOpen = true },
                     onClose = { pickingEraser = null }, canRename = { p -> libraryBrushes.any { it.preset.id == p.id } },
                     onRename = { preset, name ->
                         pickerScope.launch {
@@ -1215,10 +1214,9 @@ fun CanvasScreen(
         favoriteIds = favoriteIds, onCategoriesChanged = { categories = it }, editBrushId = brushToEdit,
         onFavorites = { favoriteIds = it; shelfPreferences.save(it) },
         onLibraryChanged = { updated ->
+            val removed = libraryBrushes.map { it.preset.id.value }.toSet() - updated.map { it.preset.id.value }.toSet()
+            if (removed.isNotEmpty()) saveDock(dock.without(removed))
             libraryBrushes = updated
-            val ids = (BrushPreset.libraryBuiltIns + PixelTool.presets + updated.map { it.preset }).map { it.id.value }.toSet()
-            val remaining = pinIds.filter(ids::contains)
-            if (remaining != pinIds) { pinIds = remaining; shelfPreferences.savePins(remaining) }
         },
         current = pixelTool?.preset ?: brush.copy(
             baseSizePx = size.coerceIn(2f, 65536f), opacity = opacity.coerceIn(.05f, 1f), hardness = brushHardness,
@@ -1232,9 +1230,10 @@ fun CanvasScreen(
         ),
         onUse = { preset ->
             if (PixelTool.fromTipId(preset.id.value) == null) brushPreferences.save(preset, preset.creatorTuning())
+            librarySlot?.let { saveDock(dock.replace(it, preset.id.value, availableDockTips.keys + preset.id.value)) }
             selectDrawingTip(preset)
         },
-        onDismiss = { brushLibraryOpen = false; brushToEdit = null },
+        onDismiss = { librarySlot = null; brushLibraryOpen = false; brushToEdit = null },
     )
 
     LaunchedEffect(brushStudioOpen, brush.stamp, brush.ink) {

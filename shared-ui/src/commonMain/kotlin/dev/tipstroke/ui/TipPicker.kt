@@ -32,12 +32,11 @@ class TipPickerPosition {
 
 @Composable
 fun TipPicker(position: TipPickerPosition, eraser: Boolean, selectedId: String, tips: List<BrushPreset>,
-    favorites: List<String>, pins: List<String>, limit: Int, groups: List<BrushCategory>,
+    favorites: List<String>, pins: List<String>, groups: List<BrushCategory>,
     saveFavorites: (List<String>) -> Unit, savePins: (List<String>) -> Unit, saveGroups: (List<BrushCategory>) -> Unit,
     onPick: (BrushPreset) -> Unit, onLibrary: () -> Unit, onClose: () -> Unit,
     canRename: (BrushPreset) -> Boolean, onRename: (BrushPreset, String) -> Unit) {
     val byId = remember(tips) { tips.associateBy { it.id.value } }
-    var replacement by remember { mutableStateOf<BrushPreset?>(null) }
     var editGroup by remember { mutableStateOf<BrushCategory?>(null) }
     var rename by remember { mutableStateOf<BrushPreset?>(null) }
     var membership by remember { mutableStateOf<BrushPreset?>(null) }
@@ -100,10 +99,6 @@ fun TipPicker(position: TipPickerPosition, eraser: Boolean, selectedId: String, 
                                 DropdownMenuItem(enabled = id in favorites || favorites.size < 200, text = { Text(if (id in favorites) "Remove from favorites" else "Add to favorites") }, onClick = {
                                     menu = false; saveFavorites(if (id in favorites) favorites - id else favorites + id)
                                 })
-                                DropdownMenuItem(text = { Text(if (id in pins) "Unpin from dock" else "Pin to dock") }, onClick = {
-                                    menu = false
-                                    if (id in pins) savePins(pins - id) else if (pins.size >= limit) replacement = tip else savePins(pins + id)
-                                })
                                 if (id in pins) {
                                     val index = pins.indexOf(id)
                                     for (delta in listOf(-1,1)) DropdownMenuItem(text = { Text(if (delta < 0) "Pin earlier" else "Pin later") },
@@ -119,16 +114,6 @@ fun TipPicker(position: TipPickerPosition, eraser: Boolean, selectedId: String, 
                 }
             }
         }
-    }
-    replacement?.let { next ->
-        AlertDialog(onDismissRequest = { replacement = null }, title = { Text("Replace a pinned tip") }, text = {
-            LazyColumn {
-                item { Text("Choose a pin to replace with ${next.displayName}.") }
-                items(pins.mapNotNull(byId::get)) { old ->
-                    TipRow(old) { savePins(pins.map { if (it == old.id.value) next.id.value else it }); replacement = null }
-                }
-            }
-        }, confirmButton = { TextButton(onClick = { replacement = null }) { Text("Cancel") } })
     }
     rename?.let { tip ->
         var name by remember(tip) { mutableStateOf(tip.displayName) }

@@ -275,7 +275,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             Surface(Modifier.fillMaxSize()) {
                 TipPicker(if (eraser) eraserPosition else drawingPosition, eraser,
                     if (eraser) defaults.stringForKey("tip.eraser") ?: BrushPreset.Ink.id.value else activePixelId ?: brush.id.value,
-                    tips, pins, dockPins, pinLimit, groups,
+                    tips, pins, dockPins, groups,
                     { pins = it; defaults.setObject(it, forKey = "tip.pins") },
                     { dockPins = it; defaults.setObject(it, forKey = "tip.dockPins") }, ::saveGroups,
                     onPick = {
