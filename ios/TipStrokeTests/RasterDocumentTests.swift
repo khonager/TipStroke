@@ -232,6 +232,26 @@ final class RasterDocumentTests: XCTestCase {
         document.redo(); XCTAssertEqual(document.record.layers.last?.name, "Photo")
     }
 
+    @MainActor func testCanvasTileBlendsWithPaperBeforeDisplay() throws {
+        let document = RasterDocument(name: "Paper blend", width: 512, height: 256)
+        document.record.backgroundARGB = 0xffff0000
+        XCTAssertTrue(document.beginStroke())
+        let point = CGPoint(x: 40, y: 40)
+        _ = try document.paint(from: point, to: point, radius: 15, color: .blue, erasing: false)
+        document.endStroke(cancelled: false)
+        document.record.layers[0].blendMode = "MULTIPLY"
+        let canvas = CanvasView(document: document)
+        canvas.refresh()
+        let tiles = canvas.captureFillTiles((document.pixels[document.activeLayer] ?? [:]).keys)
+        XCTAssertEqual(try TilePixels(tiles).rgba(40, 40), 0x000000ff)
+        document.record.backgroundOpacity = 0.5
+        canvas.refresh()
+        let translucent = canvas.captureFillTiles((document.pixels[document.activeLayer] ?? [:]).keys)
+        let paper = try TilePixels(translucent).rgba(120, 120)
+        XCTAssertEqual(Int(paper & 0xff), 128, accuracy: 1)
+        XCTAssertEqual(canvas.backgroundColor, UIColor.clear)
+    }
+
     func testBlendModeCompositesAndPersistsWithoutFlattening() throws {
         let document = RasterDocument(name: "Blend", width: 256, height: 256)
         XCTAssertTrue(document.beginStroke())

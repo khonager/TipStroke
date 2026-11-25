@@ -21,9 +21,15 @@ final class EditorFlowTests: XCTestCase {
         finger.press(forDuration: 0.1, thenDragTo: finger.withOffset(CGVector(dx: 60, dy: 0)))
         XCTAssertGreaterThan(canvas.frame.midX, before + 10)
         XCTAssertFalse(app.buttons["Undo"].isEnabled)
+        app.buttons["More canvas actions"].tap()
         app.buttons["Fit canvas"].tap()
         fingerMode.tap()
         XCTAssertEqual(fingerMode.value as? String, "Draw")
+        XCTAssertFalse(app.segmentedControls["Drawing tool"].exists)
+        XCTAssertFalse(app.staticTexts["Saved on this device"].exists)
+        XCTAssertLessThan(app.buttons["Brush color"].frame.midY, app.buttons["Drawing tools"].frame.midY)
+        XCTAssertFalse(app.sliders["Size"].isHittable)
+        app.buttons["Show size and opacity"].tap()
         for label in ["Size", "Opacity"] {
             let slider = app.sliders[label]
             XCTAssertTrue(slider.isHittable)
@@ -34,6 +40,8 @@ final class EditorFlowTests: XCTestCase {
             let high = try XCTUnwrap(readout.value as? String)
             XCTAssertNotEqual(low, high, "\(label) readout should follow the slider")
         }
+        app.buttons["Hide size and opacity"].tap()
+        XCTAssertFalse(app.sliders["Opacity"].isHittable)
         XCTAssertFalse(app.buttons["Pixel tips"].exists)
         func element(_ label: String) -> XCUIElement {
             app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", label, label)).firstMatch
@@ -90,7 +98,7 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertTrue(deselect.waitForExistence(timeout: 5))
         deselect.tap()
         XCTAssertFalse(deselect.exists)
-        app.segmentedControls["Drawing tool"].buttons["Ink"].tap()
+        firstSlot.tap()
         let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.40, dy: 0.45))
         let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.60, dy: 0.55))
         start.press(forDuration: 0.2, thenDragTo: end)
@@ -101,7 +109,8 @@ final class EditorFlowTests: XCTestCase {
             action.tap()
         }
         // These elements come from Kotlin Compose panels, exercising the framework in the real app.
-        app.buttons["Brush size, opacity and finger drawing"].tap()
+        app.buttons["More canvas actions"].tap()
+        app.buttons["Brush settings"].tap()
         XCTAssertTrue(app.navigationBars["Brush settings"].waitForExistence(timeout: 10))
         let pressure = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Pressure")).firstMatch
         XCTAssertTrue(pressure.waitForExistence(timeout: 10))
@@ -118,6 +127,9 @@ final class EditorFlowTests: XCTestCase {
         app.buttons["Layers"].tap()
         app.navigationBars.buttons["Add"].tap()
         XCTAssertTrue(app.staticTexts["Layer 2"].exists)
+        app.buttons["Choose blend mode"].tap()
+        app.buttons["Multiply"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Multiply")).firstMatch.exists)
         app.navigationBars.buttons["Done"].tap()
         gallery.tap()
         let savedDrawing = app.cells["gallery-\(drawingID.uuidString)"]

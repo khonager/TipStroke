@@ -185,6 +185,7 @@ final class MediaBackdrop {
     private var requested: (UUID, Int64, CGSize)?
     private var pending: (MediaTrack, CGSize)?
     private var busy = false
+    var onFrame: (() -> Void)?
     var onError: ((Error) -> Void)?
     init() { layer.zPosition = -1; layer.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()] }
     func update(_ track: MediaTrack?, bounds: CGRect) {
@@ -218,7 +219,7 @@ final class MediaBackdrop {
                 self.busy = false
                 if let key = self.requested, key.0 == track.editID && (key.1 == track.positionUs || self.pending != nil) {
                     switch result {
-                    case .success(let image): self.image = image; self.layer.contents = image
+                    case .success(let image): self.image = image; self.layer.contents = image; self.onFrame?()
                     case .failure(let error): if self.pending == nil { self.onError?(error) }
                     }
                 }

@@ -16,7 +16,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private weak var colorButton: UIButton?
     private let undoButton = UIButton(type: .system)
     private let redoButton = UIButton(type: .system)
-    private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
+    private let adjustButton = UIButton(type: .system)
+    private let dock = UIStackView()
+    private let bottom = UIStackView()
+    private weak var quickPanel: UIView?
     private let fingerMode = UIButton(type: .system)
     private var gridSize: CGFloat = 1
     private let sizeControl = BrushAdjustmentView(title: "Size", isSize: true)
@@ -30,7 +33,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var navigator: CanvasNavigator?
     private var panels: [UIVisualEffectView] = []
     private var sideDock = false
-    private let saveLabel = UILabel()
     private let hoverName = UILabel()
     private var hoverWork: DispatchWorkItem?
 
@@ -60,18 +62,20 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         view.backgroundColor = .secondarySystemBackground
         viewport.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(viewport)
-        let back = button("Gallery", symbol: "square.grid.2x2") { [weak self] in self?.close() }
+        let back = button("Gallery", symbol: "arrow.left") { [weak self] in self?.close() }
         configure(undoButton, label: "Undo", symbol: "arrow.uturn.backward") { [weak self] in
             guard let self else { return }; self.finishCanvasInteraction(); self.document.undo(); self.changed()
         }
         configure(redoButton, label: "Redo", symbol: "arrow.uturn.forward") { [weak self] in
             guard let self else { return }; self.finishCanvasInteraction(); self.document.redo(); self.changed()
         }
-        let fit = button("Fit canvas", symbol: "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit() }
         let layers = button("Layers", symbol: "square.3.layers.3d") { [weak self] in self?.showLayers() }
         let share = button("More canvas actions", symbol: "ellipsis") {}
         share.showsMenuAsPrimaryAction = true
         share.menu = UIMenu(children: [
+            UIAction(title: "Fit canvas", image: UIImage(systemName: "arrow.up.left.and.arrow.down.right")) { [weak self] _ in self?.viewport.fit() },
+            UIAction(title: "Quick colors", image: UIImage(systemName: "paintpalette")) { [weak self] _ in self?.quickPanel?.isHidden.toggle() },
+            UIAction(title: "Brush settings", image: UIImage(systemName: "paintbrush")) { [weak self] _ in self?.brushSettings() },
             UIAction(title: "Resize canvas", image: UIImage(systemName: "crop")) { [weak self] _ in self?.resizeCanvas() },
             UIAction(title: "Animate", image: UIImage(systemName: "film")) { [weak self] _ in self?.showTimeline() },
             UIDeferredMenuElement.uncached { [weak self] done in
@@ -91,15 +95,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             UIAction(title: "Import media clip") { [weak self] _ in self?.importMedia() },
             UIAction(title: "Import image", image: UIImage(systemName: "photo")) { [weak self] _ in self?.importImage() }
         ])
-        let top = UIStackView(arrangedSubviews: [back, undoButton, redoButton, fit, layers, share])
-        top.distribution = .equalSpacing
-        actionStack = top
-        let topPanel = panel(top)
-        toolPicker.setTitleTextAttributes([.font: UIFont.systemFont(ofSize: 12)], for: .normal)
-        toolPicker.apportionsSegmentWidthsByContent = true
-        toolPicker.selectedSegmentIndex = 1
-        toolPicker.addTarget(self, action: #selector(toolChanged), for: .valueChanged)
-        toolPicker.accessibilityLabel = "Drawing tool"
         let color = button("Brush color", symbol: "circle.lefthalf.filled") { [weak self] in
             guard let self else { return }; self.finishCanvasInteraction()
             self.refreshDrawingColors()
@@ -109,7 +104,12 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         updateColorSwatch(viewport.canvas.brushColor)
         color.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(dropColor(_:))))
         color.accessibilityHint = "Tap to change color or drag to fill a region."
-        let settings = button("Brush size, opacity and finger drawing", symbol: "slider.horizontal.3") { [weak self] in self?.brushSettings() }
+        configure(adjustButton, label: "Show size and opacity", symbol: "slider.horizontal.3") { [weak self] in
+            guard let self else { return }
+            self.adjustments.isHidden.toggle()
+            self.adjustButton.isSelected = !self.adjustments.isHidden
+            self.adjustButton.accessibilityLabel = self.adjustments.isHidden ? "Show size and opacity" : "Hide size and opacity"
+        }
         let tools = button("Drawing tools", symbol: "eraser") { [weak self] in
             guard let self else { return }
             if self.viewport.canvas.tool == .eraser { self.showTipPicker(eraser: true) }
@@ -129,10 +129,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         movingTools.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(trackTools(_:))))
         movingToolsButton = movingTools
         updateToolValue()
-        let bottomActions = UIStackView(arrangedSubviews: [color, tools, movingTools, settings]); bottomActions.distribution = .equalSpacing
         let pinned = sharedControls.pinsController(callbacks: self)
         addChild(pinned)
-        pinned.view.heightAnchor.constraint(equalToConstant: 44).isActive = true
         let quickColors = sharedControls.quickColorsController()
         quickShelf = quickColors.view
         addChild(quickColors)
@@ -144,7 +142,22 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             if enable && FingerBinding.drag.command == .navigate { FingerBinding.drag.set(.draw) }
             self.sharedControls.setFingerDrawing(enabled: enable)
         }
-        let shelf = UIStackView(arrangedSubviews: [quickColors.view!, fingerMode])
+        let top = UIStackView(arrangedSubviews: [back, undoButton, redoButton, fingerMode, color, layers, share])
+        actionStack = top
+        let commandScroll = UIScrollView()
+        commandScroll.showsHorizontalScrollIndicator = false
+        commandScroll.showsVerticalScrollIndicator = false
+        top.translatesAutoresizingMaskIntoConstraints = false
+        commandScroll.addSubview(top)
+        let content = commandScroll.contentLayoutGuide
+        NSLayoutConstraint.activate([top.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            top.trailingAnchor.constraint(equalTo: content.trailingAnchor), top.topAnchor.constraint(equalTo: content.topAnchor),
+            top.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
+        let topPanel = panel(UIStackView(arrangedSubviews: [commandScroll]))
+        let quickPanel = panel(UIStackView(arrangedSubviews: [quickColors.view!]))
+        quickPanel.isHidden = true
+        self.quickPanel = quickPanel
+        adjustments.isHidden = true
         adjustments.distribution = .fillEqually
         adjustments.spacing = 8
         sizeControl.adjusted = { [weak self] value in
@@ -169,7 +182,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         adjustmentPreview.layer.shadowOffset = .zero
         let pixelBrushes = [PixelTool.pencil, .line, .dither].map { NativeBrush(preset: $0.preset) }
         let pixelShortcut = tipFolder(tips: pixelBrushes, label: "Pixel tips", title: "Pixel tips")
-        shelf.insertArrangedSubview(pixelShortcut, at: 0)
+        let shortcutHeight = pixelShortcut.heightAnchor.constraint(equalToConstant: 44)
+        shortcutHeight.priority = .defaultHigh
+        shortcutHeight.isActive = true
         let shortcutWidth = pixelShortcut.widthAnchor.constraint(equalToConstant: 44)
         shortcutWidth.priority = .defaultHigh
         shortcutWidth.isActive = true
@@ -178,25 +193,29 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         viewport.onZoom = updatePixelShortcut
         updatePixelShortcut(viewport.zoomScale)
-        let bottom = UIStackView(arrangedSubviews: [toolPicker, shelf, pinned.view!, adjustments, bottomActions]); bottom.spacing = 4
+        for item in [pinned.view!, pixelShortcut, tools, movingTools, adjustButton] { dock.addArrangedSubview(item) }
+        bottom.addArrangedSubview(adjustments)
+        bottom.addArrangedSubview(dock)
+        bottom.spacing = 4
         pinned.didMove(toParent: self)
         quickColors.didMove(toParent: self)
         bottom.axis = .vertical
 
         let bottomPanel = panel(bottom)
-        saveLabel.font = .preferredFont(forTextStyle: .caption2)
-        saveLabel.textColor = .secondaryLabel; saveLabel.textAlignment = .center
-        saveLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(saveLabel)
         let safe = view.safeAreaLayoutGuide
         portraitLayout = [
             viewport.leadingAnchor.constraint(equalTo: view.leadingAnchor), viewport.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            viewport.topAnchor.constraint(equalTo: topPanel.bottomAnchor, constant: 4), viewport.bottomAnchor.constraint(equalTo: bottomPanel.topAnchor, constant: -4),
+            viewport.topAnchor.constraint(equalTo: view.topAnchor), viewport.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             topPanel.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4), topPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
             topPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 380), topPanel.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 8),
             topPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -8),
-            topPanel.widthAnchor.constraint(equalTo: safe.widthAnchor, constant: -16).withPriority(.defaultHigh),
-            bottomPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor), bottomPanel.bottomAnchor.constraint(equalTo: saveLabel.topAnchor, constant: -2),
+            commandScroll.heightAnchor.constraint(equalToConstant: 44),
+            top.heightAnchor.constraint(equalTo: commandScroll.frameLayoutGuide.heightAnchor),
+            commandScroll.widthAnchor.constraint(equalTo: top.widthAnchor).withPriority(.defaultHigh),
+            dock.heightAnchor.constraint(equalToConstant: 44),
+            quickPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
+            quickPanel.topAnchor.constraint(equalTo: topPanel.bottomAnchor, constant: 4),
+            bottomPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor), bottomPanel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -4),
             bottomPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 480), bottomPanel.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 4),
             bottomPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -4),
             bottomPanel.widthAnchor.constraint(equalTo: safe.widthAnchor, constant: -12).withPriority(.defaultHigh),
@@ -206,11 +225,24 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             viewport.topAnchor.constraint(equalTo: view.topAnchor), viewport.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             topPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 4), topPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
             bottomPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4), bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
-            bottomPanel.widthAnchor.constraint(equalToConstant: 192),
+            commandScroll.widthAnchor.constraint(equalToConstant: 44),
+            top.widthAnchor.constraint(equalTo: commandScroll.frameLayoutGuide.widthAnchor),
+            commandScroll.heightAnchor.constraint(equalTo: top.heightAnchor).withPriority(.defaultHigh),
+            topPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -8),
+            adjustments.widthAnchor.constraint(equalToConstant: 112).withPriority(.defaultHigh),
+            dock.widthAnchor.constraint(equalToConstant: 44),
+            bottomPanel.heightAnchor.constraint(lessThanOrEqualToConstant: 480),
+            bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -8),
+            bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -8).withPriority(.defaultHigh),
+            quickPanel.leadingAnchor.constraint(equalTo: topPanel.trailingAnchor, constant: 4),
+            quickPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
         ]
+        for action in [tools, movingTools, adjustButton] {
+            portraitLayout.append(action.widthAnchor.constraint(equalToConstant: 44))
+            landscapeLayout.append(action.heightAnchor.constraint(equalToConstant: 44))
+        }
         NSLayoutConstraint.activate(portraitLayout)
-        NSLayoutConstraint.activate([saveLabel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -2),
-            saveLabel.centerXAnchor.constraint(equalTo: safe.centerXAnchor)])
+        quickPanel.widthAnchor.constraint(equalToConstant: 208).isActive = true
         let hint = UIButton(type: .system)
         hint.configuration = .tinted(); hint.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
         hint.translatesAutoresizingMaskIntoConstraints = false; hint.isHidden = true
@@ -265,7 +297,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if max(document.record.width, document.record.height) <= 128 { activateMode(.pixel) }
         refreshDrawingColors()
         recorder.capture(document)
-        updateHistory(); saveLabel.text = "Saved on this device"
+        updateHistory()
     }
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
@@ -278,10 +310,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         opacityControl.setVertical(useSideDock)
         adjustments.spacing = useSideDock ? 0 : 8
         actionStack?.axis = useSideDock ? .vertical : .horizontal
-        for (index, symbol) in ["pencil", "paintbrush.pointed", "aqi.low", "eraser"].enumerated() {
-            if useSideDock { toolPicker.setImage(UIImage(systemName: symbol), forSegmentAt: index) }
-            else { toolPicker.setTitle(CanvasView.Tool.allCases[index].rawValue, forSegmentAt: index) }
-        }
+        dock.axis = useSideDock ? .vertical : .horizontal
+        bottom.axis = useSideDock ? .horizontal : .vertical
+        sharedControls.updateDockAxis(vertical: useSideDock)
         NSLayoutConstraint.activate(useSideDock ? landscapeLayout : portraitLayout)
     }
     override func viewDidLayoutSubviews() {
@@ -323,7 +354,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let canvas = viewport.canvas
         canvas.configureInput()
         let command: FingerCommand = canvas.fingerDrawing ? FingerBinding.drag.command : .navigate
-        fingerMode.setTitle(command == .navigate ? "Pan" : command.rawValue, for: .normal)
         fingerMode.setImage(UIImage(systemName: command == .navigate ? "hand.raised" : "hand.draw"), for: .normal)
         fingerMode.accessibilityValue = command.rawValue
     }
@@ -389,6 +419,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         overrideUserInterfaceStyle = solidControls ? .dark : .unspecified
         view.tintColor = solidControls ? UIColor(red: 0.93, green: 0.41, blue: 0.35, alpha: 1) : nil
         for panel in panels {
+            panel.tintColor = solidControls ? .white : nil
             panel.effect = solidControls ? nil : UIBlurEffect(style: .systemMaterial)
             panel.backgroundColor = solidControls ? UIColor(white: 0.14, alpha: 1) : .clear
         }
@@ -432,17 +463,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         hoverWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.65, execute: work)
     }
-    @objc private func toolChanged() {
-        finishCanvasInteraction()
-        let tool = CanvasView.Tool.allCases[toolPicker.selectedSegmentIndex]
-        if tool == .eraser && pixelTool { toggleEraser(); return }
-        viewport.canvas.pixelErasing = false
-        if tool == .eraser && viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
-        viewport.canvas.tool = tool
-        viewport.canvas.mode = .paint
-        if tool != .eraser { sharedControls.selectBrush(id: tool.brushID) } else { activateEraserBrush() }
-        updateToolValue()
-    }
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
         toggleEraser()
     }
@@ -463,7 +483,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         finishCanvasInteraction()
         if pixelTool {
             viewport.canvas.pixelErasing.toggle()
-            toolPicker.selectedSegmentIndex = viewport.canvas.pixelErasing ? 3 : UISegmentedControl.noSegment
             updateToolValue()
             return
         }
@@ -476,7 +495,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             viewport.canvas.tool = .eraser
             activateEraserBrush()
         }
-        toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
         updateToolValue()
     }
     func activateEraserBrush() {
@@ -587,7 +605,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if viewport.canvas.tool == .eraser { toggleEraser() }
         viewport.canvas.pixelErasing = false
         viewport.canvas.mode = mode
-        if mode != .paint { toolPicker.selectedSegmentIndex = UISegmentedControl.noSegment }
         if pixelTool { viewport.canvas.brushSize = gridSize }
         else { viewport.canvas.brushSize = CGFloat(sharedControls.currentDrawingBrush().size) }
         updateToolValue()
@@ -611,7 +628,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         if redraw { viewport.canvas.refresh() }
         navigator?.refresh()
-        updateHistory(); saveLabel.text = "Unsaved changes"
+        updateHistory()
         saveWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.saveNow() }
         saveWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
@@ -636,7 +653,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     private func startSaveIfNeeded() {
         guard !saving, let snapshot = pending else { return }
-        pending = nil; saving = true; saveLabel.text = "Saving…"
+        pending = nil; saving = true
         store.queue.async {
             let result = Result { try self.store.save(snapshot) }
             DispatchQueue.main.async {
@@ -644,15 +661,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
                 switch result {
                 case .failure(let error):
                     self.pending = nil; self.closeAfterSave = false; self.view.isUserInteractionEnabled = true
-                    self.saveLabel.text = "Save failed — tap to retry"; self.showError(error)
-                    let tap = UITapGestureRecognizer(target: self, action: #selector(self.retrySave))
-                    self.saveLabel.gestureRecognizers?.forEach { self.saveLabel.removeGestureRecognizer($0) }
-                    self.saveLabel.addGestureRecognizer(tap); self.saveLabel.isUserInteractionEnabled = true
+                    let alert = UIAlertController(title: "Couldn’t save drawing", message: error.localizedDescription, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "Retry", style: .default) { [weak self] _ in self?.saveNow() })
+                    alert.addAction(UIAlertAction(title: "Close", style: .cancel))
+                    (self.presentedViewController ?? self).present(alert, animated: true)
                     self.endBackgroundTask()
                 case .success:
                     if self.pending != nil { self.startSaveIfNeeded() }
                     else {
-                        self.saveLabel.text = self.saveWork == nil ? "Saved on this device" : "Unsaved changes"
                         self.endBackgroundTask()
                         if self.closeAfterSave { self.navigationController?.popViewController(animated: true) }
                     }
@@ -660,7 +676,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             }
         }
     }
-    @objc private func retrySave() { saveNow() }
     private func close() {
         finishCanvasInteraction(); closeAfterSave = true; view.isUserInteractionEnabled = false; saveNow()
     }
@@ -733,7 +748,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             default: viewport.canvas.tool = .ink
             }
         }
-        toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
         updateToolValue()
         if viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
         let defaults = UserDefaults.standard

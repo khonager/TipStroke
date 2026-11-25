@@ -11,6 +11,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var previewSnapshot: DocumentSnapshot?
     weak var viewport: CanvasViewport?
     private let mediaBackdrop = MediaBackdrop()
+    private var backdropPieces: [CALayer] = []
+    private var backdropHoles: Set<TileKey> = []
+    private var backdropBounds = CGRect.null
+    private var blendsWithBackdrop: Bool {
+        (previewSnapshot?.record ?? document.record).layers.contains { $0.visible && $0.opacity > 0 && $0.blendMode != "NORMAL" }
+    }
     let document: RasterDocument
     private var selectedMode: CanvasMode = .paint
     private var fingerSmudge = false
@@ -188,6 +194,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         outlineLayer.fillColor = UIColor.clear.cgColor; outlineLayer.lineWidth = 1
         outlineLayer.lineDashPattern = [5, 4]; outlineLayer.zPosition = 10_000
         layer.addSublayer(mediaBackdrop.layer)
+        mediaBackdrop.onFrame = { [weak self] in
+            guard let self, self.blendsWithBackdrop else { return }
+            self.refresh()
+        }
         mediaBackdrop.onError = { [weak self] error in self?.onError?(error) }
         layer.addSublayer(outlineLayer)
         hoverLayer.zPosition = 10_001
@@ -245,8 +255,13 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     func refresh(_ dirty: CGRect? = nil) {
         mediaBackdrop.update(document.record.media, bounds: bounds)
         if dirty?.isNull != true { finishFillReveal() }
-        backgroundColor = document.record.paperColor
-        isOpaque = (document.record.backgroundOpacity ?? 1) == 1
+        let snapshot = previewSnapshot ?? DocumentSnapshot(record: document.record, pixels: document.pixels)
+        let blend = blendsWithBackdrop
+        let paper = snapshot.record.paperColor
+        let partialBackdrop = blend && paper.cgColor.alpha < 1 && (paper.cgColor.alpha > 0 || mediaBackdrop.image != nil)
+        backgroundColor = partialBackdrop ? .clear : paper
+        isOpaque = paper.cgColor.alpha == 1
+        mediaBackdrop.layer.isHidden = partialBackdrop
         let visible = viewport.map { convert($0.bounds, from: $0) } ?? bounds
         let keys = Set(TileKey.intersecting(visible, width: document.record.width, height: document.record.height))
         CATransaction.begin(); CATransaction.setDisableActions(true)
@@ -254,7 +269,6 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         for key in Array(displayTiles.keys) where !keys.contains(key) {
             displayTiles.removeValue(forKey: key)?.removeFromSuperlayer()
         }
-        let snapshot = previewSnapshot ?? DocumentSnapshot(record: document.record, pixels: document.pixels)
         for key in keys {
             let existed = displayTiles[key] != nil
             if existed, let dirty, !document.mirrorTransforms.contains(where: { dirty.applying($0).intersects(key.rect) }) { continue }
@@ -265,6 +279,11 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             do {
                 let context = try RasterDocument.context(width: 256, height: 256)
                 context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
+                if blend {
+                    context.setFillColor(paper.cgColor)
+                    context.fill(key.rect.intersection(bounds))
+                    if let media = mediaBackdrop.image { RasterDocument.draw(media, in: context, rect: bounds) }
+                }
                 if let animation = document.record.animation, animation.onionSkin {
                     for index in [animation.selectedIndex - 1, animation.selectedIndex + 1] where animation.frames.indices.contains(index) {
                         let frame = animation.frames[index].id
@@ -286,6 +305,55 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 tile.magnificationFilter = .nearest
                 if !existed { layer.addSublayer(tile); displayTiles[key] = tile }
             } catch { onError?(error); return }
+        }
+        updateBackdropPieces(needed: partialBackdrop, paper: paper, refreshContents: dirty == nil)
+    }
+
+    // Blended tiles already contain the translucent paper and media. Cover only the gaps
+    // behind those tiles, sharing the decoded media image across rectangular layers.
+    private func updateBackdropPieces(needed: Bool, paper: UIColor, refreshContents: Bool) {
+        guard needed else {
+            if !backdropBounds.isNull {
+                backdropPieces.forEach { $0.removeFromSuperlayer() }
+                backdropPieces.removeAll(); backdropHoles.removeAll(); backdropBounds = .null
+            }
+            return
+        }
+        let holes = Set(displayTiles.keys)
+        if holes != backdropHoles || backdropBounds != bounds {
+            backdropHoles = holes; backdropBounds = bounds
+            var regions: [CGRect] = []
+            func gap(_ x: CGFloat, _ y: CGFloat, _ endX: CGFloat, _ endY: CGFloat) {
+                if endX > x && endY > y { regions.append(CGRect(x: x, y: y, width: endX-x, height: endY-y)) }
+            }
+            var y: CGFloat = 0
+            for (_, keys) in Dictionary(grouping: holes, by: \.y).sorted(by: { $0.key < $1.key }) {
+                let row = keys[0].rect.intersection(bounds)
+                gap(0, y, bounds.maxX, row.minY)
+                var x: CGFloat = 0
+                for key in keys.sorted(by: { $0.x < $1.x }) {
+                    gap(x, row.minY, key.rect.minX, row.maxY)
+                    x = key.rect.maxX
+                }
+                gap(x, row.minY, bounds.maxX, row.maxY)
+                y = row.maxY
+            }
+            gap(0, y, bounds.maxX, bounds.maxY)
+            while backdropPieces.count > regions.count { backdropPieces.removeLast().removeFromSuperlayer() }
+            for (i, rect) in regions.enumerated() {
+                if i == backdropPieces.count {
+                    let piece = CALayer(); piece.zPosition = -1
+                    layer.addSublayer(piece); backdropPieces.append(piece)
+                }
+                let piece = backdropPieces[i]
+                piece.frame = rect
+                piece.contentsRect = CGRect(x: rect.minX/bounds.width, y: rect.minY/bounds.height,
+                    width: rect.width/bounds.width, height: rect.height/bounds.height)
+            }
+        } else if !refreshContents { return }
+        for piece in backdropPieces {
+            piece.backgroundColor = paper.cgColor
+            piece.contents = mediaBackdrop.image
         }
     }
     private var fillRevealID = UUID()

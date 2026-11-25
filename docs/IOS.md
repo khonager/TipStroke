@@ -73,11 +73,10 @@ into permanent tiles. On supported iPads, Pencil hover outlines the brush footpr
 roll rotates the stamp tip. Squeeze can open drawing tools, show colors or toggle
 the eraser according to the system Pencil preference.
 
-The editor shares the Android color theme for brush, palette and blend panels. More canvas actions opens resize, animation, preview and export. The color button shows the current paint. The editor dock shows size and opacity alongside pinned tip samples. Drag either
+The editor shares the Android color theme for brush, palette and blend panels. More canvas actions opens resize, animation, preview and export. The top strip holds gallery, undo, redo, finger mode, current color, layers and more actions. The bottom dock holds tip previews, drawing tools, moving tools and the size/opacity toggle. The sliders start closed. More actions includes Fit canvas, Brush settings and Quick colors. Drag either
 track to preview the colored footprint at the current zoom. Use the visible minus and plus buttons for single-unit adjustments. Landscape places
 the two vertical tracks side by side. The default editor uses dark solid panels and a coral accent. Size can use document pixels or screen
-points for regular brushes and erasers. The eraser keeps its own tuning. Tips
-opens the full collection. The picker, library, dock and brush settings show
+points for regular brushes and erasers. The eraser keeps its own tuning. Hold a swatch to open its tip picker. The picker, library, dock and brush settings show
 pressure-sweep samples rendered into small, isolated native raster documents.
 Brush settings keep the current sample visible above the scrolling controls, with
 minimum and maximum specimens beside the parameter tracks. Eraser samples cut
@@ -193,7 +192,7 @@ Codemagic run plus the physical-device checklist in `TESTING.md` is required bef
 calling this port device-validated or ready for distribution.
 
 Tap an iOS layer to expand its name field, visibility switch and settings button
-in the row. Full settings include opacity, blend mode, reference and clipping.
+in the row. The Layers toolbar’s **Blend** menu sets the selected layer’s mode. Full settings include the scrolling blend picker, opacity, reference and clipping. Canvas tiles composite blend modes against paper and the current media frame.
 On iOS the compact gallery heading contains New and Select drawings. Select multiple
 drawings and use Share to export their PNGs together. Drag into the center of a
 drawing or stack to group it, or near an edge to reorder. Swipe a stack to rename

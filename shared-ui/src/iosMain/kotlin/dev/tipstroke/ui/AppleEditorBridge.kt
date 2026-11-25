@@ -311,13 +311,16 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             }
         }
     }
+    private var verticalDock by mutableStateOf(false)
+    fun updateDockAxis(vertical: Boolean) { verticalDock = vertical }
+
     fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
         val byId = remember(library) { allTips.associateBy { it.id.value } }
         val ordered = remember(dock, byId) { dock.ordered(byId.keys) }
         BrushTheme {
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val capacity = (maxWidth / 44.dp).toInt().coerceAtLeast(1)
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) {
+                val capacity = ((if (verticalDock) maxHeight else maxWidth) / 44.dp).toInt().coerceAtLeast(1)
+                val swatches: @Composable () -> Unit = {
                     ordered.take(capacity).forEachIndexed { slot, id ->
                         val tip = byId.getValue(id)
                         val active = id == activeDockTip
@@ -332,6 +335,8 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
                         }
                     }
                 }
+                if (verticalDock) Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) { swatches() }
+                else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) { swatches() }
             }
         }
     }

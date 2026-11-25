@@ -15,6 +15,25 @@ final class LayersController: UITableViewController, UITableViewDragDelegate, UI
         super.viewDidLoad(); title = "Layers"
         navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(addLayer))
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        let blend = UIBarButtonItem(title: "Blend", menu: UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] complete in
+                guard let self, let layer = self.document.record.layers.first(where: { $0.id == self.document.activeLayer }) else {
+                    complete([]); return
+                }
+                complete(LayerBlendMode.entries.map { mode in
+                    UIAction(title: mode.label, state: mode.name == layer.blendMode ? .on : .off) { [weak self] _ in
+                        guard let self, let i = self.document.record.layers.firstIndex(where: { $0.id == layer.id }),
+                              self.document.record.layers[i].blendMode != mode.name else { return }
+                        self.document.beginMetadataEdit()
+                        self.document.record.layers[i].blendMode = mode.name
+                        self.document.endMetadataEdit()
+                        self.changed()
+                    }
+                })
+            }
+        ]))
+        blend.accessibilityLabel = "Choose blend mode"
+        if let done = navigationItem.rightBarButtonItem { navigationItem.rightBarButtonItems = [done, blend] }
         let multi = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), menu: UIMenu(children: [
             UIDeferredMenuElement.uncached { [weak self] complete in
                 guard let self else { complete([]); return }
@@ -63,6 +82,7 @@ final class LayersController: UITableViewController, UITableViewDragDelegate, UI
         var content = cell.defaultContentConfiguration()
         content.text = layer.name
         content.secondaryText = "\(layer.visible ? "Visible" : "Hidden") · \(Int(layer.opacity * 100))%"
+        content.secondaryText = (content.secondaryText ?? "") + " · " + LayerBlendMode.companion.fromStorage(value: layer.blendMode).label
         content.image = previews[layer.id] ?? UIImage(systemName: "photo")
         content.imageProperties.reservedLayoutSize = CGSize(width: 40, height: 36)
         content.imageProperties.maximumSize = CGSize(width: 40, height: 36)
