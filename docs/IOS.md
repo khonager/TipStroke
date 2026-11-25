@@ -242,3 +242,5 @@ the editor responsive and discards a stale result if the destination has changed
 A radial reveal uses visible tile layers and respects Reduce Motion.
 
 Resize canvas opens an eight-handle crop and extension preview. Apply translates sparse raster tiles and photo poses across cels by the chosen left and top offsets. Cancel discards the preview.
+
+Layers show artwork thumbnails. Swipe right to change multi-selection, drag onto a thumbnail to join its group, or drop beside a name to reorder above or below its group.

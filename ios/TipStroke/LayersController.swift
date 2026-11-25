@@ -1,7 +1,9 @@
 import UIKit
 import TipStrokeShared
 
-final class LayersController: UITableViewController {
+final class LayersController: UITableViewController, UITableViewDragDelegate, UITableViewDropDelegate {
+    private var previews: [UUID: UIImage] = [:]
+    private var generation = 0
     let document: RasterDocument
     var onChange: (() -> Void)?
     let sharedControls: AppleEditorBridge
@@ -40,7 +42,9 @@ final class LayersController: UITableViewController {
         if let add = navigationItem.leftBarButtonItem { navigationItem.leftBarButtonItems = [add,multi] }
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "layer")
         tableView.allowsSelectionDuringEditing = true
-        setEditing(true, animated: false)
+        tableView.dragInteractionEnabled = true
+        tableView.dragDelegate = self
+        tableView.dropDelegate = self
     }
     private var expanded: UUID?
     private func index(_ path: IndexPath) -> Int { document.record.layers.count - 1 - path.row }
@@ -48,10 +52,10 @@ final class LayersController: UITableViewController {
         guard document.addLayer() else { showError(DrawingError.message("A drawing can contain up to 32 layers.")); return }
         changed()
     }
-    private func changed() { tableView.reloadData(); onChange?() }
+    private func changed() { generation += 1; previews.removeAll(); tableView.reloadData(); onChange?() }
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { document.record.layers.count }
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        "Top layers paint above lower layers. Tap a row for settings; drag its handle to reorder. Layer edits can be undone from the canvas."
+        "Top layers paint above lower layers. Swipe right to select layers. Drop onto a thumbnail to group, or beside the name to reorder. Layer edits can be undone from the canvas."
     }
     override func tableView(_ tableView: UITableView, cellForRowAt path: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "layer", for: path)
@@ -59,7 +63,11 @@ final class LayersController: UITableViewController {
         var content = cell.defaultContentConfiguration()
         content.text = layer.name
         content.secondaryText = "\(layer.visible ? "Visible" : "Hidden") · \(Int(layer.opacity * 100))%"
-        content.image = UIImage(systemName: document.editingLayerIDs.contains(layer.id) ? "checkmark.circle.fill" : "circle")
+        content.image = previews[layer.id] ?? UIImage(systemName: "photo")
+        content.imageProperties.reservedLayoutSize = CGSize(width: 40, height: 36)
+        content.imageProperties.maximumSize = CGSize(width: 40, height: 36)
+        cell.accessoryType = document.editingLayerIDs.contains(layer.id) ? .checkmark : .none
+        if previews[layer.id] == nil && expanded != layer.id { loadPreview(layer, path: path) }
         if layer.editGroup != nil { content.secondaryText = (content.secondaryText ?? "") + " · Group" }
         cell.contentView.viewWithTag(104)?.removeFromSuperview()
         if expanded == layer.id {
@@ -109,12 +117,72 @@ final class LayersController: UITableViewController {
         settings.onChange = { [weak self] in self?.changed() }
         navigationController?.pushViewController(settings, animated: true)
     }
-    override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool { true }
-    override func tableView(_ tableView: UITableView, moveRowAt source: IndexPath, to destination: IndexPath) {
-        let sourceIndex = index(source); let destinationIndex = index(destination)
+    private func loadPreview(_ layer: LayerRecord, path: IndexPath) {
+        let version = generation
+        var record = document.record
+        var visible = layer; visible.visible = true; visible.opacity = 1; visible.clipSource = nil
+        record.layers = [visible]; record.media = nil; record.backgroundOpacity = 0
+        let snapshot = DocumentSnapshot(record: record, pixels: [layer.id: document.pixels[layer.id] ?? [:]])
+        ProjectStore.shared.queue.async { [weak self] in
+            guard let image = try? ProjectStore.thumbnail(snapshot) else { return }
+            DispatchQueue.main.async {
+                guard let self, self.generation == version else { return }
+                self.previews[layer.id] = UIImage(cgImage: image)
+                if let cell = self.tableView.cellForRow(at: path), var config = cell.contentConfiguration as? UIListContentConfiguration {
+                    config.image = self.previews[layer.id]; cell.contentConfiguration = config
+                }
+            }
+        }
+    }
+    override func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt path: IndexPath) -> UISwipeActionsConfiguration? {
+        let id = document.record.layers[index(path)].id
+        let action = UIContextualAction(style: .normal, title: document.editingLayerIDs.contains(id) ? "Deselect" : "Select") { _, _, done in
+            var ids = self.document.editingLayerIDs
+            if ids.contains(id), ids.count > 1 {
+                ids.remove(id)
+                if self.document.activeLayer == id { self.document.record.selectedLayer = self.document.record.layers.first { ids.contains($0.id) }?.id }
+            } else { ids.insert(id) }
+            self.document.chooseLayers(ids); done(true); self.changed()
+        }
+        return UISwipeActionsConfiguration(actions: [action])
+    }
+    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at path: IndexPath) -> [UIDragItem] {
+        let layer = document.record.layers[index(path)]
+        let item = UIDragItem(itemProvider: NSItemProvider(object: layer.name as NSString))
+        item.localObject = layer.id
+        return [item]
+    }
+    private func target(_ session: UIDropSession) -> (UUID, Bool, Bool)? {
+        let point = session.location(in: tableView)
+        guard let path = tableView.indexPathForRow(at: point), let cell = tableView.cellForRow(at: path) else { return nil }
+        let local = cell.convert(point, from: tableView)
+        let group = expanded != document.record.layers[index(path)].id && local.x < cell.layoutMargins.left + 44
+        if group && abs(local.y - cell.bounds.midY) > 19 { return nil }
+        return (document.record.layers[index(path)].id, group, local.y < cell.bounds.midY)
+    }
+    func tableView(_ tableView: UITableView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UITableViewDropProposal {
+        guard session.localDragSession != nil, let id = session.items.first?.localObject as? UUID,
+              let (other, group, _) = target(session), other != id else { return UITableViewDropProposal(operation: .cancel) }
+        return UITableViewDropProposal(operation: .move, intent: group ? .insertIntoDestinationIndexPath : .insertAtDestinationIndexPath)
+    }
+    func tableView(_ tableView: UITableView, performDropWith coordinator: UITableViewDropCoordinator) {
+        guard let id = coordinator.items.first?.dragItem.localObject as? UUID,
+              let source = document.record.layers.firstIndex(where: { $0.id == id }),
+              let (target, group, above) = self.target(coordinator.session), target != id,
+              let dest = document.record.layers.firstIndex(where: { $0.id == target }) else { return }
         document.beginMetadataEdit()
-        let layer = document.record.layers.remove(at: sourceIndex)
-        document.record.layers.insert(layer, at: destinationIndex)
+        let targetGroup = document.record.layers[dest].editGroup
+        var layer = document.record.layers.remove(at: source)
+        let members = document.record.layers.indices.filter {
+            document.record.layers[$0].id == target || (targetGroup != nil && document.record.layers[$0].editGroup == targetGroup)
+        }
+        if group {
+            let joined = targetGroup ?? UUID()
+            layer.editGroup = joined
+            if let i = document.record.layers.firstIndex(where: { $0.id == target }) { document.record.layers[i].editGroup = joined }
+        } else { layer.editGroup = nil }
+        let insert = group || above ? members.last! + 1 : members.first!
+        document.record.layers.insert(layer, at: insert)
         for index in document.record.layers.indices {
             if let source = document.record.layers[index].clipSource,
                !document.record.layers.prefix(index).contains(where: { $0.id == source }) {
