@@ -60,7 +60,7 @@ final class CreativeToolsTests: XCTestCase {
     }
     func testAirbrushCoverageDoesNotBuildUpAtEventBoundaries() throws {
         let doc = RasterDocument(name: "Airbrush", width: 512, height: 64)
-        let brush = AirbrushCoverage()
+        let brush = StrokeCoverage()
         XCTAssertTrue(doc.beginStroke())
         let start = CGPoint(x: 240, y: 32), end = CGPoint(x: 270, y: 32)
         _ = try brush.paint(document: doc, from: start, to: end, radius: 8, alpha: 0.5, hardness: 0.5, color: .red)
@@ -71,6 +71,73 @@ final class CreativeToolsTests: XCTestCase {
         doc.endStroke(cancelled: true)
         XCTAssertEqual(try rgba(doc, 256, 32), 0)
     }
+    func testSweptTipsStayConnectedAcrossSparseEventsAndTileEdges() throws {
+        for id in ["ink-v1", "jetpack-round-v1", "calligraphy-v1"] {
+            let brush = NativeBrush.companion.builtIn(id: id)
+            XCTAssertTrue(brush.usesSweptTip)
+            func stroke(_ xs: [Int]) throws -> TilePixels {
+                let doc = RasterDocument(name: id, width: 512, height: 64)
+                XCTAssertTrue(doc.beginStroke())
+                let coverage = StrokeCoverage()
+                var previous: CGPoint?
+                for x in xs {
+                    let point = CGPoint(x: CGFloat(x), y: 32.5)
+                    _ = try coverage.paintTip(document: doc, brush: brush, from: previous ?? point, to: point,
+                        size: 16, pressure: 0.35, tilt: 0, roll: 0, speed: 1, opacity: 0.4, color: .red, erasing: false)
+                    previous = point
+                }
+                doc.endStroke(cancelled: false)
+                return TilePixels(doc.pixels[doc.activeLayer] ?? [:])
+            }
+            let sparse = try stroke([180, 330])
+            let dense = try stroke(Array(stride(from: 180, through: 330, by: 3)))
+            for x in 183...327 {
+                let value = try sparse.rgba(x, 32)
+                XCTAssertGreaterThan(value & 255, 10, id)
+                XCTAssertEqual(value, try dense.rgba(x, 32), id)
+            }
+        }
+    }
+
+    func testInkEraserSweepsToFullTransparency() throws {
+        let doc = RasterDocument(name: "Erase", width: 512, height: 64)
+        XCTAssertTrue(doc.beginStroke())
+        try doc.paintPath(CGPath(rect: doc.bounds, transform: nil), color: .red, width: 1, filled: true)
+        doc.endStroke(cancelled: false)
+        XCTAssertTrue(doc.beginStroke())
+        let ink = NativeBrush.companion.builtIn(id: "ink-v1").asEraser()
+        _ = try StrokeCoverage().paintTip(document: doc, brush: ink, from: CGPoint(x: 180, y: 32),
+            to: CGPoint(x: 330, y: 32), size: 12, pressure: 1, tilt: 0, roll: 0, speed: 1,
+            opacity: 1, color: .black, erasing: true)
+        doc.endStroke(cancelled: false)
+        let pixels = TilePixels(doc.pixels[doc.activeLayer] ?? [:])
+        for x in 180...330 { XCTAssertEqual(try pixels.rgba(x, 32), 0) }
+        doc.undo()
+        XCTAssertEqual(try rgba(doc, 256, 32) & 255, 255)
+    }
+
+    func testTiltedPencilCrossesTileAndRetracesWithoutDarkSeams() throws {
+        let brush = NativeBrush.companion.builtIn(id: "pencil-v1")
+        let graphite = GraphiteRenderer()
+        let doc = RasterDocument(name: "Graphite", width: 512, height: 96)
+        XCTAssertTrue(doc.beginStroke())
+        func mark(_ x: CGFloat) throws {
+            _ = try graphite.paint(document: doc, brush: brush, point: CGPoint(x: x, y: 48),
+                size: 32, pressure: 0.6, tilt: 1.2, angle: 0.7, speed: 1, color: .black, opacity: 0.5)
+        }
+        try mark(190); try mark(325)
+        let before = TilePixels(doc.pixels[doc.activeLayer] ?? [:])
+        try mark(190)
+        let after = TilePixels(doc.pixels[doc.activeLayer] ?? [:])
+        for x in 195...320 {
+            let first = try before.rgba(x, 48) & 255
+            XCTAssertGreaterThan(first, 0)
+            XCTAssertLessThanOrEqual(abs(Int(try after.rgba(x, 48) & 255) - Int(first)), 1)
+        }
+        doc.endStroke(cancelled: true)
+        XCTAssertEqual(try rgba(doc, 256, 48), 0)
+    }
+
     func testShadowPullUsesSelectionAsSourceAndCancelRestores() throws {
         let doc = RasterDocument(name: "Shadow", width: 512, height: 256)
         XCTAssertTrue(doc.beginStroke()); try dot(doc, 250, 30); doc.endStroke(cancelled: false)

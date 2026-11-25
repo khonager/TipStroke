@@ -148,12 +148,12 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var tool: Tool = .ink
     var brush = NativeBrush.companion.builtIn(id: "ink-v1") {
         didSet {
-            do { stampRenderer = brush.usesStamps ? try NativeStampRenderer(brush: brush) : nil }
+            do { stampRenderer = brush.usesStamps && !brush.usesSweptTip ? try NativeStampRenderer(brush: brush) : nil }
             catch { stampRenderer = nil; onError?(error) }
         }
     }
     private let graphite = GraphiteRenderer()
-    private let airbrush = AirbrushCoverage()
+    private let roundStroke = StrokeCoverage()
     private var stampRenderer: NativeStampRenderer?
     private var stampPath: NativeStampPath?
     var brushColor: UIColor = .black
@@ -362,7 +362,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         if placingMirrorCenter {
             document.mirrorCenter = touch.location(in: self); placingMirrorCenter = false; refreshSelection(); return
         }
-        if mode == .paint && brush.usesStamps && stampRenderer == nil { onError?(DrawingError.message("The brush texture could not be prepared.")); return }
+        if mode == .paint && brush.usesStamps && !brush.usesSweptTip && stampRenderer == nil { onError?(DrawingError.message("The brush texture could not be prepared.")); return }
 
         if shadowPull {
             do { shadowTiles = try document.shadowSource(color: brushColor.withAlphaComponent(brushOpacity)) }
@@ -382,8 +382,8 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         let scale = viewport?.zoomScale ?? 1
         magneticRuler = mode == .paint && perspectiveMode > 0 ? NativePerspectiveRuler(mode: Int32(perspectiveMode), x1: Float(first.x), y1: Float(first.y), x2: Float(second.x), y2: Float(second.y), threshold: Float(4 / scale)) : nil
         gesturePoints = [touch.location(in: self)]; shapeTracker = NativeShapeTracker(); fitted = false; elasticShape = nil
-        stampPath = brush.usesStamps ? brush.path(size: Float(resolvedBrushSize), opacity: Float(brushOpacity)) : nil
-        airbrush.reset(); graphite.begin()
+        stampPath = brush.usesStamps && !brush.usesSweptTip ? brush.path(size: Float(resolvedBrushSize), opacity: Float(brushOpacity)) : nil
+        roundStroke.reset(); graphite.begin()
         strokeBrush = brush
         strokeTool = tool; strokeColor = brushColor; strokeSize = resolvedBrushSize; strokeOpacity = brushOpacity
         if liveFill || shadowPull || mode == .colorPush {
@@ -437,7 +437,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         }
         document.finishRecordingGesture(cancelled: false)
         previewLink?.invalidate(); previewLink = nil
-        airbrush.reset()
+        roundStroke.reset(); graphite.begin()
         let endedMode = mode
         self.pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
         refresh(); refreshSelection(); onCommit?()
@@ -480,7 +480,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         holdWork?.cancel(); previewLink?.invalidate(); previewLink = nil
         document.endStroke(cancelled: true)
         document.finishRecordingGesture(cancelled: true)
-        airbrush.reset()
+        roundStroke.reset(); graphite.begin()
         pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
         refreshSelection()
         refresh()
@@ -535,6 +535,15 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
             for point in points {
                 _ = try graphite.paint(document: document, brush: strokeBrush, point: point, size: strokeSize,
                     pressure: 0.5, tilt: 0, angle: 0, speed: 1, color: strokeColor, opacity: strokeOpacity)
+            }
+        } else if strokeBrush.usesSweptTip {
+            roundStroke.reset()
+            var prior: CGPoint?
+            for point in points {
+                _ = try roundStroke.paintTip(document: document, brush: strokeBrush, from: prior ?? point, to: point,
+                    size: strokeSize, pressure: 0.5, tilt: 0, roll: 0, speed: 1, opacity: strokeOpacity,
+                    color: strokeColor, erasing: strokeTool == .eraser)
+                prior = point
             }
         } else if stampPath != nil, let stampRenderer {
             let path = strokeBrush.path(size: Float(strokeSize), opacity: Float(strokeOpacity))
@@ -595,18 +604,23 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 let alpha = strokeOpacity * (strokeTool == .eraser ? 1 : CGFloat(strokeBrush.opacityResponse(pressure: Float(pressure)))) *
                     (1 + (CGFloat(strokeBrush.pencilShadeOpacity) - 1) * shading)
                 let color = (strokeTool == .eraser ? UIColor.black : strokeColor).withAlphaComponent(alpha)
-                if mode == .paint && strokeTool == .pencil && !strokeBrush.usesStamps {
+                let roll: CGFloat
+                if #available(iOS 17.5, *), sample.type == .pencil { roll = sample.rollAngle } else { roll = 0 }
+                if mode == .paint && strokeBrush.usesSweptTip {
+                    dirty = dirty.union(try roundStroke.paintTip(document: document, brush: strokeBrush,
+                        from: previous ?? point, to: point, size: strokeSize, pressure: pressure, tilt: tilt,
+                        roll: roll, speed: speedScale, opacity: strokeOpacity, color: strokeColor,
+                        erasing: strokeTool == .eraser))
+                } else if mode == .paint && strokeTool == .pencil && !strokeBrush.usesStamps {
                     dirty = dirty.union(try graphite.paint(document: document, brush: strokeBrush, point: point, size: strokeSize,
                         pressure: pressure, tilt: tilt, angle: sample.azimuthAngle(in: self), speed: speedScale,
                         color: strokeColor, opacity: strokeOpacity))
                 } else if mode == .paint, let stampPath, let stampRenderer {
                     let stamps = stampPath.append(x: Float(point.x), y: Float(point.y), pressure: Float(pressure), tilt: tilt, time: sample.timestamp)
-                    let roll: CGFloat
-                    if #available(iOS 17.5, *), sample.type == .pencil { roll = sample.rollAngle } else { roll = 0 }
                     dirty = dirty.union(try stampRenderer.paint(stamps, color: strokeColor, document: document,
                         erasing: strokeTool == .eraser, roll: roll))
                 } else if mode == .paint && strokeTool == .airbrush {
-                    dirty = dirty.union(try airbrush.paint(document: document, from: previous ?? point, to: point, radius: radius,
+                    dirty = dirty.union(try roundStroke.paint(document: document, from: previous ?? point, to: point, radius: radius,
                         alpha: alpha, hardness: CGFloat(strokeBrush.hardness), color: strokeColor))
                 } else if mode == .smudge { try document.smudge(from: previous ?? point, to: point, radius: strokeSize / 2, strength: strokeOpacity) }
                 else if mode == .pixel || mode == .dither {

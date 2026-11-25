@@ -23,6 +23,22 @@ class NativeBrush(val preset: BrushPreset) {
     val pencilShadeOpacity: Float get() = preset.pencilShadeOpacity
 
     val usesStamps: Boolean get() = preset.stamp != null || preset.ink != null
+    // Particle brushes and authored shape/grain tips retain their explicit dab placement.
+    val usesSweptTip: Boolean = when {
+        preset.ink != null -> with(preset.ink) {
+            !particles && !accumulate && texture == InkTexture.SOLID && rounding == 1f
+        }
+        preset.stamp == null -> preset.engine == BrushEngine.INK
+        else -> preset.id == BrushPreset.Calligraphy.id &&
+            preset.spacing <= .15f && with(preset.stamp) {
+                this == StampBrush(aspectRatio = aspectRatio, rotationDegrees = rotationDegrees, flow = flow)
+            }
+    }
+    val sweepAspect = preset.ink?.aspectRatio ?: preset.stamp?.aspectRatio ?: 1f
+    val sweepRotation = preset.ink?.rotationDegrees ?: preset.stamp?.rotationDegrees ?: 0f
+    val sweepFlow = preset.ink?.flow ?: preset.stamp?.flow ?: 1f
+    val sweepTilt = preset.ink?.tiltSize ?: 0f
+
     private fun stampPreset(): BrushPreset {
         if (preset.stamp != null) return preset
         val ink = preset.ink ?: return preset.copy(stamp = StampBrush())
@@ -31,6 +47,8 @@ class NativeBrush(val preset: BrushPreset) {
             grain = if (ink.texture == InkTexture.GRAPHITE) StampGrain.PAPER else StampGrain.NONE),
             hardness = if (ink.texture == InkTexture.SOFT) .04f else preset.hardness)
     }
+    fun asEraser(): NativeBrush = if (usesSweptTip) this else NativeBrush(eraserPreset())
+
     /** Raster mask used for destination-out strokes on both hosts. */
     fun eraserPreset(): BrushPreset {
         if (preset.stamp != null) return preset

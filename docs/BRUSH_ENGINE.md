@@ -63,13 +63,15 @@ older recordings keep using their original version-one drawing commands.
 
 ## iOS compatibility brushes
 
-The first native iOS renderer uses pressure-scaled, round Core Graphics segments
-for Ink and a lower-opacity Pencil variant; it does not emulate Jetpack Ink's
-textured pencil family. Eraser uses destination-out blending on the active layer.
-Size is in document pixels; brush settings are frozen at touch-down. Segment
-overlap can accumulate opacity, so translucent marks differ from Android brush
-semantics. Airbrush, tilt shading, custom assets and Brush Studio are not ported.
-Only reached 256 px tiles are changed, with a cancellable before-image transaction.
+UIKit joins successive contacts in document coordinates. Ink interpolates radius and
+opacity along each segment. Pencil also interpolates the oriented contact ellipse
+and samples graphite grain in fixed paper coordinates. Calligraphy, solid round
+non-particle Ink presets and the standard Ink-tip eraser use the same continuous
+coverage path. A stroke tracks its peak coverage per reached pixel, applying only
+the increase at overlapping joins. A new stroke starts a fresh mask. Airbrush
+retains its soft falloff. Particle presets, patterned tips and custom stamps
+keep their authored spacing and dynamics. Brush settings are frozen at touch-down.
+The tip specimens use these same native renderers.
 
 ## Shape-and-grain custom brushes
 

@@ -2,6 +2,7 @@ package dev.tipstroke.core
 
 import dev.tipstroke.core.drawing.*
 import dev.tipstroke.core.geometry.Point
+import dev.tipstroke.core.editor.NativeBrush
 import dev.tipstroke.core.model.*
 import kotlin.test.*
 import kotlin.math.abs
@@ -34,6 +35,21 @@ class StampPathTest {
         assertTrue(marks.size > 100)
         assertTrue(marks.all { abs(it.size - .02f) < .0001f })
         assertTrue(marks.zipWithNext().all { (a, b) -> b.x - a.x <= .006f })
+    }
+
+    @Test fun nativeContinuousTipsAndErasersRespectParticleAndTextureSettings() {
+        for (preset in listOf(BrushPreset.Ink, BrushPreset.Calligraphy, BrushPreset.BlankInk)) {
+            val brush = NativeBrush(preset)
+            assertTrue(brush.usesSweptTip)
+            assertSame(brush, brush.asEraser())
+        }
+        val particles = BrushPreset.BlankInk.copy(ink = InkBrush(particles = true))
+        val textured = BrushPreset.Calligraphy.copy(stamp = StampBrush(grain = StampGrain.LINES))
+        val spaced = BrushPreset.Calligraphy.copy(spacing = 1.5f)
+        for (preset in listOf(particles, textured, spaced, BrushPreset.Blank)) {
+            assertFalse(NativeBrush(preset).usesSweptTip)
+            assertTrue(NativeBrush(preset).asEraser().usesStamps)
+        }
     }
 
     @Test fun sourceBytesAreImmutableAndValidateDimensions() {

@@ -4,7 +4,7 @@ import TipStrokeShared
 /// Render one pressure sweep into a private, single-tile document.
 enum BrushSpecimen {
     static func image(_ source: NativeBrush, eraser: Bool) throws -> Data? {
-        let brush = eraser ? NativeBrush(preset: source.eraserPreset()) : source
+        let brush = eraser ? source.asEraser() : source
         let document = RasterDocument(name: "", width: 112, height: 48)
         document.record.backgroundARGB = 0xff303238
         guard document.beginStroke() else { return nil }
@@ -13,7 +13,7 @@ enum BrushSpecimen {
                                    color: .lightGray, width: 1, filled: true)
         }
         let graphite = GraphiteRenderer()
-        let air = AirbrushCoverage()
+        let roundStroke = StrokeCoverage()
         let size = min(40, max(2, 4.5 * log2(CGFloat(brush.size))))
         let path = brush.path(size: Float(size), opacity: brush.opacity)
         var stamps: [BrushStamp] = []
@@ -30,22 +30,23 @@ enum BrushSpecimen {
             let pressure = 0.12 + 0.88 * t
             let radius = speed * size * CGFloat(brush.sizeResponse(pressure: Float(pressure))) / 2
             let alpha = CGFloat(brush.opacity * brush.opacityResponse(pressure: Float(pressure)))
-            if brush.usesStamps {
+            if brush.usesSweptTip {
+                _ = try roundStroke.paintTip(document: document, brush: brush, from: previous ?? point, to: point,
+                    size: size, pressure: pressure, tilt: Float(t), roll: 0, speed: speed, opacity: CGFloat(brush.opacity),
+                    color: .white, erasing: eraser)
+            } else if brush.usesStamps {
                 stamps += path.append(x: Float(point.x), y: Float(point.y), pressure: Float(pressure),
                                       tilt: Float(t), time: Double(t) * 0.5)
             } else if brush.engine == "PENCIL" {
                 _ = try graphite.paint(document: document, brush: brush, point: point, size: size,
                     pressure: pressure, tilt: Float(t), angle: 0.3, speed: speed, color: .white, opacity: CGFloat(brush.opacity))
-            } else if brush.engine == "AIRBRUSH" {
-                _ = try air.paint(document: document, from: previous ?? point, to: point, radius: radius,
-                                  alpha: alpha, hardness: CGFloat(brush.hardness), color: .white)
             } else {
-                _ = try document.paint(from: previous ?? point, to: point, radius: radius,
-                                       color: UIColor.white.withAlphaComponent(alpha), erasing: false)
+                _ = try roundStroke.paint(document: document, from: previous ?? point, to: point, radius: radius,
+                                  alpha: alpha, hardness: brush.engine == "AIRBRUSH" ? CGFloat(brush.hardness) : 1, color: .white)
             }
             previous = point
         }
-        if brush.usesStamps {
+        if !stamps.isEmpty {
             _ = try NativeStampRenderer(brush: brush).paint(stamps, color: .white, document: document, erasing: eraser)
         }
         document.endStroke(cancelled: false)

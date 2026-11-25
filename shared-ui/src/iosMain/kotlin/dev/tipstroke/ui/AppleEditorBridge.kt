@@ -89,7 +89,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         val saved = defaults.stringForKey("tip.eraserTuning." + preset.id.value)
         return saved?.let { runCatching { BrushPackage.decode(it).preset }.getOrNull() } ?: preset
     }
-    fun eraserBrush(): NativeBrush = NativeBrush(NativeBrush(eraserSource()).eraserPreset())
+    fun eraserBrush(): NativeBrush = NativeBrush(eraserSource()).asEraser()
     private fun saveEraser(value: BrushPreset) {
         defaults.setObject(BrushPackage.encode(LibraryBrush(value)), forKey = "tip.eraserTuning." + value.id.value)
     }

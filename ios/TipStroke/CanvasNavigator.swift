@@ -26,7 +26,7 @@ final class CanvasNavigator: UIImageView {
         handle.backgroundColor = .secondarySystemBackground
         handle.isHidden = true
         addSubview(handle)
-        addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(move(_:))))
+        addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(dragPreview(_:))))
         addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(resize(_:))))
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(expand)))
     }
@@ -51,7 +51,7 @@ final class CanvasNavigator: UIImageView {
 
     @objc private func expand() { tuckedRight = nil; constrainPosition() }
     override func accessibilityActivate() -> Bool { expand(); return true }
-    @objc private func move(_ pan: UIPanGestureRecognizer) {
+    @objc private func dragPreview(_ pan: UIPanGestureRecognizer) {
         guard let host = superview else { return }
         let delta = pan.translation(in: host)
         if pan.state == .changed {

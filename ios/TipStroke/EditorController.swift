@@ -667,7 +667,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.brush = brush
         viewport.canvas.brushSize = CGFloat(brush.size)
         viewport.canvas.brushOpacity = CGFloat(brush.opacity)
-        viewport.canvas.tool = keepEraser ? .eraser : (CanvasView.Tool.allCases.first { $0.brushID == brush.id } ?? .ink)
+        if keepEraser { viewport.canvas.tool = .eraser }
+        else {
+            switch brush.engine {
+            case "PENCIL": viewport.canvas.tool = .pencil
+            case "AIRBRUSH": viewport.canvas.tool = .airbrush
+            default: viewport.canvas.tool = .ink
+            }
+        }
         toolPicker.selectedSegmentIndex = CanvasView.Tool.allCases.firstIndex(of: viewport.canvas.tool) ?? 1
         updateToolValue()
         if viewport.canvas.tool != .eraser { previousTool = viewport.canvas.tool }
