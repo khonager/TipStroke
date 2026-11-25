@@ -190,7 +190,7 @@ extension EditorController {
         })
         present(alert, animated: true)
     }
-    private func resizeCanvas() {
+    func resizeCanvas() {
         finishCanvasInteraction()
         let source = document.snapshot(), revision = document.revision
         let editor = ResizeCanvasController(snapshot: source)

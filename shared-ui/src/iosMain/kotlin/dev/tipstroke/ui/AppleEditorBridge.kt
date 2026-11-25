@@ -213,7 +213,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             Box(modifier.background(Color(0xff303238))) {
                 image?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
             }
-        }) { MaterialTheme(colorScheme = darkColorScheme(), content = content) }
+        }) { TipStrokeTheme(content) }
     }
 
     fun libraryController(callbacks: AppleBrushLibraryActions, openGroups: Boolean): UIViewController = ComposeUIViewController {
@@ -325,7 +325,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         }
     }
     fun quickColorsController(): UIViewController = ComposeUIViewController {
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        TipStrokeTheme {
             Surface(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val quick = (listOf(color) + shelf.saved + if (shelf.recent) history else drawingColors).distinct().take(shelf.slots)
@@ -351,7 +351,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         }
     }
     fun colorController(): UIViewController = ComposeUIViewController {
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        TipStrokeTheme {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
                     ColorPickerPanel(color, mode, drawingColors, paletteCount, colorHistory = history,
@@ -366,7 +366,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     }
     fun blendController(layerId: String, modeName: String, callbacks: AppleLayerBlendActions): UIViewController = ComposeUIViewController {
         var selected by remember { mutableStateOf(LayerBlendMode.fromStorage(modeName)) }
-        MaterialTheme(colorScheme = darkColorScheme()) {
+        TipStrokeTheme {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.padding(20.dp)) {
                     Text("Blend mode", style = MaterialTheme.typography.titleLarge)

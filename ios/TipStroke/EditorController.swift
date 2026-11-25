@@ -13,6 +13,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var pending: DocumentSnapshot?
     private var closeAfterSave = false
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private weak var colorButton: UIButton?
     private let undoButton = UIButton(type: .system)
     private let redoButton = UIButton(type: .system)
     private let toolPicker = UISegmentedControl(items: CanvasView.Tool.allCases.map(\.rawValue))
@@ -69,9 +70,15 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         let fit = button("Fit canvas", symbol: "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit() }
         let layers = button("Layers", symbol: "square.3.layers.3d") { [weak self] in self?.showLayers() }
-        let share = button("Share PNG", symbol: "square.and.arrow.up") { [weak self] in self?.export() }
+        let share = button("More canvas actions", symbol: "ellipsis") {}
         share.showsMenuAsPrimaryAction = true
         share.menu = UIMenu(children: [
+            UIAction(title: "Resize canvas", image: UIImage(systemName: "crop")) { [weak self] _ in self?.resizeCanvas() },
+            UIAction(title: "Animate", image: UIImage(systemName: "film")) { [weak self] _ in self?.showTimeline() },
+            UIDeferredMenuElement.uncached { [weak self] done in
+                done([UIAction(title: self?.navigator == nil ? "Canvas preview" : "Hide canvas preview",
+                               image: UIImage(systemName: "picture.in.picture")) { [weak self] _ in self?.toggleCanvasPreview() }])
+            },
             UIAction(title: "Export image…", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.showImageExport() },
             UIAction(title: "Drawing progress", image: UIImage(systemName: "play.rectangle")) { [weak self] _ in
                 guard let self else { return }
@@ -99,6 +106,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             self.refreshDrawingColors()
             self.showShared(self.sharedControls.colorController(), title: "Colors")
         }
+        colorButton = color
+        updateColorSwatch(viewport.canvas.brushColor)
         color.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(dropColor(_:))))
         color.accessibilityHint = "Tap to change color or drag to fill a region."
         let settings = button("Brush size, opacity and finger drawing", symbol: "slider.horizontal.3") { [weak self] in self?.brushSettings() }
@@ -230,6 +239,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.canvas.onPickColor = { [weak self] color in
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
             color.getRed(&r, green: &g, blue: &b, alpha: &a)
+            self?.updateColorSwatch(color)
             self?.sharedControls.setColor(red: Float(r), green: Float(g), blue: Float(b))
         }
         viewport.canvas.onFill = { [weak self] point in self?.fill(at: point) }
@@ -685,6 +695,13 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         finishCanvasInteraction()
         showShared(sharedControls.settingsController(eraser: viewport.canvas.tool == .eraser), title: "Brush settings")
     }
+    fileprivate func updateColorSwatch(_ color: UIColor) {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 30, height: 30)).image { _ in
+            let ring = UIBezierPath(ovalIn: CGRect(x: 1, y: 1, width: 28, height: 28))
+            color.setFill(); ring.fill(); UIColor.white.setStroke(); ring.lineWidth = 2; ring.stroke()
+        }
+        colorButton?.setImage(image.withRenderingMode(.alwaysOriginal), for: .normal)
+    }
     func showShared(_ controller: UIViewController, title: String) {
         controller.title = title
         controller.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
@@ -767,7 +784,9 @@ private final class EditorActions: NSObject, AppleEditorActions {
     func eraserChanged() { editor?.activateEraserBrush() }
     func brushChanged(brush: NativeBrush) { editor?.applyBrush(brush) }
     func colorChanged(red: Float, green: Float, blue: Float) {
-        editor?.viewport.canvas.brushColor = UIColor(red: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: 1)
+        let color = UIColor(red: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: 1)
+        editor?.viewport.canvas.brushColor = color
+        editor?.updateColorSwatch(color)
     }
     func swatchDrag(x: Float, y: Float, red: Float, green: Float, blue: Float, ended: Bool, cancelled: Bool) {
         let color = UIColor(red: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: 1)
