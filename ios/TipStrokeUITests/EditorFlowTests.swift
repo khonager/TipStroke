@@ -144,7 +144,12 @@ final class EditorFlowTests: XCTestCase {
             guard Set(buttons.map(\.label)) == Set(topLabels),
                   let fit = buttons.first(where: { $0.label == "Fit canvas" }),
                   let color = buttons.first(where: { $0.label == "Brush color" }) else { return false }
-            if !tablet { return buttons.allSatisfy { !$0.frame.isEmpty && abs($0.frame.midX - fit.frame.midX) < 2 } }
+            if !tablet {
+                let group = buttons.reduce(CGRect.null) { $0.union($1.frame) }
+                // The landscape home indicator can shift the safe area's midpoint.
+                return abs(group.midY - snapshot.frame.midY) <= 15 &&
+                    buttons.allSatisfy { !$0.frame.isEmpty && abs($0.frame.midX - fit.frame.midX) < 2 }
+            }
             return fit.frame.maxX < color.frame.minX && buttons.allSatisfy {
                 !$0.frame.isEmpty && abs($0.frame.midY - fit.frame.midY) <= 2 &&
                     $0.frame.midY < snapshot.frame.minY + snapshot.frame.height * 0.25

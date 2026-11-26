@@ -45,6 +45,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var verticalCommands: [NSLayoutConstraint] = []
     private var landscapeEdges: [NSLayoutConstraint] = []
     private weak var tipPanel: UIView?
+    private var landscapeTipHeight: NSLayoutConstraint?
+    private weak var pixelTipShortcut: UIView?
     private var leftTips = false
     private var reversedRails = false
     private var topButtonWidths: [NSLayoutConstraint] = []
@@ -197,6 +199,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         adjustmentPreview.layer.shadowOffset = .zero
         let pixelBrushes = [PixelTool.pencil, .line, .dither].map { NativeBrush(preset: $0.preset) }
         let pixelShortcut = tipFolder(tips: pixelBrushes, label: "Pixel tips", title: "Pixel tips")
+        pixelTipShortcut = pixelShortcut
         let shortcutHeight = pixelShortcut.heightAnchor.constraint(equalToConstant: 44)
         shortcutHeight.priority = .defaultHigh
         shortcutHeight.isActive = true
@@ -235,10 +238,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         ]
         NSLayoutConstraint.activate(horizontalCommands)
         verticalCommands = [
-
             actionsPanel.centerXAnchor.constraint(equalTo: historyPanel.centerXAnchor),
-            compactBar.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
-            compactBar.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -4),
+            compactBar.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
             compactBar.leadingAnchor.constraint(equalTo: historyPanel.leadingAnchor),
             compactBar.trailingAnchor.constraint(equalTo: historyPanel.trailingAnchor),
         ]
@@ -262,14 +263,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             bottomPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -4),
             bottomPanel.widthAnchor.constraint(equalTo: safe.widthAnchor, constant: -12).withPriority(.defaultHigh),
         ]
+        let tipHeight = bottomPanel.heightAnchor.constraint(equalToConstant: 0)
+        landscapeTipHeight = tipHeight
         landscapeLayout = [
             bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
             adjustmentPanel.centerYAnchor.constraint(equalTo: bottomPanel.centerYAnchor),
             adjustmentPanel.widthAnchor.constraint(equalToConstant: 164),
             dock.widthAnchor.constraint(equalToConstant: 48),
-            bottomPanel.heightAnchor.constraint(lessThanOrEqualToConstant: 480),
-            bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -8),
-            bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -8).withPriority(.defaultHigh),
+            tipHeight,
         ]
         tabletPortraitLayout = [
             bottomPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
@@ -395,6 +396,15 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             let height = min(205, max(50, safe.height - 170))
             sizeControl.setTrackLength(height); opacityControl.setTrackLength(height)
         }
+        if phoneSide {
+            // Three fixed 48-point actions and an optional 44-point pixel shortcut.
+            // Include the 2-point stack gaps and the panel's top and bottom inset.
+            let fixed: CGFloat = 3 * 50 + (pixelTipShortcut?.isHidden == false ? 46 : 0) + 2
+            let available = min(480, safe.height - 8)
+            let visiblePins = min(CGFloat(sharedControls.dockTipCount), max(0, floor((available - fixed) / 50)))
+            let height = min(available, fixed + visiblePins * 50)
+            if landscapeTipHeight?.constant != height { landscapeTipHeight?.constant = height }
+        }
         let tipsOnLeft = phoneSide && view.window?.windowScene?.interfaceOrientation == .landscapeLeft
         guard useSideDock != sideDock || useTabletControls != tabletControls || leftTips != tipsOnLeft else { return }
         NSLayoutConstraint.deactivate(horizontalCommands + verticalCommands + landscapeEdges)
@@ -408,12 +418,15 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             }
         }
         commandStacks.forEach { $0.axis = phoneSide ? .vertical : .horizontal }
-        if phoneSide, let tipPanel, let adjustmentPanel, let history = commandPanels.first {
+        if phoneSide, let tipPanel, let adjustmentPanel, let compactBar, let history = commandPanels.first {
             let guide = view.safeAreaLayoutGuide
             let actions = commandPanels[1]
+            let first = reverse ? actions : history
+            let last = reverse ? history : actions
             landscapeEdges = [
-                (reverse ? actions : history).topAnchor.constraint(equalTo: guide.topAnchor, constant: 4),
-                (reverse ? history : actions).bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -4),
+                first.topAnchor.constraint(equalTo: compactBar.topAnchor),
+                last.topAnchor.constraint(equalTo: first.bottomAnchor),
+                last.bottomAnchor.constraint(equalTo: compactBar.bottomAnchor),
                 leftTips ? tipPanel.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 4)
                          : tipPanel.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -4),
                 leftTips ? history.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -4)

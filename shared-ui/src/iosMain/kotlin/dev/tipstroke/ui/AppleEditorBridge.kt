@@ -90,6 +90,8 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         (defaults.stringArrayForKey("tip.dockPins") ?: defaults.stringArrayForKey("tip.pins"))?.filterIsInstance<String>()
     ).also { if (defaults.stringForKey("tip.dockSlots") == null) defaults.setObject(it.encode(), forKey = "tip.dockSlots") })
     private val allTips get() = BrushPreset.libraryBuiltIns + PixelTool.presets + library.map { it.preset }
+    private val orderedDockTips by derivedStateOf { dock.ordered(allTips.map { it.id.value }.toSet()) }
+    val dockTipCount: Int get() = orderedDockTips.size
     private fun saveDock(next: TipDock) {
         dock = next
         defaults.setObject(next.encode(), forKey = "tip.dockSlots")
@@ -321,7 +323,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController(configure = { opaque = false }) {
         val byId = remember(library) { allTips.associateBy { it.id.value } }
-        val ordered = remember(dock, byId) { dock.ordered(byId.keys) }
+        val ordered = orderedDockTips
         BrushTheme {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val capacity = (((if (verticalDock) maxHeight else maxWidth) + 2.dp) / 50.dp).toInt().coerceAtLeast(1)

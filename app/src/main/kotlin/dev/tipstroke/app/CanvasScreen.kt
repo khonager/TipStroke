@@ -761,7 +761,7 @@ fun CanvasScreen(
                 onHide = ::manuallyHidePhoneChrome,
                 vertical = landscapeDock, reverseCells = landscapeDock && !tipsOnLeft,
                 modifier = Modifier.align(if (landscapeDock) commandEdge else Alignment.TopCenter)
-                    .safeDrawingPadding().padding(4.dp).then(if (landscapeDock) Modifier.width(54.dp).fillMaxHeight() else Modifier),
+                    .safeDrawingPadding().padding(4.dp).then(if (landscapeDock) Modifier.width(54.dp) else Modifier),
             )
         } else if (!resizeOpen && phoneChromeManuallyHidden) {
             PhoneChromeHandle(
@@ -847,7 +847,7 @@ fun CanvasScreen(
             Column(
                 Modifier.align(if (landscapeDock) tipEdge else Alignment.BottomCenter)
                     .safeDrawingPadding().padding(4.dp)
-                    .then(if (landscapeDock) Modifier.width(56.dp).fillMaxHeight() else Modifier.widthIn(max = 520.dp)),
+                    .then(if (landscapeDock) Modifier.width(56.dp) else Modifier.widthIn(max = 520.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 BrushFavoritesDock(
@@ -870,7 +870,7 @@ fun CanvasScreen(
                     onStudio = { brushStudioOpen = true },
                     onTune = { phoneAdjustmentsOpen = !phoneAdjustmentsOpen },
                     tuneDescription = if (phoneAdjustmentsOpen) "Hide size and opacity" else "Show size and opacity",
-                    modifier = if (landscapeDock) Modifier.fillMaxHeight() else Modifier.widthIn(max = 520.dp),
+                    modifier = if (landscapeDock) Modifier else Modifier.widthIn(max = 520.dp),
                 )
             }
         }
