@@ -573,6 +573,10 @@ fun CanvasScreen(
         val compactLandscape = !portrait && maxHeight < 760.dp
         val safeInsets = WindowInsets.safeDrawing
         val landscapeDock = compactPhone && !portrait
+        val tipsOnLeft = landscapeDock && (context.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager)
+            .defaultDisplay.rotation == android.view.Surface.ROTATION_270
+        val tipEdge = if (tipsOnLeft) Alignment.CenterStart else Alignment.CenterEnd
+        val commandEdge = if (tipsOnLeft) Alignment.CenterEnd else Alignment.CenterStart
         fun manuallyHidePhoneChrome() {
             if (!compactPhone) return
             phoneChromeManuallyHidden = true
@@ -725,8 +729,8 @@ fun CanvasScreen(
                 onAnimation = ::openAnimation,
                 onDebug = { debug = !debug },
                 onHide = ::manuallyHidePhoneChrome,
-                vertical = landscapeDock,
-                modifier = Modifier.align(if (landscapeDock) Alignment.CenterStart else Alignment.TopCenter)
+                vertical = landscapeDock, reverseCells = landscapeDock && !tipsOnLeft,
+                modifier = Modifier.align(if (landscapeDock) commandEdge else Alignment.TopCenter)
                     .safeDrawingPadding().padding(4.dp).then(if (landscapeDock) Modifier.width(54.dp).fillMaxHeight() else Modifier),
             )
         } else if (!resizeOpen && phoneChromeManuallyHidden) {
@@ -810,13 +814,13 @@ fun CanvasScreen(
             )
         } else if (!resizeOpen && phoneChromeVisible) {
             Column(
-                Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
+                Modifier.align(if (landscapeDock) tipEdge else Alignment.BottomCenter)
                     .safeDrawingPadding().padding(4.dp)
                     .then(if (landscapeDock) Modifier.width(56.dp).fillMaxHeight() else Modifier.widthIn(max = 520.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 BrushFavoritesDock(
-                    selected = pixelTool?.preset ?: brush, favorites = pinnedBrushes, horizontal = !landscapeDock,
+                    selected = pixelTool?.preset ?: brush, favorites = pinnedBrushes, horizontal = !landscapeDock, reverseCells = landscapeDock && !tipsOnLeft,
                     showPixelTips = showPixelTips,
                     brushActive = activeDockTool == null || activeDockTool == pixelTool?.displayName, toolLabel = activeDockTool,
                     onLibrary = { pickerSlot = it; pickingEraser = false },
@@ -875,7 +879,7 @@ fun CanvasScreen(
                 horizontal = true,
                 showColorSwitcher = false,
                 horizontalWidthFraction = 1f,
-                modifier = Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
+                modifier = Modifier.align(if (landscapeDock) tipEdge else Alignment.BottomCenter)
                     .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp + timelineClearance)
                     .widthIn(max = 390.dp).fillMaxWidth(),
             )
@@ -919,7 +923,7 @@ fun CanvasScreen(
             canTransform = selectedLayerIds.isNotEmpty() && selectedLayerIds.all { id -> layers.any { it.id == id && it.kind == LayerKind.RASTER } },
             onTransform = { beginSelectionTransform() },
             onClear = { movingSelection = false; selectionMode = true; surface?.clearSelection() },
-            modifier = if (compactPhone) Modifier.align(if (landscapeDock) Alignment.CenterEnd else Alignment.BottomCenter)
+            modifier = if (compactPhone) Modifier.align(if (landscapeDock) tipEdge else Alignment.BottomCenter)
                 .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp + timelineClearance)
                 .widthIn(max = 390.dp).fillMaxWidth()
             else Modifier.align(if (portrait) Alignment.BottomEnd else Alignment.CenterEnd)
@@ -1543,6 +1547,7 @@ private fun PhoneEditorChrome(
     onDebug: () -> Unit,
     onHide: () -> Unit,
     vertical: Boolean = false,
+    reverseCells: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -1591,10 +1596,10 @@ private fun PhoneEditorChrome(
                 }
             }
         }
-        if (vertical) Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) { actions() }
-        else Row(Modifier.height(48.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 3.dp),
-            verticalAlignment = Alignment.CenterVertically) { actions() }
+        val scroll = rememberScrollState()
+        DockCells(!vertical, reverseCells, if (vertical) 4.dp else 0.dp,
+            if (vertical) Modifier.verticalScroll(scroll).padding(vertical = 4.dp)
+            else Modifier.height(48.dp).horizontalScroll(scroll).padding(horizontal = 3.dp), actions)
 
     }
 }

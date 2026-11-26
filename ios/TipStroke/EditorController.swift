@@ -38,6 +38,13 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         if tabletControls { return sideDock ? tabletLandscapeLayout : tabletPortraitLayout }
         return sideDock ? landscapeLayout : portraitLayout
     }
+    private var commandStacks: [UIStackView] = []
+    private var horizontalCommands: [NSLayoutConstraint] = []
+    private var verticalCommands: [NSLayoutConstraint] = []
+    private var landscapeEdges: [NSLayoutConstraint] = []
+    private weak var tipPanel: UIView?
+    private var leftTips = false
+    private var reversedRails = false
     private var topButtonWidths: [NSLayoutConstraint] = []
     private var commandPanels: [UIView] = []
     private weak var compactBar: UIView?
@@ -176,8 +183,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let compactBar = panel(UIStackView())
         self.compactBar = compactBar
         compactBar.isUserInteractionEnabled = false
-        let historyPanel = panel(UIStackView(arrangedSubviews: history))
-        let actionsPanel = panel(UIStackView(arrangedSubviews: actions))
+        commandStacks = [UIStackView(arrangedSubviews: history), UIStackView(arrangedSubviews: actions)]
+        let historyPanel = panel(commandStacks[0])
+        let actionsPanel = panel(commandStacks[1])
         commandPanels = [historyPanel, actionsPanel]
         let quickPanel = panel(UIStackView(arrangedSubviews: [quickColors.view!]))
         quickPanel.isHidden = true
@@ -224,6 +232,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         pinned.didMove(toParent: self)
         quickColors.didMove(toParent: self)
         let bottomPanel = panel(dock)
+        tipPanel = bottomPanel
         let adjustmentPanel = panel(adjustments)
         adjustmentPanel.isHidden = true
         self.adjustmentPanel = adjustmentPanel
@@ -231,6 +240,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         NSLayoutConstraint.activate([
             viewport.leadingAnchor.constraint(equalTo: view.leadingAnchor), viewport.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             viewport.topAnchor.constraint(equalTo: view.topAnchor), viewport.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        horizontalCommands = [
             historyPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 4),
             historyPanel.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
             actionsPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4),
@@ -240,7 +251,16 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             compactBar.trailingAnchor.constraint(equalTo: actionsPanel.trailingAnchor),
             compactBar.topAnchor.constraint(equalTo: actionsPanel.topAnchor),
             compactBar.bottomAnchor.constraint(equalTo: actionsPanel.bottomAnchor),
-        ])
+        ]
+        NSLayoutConstraint.activate(horizontalCommands)
+        verticalCommands = [
+
+            actionsPanel.centerXAnchor.constraint(equalTo: historyPanel.centerXAnchor),
+            compactBar.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
+            compactBar.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -4),
+            compactBar.leadingAnchor.constraint(equalTo: historyPanel.leadingAnchor),
+            compactBar.trailingAnchor.constraint(equalTo: historyPanel.trailingAnchor),
+        ]
         inlineShelfLayout = [
             quickPanel.trailingAnchor.constraint(equalTo: actionsPanel.leadingAnchor, constant: -4),
             quickPanel.centerYAnchor.constraint(equalTo: actionsPanel.centerYAnchor),
@@ -262,15 +282,13 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             bottomPanel.widthAnchor.constraint(equalTo: safe.widthAnchor, constant: -12).withPriority(.defaultHigh),
         ]
         landscapeLayout = [
-            bottomPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4),
-            bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor, constant: 24),
-            adjustmentPanel.trailingAnchor.constraint(equalTo: bottomPanel.leadingAnchor, constant: -8),
+            bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
             adjustmentPanel.centerYAnchor.constraint(equalTo: bottomPanel.centerYAnchor),
             adjustmentPanel.widthAnchor.constraint(equalToConstant: 380),
             dock.widthAnchor.constraint(equalToConstant: 48),
             bottomPanel.heightAnchor.constraint(lessThanOrEqualToConstant: 480),
-            bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -60),
-            bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -60).withPriority(.defaultHigh),
+            bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -8),
+            bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -8).withPriority(.defaultHigh),
         ]
         tabletPortraitLayout = [
             bottomPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
@@ -363,25 +381,55 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         super.viewWillLayoutSubviews()
         let safe = view.safeAreaLayoutGuide.layoutFrame
         // Keep both command groups on screen in narrow split views as well.
-        let buttonWidth = min(44, max(1, (safe.width - 44) / 8))
+        let phoneSide = safe.width > safe.height && min(safe.width, safe.height) < 600
+        let buttonWidth = min(44, max(1, ((phoneSide ? safe.height : safe.width) - 44) / 8))
         for width in topButtonWidths where width.constant != buttonWidth { width.constant = buttonWidth }
-        let compact = safe.width < 600
+        let compact = min(safe.width, safe.height) < 600
         if compact != compactCommands {
             compactCommands = compact
             compactBar?.isHidden = !compact
             for action in wideActions { action.isHidden = compact }
             refreshPanelStyle()
         }
-        let inline = safe.width >= 900
+        let inline = !phoneSide && safe.width >= 900
         if inline != inlineShelf {
             NSLayoutConstraint.deactivate(inlineShelf ? inlineShelfLayout : popupShelfLayout)
             inlineShelf = inline
             NSLayoutConstraint.activate(inline ? inlineShelfLayout : popupShelfLayout)
             quickPanel?.isHidden = !inline
         }
-        let useSideDock = safe.width > safe.height && safe.width >= 560 && safe.height >= 280
+        let useSideDock = safe.width > safe.height
         let useTabletControls = min(safe.width, safe.height) >= 600
-        guard useSideDock != sideDock || useTabletControls != tabletControls else { return }
+        let tipsOnLeft = phoneSide && view.window?.windowScene?.interfaceOrientation == .landscapeLeft
+        guard useSideDock != sideDock || useTabletControls != tabletControls || leftTips != tipsOnLeft else { return }
+        NSLayoutConstraint.deactivate(horizontalCommands + verticalCommands + landscapeEdges)
+        leftTips = tipsOnLeft
+        let reverse = phoneSide && !leftTips
+        if reversedRails != reverse {
+            reversedRails = reverse
+            for stack in commandStacks + [dock] {
+                let children = Array(stack.arrangedSubviews.reversed())
+                children.forEach { stack.removeArrangedSubview($0); stack.addArrangedSubview($0) }
+            }
+        }
+        commandStacks.forEach { $0.axis = phoneSide ? .vertical : .horizontal }
+        if phoneSide, let tipPanel, let adjustmentPanel, let history = commandPanels.first {
+            let guide = view.safeAreaLayoutGuide
+            let actions = commandPanels[1]
+            landscapeEdges = [
+                (reverse ? actions : history).topAnchor.constraint(equalTo: guide.topAnchor, constant: 4),
+                (reverse ? history : actions).bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -4),
+                leftTips ? tipPanel.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 4)
+                         : tipPanel.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -4),
+                leftTips ? history.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -4)
+                         : history.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 4),
+                leftTips ? adjustmentPanel.leadingAnchor.constraint(equalTo: tipPanel.trailingAnchor, constant: 6)
+                         : adjustmentPanel.trailingAnchor.constraint(equalTo: tipPanel.leadingAnchor, constant: -6),
+            ]
+            NSLayoutConstraint.activate(verticalCommands + landscapeEdges)
+        } else {
+            NSLayoutConstraint.activate(horizontalCommands)
+        }
         NSLayoutConstraint.deactivate(activeDockLayout)
         tabletControls = useTabletControls
         adjustmentPanel?.isHidden = !tabletControls && !phoneAdjustmentsOpen
@@ -391,7 +439,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         opacityControl.useVerticalTrack(tabletControls && useSideDock)
         sideDock = useSideDock
         dock.axis = useSideDock ? .vertical : .horizontal
-        sharedControls.updateDockAxis(vertical: useSideDock)
+        sharedControls.updateDockAxis(vertical: useSideDock, reverse: reverse)
         NSLayoutConstraint.activate(activeDockLayout)
     }
     override func viewDidLayoutSubviews() {
@@ -525,7 +573,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         button.setImage(UIImage(systemName: symbol, withConfiguration: icon), for: .normal); button.accessibilityLabel = label
         button.addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hoverControl(_:))))
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
-        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 36).isActive = true
     }
     @objc private func hoverControl(_ gesture: UIHoverGestureRecognizer) {
         guard gesture.state != .changed else { return }

@@ -65,6 +65,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.attributes = window.attributes.apply {
+            rotationAnimation = android.view.WindowManager.LayoutParams.ROTATION_ANIMATION_JUMPCUT
+        }
         savedInstanceState?.let(appState::restoreState)
         LocalDiagnostics.record("activity create restored=${savedInstanceState != null}")
         enableEdgeToEdge()

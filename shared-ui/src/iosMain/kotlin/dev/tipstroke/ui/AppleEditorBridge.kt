@@ -312,7 +312,11 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         }
     }
     private var verticalDock by mutableStateOf(false)
-    fun updateDockAxis(vertical: Boolean) { verticalDock = vertical }
+    private var reverseDock by mutableStateOf(false)
+    fun updateDockAxis(vertical: Boolean, reverse: Boolean) {
+        verticalDock = vertical
+        reverseDock = reverse
+    }
 
     @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController(configure = { opaque = false }) {
@@ -322,7 +326,8 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val capacity = (((if (verticalDock) maxHeight else maxWidth) + 2.dp) / 50.dp).toInt().coerceAtLeast(1)
                 val swatches: @Composable () -> Unit = {
-                    ordered.take(capacity).forEachIndexed { slot, id ->
+                    val slots = ordered.take(capacity).withIndex().toList()
+                    (if (reverseDock) slots.asReversed() else slots).forEach { (slot, id) ->
                         val tip = byId.getValue(id)
                         val active = id == activeDockTip
                         key(id) {

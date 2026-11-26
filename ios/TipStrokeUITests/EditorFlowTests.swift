@@ -142,14 +142,15 @@ final class EditorFlowTests: XCTestCase {
             guard Set(buttons.map(\.label)) == Set(topLabels),
                   let fit = buttons.first(where: { $0.label == "Fit canvas" }),
                   let color = buttons.first(where: { $0.label == "Brush color" }) else { return false }
+            if !tablet { return buttons.allSatisfy { !$0.frame.isEmpty && abs($0.frame.midX - fit.frame.midX) < 2 } }
             return fit.frame.maxX < color.frame.minX && buttons.allSatisfy {
                 !$0.frame.isEmpty && abs($0.frame.midY - fit.frame.midY) <= 2 &&
                     $0.frame.midY < snapshot.frame.minY + snapshot.frame.height * 0.25
             }
         }, object: nil)
         XCTAssertEqual(XCTWaiter.wait(for: [topRow], timeout: 10), .completed, app.debugDescription)
-        XCTAssertLessThan(app.buttons["Fit canvas"].frame.maxX, app.buttons["Brush color"].frame.minX)
         if tablet {
+            XCTAssertLessThan(app.buttons["Fit canvas"].frame.maxX, app.buttons["Brush color"].frame.minX)
             XCTAssertGreaterThan(app.sliders["Size"].frame.height, 150)
             XCTAssertLessThan(tools.frame.midX, app.frame.midX)
             XCTAssertGreaterThan(app.sliders["Opacity"].frame.midX, app.frame.midX)

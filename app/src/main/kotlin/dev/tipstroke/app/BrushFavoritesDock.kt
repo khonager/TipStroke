@@ -18,10 +18,32 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.*
+import androidx.compose.ui.layout.Layout
 import dev.tipstroke.core.drawing.PixelTool
 import dev.tipstroke.core.model.BrushPreset
 import dev.tipstroke.ui.HoldToolPicker
+
+/** Keep the same child compositions and place them along the physical rail. */
+@Composable
+internal fun DockCells(horizontal: Boolean, reverse: Boolean, spacing: Dp, modifier: Modifier = Modifier,
+    content: @Composable () -> Unit) {
+    Layout(content = content, modifier = modifier) { children, constraints ->
+        val cells = children.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+        val gap = spacing.roundToPx()
+        val gaps = (cells.size - 1).coerceAtLeast(0) * gap
+        val width = constraints.constrainWidth(if (horizontal) cells.sumOf { it.width } + gaps else cells.maxOfOrNull { it.width } ?: 0)
+        val height = constraints.constrainHeight(if (!horizontal) cells.sumOf { it.height } + gaps else cells.maxOfOrNull { it.height } ?: 0)
+        layout(width, height) {
+            var cursor = 0
+            for (cell in if (reverse) cells.asReversed() else cells) {
+                if (horizontal) cell.place(cursor, (height - cell.height) / 2)
+                else cell.place((width - cell.width) / 2, cursor)
+                cursor += (if (horizontal) cell.width else cell.height) + gap
+            }
+        }
+    }
+}
 
 /** Fixed cells only: the library owns scrolling, never the canvas favorites dock. */
 @Composable
@@ -32,7 +54,7 @@ internal fun BrushFavoritesDock(
     onPixelTool: (PixelTool) -> Unit,
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String? = null,
-    showPixelTips: Boolean = false,
+    showPixelTips: Boolean = false, reverseCells: Boolean = false,
     onReselect: () -> Unit = {}, onTransform: () -> Unit = {}, onFitCanvas: () -> Unit = {},
     onAdjustments: () -> Unit = {}, onColorizeMask: () -> Unit = {},
     onLassoFill: () -> Unit = {}, onColorPush: () -> Unit = {},
@@ -123,8 +145,7 @@ internal fun BrushFavoritesDock(
                 )
                 DockCell(tuneDescription, false, slot, !horizontal, onTune, icon = Icons.Outlined.Tune)
             }
-            if (horizontal) Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) { buttons() }
-            else Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { buttons() }
+            DockCells(horizontal, reverseCells, 2.dp, content = buttons)
         }
     }
 }
