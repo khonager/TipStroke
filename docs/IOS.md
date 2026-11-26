@@ -78,8 +78,7 @@ roll rotates the stamp tip. Squeeze can open drawing tools, show colors or toggl
 the eraser according to the system Pencil preference.
 
 The editor shares the Android color theme for brush, palette and blend panels. More canvas actions opens resize, animation, preview and export. Gallery, undo, redo and Fit stay at the upper left in both orientations. Finger mode, color, layers and More stay at the upper right. Wide windows also show export, resize and animation shortcuts. Quick colors opens beneath the right group. The bottom dock holds tip previews, drawing tools, moving tools and the size/opacity toggle. The sliders start closed. More actions includes Fit canvas, Brush settings and Quick colors. Drag either
-track to preview the colored footprint at the current zoom. Use the visible minus and plus buttons for single-unit adjustments. Landscape places
-the two vertical tracks side by side. The default editor uses dark solid panels and a coral accent. Size can use document pixels or screen
+track to preview the colored footprint at the current zoom. Use the visible minus and plus buttons for single-unit adjustments. Each readout sits above a full-width horizontal track, with the step buttons underneath. The panel opens above the bottom dock or beside the landscape dock. The tip strip has a transparent host so the dock surface shows between swatches. The default editor uses dark solid panels and a coral accent. Size can use document pixels or screen
 points for regular brushes and erasers. The eraser keeps its own tuning. Hold a swatch to open its tip picker. The picker, library, dock and brush settings show
 pressure-sweep samples rendered into small, isolated native raster documents.
 Brush settings keep the current sample visible above the scrolling controls, with

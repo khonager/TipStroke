@@ -314,7 +314,7 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
     private var verticalDock by mutableStateOf(false)
     fun updateDockAxis(vertical: Boolean) { verticalDock = vertical }
 
-    fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController {
+    fun pinsController(callbacks: AppleBrushLibraryActions): UIViewController = ComposeUIViewController(configure = { opaque = false }) {
         val byId = remember(library) { allTips.associateBy { it.id.value } }
         val ordered = remember(dock, byId) { dock.ordered(byId.keys) }
         BrushTheme {

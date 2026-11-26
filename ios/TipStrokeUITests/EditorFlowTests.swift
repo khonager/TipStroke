@@ -32,6 +32,7 @@ final class EditorFlowTests: XCTestCase {
         for label in ["Size", "Opacity"] {
             let slider = app.sliders[label]
             XCTAssertTrue(slider.isHittable)
+            XCTAssertGreaterThan(slider.frame.width, 100)
             let readout = app.buttons[label + " readout"]
             slider.adjust(toNormalizedSliderPosition: 0.25)
             let low = try XCTUnwrap(readout.value as? String)

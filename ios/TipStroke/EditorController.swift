@@ -19,7 +19,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private let redoButton = UIButton(type: .system)
     private let adjustButton = UIButton(type: .system)
     private let dock = UIStackView()
-    private let bottom = UIStackView()
+    private weak var adjustmentPanel: UIView?
     private weak var quickPanel: UIView?
     private let fingerMode = UIButton(type: .system)
     private var gridSize: CGFloat = 1
@@ -107,10 +107,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         color.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(dropColor(_:))))
         color.accessibilityHint = "Tap to change color or drag to fill a region."
         configure(adjustButton, label: "Show size and opacity", symbol: "slider.horizontal.3") { [weak self] in
-            guard let self else { return }
-            self.adjustments.isHidden.toggle()
-            self.adjustButton.isSelected = !self.adjustments.isHidden
-            self.adjustButton.accessibilityLabel = self.adjustments.isHidden ? "Show size and opacity" : "Hide size and opacity"
+            guard let self, let adjustmentPanel = self.adjustmentPanel else { return }
+            adjustmentPanel.isHidden.toggle()
+            self.adjustButton.isSelected = !adjustmentPanel.isHidden
+            self.adjustButton.accessibilityLabel = adjustmentPanel.isHidden ? "Show size and opacity" : "Hide size and opacity"
         }
         let tools = button("Drawing tools", symbol: "eraser") { [weak self] in
             guard let self else { return }
@@ -163,7 +163,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let quickPanel = panel(UIStackView(arrangedSubviews: [quickColors.view!]))
         quickPanel.isHidden = true
         self.quickPanel = quickPanel
-        adjustments.isHidden = true
+        adjustments.isLayoutMarginsRelativeArrangement = true
+        adjustments.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 4)
         adjustments.distribution = .fillEqually
         adjustments.spacing = 8
         sizeControl.adjusted = { [weak self] value in
@@ -200,14 +201,12 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         viewport.onZoom = updatePixelShortcut
         updatePixelShortcut(viewport.zoomScale)
         for item in [pinned.view!, pixelShortcut, tools, movingTools, adjustButton] { dock.addArrangedSubview(item) }
-        bottom.addArrangedSubview(adjustments)
-        bottom.addArrangedSubview(dock)
-        bottom.spacing = 4
         pinned.didMove(toParent: self)
         quickColors.didMove(toParent: self)
-        bottom.axis = .vertical
-
-        let bottomPanel = panel(bottom)
+        let bottomPanel = panel(dock)
+        let adjustmentPanel = panel(adjustments)
+        adjustmentPanel.isHidden = true
+        self.adjustmentPanel = adjustmentPanel
         let safe = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
             viewport.leadingAnchor.constraint(equalTo: view.leadingAnchor), viewport.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -221,6 +220,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             quickPanel.topAnchor.constraint(equalTo: actionsPanel.bottomAnchor, constant: 4),
         ])
         portraitLayout = [
+            adjustmentPanel.centerXAnchor.constraint(equalTo: bottomPanel.centerXAnchor),
+            adjustmentPanel.bottomAnchor.constraint(equalTo: bottomPanel.topAnchor, constant: -8),
+            adjustmentPanel.widthAnchor.constraint(equalTo: bottomPanel.widthAnchor, constant: -8),
             dock.heightAnchor.constraint(equalToConstant: 44),
             bottomPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor), bottomPanel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -4),
             bottomPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 480), bottomPanel.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 4),
@@ -230,7 +232,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         landscapeLayout = [
             bottomPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4),
             bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor, constant: 24),
-            adjustments.widthAnchor.constraint(equalToConstant: 112).withPriority(.defaultHigh),
+            adjustmentPanel.trailingAnchor.constraint(equalTo: bottomPanel.leadingAnchor, constant: -8),
+            adjustmentPanel.centerYAnchor.constraint(equalTo: bottomPanel.centerYAnchor),
+            adjustmentPanel.widthAnchor.constraint(equalToConstant: 380),
             dock.widthAnchor.constraint(equalToConstant: 44),
             bottomPanel.heightAnchor.constraint(lessThanOrEqualToConstant: 480),
             bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -60),
@@ -310,11 +314,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         guard useSideDock != sideDock else { return }
         NSLayoutConstraint.deactivate(sideDock ? landscapeLayout : portraitLayout)
         sideDock = useSideDock
-        sizeControl.setVertical(useSideDock)
-        opacityControl.setVertical(useSideDock)
-        adjustments.spacing = useSideDock ? 0 : 8
         dock.axis = useSideDock ? .vertical : .horizontal
-        bottom.axis = useSideDock ? .horizontal : .vertical
         sharedControls.updateDockAxis(vertical: useSideDock)
         NSLayoutConstraint.activate(useSideDock ? landscapeLayout : portraitLayout)
     }

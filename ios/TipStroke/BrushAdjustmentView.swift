@@ -1,9 +1,15 @@
 import UIKit
 
-/// A short track with a persistent readout. Size reserves more travel for fine tips.
+private final class AdjustmentSlider: UISlider {
+    override func trackRect(forBounds bounds: CGRect) -> CGRect {
+        let rect = super.trackRect(forBounds: bounds)
+        return CGRect(x: rect.minX, y: bounds.midY - 6, width: rect.width, height: 12)
+    }
+}
+
+/// Full-width tracks with persistent readouts and independent step buttons.
 final class BrushAdjustmentView: UIStackView {
-    private let slider = UISlider()
-    private let track = UIView()
+    private let slider = AdjustmentSlider()
     private let minus = UIButton(type: .system)
     private let plus = UIButton(type: .system)
     private let readout = UIButton(type: .system)
@@ -19,52 +25,46 @@ final class BrushAdjustmentView: UIStackView {
         self.title = title
         self.isSize = isSize
         super.init(frame: .zero)
-        axis = .horizontal
+        axis = .vertical
         spacing = 2
-        readout.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        readout.titleLabel?.numberOfLines = 2
+        let label = UILabel()
+        label.text = title
+        label.font = .preferredFont(forTextStyle: .subheadline)
+        readout.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 14, weight: .medium)
+        readout.tintColor = UIColor(red: 0.93, green: 0.41, blue: 0.35, alpha: 1)
         readout.showsMenuAsPrimaryAction = true
-        readout.setContentHuggingPriority(.required, for: .horizontal)
-        addArrangedSubview(readout)
-        track.addSubview(slider)
+        let header = UIStackView(arrangedSubviews: [label, UIView(), readout])
+        addArrangedSubview(header)
+        let accent = readout.tintColor ?? .systemOrange
+        slider.minimumTrackTintColor = accent
+        slider.maximumTrackTintColor = UIColor(red: 0.28, green: 0.27, blue: 0.33, alpha: 1)
+        let thumb = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 38)).image { _ in
+            accent.setFill()
+            UIBezierPath(roundedRect: CGRect(x: 4, y: 0, width: 4, height: 38), cornerRadius: 2).fill()
+        }
+        slider.setThumbImage(thumb.withRenderingMode(.alwaysOriginal), for: .normal)
+        slider.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        addArrangedSubview(slider)
+        let steps = UIStackView()
+        steps.spacing = 6
         for (button, symbol, direction) in [(minus, "minus", -1), (plus, "plus", 1)] {
             button.setImage(UIImage(systemName: symbol), for: .normal)
             button.accessibilityLabel = (direction < 0 ? "Decrease " : "Increase ") + title.lowercased()
             button.addAction(UIAction { [weak self] _ in self?.step(direction) }, for: .touchUpInside)
-            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 24).isActive = true
+            button.widthAnchor.constraint(equalToConstant: 44).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 44).isActive = true
+            button.backgroundColor = slider.maximumTrackTintColor
+            button.layer.cornerRadius = 12
+            steps.addArrangedSubview(button)
         }
-        addArrangedSubview(minus)
-        addArrangedSubview(track)
-        addArrangedSubview(plus)
+        steps.addArrangedSubview(UIView())
+        addArrangedSubview(steps)
         slider.accessibilityIdentifier = title
         slider.addTarget(self, action: #selector(changed), for: .valueChanged)
         slider.addTarget(self, action: #selector(ended), for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        heightAnchor.constraint(greaterThanOrEqualToConstant: 40).isActive = true
     }
     required init(coder: NSCoder) { fatalError("Use init(title:isSize:)") }
 
-    private var trackHeight: NSLayoutConstraint?
-    func setVertical(_ vertical: Bool) {
-        axis = vertical ? .vertical : .horizontal
-        trackHeight?.isActive = false
-        if vertical {
-            insertArrangedSubview(plus, at: 1)
-            addArrangedSubview(minus)
-            trackHeight = track.heightAnchor.constraint(equalToConstant: 58)
-            trackHeight?.isActive = true
-        } else {
-            insertArrangedSubview(minus, at: 1)
-            addArrangedSubview(plus)
-        }
-        setNeedsLayout()
-    }
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let vertical = axis == .vertical
-        slider.bounds = CGRect(x: 0, y: 0, width: vertical ? track.bounds.height : track.bounds.width, height: vertical ? track.bounds.width : track.bounds.height)
-        slider.transform = vertical ? CGAffineTransform(rotationAngle: -.pi / 2) : .identity
-        slider.center = CGPoint(x: track.bounds.midX, y: track.bounds.midY)
-    }
     private func step(_ direction: Int) {
         let delta = Float(direction) * (isSize ? 1 : 0.01)
         adjusted?(min(range.upperBound, max(range.lowerBound, currentValue + delta)))
@@ -77,7 +77,7 @@ final class BrushAdjustmentView: UIStackView {
             : (value - range.lowerBound) / (range.upperBound - range.lowerBound)
         currentValue = value
         let number = isSize ? "\(Int(value.rounded())) \(screenUnits ? "pt" : "px")" : "\(Int((100 * value).rounded()))%"
-        readout.setTitle(title + "\n" + number, for: .normal)
+        readout.setTitle(number + (allowsUnits ? " ▾" : ""), for: .normal)
         readout.accessibilityLabel = title + " options"
         var items: [UIAction] = []
         if allowsUnits {
