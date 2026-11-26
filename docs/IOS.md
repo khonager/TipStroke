@@ -128,8 +128,8 @@ See [Multiplatform migration](MULTIPLATFORM.md).
 
 **TipStroke TestFlight** runs on iOS-related pushes to `unstable` on a standard
 GitHub-hosted macOS runner. The runner uses JDK 17 and Xcode 26.0. Each signed
-build uses the workflow run number plus 1000 and the run attempt as its build
-number (for example, `1001.1`). In App Store Connect, use the existing TipStroke
+build uses the workflow run number plus seven. Version 0.1.1 starts with run 2
+(build 9). A rerun appends its attempt number (for example, `9.2`). In App Store Connect, use the existing TipStroke
 record for `de.khonager.tipstroke`.
 
 Set the following repository Actions secrets once. From Linux with the GitHub

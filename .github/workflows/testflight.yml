@@ -80,8 +80,10 @@ jobs:
 
       - name: Archive and export signed IPA
         run: |
+          build=$((7 + GITHUB_RUN_NUMBER))
+          if (( GITHUB_RUN_ATTEMPT > 1 )); then build="$build.$GITHUB_RUN_ATTEMPT"; fi
           xcode-project build-ipa --project ios/TipStroke.xcodeproj --scheme TipStroke \
-            --archive-xcargs "CURRENT_PROJECT_VERSION=$((1000 + GITHUB_RUN_NUMBER)).$GITHUB_RUN_ATTEMPT"
+            --archive-xcargs "CURRENT_PROJECT_VERSION=$build"
 
       - name: Upload to TestFlight
         env:

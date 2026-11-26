@@ -58,7 +58,7 @@ def configurations(name, settings):
 project_config = configurations("project", common)
 app_settings = dict(PRODUCT_BUNDLE_IDENTIFIER="de.khonager.tipstroke", PRODUCT_NAME="$(TARGET_NAME)",
                     INFOPLIST_FILE="TipStroke/Info.plist", CODE_SIGN_STYLE="Automatic", CURRENT_PROJECT_VERSION="1",
-                    MARKETING_VERSION="0.1.0", ASSETCATALOG_COMPILER_APPICON_NAME="AppIcon",
+                    MARKETING_VERSION="0.1.1", ASSETCATALOG_COMPILER_APPICON_NAME="AppIcon",
                     SUPPORTED_PLATFORMS="iphoneos iphonesimulator", SUPPORTS_MACCATALYST="NO",
                     SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD="NO", LD_RUNPATH_SEARCH_PATHS="$(inherited) @executable_path/Frameworks")
 app_settings["OTHER_LDFLAGS"] = ["$(inherited)", "-framework", "TipStrokeShared", "-lsqlite3"]
