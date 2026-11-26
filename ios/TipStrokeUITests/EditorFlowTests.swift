@@ -129,11 +129,25 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertTrue(wheel.waitForExistence(timeout: 10), app.debugDescription)
         app.navigationBars.buttons["Done"].tap()
         XCUIDevice.shared.orientation = .landscapeLeft
-        for label in ["Gallery", "Undo", "Redo", "Fit canvas", "Brush color", "Layers", "More canvas actions"] {
-            let frame = app.buttons[label].frame
-            XCTAssertEqual(frame.midY, gallery.frame.midY, accuracy: 2, label)
-            XCTAssertLessThan(frame.midY, app.frame.minY + app.frame.height * 0.25, label)
-        }
+        let topLabels = ["Gallery", "Undo", "Redo", "Fit canvas", "Brush color", "Layers", "More canvas actions"]
+        // XCUIDevice returns while UIKit is still rotating. Compare all command
+        // frames from one accessibility snapshot after the landscape layout arrives.
+        let topRow = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            guard let snapshot = try? app.snapshot(), snapshot.frame.width > snapshot.frame.height else { return false }
+            func commands(in node: XCUIElementSnapshot) -> [XCUIElementSnapshot] {
+                if node.elementType == .button && topLabels.contains(node.label) { return [node] }
+                return node.children.flatMap { commands(in: $0) }
+            }
+            let buttons = commands(in: snapshot)
+            guard Set(buttons.map(\.label)) == Set(topLabels),
+                  let fit = buttons.first(where: { $0.label == "Fit canvas" }),
+                  let color = buttons.first(where: { $0.label == "Brush color" }) else { return false }
+            return fit.frame.maxX < color.frame.minX && buttons.allSatisfy {
+                !$0.frame.isEmpty && abs($0.frame.midY - fit.frame.midY) <= 2 &&
+                    $0.frame.midY < snapshot.frame.minY + snapshot.frame.height * 0.25
+            }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [topRow], timeout: 10), .completed, app.debugDescription)
         XCTAssertLessThan(app.buttons["Fit canvas"].frame.maxX, app.buttons["Brush color"].frame.minX)
         if tablet {
             XCTAssertGreaterThan(app.sliders["Size"].frame.height, 150)
