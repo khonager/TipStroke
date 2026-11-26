@@ -140,24 +140,19 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
             share.accessibilityLabel = "Share selected drawings"
             navigationItem.rightBarButtonItems = [share]
         } else {
-            let open = UIBarButtonItem(image: UIImage(systemName: "doc.badge.plus"), primaryAction: UIAction { [weak self] _ in self?.chooseGalleryFile() })
-            open.accessibilityLabel = "Import project, image, GIF or video"
+            let open = UIBarButtonItem(image: UIImage(systemName: "doc.badge.plus"), menu: UIMenu(children: [
+                UIAction(title: "From image") { [weak self] _ in self?.chooseGalleryImage() },
+                UIAction(title: "Import project, GIF or video") { [weak self] _ in self?.chooseGalleryFile() }
+            ]))
+            open.accessibilityLabel = "Import"
             navigationItem.leftBarButtonItem = openStack == nil ? open : UIBarButtonItem(title: "Gallery", primaryAction: UIAction { [weak self] _ in
                 self?.openStack = nil; self?.saveLayout()
             })
             let select = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), primaryAction: UIAction { [weak self] _ in self?.setPicking(true) })
             select.accessibilityLabel = "Select drawings"
-            let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), menu: UIMenu(children: [
-                UIDeferredMenuElement.uncached { complete in
-                    let choices = [false, true].map { files in
-                        UIAction(title: files ? "Files" : "Photos",
-                                 state: files == UserDefaults.standard.useFilesForImages ? .on : .off) { _ in
-                            UserDefaults.standard.useFilesForImages = files
-                        }
-                    }
-                    complete([UIMenu(title: "Image import picker", options: .displayInline, children: choices)])
-                }
-            ]))
+            let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in
+                self?.navigationController?.pushViewController(GallerySettingsController(style: .insetGrouped), animated: true)
+            })
             settings.accessibilityLabel = "Settings"
             navigationItem.rightBarButtonItems = [UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(newDrawing)), select, settings]
         }

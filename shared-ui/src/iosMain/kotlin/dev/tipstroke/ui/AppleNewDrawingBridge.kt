@@ -16,6 +16,7 @@ import platform.UIKit.UIViewController
 
 interface AppleNewDrawingActions {
     fun createDrawing(name: String, width: Int, height: Int)
+    fun createFromImage()
     fun cancelNewDrawing()
 }
 
@@ -47,6 +48,7 @@ class AppleNewDrawingBridge(private val actions: AppleNewDrawingActions) {
                 Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(20.dp)) {
                     Text("New drawing", style = MaterialTheme.typography.headlineSmall)
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedButton(onClick = actions::createFromImage) { Text("From image") }
                         OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true)
                         ResolutionBrowser(builtIns + saved, selectedId, favorites, ::select, {
                             favorites = it; storeFavorites()

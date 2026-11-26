@@ -1,4 +1,5 @@
 import UIKit
+import PhotosUI
 import ImageIO
 import AVFoundation
 import UniformTypeIdentifiers
@@ -633,7 +634,44 @@ extension ProjectStore {
     }
 }
 
-extension GalleryController: UIDocumentPickerDelegate {
+extension GalleryController: UIDocumentPickerDelegate, PHPickerViewControllerDelegate {
+    func createFromImage() {
+        dismiss(animated: true) { self.chooseGalleryImage() }
+    }
+    func chooseGalleryImage() {
+        if UserDefaults.standard.useFilesForImages {
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image], asCopy: true)
+            picker.delegate = self
+            present(picker, animated: true)
+        } else {
+            var config = PHPickerConfiguration()
+            config.filter = .images
+            config.preferredAssetRepresentationMode = .current
+            let picker = PHPickerViewController(configuration: config)
+            picker.delegate = self
+            present(picker, animated: true)
+        }
+    }
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true) {
+            guard let provider = results.first?.itemProvider,
+                  let type = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true }) else { return }
+            self.loading = true
+            self.view.isUserInteractionEnabled = false
+            provider.loadFileRepresentation(forTypeIdentifier: type) { url, error in
+                do {
+                    if let error { throw error }
+                    guard let url else { throw DrawingError.message("The photo could not be loaded.") }
+                    // The provider releases its URL when this callback returns.
+                    let file = try LocalMediaFile(url)
+                    ProjectStore.shared.queue.async {
+                        let result = Result { try ProjectStore.shared.importGalleryFile(file.url) }
+                        DispatchQueue.main.async { self.finishGalleryImport(result) }
+                    }
+                } catch { DispatchQueue.main.async { self.finishGalleryImport(.failure(error)) } }
+            }
+        }
+    }
     func chooseGalleryFile() {
         let project = UTType(exportedAs: "dev.tipstroke.project", conformingTo: .zip)
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [project, .zip, .movie, .image], asCopy: true)
@@ -647,20 +685,21 @@ extension GalleryController: UIDocumentPickerDelegate {
         view.isUserInteractionEnabled = false
         ProjectStore.shared.queue.async {
             let result = Result { try ProjectStore.shared.importGalleryFile(url) }
-            DispatchQueue.main.async {
-                self.loading = false
-                self.view.isUserInteractionEnabled = true
-                switch result {
-                case .success(.projects(let layout)):
-                    self.layout.order.insert(contentsOf: layout.order, at: 0)
-                    self.layout.stacks.merge(layout.stacks) { _, new in new }
-                    self.saveLayout()
-                    self.reload()
-                case .success(.canvas(let snapshot)):
-                    self.navigationController?.pushViewController(EditorController(document: RasterDocument(snapshot: snapshot)), animated: true)
-                case .failure(let error): self.showError(error)
-                }
-            }
+            DispatchQueue.main.async { self.finishGalleryImport(result) }
+        }
+    }
+    private func finishGalleryImport(_ result: Result<GalleryImport, Error>) {
+        self.loading = false
+        self.view.isUserInteractionEnabled = true
+        switch result {
+        case .success(.projects(let layout)):
+            self.layout.order.insert(contentsOf: layout.order, at: 0)
+            self.layout.stacks.merge(layout.stacks) { _, new in new }
+            self.saveLayout()
+            self.reload()
+        case .success(.canvas(let snapshot)):
+            self.navigationController?.pushViewController(EditorController(document: RasterDocument(snapshot: snapshot)), animated: true)
+        case .failure(let error): self.showError(error)
         }
     }
 }

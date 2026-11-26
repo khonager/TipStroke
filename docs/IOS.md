@@ -296,3 +296,5 @@ Phone command and tip rails occupy opposite short edges in landscape. Android us
 Layers opens over the canvas. Animation uses a bottom overlay with a horizontally scrolling frame strip and frame actions.
 
 The editor groups still and animated output under Export, brush settings under Adjust tip, and uses opaque palettes for canvas commands.
+
+Gallery Settings stores finger actions, hold-for-tools and the Photos/Files preference. Both New drawing → From image and Layers → Import image use the selected picker. Project and media imports use Files.
