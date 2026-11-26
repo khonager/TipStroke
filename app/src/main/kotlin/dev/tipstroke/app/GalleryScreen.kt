@@ -89,7 +89,9 @@ fun GalleryScreen(
     var selectedDrawings by remember { mutableStateOf<Set<String>>(emptySet()) }
     var reordering by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
-    var deleteCandidate by remember { mutableStateOf<DrawingSummary?>(null) }
+    var deleteIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var working by remember { mutableStateOf(false) }
+    var selectionMenu by remember { mutableStateOf(false) }
     var operationError by remember { mutableStateOf<String?>(null) }
     var renameStack by remember { mutableStateOf<GalleryStack?>(null) }
     var draggedKey by remember { mutableStateOf<String?>(null) }
@@ -164,17 +166,27 @@ fun GalleryScreen(
         autoScrollJob = null
     }
 
-    fun duplicateDrawing(drawing: DrawingSummary) {
-        val stackKey = openStack?.key
+    fun changeDrawings(ids: List<String>, delete: Boolean) {
+        if (working || ids.isEmpty()) return
+        working = true
+        val parent = openStack?.key
         coroutineScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                library.duplicate(drawing.id).onSuccess { duplicate ->
-                    stackKey?.let { library.stackDrawing(duplicate.id, it) }
-                }
+            val failed = withContext(Dispatchers.IO) {
+                ids.filterNot { id ->
+                    runCatching {
+                        if (delete) check(library.delete(id)) { "Could not delete drawing" }
+                        else {
+                            val copy = library.duplicate(id).getOrThrow()
+                            if (parent != null) library.stackDrawing(copy.id, parent)
+                        }
+                    }.isSuccess
+                }.toSet()
             }
-            result.onSuccess { duplicate ->
-                refreshGallery()
-            }.onFailure { operationError = it.message ?: "The drawing could not be duplicated." }
+            selectedDrawings = failed
+            if (failed.isEmpty()) selecting = false
+            else operationError = "Could not " + (if (delete) "delete" else "duplicate") + " ${failed.size} drawing(s)."
+            working = false
+            refreshGallery()
         }
     }
 
@@ -245,16 +257,29 @@ fun GalleryScreen(
                                 }
                             }
                             Row(Modifier.horizontalScroll(rememberScrollState())) {
-                                TipAction("New drawing", Icons.Outlined.Add) { creating = true }
-                                TipAction("Settings", Icons.Outlined.Settings, onClick = onSettings)
-                                TipAction("Image / GIF / video", Icons.Outlined.PermMedia, enabled = !importingMedia, onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) })
-                                TipAction(if (reordering) "Done reordering" else "Reorder", if (reordering) Icons.Outlined.Check else Icons.Outlined.SwapVert) { reordering = !reordering }
-                                TipAction("Import project", Icons.Outlined.FileOpen, onClick = { transferIds = null; transferOpen = true })
-                                TipAction("Select drawings", Icons.Outlined.Checklist, onClick = { selecting = true; reordering = false })
-                                if (selecting) {
-                                    TipAction("Select visible", Icons.Outlined.SelectAll, onClick = { selectedDrawings = visibleItems.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }.toSet() })
-                                    TipAction("Export ${selectedDrawings.size} drawings", Icons.Outlined.IosShare, enabled = selectedDrawings.isNotEmpty()) { transferIds = selectedDrawings.toList(); transferOpen = true }
-                                    TipAction("Cancel selection", Icons.Outlined.Close, onClick = { selecting = false; selectedDrawings = emptySet() })
+                                if (!selecting) {
+                                    TipAction("New drawing", Icons.Outlined.Add) { creating = true }
+                                    TipAction("Settings", Icons.Outlined.Settings, onClick = onSettings)
+                                    TipAction("Image / GIF / video", Icons.Outlined.PermMedia, enabled = !importingMedia, onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) })
+                                    TipAction(if (reordering) "Done reordering" else "Reorder", if (reordering) Icons.Outlined.Check else Icons.Outlined.SwapVert) { reordering = !reordering }
+                                    TipAction("Import project", Icons.Outlined.FileOpen, onClick = { transferIds = null; transferOpen = true })
+                                    TipAction("Select drawings", Icons.Outlined.Checklist, onClick = { selecting = true; reordering = false })
+                                } else {
+                                    val visible = visibleItems.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }.toSet()
+                                    val all = visible.isNotEmpty() && selectedDrawings.containsAll(visible)
+                                    Text("${selectedDrawings.size} selected", modifier = Modifier.align(Alignment.CenterVertically))
+                                    TipAction(if (all) "Deselect all" else "Select all", Icons.Outlined.SelectAll, enabled = !working) {
+                                        selectedDrawings = if (all) emptySet() else visible
+                                    }
+                                    Box {
+                                        TipAction("Selected drawing actions", Icons.Outlined.MoreVert, enabled = selectedDrawings.isNotEmpty() && !working) { selectionMenu = true }
+                                        DropdownMenu(selectionMenu, { selectionMenu = false }) {
+                                            DropdownMenuItem(text = { Text("Export") }, onClick = { selectionMenu = false; transferIds = selectedDrawings.toList(); transferOpen = true })
+                                            DropdownMenuItem(text = { Text("Duplicate") }, onClick = { selectionMenu = false; changeDrawings(selectedDrawings.toList(), false) })
+                                            DropdownMenuItem(text = { Text("Delete") }, onClick = { selectionMenu = false; deleteIds = selectedDrawings.toList() })
+                                        }
+                                    }
+                                    TipAction("Cancel selection", Icons.Outlined.Close, enabled = !working) { selecting = false; selectedDrawings = emptySet() }
                                 }
                             }
                         }
@@ -273,20 +298,28 @@ fun GalleryScreen(
                     when (item) {
                         is GalleryDrawing -> DrawingCard(
                             item.drawing, {
+                                if (working) return@DrawingCard
                                 if (selecting) selectedDrawings = if (item.drawing.id in selectedDrawings) selectedDrawings - item.drawing.id else selectedDrawings + item.drawing.id
                                 else onOpen(item.drawing)
-                            }, { duplicateDrawing(item.drawing) },
-                            { deleteCandidate = item.drawing }, if (selecting) Modifier else dragModifier(item),
+                            }, { changeDrawings(listOf(item.drawing.id), false) },
+                            { deleteIds = listOf(item.drawing.id) }, if (selecting) Modifier else dragModifier(item),
                             onExport = { transferIds = listOf(item.drawing.id); transferOpen = true },
                             onMoveOut = openStack?.let { stack -> { library.moveOutOfStack(stack.id, item.drawing.id); refreshGallery() } },
                             thumbnailHeight = thumbnailHeight,
                             selected = if (selecting) item.drawing.id in selectedDrawings else null,
                         )
-                        is GalleryStack -> StackCard(item, { openStackId = item.id }, if (selecting) Modifier else dragModifier(item), thumbnailHeight)
+                        is GalleryStack -> {
+                            val ids = item.drawings.map { it.id }
+                            val all = selectedDrawings.containsAll(ids)
+                            StackCard(item, {
+                                if (!selecting) openStackId = item.id
+                                else if (!working) selectedDrawings = if (all) selectedDrawings - ids.toSet() else selectedDrawings + ids
+                            }, if (selecting) Modifier else dragModifier(item), thumbnailHeight, if (selecting) all else null)
+                        }
                     }
                     }
                 }
-                if (openStack == null) item { NewDrawingCard(thumbnailHeight) { creating = true } }
+                if (openStack == null && !selecting) item { NewDrawingCard(thumbnailHeight) { creating = true } }
                 if (visibleItems.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                     Text("Your drawings are saved locally on this device.", color = Color(0xFF9EA0A6), fontSize = 13.sp)
                 }
@@ -305,19 +338,19 @@ fun GalleryScreen(
             onNew(NewDrawingRequest(library.newId(), name, width, height))
         },
     )
-    deleteCandidate?.let { drawing ->
+    if (deleteIds.isNotEmpty()) {
         AlertDialog(
-            onDismissRequest = { deleteCandidate = null },
-            title = { Text("Delete ${drawing.name}?") },
+            onDismissRequest = { deleteIds = emptyList() },
+            title = { Text("Delete ${deleteIds.size} drawing(s)?") },
             text = { Text("This removes the local drawing and cannot be undone.") },
-            confirmButton = { TipAction("Delete", Icons.Outlined.Delete, onClick = { library.delete(drawing.id); deleteCandidate = null; refreshGallery() }) },
-            dismissButton = { TipAction("Cancel", Icons.Outlined.Close, onClick = { deleteCandidate = null }) },
+            confirmButton = { TipAction("Delete", Icons.Outlined.Delete, onClick = { changeDrawings(deleteIds, true); deleteIds = emptyList() }) },
+            dismissButton = { TipAction("Cancel", Icons.Outlined.Close, onClick = { deleteIds = emptyList() }) },
         )
     }
     operationError?.let { error ->
         AlertDialog(
             onDismissRequest = { operationError = null },
-            title = { Text("Could not duplicate drawing") },
+            title = { Text("Gallery action failed") },
             text = { Text(error) },
             confirmButton = { TipAction("OK", Icons.Outlined.Check, onClick = { operationError = null }) },
         )
@@ -374,7 +407,7 @@ private fun DrawingCard(
 }
 
 @Composable
-private fun StackCard(stack: GalleryStack, onOpen: () -> Unit, modifier: Modifier = Modifier, thumbnailHeight: Dp = 180.dp) {
+private fun StackCard(stack: GalleryStack, onOpen: () -> Unit, modifier: Modifier = Modifier, thumbnailHeight: Dp = 180.dp, selected: Boolean? = null) {
     Column(modifier.fillMaxWidth().clickable(onClick = onOpen).padding(2.dp)) {
         Box(
             Modifier.fillMaxWidth().height(thumbnailHeight).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)).padding(8.dp),
@@ -396,6 +429,7 @@ private fun StackCard(stack: GalleryStack, onOpen: () -> Unit, modifier: Modifie
                     }
                 }
             }
+            if (selected != null) Checkbox(selected, onCheckedChange = { onOpen() }, modifier = Modifier.align(Alignment.TopEnd).background(Color(0xDD202125)))
         }
         Text(stack.name, color = Color(0xFFF3F3F0), fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 9.dp))
         Text("${stack.drawings.size} drawings", color = Color(0xFF9EA0A6), fontSize = 11.sp)

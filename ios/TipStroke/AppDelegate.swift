@@ -132,13 +132,26 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         title = openStack.flatMap { layout.stacks[$0]?.name } ?? "TipStroke"
         if pickingExports {
             navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.setPicking(false) })
-            let share = UIBarButtonItem(image: UIImage(systemName: "square.and.arrow.up"), menu: UIMenu(children: [
+            let share = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), menu: UIMenu(children: [
                 UIAction(title: "Share PNG") { [weak self] _ in self?.shareSelected() },
-                UIAction(title: "Share TipStroke project") { [weak self] _ in self?.shareSelected(asProject: true) }
+                UIAction(title: "Share TipStroke project") { [weak self] _ in self?.shareSelected(asProject: true) },
+                UIAction(title: "Duplicate") { [weak self] _ in self?.changeSelected(delete: false) },
+                UIAction(title: "Delete", attributes: .destructive) { [weak self] _ in self?.changeSelected(delete: true) }
             ]))
             share.isEnabled = !(tableView.indexPathsForSelectedRows ?? []).isEmpty && !exportingDrawings
-            share.accessibilityLabel = "Share selected drawings"
-            navigationItem.rightBarButtonItems = [share]
+            share.accessibilityLabel = "Selected drawing actions"
+            let all = !displayed.isEmpty && tableView.indexPathsForSelectedRows?.count == displayed.count
+            let toggle = UIBarButtonItem(title: all ? "Deselect all" : "Select all", primaryAction: UIAction { [weak self] _ in
+                guard let self else { return }
+                for row in self.displayed.indices {
+                    let path = IndexPath(row: row, section: 0)
+                    if all { self.tableView.deselectRow(at: path, animated: false) }
+                    else { self.tableView.selectRow(at: path, animated: false, scrollPosition: .none) }
+                }
+                self.updateGalleryActions()
+            })
+            toggle.isEnabled = !exportingDrawings
+            navigationItem.rightBarButtonItems = [share, toggle]
         } else {
             let open = UIBarButtonItem(image: UIImage(systemName: "doc.badge.plus"), menu: UIMenu(children: [
                 UIAction(title: "From image") { [weak self] _ in self?.chooseGalleryImage() },
@@ -164,11 +177,44 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         refreshControl?.isEnabled = !enabled
         updateGalleryActions()
     }
-    private func shareSelected(asProject: Bool = false) {
-        let ids = (tableView.indexPathsForSelectedRows ?? []).sorted().flatMap { path -> [UUID] in
+    private var selectedDrawingIDs: [UUID] {
+        (tableView.indexPathsForSelectedRows ?? []).sorted().flatMap { path -> [UUID] in
             let id = displayed[path.row]
             return layout.stacks[id]?.members ?? [id]
         }
+    }
+    private func changeSelected(delete: Bool) {
+        let ids = selectedDrawingIDs
+        guard !ids.isEmpty, !exportingDrawings else { return }
+        func perform() {
+            exportingDrawings = true
+            updateGalleryActions()
+            store.queue.async {
+                var failed = 0
+                for id in ids {
+                    do {
+                        if delete { try self.store.delete(id) }
+                        else { _ = try self.store.duplicate(id) }
+                    } catch { failed += 1 }
+                }
+                let count = failed
+                DispatchQueue.main.async {
+                    self.exportingDrawings = false
+                    self.setPicking(false)
+                    self.reload()
+                    if count > 0 { self.showError(DrawingError.message("Could not finish the action for \(count) drawing(s).")) }
+                }
+            }
+        }
+        if delete {
+            let alert = UIAlertController(title: "Delete \(ids.count) drawing(s)?", message: "This removes the selected drawings from this device.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in perform() })
+            present(alert, animated: true)
+        } else { perform() }
+    }
+    private func shareSelected(asProject: Bool = false) {
+        let ids = selectedDrawingIDs
         guard !ids.isEmpty, !exportingDrawings else { return }
         let selectedLayout = layout
         exportingDrawings = true; updateGalleryActions()
