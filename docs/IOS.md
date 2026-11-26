@@ -127,7 +127,8 @@ See [Multiplatform migration](MULTIPLATFORM.md).
 ## Upload to TestFlight with GitHub Actions
 
 **TipStroke TestFlight** runs on iOS-related pushes to `unstable` on a standard
-GitHub-hosted macOS runner. The runner uses JDK 17 and Xcode 26.0. Each signed
+GitHub-hosted `xcode-27` runner with JDK 17 and Xcode 27.0. Before uploading,
+the job checks the iOS SDK recorded in the signed IPA. Each signed
 build uses the workflow run number plus seven. Version 0.1.1 starts with run 2
 (build 9). A rerun appends its attempt number (for example, `9.2`). In App Store Connect, use the existing TipStroke
 record for `de.khonager.tipstroke`.
@@ -197,9 +198,9 @@ For direct registered-device distribution, change the release workflow's
 `distribution_type` to `ad_hoc` and provide the matching profile containing those
 devices. This is a signing choice, not an application-code change.
 
-Codemagic pins Xcode 27.0 and Java 17. Xcode 27 supplies the iOS 27 SDK
+Codemagic and GitHub Actions pin Xcode 27.0 and Java 17. Xcode 27 supplies the iOS 27 SDK
 required for App Store Connect uploads starting April 2027. TipStroke targets
-iOS 16 and later. GitHub Actions still uses Xcode 26.0 for its Apple checks.
+iOS 16 and later.
 The framework uses [Kotlin direct integration](https://kotlinlang.org/docs/multiplatform/multiplatform-direct-integration.html).
 The configuration follows Codemagic's [native iOS build guide](https://docs.codemagic.io/yaml-quick-start/building-a-native-ios-app/)
 and [signing instructions](https://docs.codemagic.io/yaml-code-signing/signing-ios/).
