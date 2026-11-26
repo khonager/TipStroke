@@ -190,8 +190,8 @@ final class ProjectStore {
             try? fm.removeItem(at: old)
         }
     }
-    static func thumbnail(_ snapshot: DocumentSnapshot) throws -> CGImage {
-        let scale = min(256.0 / Double(snapshot.record.width), 256.0 / Double(snapshot.record.height))
+    static func thumbnail(_ snapshot: DocumentSnapshot, maxSide: Double = 256) throws -> CGImage {
+        let scale = min(maxSide / Double(snapshot.record.width), maxSide / Double(snapshot.record.height))
         let width = max(1, Int(Double(snapshot.record.width) * scale)), height = max(1, Int(Double(snapshot.record.height) * scale))
         let context = try RasterDocument.context(width: width, height: height)
         context.scaleBy(x: scale, y: scale)

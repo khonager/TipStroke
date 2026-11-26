@@ -115,6 +115,7 @@ final class GalleryController: UICollectionViewController, UICollectionViewDeleg
         super.viewDidLoad()
         title = "TipStroke"
         thumbnails.countLimit = 80
+        collectionView.addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinchCard(_:))))
         collectionView.alwaysBounceVertical = true
         if let flow = collectionViewLayout as? UICollectionViewFlowLayout {
             flow.sectionInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
@@ -165,9 +166,19 @@ final class GalleryController: UICollectionViewController, UICollectionViewDeleg
                 UIAction(title: "Import project, GIF or video") { [weak self] _ in self?.chooseGalleryFile() }
             ]))
             open.accessibilityLabel = "Import"
-            navigationItem.leftBarButtonItem = openStack == nil ? open : UIBarButtonItem(title: "Gallery", primaryAction: UIAction { [weak self] _ in
+            let size = UIBarButtonItem(image: UIImage(systemName: "square.grid.2x2"), menu: UIMenu(children:
+                [("Compact", 156), ("Medium", 220), ("Large", 320)].map { label, width in
+                    UIAction(title: label, state: CGFloat(width) == minimumWidth ? .on : .off) { [weak self] _ in
+                        UserDefaults.standard.set(width, forKey: "gallery.width")
+                        self?.collectionViewLayout.invalidateLayout()
+                        self?.updateGalleryActions()
+                    }
+                }))
+            size.accessibilityLabel = "Preview size"
+            let leading = openStack == nil ? open : UIBarButtonItem(title: "Gallery", primaryAction: UIAction { [weak self] _ in
                 self?.openStack = nil; self?.saveLayout()
             })
+            navigationItem.leftBarButtonItems = [leading, size]
             let select = UIBarButtonItem(image: UIImage(systemName: "checkmark.circle"), primaryAction: UIAction { [weak self] _ in self?.setPicking(true) })
             select.accessibilityLabel = "Select drawings"
             let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in
@@ -302,7 +313,30 @@ final class GalleryController: UICollectionViewController, UICollectionViewDeleg
             }
         }
     }
-    private var minimumWidth: CGFloat { 156 }
+    private var minimumWidth: CGFloat {
+        let width = UserDefaults.standard.integer(forKey: "gallery.width")
+        return CGFloat([156, 220, 320].contains(width) ? width : 156)
+    }
+    private weak var galleryPreview: GalleryArtworkPreview?
+    @objc private func pinchCard(_ gesture: UIPinchGestureRecognizer) {
+        if gesture.state == .began {
+            guard !pickingExports, galleryPreview == nil, let host = navigationController?.view,
+                  let path = collectionView.indexPathForItem(at: gesture.location(in: collectionView)),
+                  let tile = collectionView.cellForItem(at: path) as? GalleryTile,
+                  records[displayed[path.item]] != nil, let image = tile.picture.image else { return }
+            let id = displayed[path.item]
+            let preview = GalleryArtworkPreview(frame: host.bounds, image: image, anchor: tile.picture.convert(tile.picture.bounds, to: host))
+            preview.onExpand = { [weak preview] in
+                self.store.queue.async {
+                    guard let image = try? ProjectStore.thumbnail(self.store.load(id), maxSide: 2048) else { return }
+                    DispatchQueue.main.async { preview?.picture.image = UIImage(cgImage: image) }
+                }
+            }
+            host.addSubview(preview)
+            galleryPreview = preview
+        }
+        galleryPreview?.pinch(gesture)
+    }
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt path: IndexPath) -> CGSize {
         let insets = collectionView.adjustedContentInset
         let available = collectionView.bounds.width - insets.left - insets.right - 16

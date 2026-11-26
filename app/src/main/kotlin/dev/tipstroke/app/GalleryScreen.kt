@@ -64,6 +64,11 @@ fun GalleryScreen(
     onSettings: () -> Unit,
 ) {
     val context = LocalContext.current
+    val galleryPreferences = remember(context) { context.getSharedPreferences("gallery-layout", android.content.Context.MODE_PRIVATE) }
+    var cardWidth by remember { mutableIntStateOf(galleryPreferences.getInt("card-width", 156)) }
+    var sizesOpen by remember { mutableStateOf(false) }
+    var preview by remember { mutableStateOf<GalleryPreviewState?>(null) }
+    var galleryOrigin by remember { mutableStateOf(Offset.Zero) }
     var importingMedia by remember { mutableStateOf(false) }
     var mediaImportError by remember { mutableStateOf<String?>(null) }
     val latestOnOpen by rememberUpdatedState(onOpen)
@@ -232,11 +237,13 @@ fun GalleryScreen(
         }
 
     CompositionLocalProvider(LocalContentColor provides Color(0xFFF5F5F2)) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF17181B)).safeDrawingPadding()) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF17181B)).safeDrawingPadding().onGloballyPositioned { galleryOrigin = it.boundsInRoot().topLeft }) {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val gallerySize = constraints
         val shortWindow = maxHeight < 500.dp
         val gutter = if (maxWidth < 600.dp || shortWindow) 8.dp else 16.dp
-        val minimumWidth = 156.dp
-        val thumbnailHeight = minOf(minimumWidth * .78f, maxHeight * .32f)
+        val minimumWidth = cardWidth.dp
+        val thumbnailHeight = minOf(minimumWidth * .78f, if (shortWindow) maxHeight * .32f else 280.dp)
         Column {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minimumWidth),
@@ -264,6 +271,18 @@ fun GalleryScreen(
                                     TipAction("Image / GIF / video", Icons.Outlined.PermMedia, enabled = !importingMedia, onClick = { mediaPicker.launch(arrayOf("image/*", "video/*")) })
                                     TipAction(if (reordering) "Done reordering" else "Reorder", if (reordering) Icons.Outlined.Check else Icons.Outlined.SwapVert) { reordering = !reordering }
                                     TipAction("Import project", Icons.Outlined.FileOpen, onClick = { transferIds = null; transferOpen = true })
+                                    Box {
+                                        TipAction("Preview size", Icons.Outlined.GridView) { sizesOpen = true }
+                                        DropdownMenu(sizesOpen, { sizesOpen = false }) {
+                                            for ((label, width) in listOf("Compact" to 156, "Medium" to 220, "Large" to 320)) {
+                                                DropdownMenuItem(text = { Text(label) }, onClick = {
+                                                    cardWidth = width
+                                                    galleryPreferences.edit().putInt("card-width", width).apply()
+                                                    sizesOpen = false
+                                                })
+                                            }
+                                        }
+                                    }
                                     TipAction("Select drawings", Icons.Outlined.Checklist, onClick = { selecting = true; reordering = false })
                                 } else {
                                     val visible = visibleItems.flatMap { if (it is GalleryDrawing) listOf(it.drawing.id) else (it as GalleryStack).drawings.map { drawing -> drawing.id } }.toSet()
@@ -307,6 +326,22 @@ fun GalleryScreen(
                             onExport = { transferIds = listOf(item.drawing.id); transferOpen = true },
                             onMoveOut = openStack?.let { stack -> { library.moveOutOfStack(stack.id, item.drawing.id); refreshGallery() } },
                             thumbnailHeight = thumbnailHeight,
+                            onPinch = if (selecting || reordering) Modifier else Modifier.galleryPinch(item.drawing.id, {
+                                val bounds = cardBounds[item.key]?.translate(-galleryOrigin)
+                                if (bounds != null) {
+                                    val height = with(density) { thumbnailHeight.toPx() }
+                                    val anchor = bounds.copy(bottom = bounds.top + height)
+                                    val drawing = item.drawing
+                                    val fit = minOf(gallerySize.maxWidth.toFloat() / drawing.widthPx, gallerySize.maxHeight.toFloat() / drawing.heightPx)
+                                    val initial = (minOf(anchor.width / drawing.widthPx, anchor.height / drawing.heightPx) / fit).coerceIn(.05f, .95f)
+                                    preview = GalleryPreviewState(item.drawing, anchor, initial)
+                                }
+                            }, { zoom, _ -> preview?.let { it.scale = (it.scale * zoom).coerceIn(.05f, 8f) } }, {
+                                preview?.let {
+                                    if (it.scale >= .5f && it.scale > it.initialScale) { it.fullscreen = true; it.scale = it.scale.coerceAtLeast(1f) }
+                                    else preview = null
+                                }
+                            }),
                             selected = if (selecting) item.drawing.id in selectedDrawings else null,
                         )
                         is GalleryStack -> {
@@ -326,6 +361,7 @@ fun GalleryScreen(
                 }
             }
         }
+        preview?.let { GalleryPreview(it, library) { preview = null } }
     }
 
     }
@@ -375,6 +411,7 @@ private fun DrawingCard(
     onExport: () -> Unit,
     onMoveOut: (() -> Unit)? = null,
     thumbnailHeight: Dp = 180.dp,
+    onPinch: Modifier = Modifier,
     selected: Boolean? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -382,7 +419,7 @@ private fun DrawingCard(
         val image = remember(drawing.thumbnailFile.absolutePath, drawing.modifiedAtMillis) {
             BitmapFactory.decodeFile(drawing.thumbnailFile.absolutePath)?.asImageBitmap()
         }
-        Box(Modifier.fillMaxWidth().height(thumbnailHeight).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)), contentAlignment = Alignment.Center) {
+        Box(onPinch.fillMaxWidth().height(thumbnailHeight).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)), contentAlignment = Alignment.Center) {
             image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             if (selected != null) Checkbox(selected, onCheckedChange = { onOpen() }, modifier = Modifier.align(Alignment.TopEnd).background(Color(0xDD202125)))
         }
