@@ -71,6 +71,12 @@ final class BrushAdjustmentView: UIStackView {
     }
     required init(coder: NSCoder) { fatalError("Use init(title:isSize:)") }
 
+    private var trackLength: CGFloat = 205
+    func setTrackLength(_ length: CGFloat) {
+        trackLength = length
+        if verticalTrack { trackHeight.constant = length }
+    }
+
     func useVerticalTrack(_ vertical: Bool) {
         guard vertical != verticalTrack else { return }
         verticalTrack = vertical
@@ -78,7 +84,7 @@ final class BrushAdjustmentView: UIStackView {
         header.axis = vertical ? .vertical : .horizontal
         header.alignment = vertical ? .center : .fill
         header.arrangedSubviews[1].isHidden = vertical
-        trackHeight.constant = vertical ? 205 : 44
+        trackHeight.constant = vertical ? trackLength : 44
         steps.isHidden = vertical
         if vertical {
             insertArrangedSubview(plus, at: 1)

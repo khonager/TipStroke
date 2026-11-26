@@ -37,6 +37,7 @@ internal fun TipControls(
     onAdjustmentEnd: () -> Unit = {},
     horizontal: Boolean,
     compactVertical: Boolean = false,
+    pairedVertical: Boolean = false,
     verticalTrackHeight: Dp = if (compactVertical) 154.dp else 205.dp,
     showColorSwitcher: Boolean = true,
     horizontalWidthFraction: Float = .62f,
@@ -66,23 +67,13 @@ internal fun TipControls(
                 PrecisionSlider(opacityLabel, "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity, onAdjustmentStart, onAdjustmentEnd, Modifier.weight(1f))
             }
         } else {
-            Column(
-                Modifier.width(if (compactVertical) 74.dp else 86.dp)
-                    .background(Color(0xD9202125), RoundedCornerShape(24.dp))
-                    .border(1.dp, Color(0xB345474D), RoundedCornerShape(24.dp))
-                    .padding(horizontal = 7.dp, vertical = if (compactVertical) 4.dp else 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+            val controls: @Composable () -> Unit = {
                 if (showSize) VerticalPrecisionSlider(
                     "Size", "${size.roundToInt()} $unitLabel", size, sizeRange, 1f, onSize,
                     onAdjustmentStart, onAdjustmentEnd,
                     trackHeight = verticalTrackHeight,
                     compact = compactVertical,
                     valueContent = sizeLabel,
-                )
-                if (showSize) HorizontalDivider(
-                    Modifier.padding(vertical = if (compactVertical) 2.dp else 8.dp),
-                    color = Color(0xFF3A3C41),
                 )
                 VerticalPrecisionSlider(
                     opacityLabel, "${(opacity * 100).roundToInt()}%", opacity, .05f..1f, .01f, onOpacity,
@@ -91,6 +82,10 @@ internal fun TipControls(
                     compact = compactVertical,
                 )
             }
+            val chrome = Modifier.background(Color(0xE6202125), RoundedCornerShape(18.dp)).padding(6.dp)
+            if (pairedVertical) Row(chrome, horizontalArrangement = Arrangement.spacedBy(8.dp)) { controls() }
+            else Column(Modifier.width(if (compactVertical) 74.dp else 86.dp).then(chrome),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) { controls() }
         }
     }
 }

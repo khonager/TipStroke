@@ -285,7 +285,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         landscapeLayout = [
             bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
             adjustmentPanel.centerYAnchor.constraint(equalTo: bottomPanel.centerYAnchor),
-            adjustmentPanel.widthAnchor.constraint(equalToConstant: 380),
+            adjustmentPanel.widthAnchor.constraint(equalToConstant: 164),
             dock.widthAnchor.constraint(equalToConstant: 48),
             bottomPanel.heightAnchor.constraint(lessThanOrEqualToConstant: 480),
             bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -8),
@@ -401,6 +401,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         let useSideDock = safe.width > safe.height
         let useTabletControls = min(safe.width, safe.height) >= 600
+        if useSideDock {
+            let height = min(205, max(50, safe.height - 170))
+            sizeControl.setTrackLength(height); opacityControl.setTrackLength(height)
+        }
         let tipsOnLeft = phoneSide && view.window?.windowScene?.interfaceOrientation == .landscapeLeft
         guard useSideDock != sideDock || useTabletControls != tabletControls || leftTips != tipsOnLeft else { return }
         NSLayoutConstraint.deactivate(horizontalCommands + verticalCommands + landscapeEdges)
@@ -436,8 +440,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         adjustmentPanel?.isHidden = !tabletControls && !phoneAdjustmentsOpen
         adjustButton.isSelected = !tabletControls && phoneAdjustmentsOpen
         adjustButton.accessibilityLabel = tabletControls ? "Adjust tip" : (phoneAdjustmentsOpen ? "Hide size and opacity" : "Show size and opacity")
-        sizeControl.useVerticalTrack(tabletControls && useSideDock)
-        opacityControl.useVerticalTrack(tabletControls && useSideDock)
+        sizeControl.useVerticalTrack(useSideDock)
+        opacityControl.useVerticalTrack(useSideDock)
         sideDock = useSideDock
         dock.axis = useSideDock ? .vertical : .horizontal
         sharedControls.updateDockAxis(vertical: useSideDock, reverse: reverse)

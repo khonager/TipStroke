@@ -647,8 +647,8 @@ fun CanvasScreen(
                     topPx = with(density) { (if (landscapeDock) 0.dp else 72.dp).toPx() },
                     bottomPx = with(density) { (if (landscapeDock) 0.dp else if (phoneAdjustmentsOpen) 196.dp else 72.dp).toPx() },
                     approachMarginPx = with(density) { 36.dp.toPx() },
-                    leftPx = with(density) { if (landscapeDock) 64.dp.toPx() + safeInsets.getLeft(this, androidx.compose.ui.unit.LayoutDirection.Ltr) else 0f },
-                    rightPx = with(density) { if (landscapeDock) (if (phoneAdjustmentsOpen) 458.dp else 64.dp).toPx() + safeInsets.getRight(this, androidx.compose.ui.unit.LayoutDirection.Ltr) else 0f },
+                    leftPx = with(density) { if (landscapeDock) (if (tipsOnLeft && phoneAdjustmentsOpen) 204.dp else 64.dp).toPx() + safeInsets.getLeft(this, androidx.compose.ui.unit.LayoutDirection.Ltr) else 0f },
+                    rightPx = with(density) { if (landscapeDock) (if (!tipsOnLeft && phoneAdjustmentsOpen) 204.dp else 64.dp).toPx() + safeInsets.getRight(this, androidx.compose.ui.unit.LayoutDirection.Ltr) else 0f },
                 )
             },
         )
@@ -801,6 +801,7 @@ fun CanvasScreen(
                 },
                 onAdjustmentEnd = { surface?.hideBrushAdjustmentPreview() },
                 horizontal = portrait,
+                pairedVertical = !portrait,
                 compactVertical = compactLandscape,
                 verticalTrackHeight = when {
                     viewportHeight < 440.dp -> 44.dp
@@ -876,12 +877,18 @@ fun CanvasScreen(
                 onOpenColorPicker = { colorPickerOpen = true },
                 onAdjustmentStart = { sync(); surface?.showBrushAdjustmentPreview() },
                 onAdjustmentEnd = { surface?.hideBrushAdjustmentPreview() },
-                horizontal = true,
+                horizontal = !landscapeDock,
+                pairedVertical = landscapeDock,
+                compactVertical = landscapeDock,
+                verticalTrackHeight = (viewportHeight - 168.dp).coerceIn(60.dp, 190.dp),
                 showColorSwitcher = false,
                 horizontalWidthFraction = 1f,
                 modifier = Modifier.align(if (landscapeDock) tipEdge else Alignment.BottomCenter)
-                    .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp + timelineClearance)
-                    .widthIn(max = 390.dp).fillMaxWidth(),
+                    .safeDrawingPadding().padding(
+                        start = if (tipsOnLeft) 68.dp else 8.dp,
+                        end = if (landscapeDock && !tipsOnLeft) 68.dp else 8.dp,
+                        bottom = if (landscapeDock) 4.dp else 82.dp + timelineClearance,
+                    ).then(if (landscapeDock) Modifier else Modifier.widthIn(max = 390.dp).fillMaxWidth()),
             )
         }
 

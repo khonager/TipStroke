@@ -615,3 +615,5 @@ release to tuck it into a small drop. Pull the drop inward to restore the previe
 During a move, a trash target appears at the bottom. Release there to dismiss the
 preview, or choose **Hide canvas preview** in the menu. Both actions affect only
 the editor overlay. Committed drawing changes refresh the visible thumbnail.
+
+Landscape phone size and opacity controls share a pair of vertical tracks along the tip rail. Portrait keeps paired horizontal tracks above the tips.
