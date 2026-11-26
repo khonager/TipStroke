@@ -3,6 +3,8 @@ package dev.tipstroke.app
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
+import android.hardware.display.DisplayManager
+import android.view.Surface
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +28,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +44,27 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+
+@Composable
+private fun isReverseLandscape(): Boolean {
+    val view = LocalView.current
+    var rotation by remember(view) { mutableIntStateOf(view.display?.rotation ?: Surface.ROTATION_0) }
+    DisposableEffect(view) {
+        val displays = view.context.getSystemService(DisplayManager::class.java)
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayChanged(displayId: Int) {
+                val display = view.display ?: return
+                if (display.displayId == displayId) rotation = display.rotation
+            }
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+        }
+        displays.registerDisplayListener(listener, view.handler)
+        view.display?.let { rotation = it.rotation }
+        onDispose { displays.unregisterDisplayListener(listener) }
+    }
+    return rotation == Surface.ROTATION_270
+}
 
 @Composable
 fun CanvasScreen(
@@ -580,8 +604,7 @@ fun CanvasScreen(
         val compactLandscape = !portrait && maxHeight < 760.dp
         val safeInsets = WindowInsets.safeDrawing
         val landscapeDock = compactPhone && !portrait
-        val tipsOnLeft = landscapeDock && (context.getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager)
-            .defaultDisplay.rotation == android.view.Surface.ROTATION_270
+        val tipsOnLeft = landscapeDock && isReverseLandscape()
         val tipEdge = if (tipsOnLeft) Alignment.CenterStart else Alignment.CenterEnd
         val commandEdge = if (tipsOnLeft) Alignment.CenterEnd else Alignment.CenterStart
         fun manuallyHidePhoneChrome() {
