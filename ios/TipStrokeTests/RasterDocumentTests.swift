@@ -4,6 +4,38 @@ import ImageIO
 @testable import TipStroke
 
 final class RasterDocumentTests: XCTestCase {
+    func testLargeCoverageStrokeSwapsTilesForUndoAndRedoAndCancelsOnOverflow() throws {
+        let doc = RasterDocument(name: "Coverage", width: 4096, height: 2304)
+        func stroke(count: Int) throws {
+            let coverage = StrokeCoverage()
+            XCTAssertTrue(doc.beginStroke())
+            do {
+                for i in 0..<count {
+                    let point = CGPoint(x: (i % 16) * 256 + 8, y: (i / 16) * 256 + 8)
+                    _ = try coverage.paint(document: doc, from: point, to: point, radius: 2,
+                                           alpha: 1, hardness: 1, color: .black)
+                }
+                doc.endStroke(cancelled: false)
+            } catch {
+                doc.endStroke(cancelled: true)
+                throw error
+            }
+        }
+        try stroke(count: 128)
+        let layer = doc.activeLayer
+        let original = try XCTUnwrap(doc.pixels[layer])
+        XCTAssertEqual(original.count, 128)
+        for _ in 0..<2 {
+            doc.undo()
+            XCTAssertTrue(doc.pixels[layer]?.isEmpty == true)
+            doc.redo()
+            XCTAssertTrue(original.allSatisfy { doc.pixels[layer]?[$0.key] === $0.value })
+        }
+        XCTAssertThrowsError(try stroke(count: 129))
+        XCTAssertEqual(doc.pixels[layer]?.count, 128)
+        XCTAssertTrue(original.allSatisfy { doc.pixels[layer]?[$0.key] === $0.value })
+    }
+
     func testStillExportCodecsAndScale() throws {
         let doc = RasterDocument(name: "Export", width: 64, height: 32)
         for format in StillExport.Format.allCases {

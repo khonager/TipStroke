@@ -463,3 +463,5 @@ Pointer-up/cancel flushes at most one pending exchange before closing the existi
 single undo transaction. Smudge no longer requests unbuffered dispatch. This
 bounds queued work independently of the digitizer's sample rate; it intentionally
 uses display-frame sampling rather than replaying every historical pen sample.
+
+On iOS, undo and redo exchange the current tile with the retained tile state. A stroke can touch up to 128 distinct layer tiles within the 32 MiB history budget. Repeated samples in the same tile reuse that slot. Swept brushes retain coverage masks only for tiles receiving coverage. Exceeding the limit rolls back the stroke.

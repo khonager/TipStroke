@@ -6,6 +6,7 @@ final class RasterDocument {
     static let maximumTiles = 512 // 128 MiB of resident RGBA artwork
     static let historyBudget = 32 * 1024 * 1024
     static let tileBytes = 256 * 256 * 4
+    static let maximumStrokeTiles = historyBudget / tileBytes
     var paintInside = false
     var mirrorCopies = 0
     var mirrorCenter: CGPoint?
@@ -95,7 +96,7 @@ final class RasterDocument {
             undoStack = undo; redoStack = redo
         } else {
             let new = Metadata(record: record, pixels: pixels, frames: framePixels, coldFrames: coldFrames)
-            let combined = Edit(layer: activeLayer, before: [:], after: [:], oldMetadata: old, newMetadata: new)
+            let combined = Edit(layer: activeLayer, tiles: [:], oldMetadata: old, newMetadata: new)
             if combined.cost <= Self.historyBudget {
                 undoStack = undo + [combined]; redoStack = []; trimHistory()
             }
@@ -104,11 +105,9 @@ final class RasterDocument {
     private struct Edit {
         var layer: UUID
         var frame: UUID? = nil
-        var before: [TileKey: TileState]
-        var after: [TileKey: TileState]
+        var tiles: [TileKey: TileState]
         var movedSelection: (CanvasSelection, CanvasSelection)? = nil
-        var extraBefore: [UUID: [TileKey: TileState]] = [:]
-        var extraAfter: [UUID: [TileKey: TileState]] = [:]
+        var extraTiles: [UUID: [TileKey: TileState]] = [:]
         var oldMetadata: Metadata? = nil
         var newMetadata: Metadata? = nil
         var cost: Int {
@@ -123,8 +122,8 @@ final class RasterDocument {
             let retainedSources = Set(oldSources.keys).symmetricDifference(newSources.keys).reduce(0) {
                 $0 + ((oldSources[$1] ?? newSources[$1])?.bytes ?? 0)
             }
-            let others = extraBefore.values.reduce(0) { $0 + $1.count } + extraAfter.values.reduce(0) { $0 + $1.count }
-            return retainedSources + (before.count + after.count + retained + others) * RasterDocument.tileBytes + (oldMetadata == nil ? 0 : 256)
+            let others = extraTiles.values.reduce(0) { $0 + $1.count }
+            return retainedSources + (tiles.count + retained + others) * RasterDocument.tileBytes + (oldMetadata == nil ? 0 : 256)
         }
     }
     private enum TileState {
@@ -279,8 +278,8 @@ final class RasterDocument {
                 (referenceID == nil || pixels[referenceID!]?[key] != nil || record.layers.first(where: { $0.id == referenceID })?.photo?.bounds.intersects(key.rect) == true)
         }
         let newKeys = keys.filter { before[$0] == nil }
-        guard (heldTileCount + newKeys.count) * Self.tileBytes * 2 <= Self.historyBudget else {
-            throw DrawingError.message("This edit exceeds the undo budget. Use a smaller selected area.")
+        guard heldTileCount + newKeys.count <= Self.maximumStrokeTiles else {
+            throw DrawingError.message("This edit covers too many tiles to undo. Try a shorter stroke or a smaller area.")
         }
         guard residentTileCount + keys.filter({ pixels[layer]?[$0] == nil }).count <= Self.maximumTiles else {
             throw DrawingError.message("This edit exceeds the painting memory budget.")
@@ -315,7 +314,7 @@ final class RasterDocument {
         let keys = Set(regions.flatMap { area in transforms.flatMap { mirror in
             photo.geometry.sourceKeys(over: area.applying(mirror).intersection(selectedBounds), width: photo.width, height: photo.height)
         } })
-        guard (heldTileCount + keys.filter({ before[$0] == nil }).count) * Self.tileBytes * 2 <= Self.historyBudget,
+        guard heldTileCount + keys.filter({ before[$0] == nil }).count <= Self.maximumStrokeTiles,
               residentTileCount + keys.filter({ pixels[layer]?[$0] == nil }).count <= Self.maximumTiles else {
             throw DrawingError.message("This erase exceeds the image editing budget.")
         }
@@ -392,12 +391,8 @@ final class RasterDocument {
         if cancelled { resetStrokePreview() }
         else if heldTileCount > 0 {
             revision &+= 1
-            let after = before.keys.reduce(into: [TileKey: TileState]()) { $0[$1] = pixels[layer]?[$1].map(TileState.image) ?? .empty }
-            let extraAfter = extraBefore.reduce(into: [UUID: [TileKey: TileState]]()) { result, item in
-                result[item.key] = item.value.keys.reduce(into: [:]) { delta, key in delta[key] = pixels[item.key]?[key].map(TileState.image) ?? .empty }
-            }
             redoStack = []
-            undoStack.append(Edit(layer: layer, frame: record.animation.flatMap { $0.sharedLayerIDs.contains(layer) && extraBefore.keys.allSatisfy($0.sharedLayerIDs.contains) ? nil : $0.frames[$0.selectedIndex].id }, before: before, after: after, movedSelection: movedSelection, extraBefore: extraBefore, extraAfter: extraAfter))
+            undoStack.append(Edit(layer: layer, frame: record.animation.flatMap { $0.sharedLayerIDs.contains(layer) && extraBefore.keys.allSatisfy($0.sharedLayerIDs.contains) ? nil : $0.frames[$0.selectedIndex].id }, tiles: before, movedSelection: movedSelection, extraTiles: extraBefore))
             if let movedSelection { selection = movedSelection.1 }
             trimHistory()
         }
@@ -415,11 +410,10 @@ final class RasterDocument {
             }
             return
         }
-        guard let edit = undoStack.popLast() else { return }
+        guard var edit = undoStack.popLast() else { return }
         revision &+= 1
         if let state = edit.oldMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames; coldFrames = state.coldFrames }
-        else { restoreFrameForHistory(edit.frame); apply(edit.before, layer: edit.layer) }
-        for (id, states) in edit.extraBefore { apply(states, layer: id) }
+        else { swapHistoryTiles(&edit) }
         if let moved = edit.movedSelection { selection = moved.0 }
         redoStack.append(edit)
     }
@@ -434,14 +428,29 @@ final class RasterDocument {
             }
             return
         }
-        guard let edit = redoStack.popLast() else { return }
+        guard var edit = redoStack.popLast() else { return }
         revision &+= 1
         if let state = edit.newMetadata { record = state.record; pixels = state.pixels; framePixels = state.frames; coldFrames = state.coldFrames }
-        else { restoreFrameForHistory(edit.frame); apply(edit.after, layer: edit.layer) }
-        for (id, states) in edit.extraAfter { apply(states, layer: id) }
+        else { swapHistoryTiles(&edit) }
         if let moved = edit.movedSelection { selection = moved.1 }
         undoStack.append(edit)
     }
+    // The document already owns the current version. Exchange it with the one
+    // version in history, so redo and undo each retain a single state per tile.
+    private func swapHistoryTiles(_ edit: inout Edit) {
+        restoreFrameForHistory(edit.frame)
+        func exchange(_ states: [TileKey: TileState], layer: UUID) -> [TileKey: TileState] {
+            var inverse: [TileKey: TileState] = [:]
+            for (key, state) in states {
+                inverse[key] = pixels[layer]?[key].map(TileState.image) ?? .empty
+                pixels[layer, default: [:]][key] = state.image
+            }
+            return inverse
+        }
+        edit.tiles = exchange(edit.tiles, layer: edit.layer)
+        for (id, states) in edit.extraTiles { edit.extraTiles[id] = exchange(states, layer: id) }
+    }
+
     func archiveHistoryFrame(_ id: UUID, matching: CelPixels, files: CelFiles) {
         func archive(_ state: inout Metadata?) {
             if let active = state?.record.animation, active.frames[active.selectedIndex].id != id,
@@ -502,7 +511,7 @@ final class RasterDocument {
         guard force || old.record != record else { return }
         revision &+= 1
         redoStack = []
-        undoStack.append(Edit(layer: activeLayer, before: [:], after: [:], movedSelection: movedSelection, oldMetadata: old,
+        undoStack.append(Edit(layer: activeLayer, tiles: [:], movedSelection: movedSelection, oldMetadata: old,
                               newMetadata: Metadata(record: record, pixels: pixels, frames: framePixels, coldFrames: coldFrames)))
         if let movedSelection { selection = movedSelection.1 }
         trimHistory()

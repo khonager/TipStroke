@@ -52,8 +52,6 @@ final class StrokeCoverage {
             let separation = abs(dx * (rect.midY - start.y) - dy * (rect.midX - start.x))
             return separation <= (abs(dx) * rect.height + abs(dy) * rect.width) / 2
         }
-        guard tiles.count + keys.filter({ tiles[$0] == nil }).count <= RasterDocument.historyBudget / (RasterDocument.tileBytes * 2)
-        else { throw DrawingError.message("This stroke exceeds the undo budget.") }
         let dx = end.x - start.x, dy = end.y - start.y, length2 = dx * dx + dy * dy
         var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, opacity: CGFloat = 1
         color.getRed(&red, green: &green, blue: &blue, alpha: &opacity)
@@ -71,7 +69,6 @@ final class StrokeCoverage {
             let box = key.rect.intersection(area)
             let width = Int(box.width), height = Int(box.height)
             let mask = tiles[key] ?? NSMutableData(length: 256 * 256)!
-            tiles[key] = mask
             let previous = mask.mutableBytes.assumingMemoryBound(to: UInt8.self)
             let context = try RasterDocument.context(width: width, height: height)
             let output = context.data!.assumingMemoryBound(to: UInt8.self)
@@ -115,7 +112,15 @@ final class StrokeCoverage {
                     previous[idx] = new
                 }
             }
-            if changed, let image = context.makeImage() { paintedKeys.append(key); patches.append((box, image)) }
+            if changed {
+                guard tiles[key] != nil || tiles.count < RasterDocument.maximumStrokeTiles else {
+                    throw DrawingError.message("This stroke covers too many tiles to undo. Try a shorter stroke.")
+                }
+                guard let image = context.makeImage() else { throw DrawingError.message("Could not allocate a painting tile.") }
+                tiles[key] = mask
+                paintedKeys.append(key)
+                patches.append((box, image))
+            }
         }
         if !patches.isEmpty {
             try document.editTiles(keys: paintedKeys, affectedArea: area, erasing: erasing) { context in
