@@ -34,6 +34,36 @@ final class EditorSheetNavigationController: UINavigationController {
     }
 }
 
+final class CanvasPanelPresentation: UIPresentationController {
+    private let backdrop = UIControl()
+    override var shouldRemovePresentersView: Bool { false }
+    override var frameOfPresentedViewInContainerView: CGRect {
+        guard let containerView else { return .zero }
+        let safe = containerView.bounds.inset(by: containerView.safeAreaInsets).insetBy(dx: 10, dy: 10)
+        let width = min(352, safe.width * 0.94)
+        let height = min(540, safe.height * 0.76)
+        let x = safe.width > safe.height ? safe.maxX - width : safe.midX - width / 2
+        let y = safe.midY - height / 2
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+    override func presentationTransitionWillBegin() {
+        guard let containerView else { return }
+        backdrop.frame = containerView.bounds
+        backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        backdrop.addAction(UIAction { [weak self] _ in
+            guard let controller = self?.presentedViewController, !controller.isModalInPresentation else { return }
+            controller.dismiss(animated: false)
+        }, for: .touchUpInside)
+        containerView.insertSubview(backdrop, at: 0)
+        presentedView?.layer.cornerRadius = 16
+        presentedView?.clipsToBounds = true
+    }
+    override func containerViewWillLayoutSubviews() {
+        super.containerViewWillLayoutSubviews()
+        presentedView?.frame = frameOfPresentedViewInContainerView
+    }
+}
+
 extension UIViewController {
     func sheetDoneButton() -> UIBarButtonItem {
         let item = UIBarButtonItem(title: "Done", primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })

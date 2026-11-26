@@ -327,7 +327,8 @@ extension RasterDocument {
         self.selection = CanvasSelection(path: path)
     }
 
-    func transferSelection(cut: Bool) throws {
+    func transferSelection(cut: Bool, wholeCel: Bool = false) throws {
+        let selection = wholeCel ? CanvasSelection(path: CGPath(rect: bounds, transform: nil)) : self.selection
         let targets = record.layers.filter { editingLayerIDs.contains($0.id) && $0.visible && $0.photo == nil }
         guard let selection, !targets.isEmpty, record.layers.count + targets.count <= 32,
               !cut || targets.allSatisfy({ !$0.locked && !$0.alphaLocked }) else {

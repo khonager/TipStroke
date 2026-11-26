@@ -125,7 +125,7 @@ extension RasterDocument {
         var requests: [(UUID, CelFiles)] = []
         if let files = coldFrames[currentID] { requests.append((currentID, files)); available -= targetCost }
         if a.onionSkin {
-            for i in [index - 1, index + 1] where a.frames.indices.contains(i) {
+            for i in a.neighbors(of: index) {
                 let id = a.frames[i].id
                 guard let files = coldFrames[id] else { continue }
                 let cost = files.values.reduce(0) { $0 + $1.count }

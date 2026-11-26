@@ -175,4 +175,14 @@ struct AnimationRecord: Codable, Equatable {
     var playbackMode = "LOOP"
     var backgroundLayers: Set<UUID>?
     var onionSkin = false
+    var onionBefore: Int?
+    var onionAfter: Int?
+    var onionOpacity: Double?
+    var previousCount: Int { onionSkin ? max(0, min(6, onionBefore ?? 1)) : 0 }
+    var nextCount: Int { onionSkin ? max(0, min(6, onionAfter ?? 1)) : 0 }
+    var ghostOpacity: Double { max(0.05, min(1, onionOpacity ?? 0.18)) }
+    func neighbors(of index: Int) -> [Int] {
+        guard frames.indices.contains(index) else { return [] }
+        return (max(0, index - previousCount)...min(frames.count - 1, index + nextCount)).filter { $0 != index }
+    }
 }

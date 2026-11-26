@@ -293,3 +293,5 @@ Pixel pencil, Pixel line and Dither appear in the tip picker and library at any 
 Export image supports PNG, JPEG and WebP with a file name and 100%, 50% or 25% scale. JPEG and WebP offer quality controls; PNG and WebP can omit the paper. WebP encoding uses the bundled libwebp library.
 
 Phone command and tip rails occupy opposite short edges in landscape. Android uses an immediate window rotation transition.
+
+Layers opens over the canvas. Animation uses a bottom overlay with a horizontally scrolling frame strip and frame actions.

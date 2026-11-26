@@ -100,7 +100,7 @@ extension RasterDocument {
         // pixel delta synchronously even if onion neighbors still need reading.
         if index != record.animation?.selectedIndex { installFrame(index) }
         if let animation = record.animation, animation.onionSkin,
-           [index - 1, index + 1].contains(where: { animation.frames.indices.contains($0) && coldFrames[animation.frames[$0].id] != nil }) {
+           animation.neighbors(of: index).contains(where: { coldFrames[animation.frames[$0].id] != nil }) {
             prepareFrame(index) { [weak self] in self?.onCelReady?() }
         }
     }
@@ -300,98 +300,239 @@ extension DocumentRecord {
     }
 }
 
-final class TimelineController: UITableViewController {
+final class TimelineController: UICollectionViewController {
     let document: RasterDocument
     var onChange: (() -> Void)?
+    var onClose: (() -> Void)?
+    var onImportMedia: (() -> Void)?
     var onRecordMotion: (() -> Void)?
     var onRecordDrawing: (() -> Void)?
     private var timer: Timer?
+    let scrubber = UISlider()
+    private let previews = NSCache<NSUUID, UIImage>()
+    private var previewRevision: UInt64?
+    private var loadingPreview = false
     private var playbackTick: Int64 = 0
     private var playbackStart: TimeInterval = 0
-    init(document: RasterDocument) { self.document = document; super.init(style: .insetGrouped) }
+    init(document: RasterDocument) {
+        self.document = document
+        let layout = UICollectionViewFlowLayout()
+        layout.scrollDirection = .horizontal
+        layout.itemSize = CGSize(width: 72, height: 54)
+        layout.sectionInset = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+        super.init(collectionViewLayout: layout)
+    }
     required init?(coder: NSCoder) { fatalError("Use init(document:)") }
     override func viewDidLoad() {
-        super.viewDidLoad(); title = "Animation"
-        navigationItem.rightBarButtonItems = [
-            sheetDoneButton(),
-            UIBarButtonItem(title: "Play", primaryAction: UIAction { [weak self] _ in self?.togglePlayback() })
-        ]
-        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Settings", primaryAction: UIAction { [weak self] _ in self?.settings() })
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "frame")
+        super.viewDidLoad()
+        title = "Animation"
+        navigationItem.rightBarButtonItems = [UIBarButtonItem(title: "Done", primaryAction: UIAction { [weak self] _ in self?.onClose?() }),
+            UIBarButtonItem(title: "Play", primaryAction: UIAction { [weak self] _ in self?.togglePlayback() })]
+        let add = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in self?.add(copy: false) })
+        let options = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] done in done(self?.timelineOptions() ?? []) }
+        ]))
+        options.accessibilityLabel = "Animation options"
+        let duplicate = UIBarButtonItem(image: UIImage(systemName: "plus.square.on.square"), primaryAction: UIAction { [weak self] _ in self?.add(copy: true) })
+        duplicate.accessibilityLabel = "Duplicate selected animation frame"
+        navigationItem.leftBarButtonItems = [add, duplicate, options]
+        collectionView.backgroundColor = UIColor(white: 0.13, alpha: 1)
+        collectionView.register(UICollectionViewCell.self, forCellWithReuseIdentifier: "frame")
+        previews.countLimit = 40
+        scrubber.accessibilityLabel = "Timeline scrubber"
+        scrubber.frame.size = CGSize(width: 240, height: 32)
+        scrubber.addAction(UIAction { [weak self] _ in
+            guard let self, let a = self.document.record.animation else { return }
+            self.stopPlayback()
+            let next = Int(a.shared.frameAt(tick: Int64(self.scrubber.value.rounded())))
+            if next != a.selectedIndex { self.document.selectTimelineFrame(next); self.changed() }
+        }, for: .valueChanged)
+        toolbarItems = [UIBarButtonItem(customView: scrubber)]
+        collectionView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(reorder(_:))))
+    }
+    @objc private func reorder(_ press: UILongPressGestureRecognizer) {
+        let point = press.location(in: collectionView)
+        switch press.state {
+        case .began:
+            guard document.record.media == nil, let path = collectionView.indexPathForItem(at: point) else { return }
+            stopPlayback()
+            collectionView.beginInteractiveMovementForItem(at: path)
+        case .changed: collectionView.updateInteractiveMovementTargetPosition(point)
+        case .ended: collectionView.endInteractiveMovement()
+        default: collectionView.cancelInteractiveMovement()
+        }
+    }
+    override func collectionView(_ collectionView: UICollectionView, moveItemAt source: IndexPath, to target: IndexPath) {
+        document.selectFrame(source.item) {
+            self.document.moveFrame(target.item - source.item)
+            self.changed()
+        }
+    }
+    private func recordingActions() -> [UIAction] {
+        guard document.record.media == nil else { return [] }
+        return [("Record drawing live", onRecordDrawing), ("Record photo motion", onRecordMotion)].map { name, action in
+            UIAction(title: name) { [weak self] _ in self?.onClose?(); action?() }
+        }
     }
     override func viewDidDisappear(_ animated: Bool) { super.viewDidDisappear(animated); stopPlayback() }
     deinit { timer?.invalidate() }
-    private func changed() { tableView.reloadData(); onChange?() }
-    override func numberOfSections(in tableView: UITableView) -> Int { 2 }
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { section == 0 ? (document.record.media == nil ? 4 : 2) : document.record.animation?.frames.count ?? 0 }
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "frame", for: indexPath)
-        var content = cell.defaultContentConfiguration()
-        if indexPath.section == 0 { content.text = ["Add blank frame", "Duplicate current frame", "Record drawing live", "Record photo motion"][indexPath.row] }
-        else if let animation = document.record.animation {
-            content.text = "Frame \(indexPath.row + 1) · \(animation.frames[indexPath.row].exposure) ticks"
-            content.image = UIImage(systemName: animation.selectedIndex == indexPath.row ? "checkmark.circle.fill" : "circle")
+    func refreshFrames() {
+        guard isViewLoaded, let animation = document.record.animation else { return }
+        if previewRevision != document.revision {
+            previews.removeAllObjects()
+            previewRevision = document.revision
         }
-        cell.contentConfiguration = content; return cell
+        collectionView.reloadData()
+        scrubber.maximumValue = Float(max(1, animation.frames.reduce(0) { $0 + $1.exposure } - 1))
+        if !scrubber.isTracking { scrubber.value = Float(animation.frames.prefix(animation.selectedIndex).reduce(0) { $0 + $1.exposure }) }
     }
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        loadVisiblePreview()
+    }
+    private func loadVisiblePreview() {
+        guard !loadingPreview, view.window != nil, let animation = document.record.animation else { return }
+        let missing = collectionView.indexPathsForVisibleItems.first { path in
+            animation.frames.indices.contains(path.item) && previews.object(forKey: animation.frames[path.item].id as NSUUID) == nil
+        }
+        guard let missing else { return }
+        let id = animation.frames[missing.item].id, snapshot = document.snapshot(), revision = document.revision
+        loadingPreview = true
+        ProjectStore.shared.queue.async { [weak self] in
+            let thumb = try? ProjectStore.thumbnail(snapshot.atFrame(id))
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.loadingPreview = false
+                guard self.document.revision == revision, self.view.window != nil else { return }
+                self.previews.setObject(thumb.map { UIImage(cgImage: $0) } ?? UIImage(), forKey: id as NSUUID)
+                if self.document.record.animation?.frames.indices.contains(missing.item) == true {
+                    self.collectionView.reloadItems(at: [missing])
+                }
+                self.loadVisiblePreview()
+            }
+        }
+    }
+    func pausePlayback() { stopPlayback() }
+    private func changed() { onChange?() }
+    override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        document.record.animation?.frames.count ?? 0
+    }
+    override func collectionView(_ collectionView: UICollectionView, cellForItemAt path: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "frame", for: path)
+        guard let animation = document.record.animation else { return cell }
+        var content = UIListContentConfiguration.cell()
+        content.text = String(path.item + 1)
+        content.secondaryText = "× " + String(animation.frames[path.item].exposure)
+        content.image = previews.object(forKey: animation.frames[path.item].id as NSUUID)
+        content.imageProperties.maximumSize = CGSize(width: 32, height: 32)
+        content.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 2, leading: 2, bottom: 2, trailing: 2)
+        cell.contentConfiguration = content
+        cell.backgroundColor = animation.selectedIndex == path.item ? .systemIndigo : .secondarySystemBackground
+        cell.layer.cornerRadius = 8
+        return cell
+    }
+    override func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
+        stopPlayback(); document.selectTimelineFrame(path.item); changed()
+    }
+    private func add(copy: Bool) {
         stopPlayback()
-        do {
-            if indexPath.section == 0 && indexPath.row >= 2 {
-                let record = indexPath.row == 2 ? onRecordDrawing : onRecordMotion
-                dismiss(animated: true) { record?() }; return
-            }
-            if indexPath.section == 0 { try document.addFrame(copy: indexPath.row == 1) }
-            else { document.selectTimelineFrame(indexPath.row) }
-            changed()
-        } catch { showError(error) }
+        do { try document.addFrame(copy: copy); changed() } catch { showError(error) }
     }
-    override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        guard indexPath.section == 1 else { return nil }
-        return UISwipeActionsConfiguration(actions: [UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, done in
-            guard let self else { done(false); return }; self.stopPlayback()
-            let remove = {
-                do { try self.document.deleteFrame(); self.changed(); done(true) }
-                catch { self.showError(error); done(false) }
-            }
-            self.document.selectFrame(indexPath.row) {
-                let target = min(indexPath.row + 1, (self.document.record.animation?.frames.count ?? 1) - 1)
-                self.document.prepareFrame(target == indexPath.row ? max(0, target-1) : target, then: remove)
-            }
-        }])
-    }
-    private func settings() {
+    private func deleteCurrent() {
         stopPlayback()
         guard let animation = document.record.animation else { return }
-        let alert = UIAlertController(title: "Animation", message: "Frames per second (1–60), current hold (1–600), and playback: LOOP, PING_PONG, ONCE", preferredStyle: .alert)
-        for value in [String(animation.fps), String(animation.frames[animation.selectedIndex].exposure), animation.playbackMode] { alert.addTextField { $0.text = value } }
-        alert.addAction(UIAlertAction(title: animation.onionSkin ? "Disable onion skin" : "Enable onion skin", style: .default) { [weak self] _ in
-            guard let self else { return }; self.document.beginMetadataEdit(); self.document.record.animation?.onionSkin.toggle(); self.document.endMetadataEdit(); self.changed()
-        })
-        alert.addAction(UIAlertAction(title: "Apply", style: .default) { [weak self, weak alert] _ in
-            guard let self, let fields = alert?.textFields, let fps = Int(fields[0].text ?? ""), let hold = Int(fields[1].text ?? ""),
-                  (1...60).contains(fps), (1...600).contains(hold), let mode = fields[2].text?.uppercased(), ["LOOP", "PING_PONG", "ONCE"].contains(mode) else { return }
-            self.document.beginMetadataEdit(); self.document.record.animation?.fps = fps
-            self.document.record.animation?.frames[animation.selectedIndex].exposure = hold
-            self.document.record.animation?.playbackMode = mode; self.document.endMetadataEdit(); self.changed()
-        })
-        let shared = animation.sharedLayerIDs.contains(document.activeLayer)
-        alert.addAction(UIAlertAction(title: shared ? "Animate selected layer separately" : "Share selected layer across frames", style: .default) { [weak self] _ in
-            self?.document.toggleSharedBackground(); self?.changed()
-        })
-        for divisor in [2, 4] {
-            alert.addAction(UIAlertAction(title: "Reduce resolution to \(100 / divisor)%…", style: .default) { [weak self] _ in self?.confirmReduction(divisor) })
+        let next = min(animation.selectedIndex + 1, animation.frames.count - 1)
+        document.prepareFrame(next == animation.selectedIndex ? max(0, next - 1) : next) {
+            do { try self.document.deleteFrame(); self.changed() } catch { self.showError(error) }
         }
-        if document.record.media != nil {
-            let frame = animation.frames[animation.selectedIndex]
-            alert.addAction(UIAlertAction(title: "Set drawing coverage…", style: .default) { [weak self] _ in
-                self?.editCoverage(frame: frame, fps: animation.fps)
+    }
+    private func timelineOptions() -> [UIMenuElement] {
+        guard let a = document.record.animation else { return [] }
+        let i = a.selectedIndex
+        func action(_ name: String, enabled: Bool = true, _ perform: @escaping () -> Void) -> UIAction {
+            UIAction(title: name, attributes: enabled ? [] : .disabled) { [weak self] _ in self?.stopPlayback(); perform() }
+        }
+        let frame = UIMenu(title: "Frame actions", children: [
+            action("Delete frame", enabled: a.frames.count > 1) { self.deleteCurrent() },
+            action("Move frame left", enabled: i > 0) { self.document.moveFrame(-1); self.changed() },
+            action("Move frame right", enabled: i + 1 < a.frames.count) { self.document.moveFrame(1); self.changed() },
+        ] + [-1, 1].map { delta in
+            action("Hold " + (delta < 0 ? "−" : "+") + " (\(a.frames[i].exposure))") {
+                self.updateAnimation { value in value.frames[value.selectedIndex].exposure = min(600, max(1, value.frames[value.selectedIndex].exposure + delta)) }
+            }
+        })
+        var layers: [UIAction] = [action(a.sharedLayerIDs.contains(document.activeLayer) ? "Make animated cel" : "Use as shared background") {
+            self.document.toggleSharedBackground(); self.changed()
+        }]
+        if document.activePhoto == nil {
+            for wholeCel in [true, false] where wholeCel || document.selection != nil {
+                for cut in [false, true] {
+                    layers.append(action((cut ? "Move " : "Copy ") + (wholeCel ? "cel" : "selection") + " to new layer") {
+                        do { try self.document.transferSelection(cut: cut, wholeCel: wholeCel); self.changed() }
+                        catch { self.showError(error) }
+                    })
+                }
+            }
+        }
+        let playback = UIMenu(title: "Playback", children: [action("Frame rate · \(a.fps) fps") { self.chooseFps() }] +
+            ["LOOP", "PING_PONG", "ONCE"].map { mode in
+                UIAction(title: mode.replacingOccurrences(of: "_", with: " ").capitalized,
+                         state: a.playbackMode == mode ? .on : .off) { _ in self.stopPlayback(); self.updateAnimation { $0.playbackMode = mode } }
             })
-        } else {
-            alert.addAction(UIAlertAction(title: "Move frame earlier", style: .default) { [weak self] _ in self?.document.moveFrame(-1); self?.changed() })
-            alert.addAction(UIAlertAction(title: "Move frame later", style: .default) { [weak self] _ in self?.document.moveFrame(1); self?.changed() })
+        var onions: [UIAction] = []
+        for delta in [-1, 1] {
+            let sign = delta < 0 ? "−" : "+"
+            onions.append(action("Previous " + sign + " (\(a.previousCount))") {
+                self.updateOnion(before: a.previousCount + delta, after: a.nextCount, opacity: a.ghostOpacity)
+            })
+            onions.append(action("Next " + sign + " (\(a.nextCount))") {
+                self.updateOnion(before: a.previousCount, after: a.nextCount + delta, opacity: a.ghostOpacity)
+            })
+            onions.append(action("Opacity " + sign + " (\(Int((100 * a.ghostOpacity).rounded()))%)") {
+                self.updateOnion(before: a.previousCount, after: a.nextCount, opacity: a.ghostOpacity + Double(delta) * 0.1)
+            })
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel)); present(alert, animated: true)
+        var items: [UIMenuElement] = [action(navigationController?.isToolbarHidden == true ? "Show scrubber" : "Hide scrubber") {
+            guard let nav = self.navigationController else { return }
+            nav.setToolbarHidden(!nav.isToolbarHidden, animated: false)
+            self.refreshFrames()
+            nav.parent?.view.setNeedsLayout()
+        }, action("Add photo / video") { self.onImportMedia?() }, frame,
+            UIMenu(title: "Selected layer", children: layers), playback, UIMenu(title: "Onion skins", children: onions)]
+        items.append(contentsOf: recordingActions())
+        if document.record.media != nil {
+            items.append(action("Set drawing coverage…") { self.editCoverage(frame: a.frames[i], fps: a.fps) })
+        }
+        items.append(UIMenu(title: "Reduce resolution", children: [2, 4].map { divisor in
+            action("Reduce to \(100 / divisor)%…") { self.confirmReduction(divisor) }
+        }))
+        return items
+    }
+    private func updateAnimation(_ update: (inout AnimationRecord) -> Void) {
+        guard var animation = document.record.animation else { return }
+        document.beginMetadataEdit()
+        update(&animation)
+        document.record.animation = animation
+        document.endMetadataEdit()
+        changed()
+    }
+    private func updateOnion(before: Int, after: Int, opacity: Double) {
+        updateAnimation {
+            $0.onionBefore = max(0, min(6, before)); $0.onionAfter = max(0, min(6, after))
+            $0.onionSkin = ($0.onionBefore ?? 0) + ($0.onionAfter ?? 0) > 0
+            $0.onionOpacity = max(0.05, min(1, opacity))
+        }
+        if let i = document.record.animation?.selectedIndex { document.prepareFrame(i) { [weak self] in self?.document.onCelReady?() } }
+    }
+    private func chooseFps() {
+        let alert = UIAlertController(title: "Frames per second", message: "1–60 fps", preferredStyle: .alert)
+        alert.addTextField { field in field.keyboardType = .numberPad; field.text = String(self.document.record.animation?.fps ?? 12) }
+        alert.addAction(UIAlertAction(title: "Set", style: .default) { [weak self, weak alert] _ in
+            guard let fps = Int(alert?.textFields?.first?.text ?? ""), (1...60).contains(fps) else { return }
+            self?.updateAnimation { $0.fps = fps }
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
     private func editCoverage(frame: AnimationFrameRecord, fps: Int) {
         let alert = UIAlertController(title: "Drawing coverage", message: "Enter the start time and duration in seconds.", preferredStyle: .alert)

@@ -285,7 +285,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                     if let media = mediaBackdrop.image { RasterDocument.draw(media, in: context, rect: bounds) }
                 }
                 if let animation = document.record.animation, animation.onionSkin {
-                    for index in [animation.selectedIndex - 1, animation.selectedIndex + 1] where animation.frames.indices.contains(index) {
+                    for index in animation.neighbors(of: animation.selectedIndex) {
                         let frame = animation.frames[index].id
                         guard document.coldFrames[frame] == nil else { continue }
                         var ghost = snapshot
@@ -293,7 +293,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                         ghost.pixels = (document.framePixels[frame] ?? [:]).merging(snapshot.pixels.filter {
                             animation.sharedLayerIDs.contains($0.key)
                         }) { _, shared in shared }
-                        context.saveGState(); context.setAlpha(0.18); context.beginTransparencyLayer(auxiliaryInfo: nil)
+                        context.saveGState(); context.setAlpha(animation.ghostOpacity); context.beginTransparencyLayer(auxiliaryInfo: nil)
                         try RasterDocument.composite(ghost, in: context, visible: key.rect, excluding: animation.sharedLayerIDs)
                         context.endTransparencyLayer(); context.restoreGState()
                     }

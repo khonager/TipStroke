@@ -4,7 +4,7 @@ import TipStrokeShared
 import UniformTypeIdentifiers
 import ImageIO
 
-final class EditorController: UIViewController, UIPencilInteractionDelegate, UIDocumentPickerDelegate, PHPickerViewControllerDelegate {
+final class EditorController: UIViewController, UIPencilInteractionDelegate, UIDocumentPickerDelegate, PHPickerViewControllerDelegate, UIViewControllerTransitioningDelegate {
     let document: RasterDocument
     let viewport: CanvasViewport
     private let store = ProjectStore.shared
@@ -53,6 +53,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var inlineShelfLayout: [NSLayoutConstraint] = []
     private var popupShelfLayout: [NSLayoutConstraint] = []
     private var wideActions: [UIButton] = []
+    var timelinePanel: UINavigationController?
     private var navigator: CanvasNavigator?
     private var panels: [UIVisualEffectView] = []
     private var sideDock = false
@@ -445,6 +446,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         navigator?.constrainPosition()
+        if let timelinePanel {
+            let safe = view.safeAreaLayoutGuide.layoutFrame.insetBy(dx: 8, dy: 4)
+            let sides: CGFloat = sideDock ? 68 : 0
+            let width = min(680, max(1, safe.width - 2 * sides))
+            let height = min(timelinePanel.isToolbarHidden ? 122 : 166, safe.height * 0.44)
+            timelinePanel.view.frame = CGRect(x: safe.midX - width / 2,
+                y: safe.maxY - height - (sideDock ? 0 : 62), width: width, height: height)
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -752,6 +761,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     private func updateHistory() { undoButton.isEnabled = document.canUndo; redoButton.isEnabled = document.canRedo }
     func changed(redraw: Bool = true) {
+        (timelinePanel?.topViewController as? TimelineController)?.refreshFrames()
         recorder.capture(document)
         if viewport.canvas.bounds.size != document.bounds.size {
             viewport.setZoomScale(1, animated: false)
@@ -839,10 +849,18 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let layers = LayersController(document: document, sharedControls: sharedControls)
         layers.onImportImage = { [weak self] in self?.importImage() }
         layers.onChange = { [weak self] in self?.changed() }
-        let navigation = EditorSheetNavigationController(rootViewController: layers)
-        navigation.modalPresentationStyle = .pageSheet
-        navigation.sheetPresentationController?.detents = [.medium(), .large()]
-        present(navigation, animated: true)
+        presentCanvasPanel(layers)
+    }
+    func presentCanvasPanel(_ controller: UIViewController) {
+        let navigation = EditorSheetNavigationController(rootViewController: controller)
+        navigation.overrideUserInterfaceStyle = .dark
+        navigation.modalPresentationStyle = .custom
+        navigation.transitioningDelegate = self
+        present(navigation, animated: false)
+    }
+    func presentationController(forPresented presented: UIViewController, presenting: UIViewController?,
+                                source: UIViewController) -> UIPresentationController? {
+        CanvasPanelPresentation(presentedViewController: presented, presenting: presenting)
     }
     private func brushSettings() {
         finishCanvasInteraction()

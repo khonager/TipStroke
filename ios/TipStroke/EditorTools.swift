@@ -51,7 +51,9 @@ extension EditorController {
         anchor(menu); present(menu, animated: true)
     }
     func showTimeline() {
-        finishCanvasInteraction(); document.enableAnimation(); changed()
+        if timelinePanel != nil { closeTimeline(); return }
+        finishCanvasInteraction()
+        if document.record.animation == nil { document.enableAnimation(); changed() }
         let controller = TimelineController(document: document)
         controller.onRecordMotion = { [weak self] in self?.configurePhotoMotion() }
         controller.onRecordDrawing = { [weak self] in
@@ -60,10 +62,25 @@ extension EditorController {
             catch { self.showError(error) }
         }
         controller.onChange = { [weak self] in self?.changed() }
-        let navigation = EditorSheetNavigationController(rootViewController: controller)
-        navigation.modalPresentationStyle = .pageSheet
-        navigation.sheetPresentationController?.detents = [.medium(), .large()]
-        present(navigation, animated: true)
+        controller.onImportMedia = { [weak self] in self?.closeTimeline(); self?.importMedia() }
+        controller.onClose = { [weak self] in self?.closeTimeline() }
+        let panel = EditorSheetNavigationController(rootViewController: controller)
+        panel.overrideUserInterfaceStyle = .dark
+        addChild(panel)
+        view.addSubview(panel.view)
+        panel.view.clipsToBounds = true
+        panel.view.layer.cornerRadius = 14
+        timelinePanel = panel
+        panel.didMove(toParent: self)
+        view.setNeedsLayout()
+    }
+    private func closeTimeline() {
+        guard let panel = timelinePanel else { return }
+        (panel.topViewController as? TimelineController)?.pausePlayback()
+        panel.willMove(toParent: nil)
+        panel.view.removeFromSuperview()
+        panel.removeFromParent()
+        timelinePanel = nil
     }
     func setPaperColor() {
         let menu = UIAlertController(title: "Paper color", message: nil, preferredStyle: .actionSheet)

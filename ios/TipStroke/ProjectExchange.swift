@@ -297,6 +297,9 @@ extension ProjectStore {
             timeline.fps = raw["fps"] as? Int ?? 12; timeline.playbackMode = raw["playbackMode"] as? String ?? "LOOP"
             timeline.selectedIndex = raw["selectedIndex"] as? Int ?? 0
             guard list.indices.contains(timeline.selectedIndex) else { throw PackageIO.invalid }
+            timeline.onionBefore = raw["onionBefore"] as? Int
+            timeline.onionAfter = raw["onionAfter"] as? Int
+            timeline.onionOpacity = raw["onionOpacity"] as? Double
             timeline.onionSkin = (raw["onionBefore"] as? Int ?? 1) > 0 || (raw["onionAfter"] as? Int ?? 1) > 0
             timeline.frames = try list.map { item in
                 let key = try identifier(item)
@@ -549,12 +552,9 @@ extension ProjectStore {
             }
             raw["backgroundLayerIds"] = (timeline.backgroundLayers ?? []).map(layerID).sorted()
             raw["fps"] = timeline.fps; raw["playbackMode"] = timeline.playbackMode; raw["selectedIndex"] = timeline.selectedIndex
-            let wasOn = (raw["onionBefore"] as? Int ?? 0) > 0 || (raw["onionAfter"] as? Int ?? 0) > 0
-            if wasOn != timeline.onionSkin {
-                raw["onionBefore"] = timeline.onionSkin ? 1 : 0; raw["onionAfter"] = timeline.onionSkin ? 1 : 0
-            }
-            if raw["onionBefore"] == nil { raw["onionBefore"] = 0 }
-            if raw["onionAfter"] == nil { raw["onionAfter"] = 0 }
+            raw["onionBefore"] = timeline.previousCount
+            raw["onionAfter"] = timeline.nextCount
+            raw["onionOpacity"] = timeline.ghostOpacity
             raw["frames"] = try timeline.frames.map { frame -> JSONObject in
                 let id = frameID(frame.id)
                 var item = priorFrames[id] ?? [:]
