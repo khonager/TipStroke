@@ -219,7 +219,7 @@ extension EditorController {
         do {
             let editor = try TransformController(document: document, session: SelectionTransformSession(document: document))
             editor.onApply = { [weak self] in self?.viewport.canvas.refreshSelection(); self?.changed() }
-            let navigation = UINavigationController(rootViewController: editor); navigation.modalPresentationStyle = .fullScreen
+            let navigation = EditorSheetNavigationController(rootViewController: editor); navigation.modalPresentationStyle = .fullScreen
             present(navigation, animated: true)
         } catch { showError(error) }
     }

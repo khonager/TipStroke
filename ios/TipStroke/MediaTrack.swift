@@ -258,7 +258,7 @@ extension EditorController {
         guard let track = document.record.media else { return }
         do {
             let controller = try MediaTrackController(editor: self, track: track)
-            let navigation = UINavigationController(rootViewController: controller)
+            let navigation = EditorSheetNavigationController(rootViewController: controller)
             navigation.modalPresentationStyle = .pageSheet
             navigation.sheetPresentationController?.detents = [.medium(), .large()]
             present(navigation, animated: true)
@@ -340,7 +340,7 @@ final class MediaTrackController: UITableViewController {
     required init?(coder: NSCoder) { fatalError("Use init(editor:track:)") }
     override func viewDidLoad() {
         super.viewDidLoad(); title = "Media timeline"
-        navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        navigationItem.rightBarButtonItem = sheetDoneButton()
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .add, primaryAction: UIAction { [weak self] _ in
             self?.dismiss(animated: true) { [weak editor = self?.editor] in editor?.importMedia() }
         })

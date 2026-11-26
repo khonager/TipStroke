@@ -81,6 +81,7 @@ The editor shares the Android color theme for brush, palette and blend panels. M
 track to preview the colored footprint at the current zoom. Use the visible minus and plus buttons for single-unit adjustments. Each readout sits above a full-width horizontal track, with the step buttons underneath. The panel opens above the bottom dock or beside the landscape dock. The tip strip has a transparent host so the dock surface shows between swatches. The default editor uses dark solid panels and a coral accent. Size can use document pixels or screen
 points for regular brushes and erasers. The eraser keeps its own tuning. Hold a swatch to open its tip picker. The picker, library, dock and brush settings show
 pressure-sweep samples rendered into small, isolated native raster documents.
+Editor sheets reserve an opaque navigation header for the title and Done action.
 Brush settings keep the current sample visible above the scrolling controls, with
 minimum and maximum specimens beside the parameter tracks. Eraser samples cut
 through a gray strip so you can see how much each tip removes.

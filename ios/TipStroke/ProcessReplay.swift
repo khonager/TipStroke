@@ -350,7 +350,7 @@ final class ProcessReplayController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Drawing progress"; view.backgroundColor = .systemBackground
-        navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        navigationItem.leftBarButtonItem = sheetDoneButton()
         share.image = UIImage(systemName: "square.and.arrow.up"); share.accessibilityLabel = "Export drawing progress"; share.isEnabled = false
         share.menu = UIMenu(children: [
             UIAction(title: "Share progress GIF") { [weak self] _ in self?.export(movie: false) },

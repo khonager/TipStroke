@@ -27,7 +27,7 @@ final class LayersController: UITableViewController, UITableViewDragDelegate, UI
         importButton.frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: 44)
         importButton.isEnabled = document.record.layers.count < 32
         tableView.tableHeaderView = importButton
-        navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        navigationItem.rightBarButtonItem = sheetDoneButton()
         let blend = UIBarButtonItem(title: "Blend", menu: UIMenu(children: [
             UIDeferredMenuElement.uncached { [weak self] complete in
                 guard let self, let layer = self.document.record.layers.first(where: { $0.id == self.document.activeLayer }) else {
@@ -277,7 +277,7 @@ final class LayerSettingsController: UIViewController, AppleLayerBlendActions {
                 do {
                     let editor = try TransformController(document: self.document, session: SelectionTransformSession(document: self.document))
                     editor.onApply = { [weak self] in self?.onChange?() }
-                    let navigation = UINavigationController(rootViewController: editor)
+                    let navigation = EditorSheetNavigationController(rootViewController: editor)
                     navigation.modalPresentationStyle = .fullScreen
                     self.present(navigation, animated: true)
                 } catch { self.showError(error) }

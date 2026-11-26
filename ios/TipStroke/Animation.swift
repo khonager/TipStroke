@@ -313,7 +313,7 @@ final class TimelineController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad(); title = "Animation"
         navigationItem.rightBarButtonItems = [
-            UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) }),
+            sheetDoneButton(),
             UIBarButtonItem(title: "Play", primaryAction: UIAction { [weak self] _ in self?.togglePlayback() })
         ]
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Settings", primaryAction: UIAction { [weak self] _ in self?.settings() })

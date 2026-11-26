@@ -60,7 +60,7 @@ extension EditorController {
             catch { self.showError(error) }
         }
         controller.onChange = { [weak self] in self?.changed() }
-        let navigation = UINavigationController(rootViewController: controller)
+        let navigation = EditorSheetNavigationController(rootViewController: controller)
         navigation.modalPresentationStyle = .pageSheet
         navigation.sheetPresentationController?.detents = [.medium(), .large()]
         present(navigation, animated: true)
@@ -212,7 +212,7 @@ extension EditorController {
                 }
             }
         }
-        present(UINavigationController(rootViewController: editor), animated: true)
+        present(EditorSheetNavigationController(rootViewController: editor), animated: true)
     }
     func fill(at point: CGPoint, swatch: UIColor? = nil) {
         guard !fillPending else { return }

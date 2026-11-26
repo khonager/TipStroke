@@ -114,6 +114,7 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Brush settings"].waitForExistence(timeout: 10))
         let pressure = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Pressure")).firstMatch
         XCTAssertTrue(pressure.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(pressure.frame.minY, app.navigationBars["Brush settings"].frame.maxY - 1)
         app.navigationBars.buttons["Done"].tap()
         app.buttons["Brush color"].tap()
         XCTAssertTrue(app.navigationBars["Colors"].waitForExistence(timeout: 10))

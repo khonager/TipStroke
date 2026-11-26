@@ -95,7 +95,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             UIAction(title: "Drawing progress", image: UIImage(systemName: "play.rectangle")) { [weak self] _ in
                 guard let self else { return }
                 self.finishCanvasInteraction()
-                self.present(UINavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
+                self.present(EditorSheetNavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
             },
             UIAction(title: "Share transparent PNG") { [weak self] _ in self?.export(transparent: true) },
             UIAction(title: "Share animation MP4") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimationVideo(smooth: $0) } },
@@ -725,7 +725,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         finishCanvasInteraction()
         let options = StillExportController(record: document.record)
         options.onExport = { [weak self] in self?.export(options: $0) }
-        present(UINavigationController(rootViewController: options), animated: true)
+        present(EditorSheetNavigationController(rootViewController: options), animated: true)
     }
     private func export(transparent: Bool = false) { export(options: StillExport(transparent: transparent)) }
     private func export(options: StillExport) {
@@ -750,7 +750,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let layers = LayersController(document: document, sharedControls: sharedControls)
         layers.onImportImage = { [weak self] in self?.importImage() }
         layers.onChange = { [weak self] in self?.changed() }
-        let navigation = UINavigationController(rootViewController: layers)
+        let navigation = EditorSheetNavigationController(rootViewController: layers)
         navigation.modalPresentationStyle = .pageSheet
         navigation.sheetPresentationController?.detents = [.medium(), .large()]
         present(navigation, animated: true)
@@ -768,9 +768,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     func showShared(_ controller: UIViewController, title: String) {
         controller.title = title
-        controller.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done,
-            primaryAction: UIAction { [weak controller] _ in controller?.dismiss(animated: true) })
-        let navigation = UINavigationController(rootViewController: controller)
+        controller.navigationItem.rightBarButtonItem = controller.sheetDoneButton()
+        let navigation = EditorSheetNavigationController(rootViewController: controller)
         navigation.modalPresentationStyle = .pageSheet
         navigation.sheetPresentationController?.detents = [.large()]
         navigation.sheetPresentationController?.prefersGrabberVisible = true

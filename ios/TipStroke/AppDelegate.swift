@@ -17,7 +17,30 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 }
 
+/// Editor sheets reserve a solid header above both UIKit and Compose content.
+final class EditorSheetNavigationController: UINavigationController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = .secondarySystemBackground
+        appearance.shadowColor = .separator
+        navigationBar.standardAppearance = appearance
+        navigationBar.scrollEdgeAppearance = appearance
+        navigationBar.compactAppearance = appearance
+        navigationBar.compactScrollEdgeAppearance = appearance
+        navigationBar.isTranslucent = false
+        navigationBar.tintColor = .label
+    }
+}
+
 extension UIViewController {
+    func sheetDoneButton() -> UIBarButtonItem {
+        let item = UIBarButtonItem(title: "Done", primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
+        if #available(iOS 26.0, *) { item.hidesSharedBackground = true }
+        return item
+    }
+
     func showError(_ error: Error) {
         let alert = UIAlertController(title: "TipStroke", message: error.localizedDescription, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
