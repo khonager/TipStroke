@@ -30,6 +30,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var palette: ToolPalette?
     private var portraitLayout: [NSLayoutConstraint] = []
     private var landscapeLayout: [NSLayoutConstraint] = []
+    private var tabletPortraitLayout: [NSLayoutConstraint] = []
+    private var tabletLandscapeLayout: [NSLayoutConstraint] = []
+    private var tabletControls = false
+    private var phoneAdjustmentsOpen = false
+    private var activeDockLayout: [NSLayoutConstraint] {
+        if tabletControls { return sideDock ? tabletLandscapeLayout : tabletPortraitLayout }
+        return sideDock ? landscapeLayout : portraitLayout
+    }
     private var topButtonWidths: [NSLayoutConstraint] = []
     private var commandPanels: [UIView] = []
     private weak var compactBar: UIView?
@@ -114,7 +122,9 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         color.accessibilityHint = "Tap to change color or drag to fill a region."
         configure(adjustButton, label: "Show size and opacity", symbol: "slider.horizontal.3") { [weak self] in
             guard let self, let adjustmentPanel = self.adjustmentPanel else { return }
-            adjustmentPanel.isHidden.toggle()
+            if self.tabletControls { self.brushSettings(); return }
+            self.phoneAdjustmentsOpen.toggle()
+            adjustmentPanel.isHidden = !self.phoneAdjustmentsOpen
             self.adjustButton.isSelected = !adjustmentPanel.isHidden
             self.adjustButton.accessibilityLabel = adjustmentPanel.isHidden ? "Show size and opacity" : "Hide size and opacity"
         }
@@ -262,9 +272,33 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -60),
             bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -60).withPriority(.defaultHigh),
         ]
+        tabletPortraitLayout = [
+            bottomPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
+            bottomPanel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -12),
+            bottomPanel.widthAnchor.constraint(equalTo: safe.widthAnchor, multiplier: 0.47).withPriority(.defaultHigh),
+            bottomPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
+            adjustmentPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -12),
+            adjustmentPanel.bottomAnchor.constraint(equalTo: bottomPanel.bottomAnchor),
+            adjustmentPanel.leadingAnchor.constraint(greaterThanOrEqualTo: bottomPanel.trailingAnchor, constant: 8),
+            adjustmentPanel.widthAnchor.constraint(equalToConstant: 380).withPriority(.defaultHigh),
+            dock.heightAnchor.constraint(equalToConstant: 48),
+        ]
+        tabletLandscapeLayout = [
+            bottomPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20),
+            bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor, constant: 24),
+            bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -110),
+            dock.widthAnchor.constraint(equalToConstant: 48),
+            adjustmentPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -20),
+            adjustmentPanel.centerYAnchor.constraint(equalTo: bottomPanel.centerYAnchor),
+            adjustmentPanel.widthAnchor.constraint(equalToConstant: 178),
+        ]
         for action in [tools, movingTools, adjustButton] {
-            portraitLayout.append(action.widthAnchor.constraint(equalToConstant: 48))
-            landscapeLayout.append(action.heightAnchor.constraint(equalToConstant: 48))
+            let width = action.widthAnchor.constraint(equalToConstant: 48)
+            let height = action.heightAnchor.constraint(equalToConstant: 48)
+            portraitLayout.append(width)
+            tabletPortraitLayout.append(width)
+            landscapeLayout.append(height)
+            tabletLandscapeLayout.append(height)
         }
         view.bringSubviewToFront(quickPanel)
         NSLayoutConstraint.activate(portraitLayout)
@@ -346,12 +380,19 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             quickPanel?.isHidden = !inline
         }
         let useSideDock = safe.width > safe.height && safe.width >= 560 && safe.height >= 280
-        guard useSideDock != sideDock else { return }
-        NSLayoutConstraint.deactivate(sideDock ? landscapeLayout : portraitLayout)
+        let useTabletControls = min(safe.width, safe.height) >= 600
+        guard useSideDock != sideDock || useTabletControls != tabletControls else { return }
+        NSLayoutConstraint.deactivate(activeDockLayout)
+        tabletControls = useTabletControls
+        adjustmentPanel?.isHidden = !tabletControls && !phoneAdjustmentsOpen
+        adjustButton.isSelected = !tabletControls && phoneAdjustmentsOpen
+        adjustButton.accessibilityLabel = tabletControls ? "Adjust tip" : (phoneAdjustmentsOpen ? "Hide size and opacity" : "Show size and opacity")
+        sizeControl.useVerticalTrack(tabletControls && useSideDock)
+        opacityControl.useVerticalTrack(tabletControls && useSideDock)
         sideDock = useSideDock
         dock.axis = useSideDock ? .vertical : .horizontal
         sharedControls.updateDockAxis(vertical: useSideDock)
-        NSLayoutConstraint.activate(useSideDock ? landscapeLayout : portraitLayout)
+        NSLayoutConstraint.activate(activeDockLayout)
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()

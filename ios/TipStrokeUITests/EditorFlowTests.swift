@@ -27,8 +27,11 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertFalse(app.segmentedControls["Drawing tool"].exists)
         XCTAssertFalse(app.staticTexts["Saved on this device"].exists)
         XCTAssertLessThan(app.buttons["Brush color"].frame.midY, app.buttons["Drawing tools"].frame.midY)
-        XCTAssertFalse(app.sliders["Size"].isHittable)
-        app.buttons["Show size and opacity"].tap()
+        let tablet = min(app.frame.width, app.frame.height) >= 600
+        if !tablet {
+            XCTAssertFalse(app.sliders["Size"].isHittable)
+            app.buttons["Show size and opacity"].tap()
+        }
         for label in ["Size", "Opacity"] {
             let slider = app.sliders[label]
             XCTAssertTrue(slider.isHittable)
@@ -40,8 +43,10 @@ final class EditorFlowTests: XCTestCase {
             let high = try XCTUnwrap(readout.value as? String)
             XCTAssertNotEqual(low, high, "\(label) readout should follow the slider")
         }
-        app.buttons["Hide size and opacity"].tap()
-        XCTAssertFalse(app.sliders["Opacity"].isHittable)
+        if !tablet {
+            app.buttons["Hide size and opacity"].tap()
+            XCTAssertFalse(app.sliders["Opacity"].isHittable)
+        }
         XCTAssertFalse(app.buttons["Pixel tips"].exists)
         func element(_ label: String) -> XCUIElement {
             app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", label, label)).firstMatch
@@ -130,6 +135,11 @@ final class EditorFlowTests: XCTestCase {
             XCTAssertLessThan(frame.midY, app.frame.minY + app.frame.height * 0.25, label)
         }
         XCTAssertLessThan(app.buttons["Fit canvas"].frame.maxX, app.buttons["Brush color"].frame.minX)
+        if tablet {
+            XCTAssertGreaterThan(app.sliders["Size"].frame.height, 150)
+            XCTAssertLessThan(tools.frame.midX, app.frame.midX)
+            XCTAssertGreaterThan(app.sliders["Opacity"].frame.midX, app.frame.midX)
+        }
         XCTAssertTrue(app.buttons["Layers"].isHittable)
         app.buttons["Layers"].tap()
         XCTAssertTrue(app.buttons["Import image"].exists)

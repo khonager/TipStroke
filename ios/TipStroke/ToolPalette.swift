@@ -52,7 +52,8 @@ final class ToolPalette: UIView {
         let safe = bounds.inset(by: safeAreaInsets)
         let cell: CGFloat = min(48, safe.width / 4)
         let width = cell * 4, height = CGFloat((buttons.count + 3) / 4) * cell + 24
-        let preferredX = beside ? target.minX - width : target.midX - width / 2
+        let besideX = target.midX < safe.midX ? target.maxX : target.minX - width
+        let preferredX = beside ? besideX : target.midX - width / 2
         let x = min(max(safe.minX, preferredX), safe.maxX - width)
         let preferredY = beside ? target.midY - height / 2 : (target.minY >= safe.minY + height ? target.minY - height : target.maxY)
         let y = max(safe.minY, min(preferredY, safe.maxY - height))

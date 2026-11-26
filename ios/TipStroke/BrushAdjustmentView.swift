@@ -10,6 +10,11 @@ private final class AdjustmentSlider: UISlider {
 /// Full-width tracks with persistent readouts and independent step buttons.
 final class BrushAdjustmentView: UIStackView {
     private let slider = AdjustmentSlider()
+    private let track = UIView()
+    private let header = UIStackView()
+    private let steps = UIStackView()
+    private lazy var trackHeight = track.heightAnchor.constraint(equalToConstant: 44)
+    private var verticalTrack = false
     private let minus = UIButton(type: .system)
     private let plus = UIButton(type: .system)
     private let readout = UIButton(type: .system)
@@ -33,7 +38,7 @@ final class BrushAdjustmentView: UIStackView {
         readout.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 14, weight: .medium)
         readout.tintColor = UIColor(red: 0.93, green: 0.41, blue: 0.35, alpha: 1)
         readout.showsMenuAsPrimaryAction = true
-        let header = UIStackView(arrangedSubviews: [label, UIView(), readout])
+        for item in [label, UIView(), readout] { header.addArrangedSubview(item) }
         addArrangedSubview(header)
         let accent = readout.tintColor ?? .systemOrange
         slider.minimumTrackTintColor = accent
@@ -43,9 +48,10 @@ final class BrushAdjustmentView: UIStackView {
             UIBezierPath(roundedRect: CGRect(x: 4, y: 0, width: 4, height: 38), cornerRadius: 2).fill()
         }
         slider.setThumbImage(thumb.withRenderingMode(.alwaysOriginal), for: .normal)
-        slider.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        addArrangedSubview(slider)
-        let steps = UIStackView()
+        track.addSubview(slider)
+        trackHeight.isActive = true
+        addArrangedSubview(track)
+        track.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         steps.spacing = 6
         for (button, symbol, direction) in [(minus, "minus", -1), (plus, "plus", 1)] {
             button.setImage(UIImage(systemName: symbol), for: .normal)
@@ -64,6 +70,33 @@ final class BrushAdjustmentView: UIStackView {
         slider.addTarget(self, action: #selector(ended), for: [.touchUpInside, .touchUpOutside, .touchCancel])
     }
     required init(coder: NSCoder) { fatalError("Use init(title:isSize:)") }
+
+    func useVerticalTrack(_ vertical: Bool) {
+        guard vertical != verticalTrack else { return }
+        verticalTrack = vertical
+        alignment = vertical ? .center : .fill
+        header.axis = vertical ? .vertical : .horizontal
+        header.alignment = vertical ? .center : .fill
+        header.arrangedSubviews[1].isHidden = vertical
+        trackHeight.constant = vertical ? 205 : 44
+        steps.isHidden = vertical
+        if vertical {
+            insertArrangedSubview(plus, at: 1)
+            insertArrangedSubview(minus, at: 3)
+        } else {
+            steps.insertArrangedSubview(minus, at: 0)
+            steps.insertArrangedSubview(plus, at: 1)
+        }
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let size = track.bounds.size
+        slider.bounds.size = verticalTrack ? CGSize(width: size.height, height: size.width) : size
+        slider.transform = verticalTrack ? CGAffineTransform(rotationAngle: -.pi / 2) : .identity
+        slider.center = CGPoint(x: track.bounds.midX, y: track.bounds.midY)
+    }
 
     private func step(_ direction: Int) {
         let delta = Float(direction) * (isSize ? 1 : 0.01)
