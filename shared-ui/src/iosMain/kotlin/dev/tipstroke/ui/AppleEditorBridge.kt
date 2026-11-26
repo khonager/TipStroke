@@ -43,7 +43,7 @@ import kotlin.uuid.Uuid
 import kotlin.io.encoding.Base64
 import dev.tipstroke.core.model.*
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -319,24 +319,24 @@ class AppleEditorBridge(private val actions: AppleEditorActions) {
         val ordered = remember(dock, byId) { dock.ordered(byId.keys) }
         BrushTheme {
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val capacity = ((if (verticalDock) maxHeight else maxWidth) / 44.dp).toInt().coerceAtLeast(1)
+                val capacity = (((if (verticalDock) maxHeight else maxWidth) + 2.dp) / 50.dp).toInt().coerceAtLeast(1)
                 val swatches: @Composable () -> Unit = {
                     ordered.take(capacity).forEachIndexed { slot, id ->
                         val tip = byId.getValue(id)
                         val active = id == activeDockTip
                         key(id) {
-                            val border = if (active) Modifier.border(2.dp, MaterialTheme.colorScheme.primary,
-                                MaterialTheme.shapes.small) else Modifier
-                            TipSwatch(tip, Modifier.size(44.dp).then(border).testTag("dock-tip-$id")
+                            val shape = MaterialTheme.shapes.small
+                            val background = if (active) Color(0xfff4f4f2) else Color.Transparent
+                            TipSwatch(tip, Modifier.size(48.dp).clip(shape).background(background).testTag("dock-tip-$id")
                                 .combinedClickable(role = Role.Button, onLongClickLabel = "Choose tip",
                                     onLongClick = { callbacks.openTipSlot(slot) },
                                     onClick = { if (active) callbacks.openTipSlot(slot) else callbacks.pickedTip(id, false) })
-                                .semantics { contentDescription = tip.displayName; selected = active }.padding(3.dp))
+                                .semantics { contentDescription = tip.displayName; selected = active }.padding(2.dp).clip(shape))
                         }
                     }
                 }
-                if (verticalDock) Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) { swatches() }
-                else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) { swatches() }
+                if (verticalDock) Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp, androidx.compose.ui.Alignment.CenterVertically)) { swatches() }
+                else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp, androidx.compose.ui.Alignment.CenterHorizontally)) { swatches() }
             }
         }
     }

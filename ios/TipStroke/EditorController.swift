@@ -31,6 +31,12 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var portraitLayout: [NSLayoutConstraint] = []
     private var landscapeLayout: [NSLayoutConstraint] = []
     private var topButtonWidths: [NSLayoutConstraint] = []
+    private var commandPanels: [UIView] = []
+    private weak var compactBar: UIView?
+    private var compactCommands = false
+    private var inlineShelf = false
+    private var inlineShelfLayout: [NSLayoutConstraint] = []
+    private var popupShelfLayout: [NSLayoutConstraint] = []
     private var wideActions: [UIButton] = []
     private var navigator: CanvasNavigator?
     private var panels: [UIVisualEffectView] = []
@@ -149,7 +155,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let resize = button("Resize canvas", symbol: "crop") { [weak self] in self?.resizeCanvas() }
         let animate = button("Animate", symbol: "film") { [weak self] in self?.showTimeline() }
         wideActions = [export, resize, animate]
-        for item in wideActions { item.isHidden = true }
         let history = [back, undoButton, redoButton, fit]
         let actions = [fingerMode, color, layers, export, resize, animate, share]
         for item in history + actions {
@@ -158,8 +163,12 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             width.isActive = true
             topButtonWidths.append(width)
         }
+        let compactBar = panel(UIStackView())
+        self.compactBar = compactBar
+        compactBar.isUserInteractionEnabled = false
         let historyPanel = panel(UIStackView(arrangedSubviews: history))
         let actionsPanel = panel(UIStackView(arrangedSubviews: actions))
+        commandPanels = [historyPanel, actionsPanel]
         let quickPanel = panel(UIStackView(arrangedSubviews: [quickColors.view!]))
         quickPanel.isHidden = true
         self.quickPanel = quickPanel
@@ -200,7 +209,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         viewport.onZoom = updatePixelShortcut
         updatePixelShortcut(viewport.zoomScale)
-        for item in [pinned.view!, pixelShortcut, tools, movingTools, adjustButton] { dock.addArrangedSubview(item) }
+        dock.spacing = 2
+        for item in [pinned.view!, tools, pixelShortcut, movingTools, adjustButton] { dock.addArrangedSubview(item) }
         pinned.didMove(toParent: self)
         quickColors.didMove(toParent: self)
         let bottomPanel = panel(dock)
@@ -216,14 +226,26 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             actionsPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4),
             actionsPanel.topAnchor.constraint(equalTo: historyPanel.topAnchor),
             historyPanel.trailingAnchor.constraint(lessThanOrEqualTo: actionsPanel.leadingAnchor, constant: -4),
+            compactBar.leadingAnchor.constraint(equalTo: historyPanel.leadingAnchor),
+            compactBar.trailingAnchor.constraint(equalTo: actionsPanel.trailingAnchor),
+            compactBar.topAnchor.constraint(equalTo: actionsPanel.topAnchor),
+            compactBar.bottomAnchor.constraint(equalTo: actionsPanel.bottomAnchor),
+        ])
+        inlineShelfLayout = [
+            quickPanel.trailingAnchor.constraint(equalTo: actionsPanel.leadingAnchor, constant: -4),
+            quickPanel.centerYAnchor.constraint(equalTo: actionsPanel.centerYAnchor),
+        ]
+        popupShelfLayout = [
             quickPanel.trailingAnchor.constraint(equalTo: actionsPanel.trailingAnchor),
             quickPanel.topAnchor.constraint(equalTo: actionsPanel.bottomAnchor, constant: 4),
-        ])
+        ]
+        NSLayoutConstraint.activate(popupShelfLayout)
+        compactBar.isHidden = true
         portraitLayout = [
             adjustmentPanel.centerXAnchor.constraint(equalTo: bottomPanel.centerXAnchor),
             adjustmentPanel.bottomAnchor.constraint(equalTo: bottomPanel.topAnchor, constant: -8),
             adjustmentPanel.widthAnchor.constraint(equalTo: bottomPanel.widthAnchor, constant: -8),
-            dock.heightAnchor.constraint(equalToConstant: 44),
+            dock.heightAnchor.constraint(equalToConstant: 48),
             bottomPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor), bottomPanel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -4),
             bottomPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 480), bottomPanel.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 4),
             bottomPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -4),
@@ -235,14 +257,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             adjustmentPanel.trailingAnchor.constraint(equalTo: bottomPanel.leadingAnchor, constant: -8),
             adjustmentPanel.centerYAnchor.constraint(equalTo: bottomPanel.centerYAnchor),
             adjustmentPanel.widthAnchor.constraint(equalToConstant: 380),
-            dock.widthAnchor.constraint(equalToConstant: 44),
+            dock.widthAnchor.constraint(equalToConstant: 48),
             bottomPanel.heightAnchor.constraint(lessThanOrEqualToConstant: 480),
             bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -60),
             bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -60).withPriority(.defaultHigh),
         ]
         for action in [tools, movingTools, adjustButton] {
-            portraitLayout.append(action.widthAnchor.constraint(equalToConstant: 44))
-            landscapeLayout.append(action.heightAnchor.constraint(equalToConstant: 44))
+            portraitLayout.append(action.widthAnchor.constraint(equalToConstant: 48))
+            landscapeLayout.append(action.heightAnchor.constraint(equalToConstant: 48))
         }
         view.bringSubviewToFront(quickPanel)
         NSLayoutConstraint.activate(portraitLayout)
@@ -309,7 +331,20 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         // Keep both command groups on screen in narrow split views as well.
         let buttonWidth = min(44, max(1, (safe.width - 44) / 8))
         for width in topButtonWidths where width.constant != buttonWidth { width.constant = buttonWidth }
-        for action in wideActions { action.isHidden = safe.width < 600 }
+        let compact = safe.width < 600
+        if compact != compactCommands {
+            compactCommands = compact
+            compactBar?.isHidden = !compact
+            for action in wideActions { action.isHidden = compact }
+            refreshPanelStyle()
+        }
+        let inline = safe.width >= 900
+        if inline != inlineShelf {
+            NSLayoutConstraint.deactivate(inlineShelf ? inlineShelfLayout : popupShelfLayout)
+            inlineShelf = inline
+            NSLayoutConstraint.activate(inline ? inlineShelfLayout : popupShelfLayout)
+            quickPanel?.isHidden = !inline
+        }
         let useSideDock = safe.width > safe.height && safe.width >= 560 && safe.height >= 280
         guard useSideDock != sideDock else { return }
         NSLayoutConstraint.deactivate(sideDock ? landscapeLayout : portraitLayout)
@@ -404,7 +439,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let panel = UIVisualEffectView()
         panels.append(panel)
         refreshPanelStyle()
-        panel.layer.cornerRadius = 16; panel.clipsToBounds = true
+        panel.layer.cornerRadius = 18; panel.clipsToBounds = true
         panel.translatesAutoresizingMaskIntoConstraints = false; stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(panel); panel.contentView.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 8),
@@ -421,10 +456,14 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private func refreshPanelStyle() {
         overrideUserInterfaceStyle = solidControls ? .dark : .unspecified
         view.tintColor = solidControls ? UIColor(red: 0.93, green: 0.41, blue: 0.35, alpha: 1) : nil
+        viewport.backgroundColor = solidControls ? UIColor(red: 23/255, green: 24/255, blue: 27/255, alpha: 1) : .secondarySystemBackground
         for panel in panels {
+            let embedded = compactCommands && commandPanels.contains { $0 === panel }
             panel.tintColor = solidControls ? .white : nil
-            panel.effect = solidControls ? nil : UIBlurEffect(style: .systemMaterial)
-            panel.backgroundColor = solidControls ? UIColor(white: 0.14, alpha: 1) : .clear
+            panel.effect = solidControls || embedded ? nil : UIBlurEffect(style: .systemMaterial)
+            panel.backgroundColor = solidControls && !embedded ? UIColor(red: 32/255, green: 33/255, blue: 37/255, alpha: 1) : .clear
+            panel.layer.borderWidth = embedded ? 0 : 1
+            panel.layer.borderColor = UIColor(red: 69/255, green: 71/255, blue: 77/255, alpha: 0.7).cgColor
         }
     }
 
@@ -441,7 +480,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let button = UIButton(type: .system); configure(button, label: label, symbol: symbol, action: action); return button
     }
     private func configure(_ button: UIButton, label: String, symbol: String, action: @escaping () -> Void) {
-        button.setImage(UIImage(systemName: symbol), for: .normal); button.accessibilityLabel = label
+        let icon = UIImage.SymbolConfiguration(pointSize: 21, weight: .medium)
+        button.setImage(UIImage(systemName: symbol, withConfiguration: icon), for: .normal); button.accessibilityLabel = label
         button.addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hoverControl(_:))))
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true

@@ -791,7 +791,7 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
     func fit() {
         canvas.cancelStroke()
         angle = 0; layoutPage()
-        let scale = min(bounds.width / canvas.bounds.width, bounds.height / canvas.bounds.height) * 0.95
+        let scale = min(0.76 * bounds.width / canvas.bounds.width, 0.83 * bounds.height / canvas.bounds.height)
         maximumZoomScale = max(256, scale)
         minimumZoomScale = min(scale / 4, 1)
         setZoomScale(scale, animated: false)

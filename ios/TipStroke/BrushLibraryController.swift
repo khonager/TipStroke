@@ -107,7 +107,7 @@ extension EditorController: AppleBrushLibraryActions {
         finishCanvasInteraction()
         let controller = sharedControls.pickerController(callbacks: self, eraser: eraser, slot: slot)
         controller.modalPresentationStyle = .pageSheet
-        controller.sheetPresentationController?.detents = [.medium(), .large()]
+        controller.sheetPresentationController?.detents = [.large()]
         present(controller, animated: true)
     }
     func pickedTip(id: String, eraser: Bool) {
