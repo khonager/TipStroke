@@ -163,6 +163,9 @@ fun CanvasScreen(
     var ready by remember { mutableStateOf(library == null) }
     var savesInFlight by remember { mutableIntStateOf(0) }
     val saving = savesInFlight > 0
+    var saveFailure by remember(documentId) { mutableStateOf<String?>(null) }
+    var recoveryOpen by remember(documentId) { mutableStateOf(false) }
+    var retryLeaving by remember(documentId) { mutableStateOf(false) }
     LaunchedEffect(documentId, ready, animationState != null, animationOpen) {
         if (ready && animationState != null) drawingUiPreferences.saveAnimationOpen(documentId, animationOpen)
     }
@@ -470,23 +473,28 @@ fun CanvasScreen(
     LaunchedEffect(surface, ready, library, documentId) {
         while (surface != null && ready && library != null && documentId != null) {
             delay(30_000)
-            if (savesInFlight == 0) {
+            if (savesInFlight == 0 && saveFailure == null) {
                 savesInFlight++
                 surface?.saveProject(library, documentId, documentName) { result ->
                     savesInFlight--
-                    result.exceptionOrNull()?.let { message = it.message ?: "Autosave failed." }
+                    saveFailure = result.exceptionOrNull()?.let { it.message ?: "Autosave failed." }
                 }
             }
         }
     }
     val leaveEditor: () -> Unit = {
         val destination = onBackToGallery
-        if (destination != null && !saving) {
+        if (saveFailure != null) { retryLeaving = true; recoveryOpen = true }
+        else if (destination != null && !saving) {
             if (library != null && documentId != null && ready) {
                 savesInFlight++
                 surface?.saveProject(library, documentId, documentName) { result ->
                     savesInFlight--
-                    if (result.isSuccess) destination() else message = result.exceptionOrNull()?.message ?: "Save failed."
+                    if (result.isSuccess) destination() else {
+                        saveFailure = result.exceptionOrNull()?.message ?: "Save failed."
+                        retryLeaving = true
+                        recoveryOpen = true
+                    }
                 }
             } else destination()
         }
@@ -494,11 +502,11 @@ fun CanvasScreen(
     val saveWithoutLeaving: () -> Unit = {
         // A background save must capture edits made after an already-running autosave.
         // Capture now so a recreated editor's load is queued after this revision.
-        if (ready && surface != null && library != null && documentId != null) {
+        if (saveFailure == null && ready && surface != null && library != null && documentId != null) {
             savesInFlight++
             surface?.saveProject(library, documentId, documentName) { result ->
                 savesInFlight--
-                result.exceptionOrNull()?.let { message = it.message ?: "Autosave failed." }
+                saveFailure = result.exceptionOrNull()?.let { it.message ?: "Autosave failed." }
             }
         }
     }
@@ -1147,6 +1155,31 @@ fun CanvasScreen(
                     .safeDrawingPadding().padding(12.dp),
             )
         }
+
+        if (saveFailure != null && !recoveryOpen) {
+            Button(onClick = { retryLeaving = false; recoveryOpen = true },
+                modifier = Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = 64.dp)) {
+                Text("Unsaved changes")
+            }
+        }
+        if (recoveryOpen) AlertDialog(
+            onDismissRequest = { recoveryOpen = false },
+            title = { Text("Couldn’t save drawing") },
+            text = { Text("${saveFailure.orEmpty()}\n\nLeaving without saving discards changes since the last successful save.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    recoveryOpen = false
+                    saveFailure = null
+                    if (retryLeaving) leaveEditor() else saveWithoutLeaving()
+                }) { Text(if (retryLeaving) "Retry and leave" else "Retry save") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { recoveryOpen = false }) { Text("Keep drawing") }
+                    TextButton(onClick = { recoveryOpen = false; onBackToGallery?.invoke() }) { Text("Leave without saving") }
+                }
+            },
+        )
 
         message?.let { visibleMessage ->
             Surface(

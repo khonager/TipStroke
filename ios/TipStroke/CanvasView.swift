@@ -176,6 +176,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     var onPickColor: ((UIColor) -> Void)?
     var onError: ((Error) -> Void)?
     var isDrawing: Bool { pointer != nil }
+    private var displayError: String?
     private var displayTiles: [TileKey: CALayer] = [:]
     private var pointer: UITouch?
     private var previous: CGPoint?
@@ -305,8 +306,15 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
                 tile.frame = key.rect; tile.contents = image; tile.contentsScale = 1
                 tile.magnificationFilter = .nearest
                 if !existed { layer.addSublayer(tile); displayTiles[key] = tile }
-            } catch { onError?(error); return }
+            } catch {
+                if displayError != error.localizedDescription {
+                    displayError = error.localizedDescription
+                    onError?(error)
+                }
+                return
+            }
         }
+        if dirty?.isNull != true { displayError = nil }
         updateBackdropPieces(needed: partialBackdrop, paper: paper, refreshContents: dirty == nil)
     }
 

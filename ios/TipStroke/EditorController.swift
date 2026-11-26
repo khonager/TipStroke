@@ -13,6 +13,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var saving = false
     private var pending: DocumentSnapshot?
     private var closeAfterSave = false
+    private var saveFailure: String?
+    private let saveStatus = UIButton(type: .system)
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     private weak var colorButton: UIButton?
     private let undoButton = UIButton(type: .system)
@@ -300,6 +302,16 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         view.bringSubviewToFront(quickPanel)
         NSLayoutConstraint.activate(portraitLayout)
         quickPanel.widthAnchor.constraint(equalToConstant: 208).isActive = true
+        saveStatus.translatesAutoresizingMaskIntoConstraints = false
+        saveStatus.configuration = .filled()
+        saveStatus.setTitle("Unsaved changes · Retry", for: .normal)
+        saveStatus.isHidden = true
+        saveStatus.addAction(UIAction { [weak self] _ in self?.showSaveRecovery(leaving: false) }, for: .touchUpInside)
+        view.addSubview(saveStatus)
+        NSLayoutConstraint.activate([
+            saveStatus.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
+            saveStatus.topAnchor.constraint(equalTo: safe.topAnchor, constant: 58)
+        ])
         let hint = UIButton(type: .system)
         hint.configuration = .tinted(); hint.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
         hint.translatesAutoresizingMaskIntoConstraints = false; hint.isHidden = true
@@ -809,11 +821,13 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         navigator?.refresh()
         updateHistory()
         saveWork?.cancel()
+        guard saveFailure == nil else { return }
         let work = DispatchWorkItem { [weak self] in self?.saveNow() }
         saveWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
     }
     @objc private func backgrounded() {
         finishCanvasInteraction()
+        guard saveFailure == nil else { return }
         if backgroundTask == .invalid {
             backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Save drawing") { [weak self] in self?.endBackgroundTask() }
         }
@@ -824,7 +838,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     private func saveNow() {
         saveWork?.cancel(); saveWork = nil
-        guard !viewport.canvas.isDrawing else { return }
+        guard !viewport.canvas.isDrawing, saveFailure == nil else { return }
         refreshDrawingColors()
         // The latest snapshot replaces any pending save, bounding queued artwork retention.
         pending = document.snapshot()
@@ -839,13 +853,18 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
                 self.saving = false
                 switch result {
                 case .failure(let error):
-                    self.pending = nil; self.closeAfterSave = false; self.view.isUserInteractionEnabled = true
-                    let alert = UIAlertController(title: "Couldn’t save drawing", message: error.localizedDescription, preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "Retry", style: .default) { [weak self] _ in self?.saveNow() })
-                    alert.addAction(UIAlertAction(title: "Close", style: .cancel))
-                    (self.presentedViewController ?? self).present(alert, animated: true)
+                    let leaving = self.closeAfterSave
+                    self.saveWork?.cancel()
+                    self.pending = nil
+                    self.closeAfterSave = false
+                    self.saveFailure = error.localizedDescription
+                    self.saveStatus.isHidden = false
+                    self.view.bringSubviewToFront(self.saveStatus)
+                    self.view.isUserInteractionEnabled = true
                     self.endBackgroundTask()
+                    if leaving { self.showSaveRecovery(leaving: true) }
                 case .success:
+                    self.saveStatus.isHidden = true
                     if self.pending != nil { self.startSaveIfNeeded() }
                     else {
                         self.endBackgroundTask()
@@ -856,7 +875,31 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
     }
     private func close() {
-        finishCanvasInteraction(); closeAfterSave = true; view.isUserInteractionEnabled = false; saveNow()
+        finishCanvasInteraction()
+        if saveFailure != nil { showSaveRecovery(leaving: true); return }
+        closeAfterSave = true
+        view.isUserInteractionEnabled = false
+        saveNow()
+    }
+    private func showSaveRecovery(leaving: Bool) {
+        guard let saveFailure, presentedViewController == nil else { return }
+        let detail = saveFailure + "\n\nYour edits are still open. Leaving without saving discards changes since the last successful save."
+        let alert = UIAlertController(title: "Couldn’t save drawing", message: detail, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: leaving ? "Retry and leave" : "Retry save", style: .default) { [weak self] _ in
+            guard let self else { return }
+            self.saveFailure = nil
+            self.closeAfterSave = leaving
+            self.view.isUserInteractionEnabled = !leaving
+            self.finishCanvasInteraction()
+            self.saveNow()
+        })
+        alert.addAction(UIAlertAction(title: "Keep drawing", style: .cancel))
+        if leaving {
+            alert.addAction(UIAlertAction(title: "Leave without saving", style: .destructive) { [weak self] _ in
+                self?.navigationController?.popViewController(animated: true)
+            })
+        }
+        present(alert, animated: true)
     }
     private func showImageExport() {
         finishCanvasInteraction()

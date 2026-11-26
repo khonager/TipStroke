@@ -244,3 +244,5 @@ The iOS exporter includes its native journal in `ios-progress/` and, when it fit
 The standard image-layer mask represents the current frame when exporting an iOS drawing. Optional `ios-photo-masks/` retains distinct native masks by layer and frame. Android saves preserve these files and `ios-layer-settings.json` for subsequent transfer. Shared Android masks initialize the corresponding native frame masks during import.
 
 Cropped photos use package schema 13 and native iOS schema 8. A photo pose can carry four crop corners in normalized coordinates after mesh deformation and before affine placement. Import places the entire image. Crop image takes the bounds of a canvas selection and replaces the crop window in one undoable edit. The original bytes, mesh and source-space erase mask remain editable. Uncropped documents continue to use their previous schemas.
+
+After a save failure, both editors keep unsaved edits open, pause automatic save attempts and expose retry and explicit exit without saving. The last published revision remains available in the gallery.
