@@ -114,8 +114,10 @@ final class EditorFlowTests: XCTestCase {
             action.tap()
         }
         // These elements come from Kotlin Compose panels, exercising the framework in the real app.
-        app.buttons["More canvas actions"].tap()
-        app.buttons["Brush settings"].tap()
+        // Adjust tip is in the drawing palette, first column of its final row.
+        let adjust = origin.withOffset(CGVector(dx: anchor.midX - 3 * cellSize / 2 - app.frame.minX,
+            dy: anchor.minY - cellSize / 2 - app.frame.minY))
+        toolCenter.press(forDuration: 0.8, thenDragTo: adjust)
         XCTAssertTrue(app.navigationBars["Brush settings"].waitForExistence(timeout: 10))
         let pressure = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Pressure")).firstMatch
         XCTAssertTrue(pressure.waitForExistence(timeout: 10))

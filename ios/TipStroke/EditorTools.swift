@@ -43,7 +43,7 @@ extension EditorController {
         menu.addAction(UIAlertAction(title: "Brush aids", style: .default) { [weak self] _ in self?.brushAids() })
         if document.record.media != nil { menu.addAction(UIAlertAction(title: "Media timeline", style: .default) { [weak self] _ in self?.showMediaTimeline() }) }
         menu.addAction(UIAlertAction(title: "Animation timeline", style: .default) { [weak self] _ in self?.showTimeline() })
-        menu.addAction(UIAlertAction(title: solidControls ? "Use translucent controls" : "Use solid controls", style: .default) { [weak self] _ in self?.togglePanelStyle() })
+        menu.addAction(UIAlertAction(title: "Import media clip", style: .default) { [weak self] _ in self?.importMedia() })
         menu.addAction(UIAlertAction(title: "Finger gestures", style: .default) { [weak self] _ in self?.fingerSettings() })
         menu.addAction(UIAlertAction(title: "Paper color", style: .default) { [weak self] _ in self?.setPaperColor() })
         menu.addAction(UIAlertAction(title: "Resize canvas", style: .default) { [weak self] _ in self?.resizeCanvas() })

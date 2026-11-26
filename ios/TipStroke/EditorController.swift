@@ -95,30 +95,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             guard let self else { return }; self.finishCanvasInteraction(); self.document.redo(); self.changed()
         }
         let layers = button("Layers", symbol: "square.3.layers.3d") { [weak self] in self?.showLayers() }
-        let share = button("More canvas actions", symbol: "ellipsis") {}
-        share.showsMenuAsPrimaryAction = true
-        share.menu = UIMenu(children: [
-            UIAction(title: "Fit canvas", image: UIImage(systemName: "arrow.up.left.and.arrow.down.right")) { [weak self] _ in self?.viewport.fit() },
-            UIAction(title: "Quick colors", image: UIImage(systemName: "paintpalette")) { [weak self] _ in self?.quickPanel?.isHidden.toggle() },
-            UIAction(title: "Brush settings", image: UIImage(systemName: "paintbrush")) { [weak self] _ in self?.brushSettings() },
-            UIAction(title: "Resize canvas", image: UIImage(systemName: "crop")) { [weak self] _ in self?.resizeCanvas() },
-            UIAction(title: "Animate", image: UIImage(systemName: "film")) { [weak self] _ in self?.showTimeline() },
-            UIDeferredMenuElement.uncached { [weak self] done in
-                done([UIAction(title: self?.navigator == nil ? "Canvas preview" : "Hide canvas preview",
-                               image: UIImage(systemName: "picture.in.picture")) { [weak self] _ in self?.toggleCanvasPreview() }])
-            },
-            UIAction(title: "Export image…", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in self?.showImageExport() },
-            UIAction(title: "Drawing progress", image: UIImage(systemName: "play.rectangle")) { [weak self] _ in
-                guard let self else { return }
-                self.finishCanvasInteraction()
-                self.present(EditorSheetNavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
-            },
-            UIAction(title: "Share transparent PNG") { [weak self] _ in self?.export(transparent: true) },
-            UIAction(title: "Share animation MP4") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimationVideo(smooth: $0) } },
-            UIAction(title: "Share PNG sequence") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimation(pngSequence: true, smooth: $0) } },
-            UIAction(title: "Share animation GIF") { [weak self] _ in self?.chooseExportTiming { self?.exportAnimation(smooth: $0) } },
-            UIAction(title: "Import media clip") { [weak self] _ in self?.importMedia() }
-        ])
+        let share = button("More canvas actions", symbol: "ellipsis") { [weak self] in self?.openCanvasActions() }
+        moreButton = share
         let color = button("Brush color", symbol: "circle.lefthalf.filled") { [weak self] in
             guard let self else { return }; self.finishCanvasInteraction()
             self.refreshDrawingColors()
@@ -169,7 +147,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             self.sharedControls.setFingerDrawing(enabled: enable)
         }
         let fit = button("Fit canvas", symbol: "scope") { [weak self] in self?.viewport.fit() }
-        let export = button("Export image", symbol: "square.and.arrow.up") { [weak self] in self?.showImageExport() }
+        let export = button("Export image", symbol: "square.and.arrow.up") { [weak self] in self?.openExportActions() }
         let resize = button("Resize canvas", symbol: "crop") { [weak self] in self?.resizeCanvas() }
         let animate = button("Animate", symbol: "film") { [weak self] in self?.showTimeline() }
         wideActions = [export, resize, animate]
@@ -431,9 +409,18 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
                 leftTips ? adjustmentPanel.leadingAnchor.constraint(equalTo: tipPanel.trailingAnchor, constant: 6)
                          : adjustmentPanel.trailingAnchor.constraint(equalTo: tipPanel.leadingAnchor, constant: -6),
             ]
+            if let quickPanel {
+                NSLayoutConstraint.deactivate(popupShelfLayout)
+                landscapeEdges += [
+                    leftTips ? quickPanel.trailingAnchor.constraint(equalTo: history.leadingAnchor, constant: -4)
+                             : quickPanel.leadingAnchor.constraint(equalTo: history.trailingAnchor, constant: 4),
+                    quickPanel.centerYAnchor.constraint(equalTo: guide.centerYAnchor),
+                ]
+            }
             NSLayoutConstraint.activate(verticalCommands + landscapeEdges)
         } else {
             NSLayoutConstraint.activate(horizontalCommands)
+            if !inline { NSLayoutConstraint.activate(popupShelfLayout) }
         }
         NSLayoutConstraint.deactivate(activeDockLayout)
         tabletControls = useTabletControls
@@ -550,22 +537,16 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             stack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -2)])
         return panel
     }
-    var solidControls: Bool { UserDefaults.standard.object(forKey: "editor.solidControls") as? Bool ?? true }
-    func togglePanelStyle() {
-        UserDefaults.standard.set(!solidControls, forKey: "editor.solidControls")
-        refreshPanelStyle()
-    }
     private func refreshPanelStyle() {
-        overrideUserInterfaceStyle = solidControls ? .dark : .unspecified
-        view.tintColor = solidControls ? UIColor(red: 0.93, green: 0.41, blue: 0.35, alpha: 1) : nil
-        viewport.backgroundColor = solidControls ? UIColor(red: 23/255, green: 24/255, blue: 27/255, alpha: 1) : .secondarySystemBackground
+        overrideUserInterfaceStyle = .dark
+        view.tintColor = UIColor(red: 0.93, green: 0.41, blue: 0.35, alpha: 1)
+        viewport.backgroundColor = UIColor(red: 23/255, green: 24/255, blue: 27/255, alpha: 1)
         for panel in panels {
             let embedded = compactCommands && commandPanels.contains { $0 === panel }
-            panel.tintColor = solidControls ? .white : nil
-            panel.effect = solidControls || embedded ? nil : UIBlurEffect(style: .systemMaterial)
-            panel.backgroundColor = solidControls && !embedded ? UIColor(red: 32/255, green: 33/255, blue: 37/255, alpha: 1) : .clear
+            panel.tintColor = .white
+            panel.backgroundColor = embedded ? .clear : UIColor(red: 32/255, green: 33/255, blue: 37/255, alpha: 1)
             panel.layer.borderWidth = embedded ? 0 : 1
-            panel.layer.borderColor = UIColor(red: 69/255, green: 71/255, blue: 77/255, alpha: 0.7).cgColor
+            panel.layer.borderColor = UIColor(white: 0.28, alpha: 1).cgColor
         }
     }
 
@@ -674,6 +655,42 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     @objc private func dropColor(_ gesture: UIPanGestureRecognizer) {
         showDrop(at: gesture.location(in: view), color: viewport.canvas.brushColor, ended: gesture.state == .ended,
             cancelled: gesture.state == .cancelled || gesture.state == .failed)
+    }
+    private weak var moreButton: UIButton?
+
+    private func actionPanel(_ title: String, anchor: UIView?) -> ToolPalette {
+        palette?.removeFromSuperview()
+        let panel = ToolPalette(frame: view.bounds, title: title, list: true)
+        panel.anchor = anchor
+        panel.beside = sideDock
+        panel.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        panel.onClose = { [weak self] in self?.palette?.removeFromSuperview(); self?.palette = nil }
+        palette = panel
+        view.addSubview(panel)
+        return panel
+    }
+    private func openCanvasActions() {
+        let panel = actionPanel("Canvas actions", anchor: moreButton)
+        panel.add(navigator == nil ? "Canvas preview" : "Hide preview", "picture.in.picture") { [weak self] in self?.toggleCanvasPreview() }
+        panel.add("Quick colors", "paintpalette") { [weak self] in self?.quickPanel?.isHidden.toggle() }
+        if compactCommands {
+            panel.add("Export", "square.and.arrow.up") { [weak self] in self?.openExportActions() }
+            panel.add("Resize canvas", "crop") { [weak self] in self?.resizeCanvas() }
+            panel.add("Animate", "film") { [weak self] in self?.showTimeline() }
+        }
+    }
+    private func openExportActions() {
+        let panel = actionPanel("Export", anchor: compactCommands ? moreButton : wideActions.first)
+        panel.add("Image…", "photo") { [weak self] in self?.showImageExport() }
+        panel.add("Transparent PNG", "square.dashed") { [weak self] in self?.export(transparent: true) }
+        panel.add("Animation MP4", "film") { [weak self] in self?.chooseExportTiming { self?.exportAnimationVideo(smooth: $0) } }
+        panel.add("PNG sequence", "square.stack") { [weak self] in self?.chooseExportTiming { self?.exportAnimation(pngSequence: true, smooth: $0) } }
+        panel.add("Animation GIF", "film.stack") { [weak self] in self?.chooseExportTiming { self?.exportAnimation(smooth: $0) } }
+        panel.add("Drawing progress", "play.rectangle") { [weak self] in
+            guard let self else { return }
+            self.finishCanvasInteraction()
+            self.present(EditorSheetNavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
+        }
     }
     private weak var toolsButton: UIButton?
     private weak var movingToolsButton: UIButton?

@@ -11,7 +11,9 @@ final class ToolPalette: UIView {
     private var hovered: Int?
     private let title: String
 
-    init(frame: CGRect, title: String) {
+    private let list: Bool
+    init(frame: CGRect, title: String, list: Bool = false) {
+        self.list = list
         self.title = title
         super.init(frame: frame)
         accessibilityViewIsModal = true
@@ -37,6 +39,7 @@ final class ToolPalette: UIView {
     func add(_ name: String, _ symbol: String, _ action: @escaping () -> Void) {
         let button = UIButton(type: .system)
         button.setImage(UIImage(systemName: symbol), for: .normal)
+        if list { button.setTitle("  " + name, for: .normal); button.contentHorizontalAlignment = .leading }
         button.accessibilityLabel = name
         button.addAction(UIAction { [weak self] _ in self?.onClose?(); action() }, for: .touchUpInside)
         button.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(showName(_:))))
@@ -50,8 +53,10 @@ final class ToolPalette: UIView {
         guard let anchor else { return }
         let target = anchor.convert(anchor.bounds, to: self)
         let safe = bounds.inset(by: safeAreaInsets)
-        let cell: CGFloat = min(48, safe.width / 4)
-        let width = cell * 4, height = CGFloat((buttons.count + 3) / 4) * cell + 24
+        let cell: CGFloat = list ? min(44, (safe.height - 24) / CGFloat(max(1, buttons.count))) : min(48, safe.width / 4)
+        let columns = list ? 1 : 4
+        let width = list ? min(220, safe.width) : cell * 4
+        let height = CGFloat((buttons.count + columns - 1) / columns) * cell + 24
         let besideX = target.midX < safe.midX ? target.maxX : target.minX - width
         let preferredX = beside ? besideX : target.midX - width / 2
         let x = min(max(safe.minX, preferredX), safe.maxX - width)
@@ -59,7 +64,7 @@ final class ToolPalette: UIView {
         let y = max(safe.minY, min(preferredY, safe.maxY - height))
         panel.frame = CGRect(x: x, y: y, width: width, height: height)
         for (index, button) in buttons.enumerated() {
-            button.frame = CGRect(x: CGFloat(index % 4) * cell, y: 24 + CGFloat(index / 4) * cell, width: cell, height: cell)
+            button.frame = CGRect(x: (list ? 12 : CGFloat(index % columns) * cell), y: 24 + CGFloat(index / columns) * cell, width: list ? width - 24 : cell, height: cell)
         }
         caption.frame = CGRect(x: 0, y: 0, width: width, height: 24)
     }

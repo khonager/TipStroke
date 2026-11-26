@@ -77,7 +77,7 @@ into permanent tiles. On supported iPads, Pencil hover outlines the brush footpr
 roll rotates the stamp tip. Squeeze can open drawing tools, show colors or toggle
 the eraser according to the system Pencil preference.
 
-The editor shares the Android color theme for brush, palette and blend panels. More canvas actions opens resize, animation, preview and export. Gallery, undo, redo and Fit stay at the upper left in both orientations. Finger mode, color, layers and More stay at the upper right. Wide windows also show export, resize and animation shortcuts. Quick colors opens beneath the right group and is visible alongside it by default in windows at least 900 points wide. Compact windows put both command groups in one outlined strip. Fit uses the same canvas margins as Android. The bottom dock holds tip previews, drawing tools, moving tools and the size/opacity toggle. On compact windows the sliders start closed. More actions includes Fit canvas, Brush settings and Quick colors. Drag either
+The editor shares the Android color theme for brush, palette and blend panels. Phone command and tip rails follow the same physical short edges in both landscape orientations. Wide windows show export, resize and animation shortcuts. Fit uses the same canvas margins as Android. The bottom dock holds tip previews, drawing tools, moving tools and the size/opacity toggle. On compact windows the sliders start closed. Moving tools includes Fit canvas. Drawing tools includes Adjust tip. Drag either
 track to preview the colored footprint at the current zoom. Use the visible minus and plus buttons for single-unit adjustments. Each readout sits above a full-width horizontal track, with the step buttons underneath. On phones the panel opens above the bottom dock or beside the landscape dock. Tablet windows show the adjustments by default. In portrait they sit to the right of the bottom tip dock. In landscape the tips sit on the left and 205-point vertical tracks sit on the right. The tip strip has a transparent host so the dock surface shows between swatches. The default editor uses dark solid panels and a coral accent. Size can use document pixels or screen
 points for regular brushes and erasers. The eraser keeps its own tuning. Hold a swatch to open its tip picker. The picker, library, dock and brush settings show
 pressure-sweep samples rendered into small, isolated native raster documents.
@@ -85,8 +85,7 @@ Editor sheets reserve an opaque navigation header for the title and Done action.
 Brush settings keep the current sample visible above the scrolling controls, with
 minimum and maximum specimens beside the parameter tracks. Eraser samples cut
 through a gray strip so you can see how much each tip removes.
-Drawing tools → More tools → Use translucent controls or Use solid controls switches the editor dock
-backgrounds between translucent material and an opaque system color.
+Canvas actions and export choices use opaque editor palettes.
 
 ## New drawing sizes
 
@@ -295,3 +294,5 @@ Export image supports PNG, JPEG and WebP with a file name and 100%, 50% or 25% s
 Phone command and tip rails occupy opposite short edges in landscape. Android uses an immediate window rotation transition.
 
 Layers opens over the canvas. Animation uses a bottom overlay with a horizontally scrolling frame strip and frame actions.
+
+The editor groups still and animated output under Export, brush settings under Adjust tip, and uses opaque palettes for canvas commands.
