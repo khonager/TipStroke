@@ -3,6 +3,28 @@ import UIKit
 @testable import TipStroke
 
 final class ProjectExchangeTests: XCTestCase {
+    func testGalleryMovieCreatesAndReopensDrawingWithMedia() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let store = ProjectStore(root: folder)
+        let source = RasterDocument(name: "Movie", width: 96, height: 64)
+        source.enableAnimation()
+        let movie: URL = try await withCheckedThrowingContinuation { continuation in
+            store.exportMP4(source.snapshot()) { continuation.resume(with: $0) }
+        }
+        defer { try? FileManager.default.removeItem(at: movie) }
+        guard case .canvas(let imported) = try store.importGalleryFile(movie) else {
+            return XCTFail("Gallery movie should open a canvas")
+        }
+        let saved = try store.load(imported.record.id)
+        XCTAssertEqual(saved.record.width, 96)
+        XCTAssertEqual(saved.record.height, 64)
+        XCTAssertEqual(saved.record.animation?.frames.first?.sourceTimeUs, 0)
+        XCTAssertEqual(saved.record.media?.assets.first?.kind, "video")
+        XCTAssertEqual(saved.record.media?.clips.count, 1)
+        XCTAssertTrue(RasterDocument(snapshot: saved).beginStroke())
+    }
+
     func testPackageRetainsOriginalPhotoBytesAndSourceMask() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

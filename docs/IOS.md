@@ -29,6 +29,7 @@ and the editor saves the current drawing when that scene deactivates.
 
 ## Included native workflows
 
+- Gallery Import opens movies and GIFs on a source-sized canvas with a drawing timeline. Still images open under a paint layer. The same picker accepts editable TipStroke packages.
 - Local gallery with thumbnails, creation, rename, duplicate, reopening and delete.
   Canvas dimensions are 16–8192 px per side.
 - Pencil/finger drawing, Pencil/Ink/Airbrush/Eraser, pressure and tilt, size/opacity,
@@ -114,7 +115,6 @@ preset uses the iOS resident tile budget or Android’s app heap budget.
 | Area | Android | iPhone and iPad |
 | --- | --- | --- |
 | Gallery layout | An adaptive grid fits more drawing thumbnails across a wide window. | A single-column UIKit list shows drawings and stacks, with swipe actions. |
-| Start from media | The gallery’s **Image / GIF / video** action creates and opens a drawing from media. | Create or open a drawing first, then use **Import image** for a photo layer or **Import media clip** for the timeline. |
 | Settings layout | Gallery Settings places gesture choices beside their bindings on wide screens. | Finger gestures are configured in the editor using successive action sheets, including on iPad. |
 | Fill animation | Settings includes a fill-duration control. | The radial reveal lasts 0.5 seconds and respects Reduce Motion. |
 | Brush calibration | Tip Studio includes a live stylus hover tilt calibration pad. | Brush settings provide tilt parameters and stroke specimens. Live Pencil hover feedback is on the canvas. |

@@ -247,24 +247,7 @@ extension EditorController {
                 self.view.isUserInteractionEnabled = true
                 do {
                     let asset = try result.get()
-                    var track = self.document.record.media ?? MediaTrack(assets: [], clips: [])
-                    track.assets.append(asset)
-                    track.clips.append(MediaClipRecord(assetID: asset.id, name: asset.name, durationUs: asset.durationUs))
-                    let plan = try track.plan()
-                    track.positionUs = plan.start(index: Int32(track.clips.count - 1))
-                    track.editID = UUID()
-                    self.document.enableAnimation()
-                    self.document.beginMetadataEdit()
-                    if self.document.record.media == nil, var animation = self.document.record.animation {
-                        var start: Int64 = 0
-                        for i in animation.frames.indices {
-                            animation.frames[i].sourceTimeUs = start
-                            start += Int64(animation.frames[i].exposure) * 1_000_000 / Int64(animation.fps)
-                        }
-                        self.document.record.animation = animation
-                    }
-                    self.document.record.media = track
-                    self.document.endMetadataEdit()
+                    try self.document.appendMedia(asset)
                     self.changed()
                     self.showMediaTimeline()
                 } catch { self.showError(error) }
@@ -295,6 +278,27 @@ extension AnimationRecord {
     }
 }
 extension RasterDocument {
+    func appendMedia(_ asset: MediaAssetRecord) throws {
+        var track = record.media ?? MediaTrack(assets: [], clips: [])
+        track.assets.append(asset)
+        track.clips.append(MediaClipRecord(assetID: asset.id, name: asset.name, durationUs: asset.durationUs))
+        let plan = try track.plan()
+        track.positionUs = plan.start(index: Int32(track.clips.count - 1))
+        track.editID = UUID()
+        enableAnimation()
+        beginMetadataEdit()
+        if record.media == nil, var animation = record.animation {
+            var start: Int64 = 0
+            for i in animation.frames.indices {
+                animation.frames[i].sourceTimeUs = start
+                start += Int64(animation.frames[i].exposure) * 1_000_000 / Int64(animation.fps)
+            }
+            record.animation = animation
+        }
+        record.media = track
+        endMetadataEdit()
+    }
+
     func seekMedia(_ time: Int64) {
         guard record.media != nil else { return }
         record.media?.positionUs = time

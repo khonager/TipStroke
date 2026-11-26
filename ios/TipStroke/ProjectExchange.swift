@@ -64,7 +64,7 @@ private enum PackageIO {
     }
 
     static func unpack(_ input: URL, to folder: URL) throws {
-        let archive = try Archive(url: input, accessMode: .read)
+        guard let archive = try? Archive(url: input, accessMode: .read) else { throw invalid }
         var seen = Set<String>()
         var total: UInt64 = 0
         for entry in archive {
@@ -604,24 +604,60 @@ extension ProjectStore {
     }
 }
 
+enum GalleryImport {
+    case projects(GalleryStacks)
+    case canvas(DocumentSnapshot)
+}
+
+extension ProjectStore {
+    func importGalleryFile(_ url: URL) throws -> GalleryImport {
+        if ["tipstroke", "zip"].contains(url.pathExtension.lowercased()) {
+            return .projects(try importPackageWithLayout(url).layout)
+        }
+        let asset = try MediaFrameReader.inspect(url)
+        let size = try Self.mediaSize(asset)
+        let name = asset.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let document = RasterDocument(name: name.isEmpty ? "Imported media" : name,
+                                      width: max(16, Int(size.width.rounded())), height: max(16, Int(size.height.rounded())))
+        if asset.kind == "image" {
+            let paint = document.activeLayer
+            try document.importPhoto(PhotoSource(file: url), name: document.record.name)
+            document.record.layers.swapAt(0, 1)
+            document.record.selectedLayer = paint
+        } else {
+            try document.appendMedia(asset)
+        }
+        let snapshot = document.snapshot()
+        try save(snapshot)
+        return .canvas(snapshot)
+    }
+}
+
 extension GalleryController: UIDocumentPickerDelegate {
-    func chooseProjectPackage() {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data], asCopy: true)
+    func chooseGalleryFile() {
+        let project = UTType(exportedAs: "dev.tipstroke.project", conformingTo: .zip)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [project, .zip, .movie, .image], asCopy: true)
         picker.delegate = self
         present(picker, animated: true)
     }
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let url = urls.first else { return }
+        guard let url = urls.first, !loading else { return }
+        loading = true
+        view.isUserInteractionEnabled = false
         ProjectStore.shared.queue.async {
-            let result = Result { try ProjectStore.shared.importPackageWithLayout(url) }
+            let result = Result { try ProjectStore.shared.importGalleryFile(url) }
             DispatchQueue.main.async {
+                self.loading = false
+                self.view.isUserInteractionEnabled = true
                 switch result {
-                case .success(let imported):
-                    self.layout.order.insert(contentsOf: imported.layout.order, at: 0)
-                    self.layout.stacks.merge(imported.layout.stacks) { _, new in new }
+                case .success(.projects(let layout)):
+                    self.layout.order.insert(contentsOf: layout.order, at: 0)
+                    self.layout.stacks.merge(layout.stacks) { _, new in new }
                     self.saveLayout()
                     self.reload()
+                case .success(.canvas(let snapshot)):
+                    self.navigationController?.pushViewController(EditorController(document: RasterDocument(snapshot: snapshot)), animated: true)
                 case .failure(let error): self.showError(error)
                 }
             }
@@ -737,7 +773,8 @@ private extension ProjectStore {
                   let props = CGImageSourceCopyPropertiesAtIndex(reader, 0, nil) as? [CFString: Any],
                   let width = props[kCGImagePropertyPixelWidth] as? Int,
                   let height = props[kCGImagePropertyPixelHeight] as? Int else { throw PackageIO.invalid }
-            size = CGSize(width: width, height: height)
+            let rotated = (5...8).contains(props[kCGImagePropertyOrientation] as? Int ?? 1)
+            size = rotated ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
         }
         guard size.width >= 1, size.width <= 8192, size.height >= 1, size.height <= 8192, size.width * size.height <= 16_777_216 else {
             throw DrawingError.message("This clip exceeds the portable video dimensions.")

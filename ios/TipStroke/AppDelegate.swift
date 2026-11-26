@@ -40,7 +40,7 @@ extension UserDefaults {
 final class GalleryController: UITableViewController, AppleNewDrawingActions {
     private let thumbnails = NSCache<NSUUID, UIImage>()
     private let store = ProjectStore.shared
-    private var loading = false
+    var loading = false
     var pickingExports = false
     private var exportingDrawings = false
     var layout = UserDefaults.standard.data(forKey: "gallery.stacks").flatMap { try? JSONDecoder().decode(GalleryStacks.self, from: $0) } ?? GalleryStacks()
@@ -87,8 +87,8 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
             share.accessibilityLabel = "Share selected drawings"
             navigationItem.rightBarButtonItems = [share]
         } else {
-            let open = UIBarButtonItem(image: UIImage(systemName: "doc.badge.plus"), primaryAction: UIAction { [weak self] _ in self?.chooseProjectPackage() })
-            open.accessibilityLabel = "Import TipStroke project"
+            let open = UIBarButtonItem(image: UIImage(systemName: "doc.badge.plus"), primaryAction: UIAction { [weak self] _ in self?.chooseGalleryFile() })
+            open.accessibilityLabel = "Import project, image, GIF or video"
             navigationItem.leftBarButtonItem = openStack == nil ? open : UIBarButtonItem(title: "Gallery", primaryAction: UIAction { [weak self] _ in
                 self?.openStack = nil; self?.saveLayout()
             })
