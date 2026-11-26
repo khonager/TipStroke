@@ -53,33 +53,33 @@ struct GalleryStacks: Codable {
     }
 }
 
-extension GalleryController: UITableViewDragDelegate, UITableViewDropDelegate {
-    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at path: IndexPath) -> [UIDragItem] {
+extension GalleryController: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
+    func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at path: IndexPath) -> [UIDragItem] {
         guard !pickingExports, displayed.indices.contains(path.row) else { return [] }
         let id = displayed[path.row]
         let item = UIDragItem(itemProvider: NSItemProvider(object: id.uuidString as NSString))
         item.localObject = id
         return [item]
     }
-    func tableView(_ tableView: UITableView, dropSessionDidUpdate session: UIDropSession,
-                   withDestinationIndexPath path: IndexPath?) -> UITableViewDropProposal {
+    func collectionView(_ collectionView: UICollectionView, dropSessionDidUpdate session: UIDropSession,
+                   withDestinationIndexPath path: IndexPath?) -> UICollectionViewDropProposal {
         guard session.localDragSession != nil, let path, displayed.indices.contains(path.row),
               let id = session.items.first?.localObject as? UUID, displayed.contains(id) else {
-            return UITableViewDropProposal(operation: .forbidden)
+            return UICollectionViewDropProposal(operation: .forbidden)
         }
         let group = groupsDrop(session, at: path, from: id)
-        return UITableViewDropProposal(operation: .move, intent: group ? .insertIntoDestinationIndexPath : .insertAtDestinationIndexPath)
+        return UICollectionViewDropProposal(operation: .move, intent: group ? .insertIntoDestinationIndexPath : .insertAtDestinationIndexPath)
     }
     private func groupsDrop(_ session: UIDropSession, at path: IndexPath, from id: UUID) -> Bool {
-        let rect = tableView.rectForRow(at: path)
+        let rect = collectionView.layoutAttributesForItem(at: path)?.frame ?? .zero
         return openStack == nil && layout.stacks[id] == nil &&
-            abs(session.location(in: tableView).y - rect.midY) < rect.height / 4
+            rect.insetBy(dx: rect.width / 4, dy: rect.height / 4).contains(session.location(in: collectionView))
     }
-    func tableView(_ tableView: UITableView, performDropWith coordinator: UITableViewDropCoordinator) {
+    func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
         guard let item = coordinator.items.first, let id = item.dragItem.localObject as? UUID,
               let path = coordinator.destinationIndexPath, displayed.indices.contains(path.row) else { return }
         let target = displayed[path.row]
-        let after = coordinator.session.location(in: tableView).y > tableView.rectForRow(at: path).midY
+        let after = coordinator.session.location(in: collectionView).x > (collectionView.layoutAttributesForItem(at: path)?.frame.midX ?? 0)
         layout.move(id, onto: target, group: groupsDrop(coordinator.session, at: path, from: id), after: after, inside: openStack)
         saveLayout()
     }

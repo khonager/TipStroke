@@ -90,7 +90,9 @@ extension UserDefaults {
     }
 }
 
-final class GalleryController: UITableViewController, AppleNewDrawingActions {
+final class GalleryController: UICollectionViewController, UICollectionViewDelegateFlowLayout, AppleNewDrawingActions {
+    init() { super.init(collectionViewLayout: UICollectionViewFlowLayout()) }
+    required init?(coder: NSCoder) { fatalError("Use init()") }
     private let thumbnails = NSCache<NSUUID, UIImage>()
     private let store = ProjectStore.shared
     var loading = false
@@ -107,26 +109,31 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         if let data = try? JSONEncoder().encode(layout) { UserDefaults.standard.set(data, forKey: "gallery.stacks") }
         if let openStack, layout.stacks[openStack] == nil { self.openStack = nil }
         updateGalleryActions()
-        tableView.reloadData()
+        collectionView.reloadData()
     }
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "TipStroke"
         thumbnails.countLimit = 80
-        tableView.rowHeight = 100
-        tableView.dragInteractionEnabled = true; tableView.dragDelegate = self; tableView.dropDelegate = self
+        collectionView.alwaysBounceVertical = true
+        if let flow = collectionViewLayout as? UICollectionViewFlowLayout {
+            flow.sectionInset = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+            flow.minimumInteritemSpacing = 8
+            flow.minimumLineSpacing = 12
+        }
+        collectionView.dragInteractionEnabled = true; collectionView.dragDelegate = self; collectionView.dropDelegate = self
         navigationItem.largeTitleDisplayMode = .never
-        tableView.allowsMultipleSelectionDuringEditing = true
+
         updateGalleryActions()
 
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "drawing")
-        refreshControl = UIRefreshControl()
-        refreshControl?.addTarget(self, action: #selector(reload), for: .valueChanged)
+        collectionView.register(GalleryTile.self, forCellWithReuseIdentifier: "drawing")
+        collectionView.refreshControl = UIRefreshControl()
+        collectionView.refreshControl?.addTarget(self, action: #selector(reload), for: .valueChanged)
         let empty = UILabel()
         empty.text = "Your drawings stay on this device.\nTap + to open a new canvas."
         empty.numberOfLines = 0; empty.textAlignment = .center; empty.textColor = .secondaryLabel
         empty.isHidden = true
-        tableView.backgroundView = empty
+        collectionView.backgroundView = empty
     }
     private func updateGalleryActions() {
         title = openStack.flatMap { layout.stacks[$0]?.name } ?? "TipStroke"
@@ -138,15 +145,15 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
                 UIAction(title: "Duplicate") { [weak self] _ in self?.changeSelected(delete: false) },
                 UIAction(title: "Delete", attributes: .destructive) { [weak self] _ in self?.changeSelected(delete: true) }
             ]))
-            share.isEnabled = !(tableView.indexPathsForSelectedRows ?? []).isEmpty && !exportingDrawings
+            share.isEnabled = !(collectionView.indexPathsForSelectedItems ?? []).isEmpty && !exportingDrawings
             share.accessibilityLabel = "Selected drawing actions"
-            let all = !displayed.isEmpty && tableView.indexPathsForSelectedRows?.count == displayed.count
+            let all = !displayed.isEmpty && collectionView.indexPathsForSelectedItems?.count == displayed.count
             let toggle = UIBarButtonItem(title: all ? "Deselect all" : "Select all", primaryAction: UIAction { [weak self] _ in
                 guard let self else { return }
                 for row in self.displayed.indices {
                     let path = IndexPath(row: row, section: 0)
-                    if all { self.tableView.deselectRow(at: path, animated: false) }
-                    else { self.tableView.selectRow(at: path, animated: false, scrollPosition: .none) }
+                    if all { self.collectionView.deselectItem(at: path, animated: false) }
+                    else { self.collectionView.selectItem(at: path, animated: false, scrollPosition: []) }
                 }
                 self.updateGalleryActions()
             })
@@ -173,12 +180,14 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
     private func setPicking(_ enabled: Bool) {
         guard !exportingDrawings else { return }
         pickingExports = enabled
-        tableView.setEditing(enabled, animated: true)
-        refreshControl?.isEnabled = !enabled
+        for path in collectionView.indexPathsForSelectedItems ?? [] { collectionView.deselectItem(at: path, animated: false) }
+        collectionView.allowsMultipleSelection = enabled
+        collectionView.reloadData()
+        collectionView.refreshControl?.isEnabled = !enabled
         updateGalleryActions()
     }
     private var selectedDrawingIDs: [UUID] {
-        (tableView.indexPathsForSelectedRows ?? []).sorted().flatMap { path -> [UUID] in
+        (collectionView.indexPathsForSelectedItems ?? []).sorted().flatMap { path -> [UUID] in
             let id = displayed[path.row]
             return layout.stacks[id]?.members ?? [id]
         }
@@ -239,7 +248,7 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
             }
         }
     }
-    override func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) {
+    override func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
         if pickingExports { updateGalleryActions() }
     }
     override func viewWillAppear(_ animated: Bool) {
@@ -251,13 +260,13 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
         store.queue.async {
             let result = Result { try self.store.list() }
             DispatchQueue.main.async {
-                self.refreshControl?.endRefreshing()
+                self.collectionView.refreshControl?.endRefreshing()
                 switch result {
                 case .success(let drawings):
                     self.thumbnails.removeAllObjects()
                     self.records = Dictionary(uniqueKeysWithValues: drawings.map { ($0.id, $0) })
                     self.layout.reconcile(drawings.map(\.id)); self.saveLayout()
-                    self.tableView.backgroundView?.isHidden = !drawings.isEmpty
+                    self.collectionView.backgroundView?.isHidden = !drawings.isEmpty
                 case .failure(let error): self.showError(error)
                 }
             }
@@ -293,44 +302,41 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
             }
         }
     }
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { displayed.count }
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "drawing", for: indexPath)
-        let id = displayed[indexPath.row]
+    private var minimumWidth: CGFloat { 156 }
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt path: IndexPath) -> CGSize {
+        let insets = collectionView.adjustedContentInset
+        let available = collectionView.bounds.width - insets.left - insets.right - 16
+        let columns = max(1, floor((available + 8) / (minimumWidth + 8)))
+        let width = max(1, floor((available + 8) / columns) - 8)
+        return CGSize(width: width, height: min(260, minimumWidth * 0.78) + 62)
+    }
+    override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { displayed.count }
+    override func collectionView(_ collectionView: UICollectionView, cellForItemAt path: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "drawing", for: path) as! GalleryTile
+        let id = displayed[path.item]
         cell.accessibilityIdentifier = "gallery-\(id.uuidString)"
-        if let stack = layout.stacks[id] {
-            var content = cell.defaultContentConfiguration()
-            content.text = stack.name
-            content.secondaryText = "\(stack.members.count) drawings"
-            content.image = UIImage(systemName: "square.stack.3d.up")
-            cell.contentConfiguration = content; cell.accessoryType = .disclosureIndicator
-            return cell
-        }
-        guard let drawing = records[id] else { return cell }
-        var content = cell.defaultContentConfiguration()
-        content.text = drawing.name
-        content.secondaryText = "\(drawing.width) × \(drawing.height) · \(drawing.layers.count) layers"
-        content.image = thumbnails.object(forKey: drawing.id as NSUUID) ?? UIImage(systemName: "scribble.variable")
-        content.imageProperties.maximumSize = CGSize(width: 80, height: 80)
-        if thumbnails.object(forKey: drawing.id as NSUUID) == nil {
+        let drawing = records[id], stack = layout.stacks[id]
+        cell.name.text = drawing?.name ?? stack?.name
+        cell.details.text = drawing.map { "\($0.width) × \($0.height) · " + $0.modified.formatted(date: .numeric, time: .omitted) } ?? "\(stack?.members.count ?? 0) drawings"
+        cell.accessibilityLabel = cell.name.text
+        cell.menuButton.isHidden = pickingExports
+        cell.menuButton.menu = UIMenu(children: galleryActions(id))
+        cell.picture.image = stack == nil ? thumbnails.object(forKey: id as NSUUID) : UIImage(systemName: "square.stack.3d.up")
+        if stack == nil && cell.picture.image == nil {
             store.queue.async {
-                let image = try? self.store.thumbnail(drawing.id)
+                let image = try? self.store.thumbnail(id)
                 DispatchQueue.main.async {
-                    guard let image else { return }; self.thumbnails.setObject(image, forKey: drawing.id as NSUUID)
-                    guard let cell = self.tableView.cellForRow(at: indexPath),
-                          cell.accessibilityIdentifier == "gallery-\(drawing.id.uuidString)",
-                          var content = cell.contentConfiguration as? UIListContentConfiguration else { return }
-                    content.image = image
-                    cell.contentConfiguration = content
+                    guard let image else { return }
+                    self.thumbnails.setObject(image, forKey: id as NSUUID)
+                    if cell.accessibilityIdentifier == "gallery-\(id.uuidString)" { cell.picture.image = image }
                 }
             }
         }
-        cell.contentConfiguration = content; cell.accessoryType = .disclosureIndicator
         return cell
     }
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+    override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if pickingExports { updateGalleryActions(); return }
-        tableView.deselectRow(at: indexPath, animated: true)
+        collectionView.deselectItem(at: indexPath, animated: true)
         guard !loading else { return }
         let id = displayed[indexPath.row]
         if layout.stacks[id] != nil { openStack = id; saveLayout(); return }
@@ -346,82 +352,70 @@ final class GalleryController: UITableViewController, AppleNewDrawingActions {
             }
         }
     }
-    override func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        let id = displayed[indexPath.row]
-        if layout.stacks[id] != nil {
-            let rename = UIContextualAction(style: .normal, title: "Rename stack") { _, _, done in
-                let alert = UIAlertController(title: "Rename stack", message: nil, preferredStyle: .alert)
-                alert.addTextField { $0.text = self.layout.stacks[id]?.name }
+    private func galleryActions(_ id: UUID) -> [UIAction] {
+        if let stack = layout.stacks[id] {
+            return [UIAction(title: "Rename stack") { _ in self.promptName(stack.name) { self.layout.stacks[id]?.name = $0; self.saveLayout() } },
+                    UIAction(title: "Unstack") { _ in self.layout.unstack(id); self.saveLayout() }]
+        }
+        guard let drawing = records[id] else { return [] }
+        var actions = [
+            UIAction(title: "Rename") { _ in self.promptName(drawing.name) { name in self.changeDrawing { try self.store.rename(id, name: name) } } },
+            UIAction(title: "Duplicate") { _ in self.changeDrawing { try self.store.duplicate(id) } },
+            UIAction(title: "Delete", attributes: .destructive) { _ in
+                let alert = UIAlertController(title: "Delete \(drawing.name)?", message: "This removes the drawing from this device.", preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-                alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak alert] _ in
-                    let name = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    if !name.isEmpty { self.layout.stacks[id]?.name = name; self.saveLayout() }
-                })
-                self.present(alert, animated: true); done(true)
-            }
-            return UISwipeActionsConfiguration(actions: [rename])
-        }
-        guard let drawing = records[id] else { return nil }
-        let duplicate = UIContextualAction(style: .normal, title: "Duplicate") { [weak self] _, _, done in
-            guard let self else { done(false); return }
-            self.store.queue.async {
-                let result = Result { try self.store.duplicate(drawing.id) }
-                DispatchQueue.main.async {
-                    if case .failure(let error) = result { self.showError(error); done(false) }
-                    else { done(true); self.reload() }
-                }
-            }
-        }
-        let rename = UIContextualAction(style: .normal, title: "Rename") { [weak self] _, _, done in
-            guard let self else { done(false); return }
-            let alert = UIAlertController(title: "Rename drawing", message: nil, preferredStyle: .alert)
-            alert.addTextField { $0.text = drawing.name }
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in done(false) })
-            alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak alert] _ in
-                let name = (alert?.textFields?.first?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !name.isEmpty else { done(false); return }
-                self.store.queue.async {
-                    let result = Result { try self.store.rename(drawing.id, name: name) }
-                    DispatchQueue.main.async {
-                        if case .failure(let error) = result { self.showError(error); done(false) }
-                        else { done(true); self.reload() }
-                    }
-                }
-            })
-            self.present(alert, animated: true)
-        }
-        return UISwipeActionsConfiguration(actions: [rename, duplicate])
+                alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in self.changeDrawing { try self.store.delete(id) } })
+                self.present(alert, animated: true)
+            }]
+        if let parent = openStack { actions.append(UIAction(title: "Move out of stack") { _ in self.layout.moveOut(id, from: parent); self.saveLayout() }) }
+        return actions
     }
-    override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        let id = displayed[indexPath.row]
-        if layout.stacks[id] != nil {
-            return UISwipeActionsConfiguration(actions: [UIContextualAction(style: .normal, title: "Unstack") { _, _, done in
-                self.layout.unstack(id); self.saveLayout(); done(true)
-            }])
+    private func promptName(_ name: String, save: @escaping (String) -> Void) {
+        let alert = UIAlertController(title: "Rename", message: nil, preferredStyle: .alert)
+        alert.addTextField { $0.text = name }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak alert] _ in
+            if let text = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { save(text) }
+        })
+        present(alert, animated: true)
+    }
+    private func changeDrawing(_ change: @escaping () throws -> Void) {
+        store.queue.async {
+            let result = Result { try change() }
+            DispatchQueue.main.async {
+                self.reload()
+                if case .failure(let error) = result { self.showError(error) }
+            }
         }
-        guard let drawing = records[id] else { return nil }
-        let action = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
-            guard let self else { completion(false); return }
-            let alert = UIAlertController(title: "Delete \(drawing.name)?", message: "This removes the drawing from this device.", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completion(false) })
-            alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { _ in
-                self.store.queue.async {
-                    let result = Result { try self.store.delete(drawing.id) }
-                    DispatchQueue.main.async {
-                        if case .failure(let error) = result { self.showError(error); completion(false) }
-                        else { completion(true); self.reload() }
-                    }
-                }
-            })
-            self.present(alert, animated: true)
-        }
-        var actions = [action]
-        if let parent = openStack {
-            actions.append(UIContextualAction(style: .normal, title: "Move out") { _, _, done in
-                self.layout.moveOut(id, from: parent); self.saveLayout(); done(true)
-            })
-        }
-        let configuration = UISwipeActionsConfiguration(actions: actions); configuration.performsFirstActionWithFullSwipe = false
-        return configuration
+    }
+}
+
+final class GalleryTile: UICollectionViewCell {
+    let picture = UIImageView(), name = UILabel(), details = UILabel(), menuButton = UIButton(type: .system)
+    override var isSelected: Bool { didSet { contentView.layer.borderWidth = isSelected ? 2 : 0 } }
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        picture.contentMode = .scaleAspectFill
+        picture.clipsToBounds = true
+        picture.layer.cornerRadius = 8
+        picture.backgroundColor = .secondarySystemBackground
+        name.font = .preferredFont(forTextStyle: .subheadline)
+        details.font = .preferredFont(forTextStyle: .caption2)
+        details.textColor = .secondaryLabel
+        details.numberOfLines = 2
+        menuButton.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+        menuButton.showsMenuAsPrimaryAction = true
+        menuButton.accessibilityLabel = "Drawing actions"
+        contentView.layer.borderColor = tintColor.cgColor
+        for item: UIView in [picture, name, details, menuButton] { contentView.addSubview(item) }
+    }
+    required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = contentView.bounds.width, height = max(0, contentView.bounds.height - 62)
+        picture.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        name.frame = CGRect(x: 2, y: height + 3, width: width - 44, height: 22)
+        details.frame = CGRect(x: 2, y: height + 25, width: width - 44, height: 34)
+        menuButton.frame = CGRect(x: width - 44, y: height, width: 44, height: 48)
     }
 }

@@ -234,16 +234,17 @@ fun GalleryScreen(
     CompositionLocalProvider(LocalContentColor provides Color(0xFFF5F5F2)) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF17181B)).safeDrawingPadding()) {
         val shortWindow = maxHeight < 500.dp
-        val gutter = if (maxWidth < 600.dp || shortWindow) 16.dp else 28.dp
-        val thumbnailHeight = (maxHeight * .32f).coerceIn(100.dp, 220.dp)
+        val gutter = if (maxWidth < 600.dp || shortWindow) 8.dp else 16.dp
+        val minimumWidth = 156.dp
+        val thumbnailHeight = minOf(minimumWidth * .78f, maxHeight * .32f)
         Column {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(if (shortWindow) 180.dp else 240.dp),
+                columns = GridCells.Adaptive(minimumWidth),
                 state = gridState,
                 modifier = Modifier.weight(1f).fillMaxWidth().semantics { contentDescription = "Gallery drawings" }.onGloballyPositioned { gridBounds = it.boundsInRoot() },
                 contentPadding = PaddingValues(gutter),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item(key = "gallery-heading", span = { GridItemSpan(maxLineSpan) }) {
                     Column {
@@ -382,7 +383,7 @@ private fun DrawingCard(
             BitmapFactory.decodeFile(drawing.thumbnailFile.absolutePath)?.asImageBitmap()
         }
         Box(Modifier.fillMaxWidth().height(thumbnailHeight).clip(RoundedCornerShape(12.dp)).background(Color(0xFF292B30)), contentAlignment = Alignment.Center) {
-            image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+            image?.let { Image(it, drawing.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             if (selected != null) Checkbox(selected, onCheckedChange = { onOpen() }, modifier = Modifier.align(Alignment.TopEnd).background(Color(0xDD202125)))
         }
         Row(Modifier.fillMaxWidth().padding(top = 9.dp), verticalAlignment = Alignment.Top) {
