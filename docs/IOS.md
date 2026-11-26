@@ -125,6 +125,33 @@ Keep portable rules in `core`, reusable controls in `shared-ui`, and provide bot
 native adapters. Do not silently flatten unsupported Android project data.
 See [Multiplatform migration](MULTIPLATFORM.md).
 
+## Upload to TestFlight with GitHub Actions
+
+**TipStroke TestFlight** runs on iOS-related pushes to `unstable` on a standard
+GitHub-hosted macOS runner. The runner uses JDK 17 and Xcode 26.0. Each signed
+build uses the workflow run number plus 1000 and the run attempt as its build
+number (for example, `1001.1`). In App Store Connect, use the existing TipStroke
+record for `de.khonager.tipstroke`.
+
+Set the following repository Actions secrets once. From Linux with the GitHub
+CLI authenticated in this checkout, substitute the paths to your own files:
+
+```sh
+base64 -w0 /path/to/distribution.p12 | gh secret set IOS_DISTRIBUTION_P12_BASE64
+gh secret set IOS_CERTIFICATE_PASSWORD
+base64 -w0 /path/to/TipStroke-App-Store.mobileprovision | gh secret set IOS_PROFILE_BASE64
+gh secret set ASC_PRIVATE_KEY < /path/to/AuthKey_KEYID.p8
+gh secret set ASC_KEY_ID
+gh secret set ASC_ISSUER_ID
+```
+
+The distribution certificate must include its private key and match the App Store
+profile. Use the key ID and issuer ID of a team App Store Connect API key with
+upload access. If credentials are missing, the workflow compiles an unsigned
+Release device build and reports the upload as blocked. After adding the secrets,
+open the run and select **Re-run failed jobs**. After Apple processes the upload,
+select the build in TipStroke’s TestFlight tab and assign it to a testing group.
+
 ## Build with Codemagic
 
 The repository-root `codemagic.yaml` defines two workflows:
