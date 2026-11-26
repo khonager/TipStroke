@@ -269,9 +269,10 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         for key in Array(displayTiles.keys) where !keys.contains(key) {
             displayTiles.removeValue(forKey: key)?.removeFromSuperlayer()
         }
+        let dirtyRegions = dirty.map { rect in rect.isNull ? [] : document.mirrorTransforms.map { rect.applying($0) } }
         for key in keys {
             let existed = displayTiles[key] != nil
-            if existed, let dirty, !document.mirrorTransforms.contains(where: { dirty.applying($0).intersects(key.rect) }) { continue }
+            if existed, let dirtyRegions, !dirtyRegions.contains(where: { $0.intersects(key.rect) }) { continue }
             let onion = document.record.animation?.onionSkin == true
             guard onion || snapshot.record.layers.contains(where: { $0.visible && $0.photoCelActive && (snapshot.pixels[$0.id]?[key] != nil || $0.photo?.bounds.intersects(key.rect) == true) }) else {
                 displayTiles.removeValue(forKey: key)?.removeFromSuperlayer(); continue
@@ -483,14 +484,17 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         guard let pointer, touches.contains(pointer) else { return }
         holdWork?.cancel()
         let point = pointer.location(in: self)
+        var changedBounds: CGRect?
         if liveFill || shadowPull || mode == .colorPush {
             gesturePoints.append(point); previewPending = true; renderLivePreview()
             guard self.pointer != nil else { return }
+            changedBounds = document.strokePreviewBounds
             document.endStroke(cancelled: false)
         } else if mode.streamsPaint {
             if elasticShape != nil { previewPending = true; renderLivePreview() }
             if !fitted { consume(pointer, event: event) }
             guard self.pointer != nil else { return }
+            changedBounds = document.strokePreviewBounds
             document.endStroke(cancelled: false)
         } else {
             do {
@@ -510,7 +514,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
         roundStroke.reset(); graphite.begin()
         let endedMode = mode
         self.pointer = nil; fingerSmudge = false; previous = nil; shadowPull = false; shadowTiles = [:]
-        refresh(); refreshSelection(); onCommit?()
+        refresh(changedBounds); refreshSelection(); onCommit?()
         if endedMode == .fill { onFill?(point) }
     }
     func refreshSelection() {

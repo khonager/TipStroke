@@ -465,3 +465,5 @@ bounds queued work independently of the digitizer's sample rate; it intentionall
 uses display-frame sampling rather than replaying every historical pen sample.
 
 On iOS, undo and redo exchange the current tile with the retained tile state. A stroke can touch up to 128 distinct layer tiles within the 32 MiB history budget. Repeated samples in the same tile reuse that slot. Swept brushes retain coverage masks only for tiles receiving coverage. Exceeding the limit rolls back the stroke.
+
+iOS composites unmasked affine photos directly into the destination, including small previews. Stroke completion invalidates its touched bounds and autosaves can hard-link immutable photos from the preceding revision.

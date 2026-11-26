@@ -749,6 +749,16 @@ final class RasterDocument {
                 sourceImage = try photo.source?.exportImage(for: photo.bounds)
             } else { sourceImage = nil }
             context.setAlpha(layer.opacity); context.setBlendMode(blendModes[layer.blendMode] ?? .normal)
+            if layer.photoCelActive, layer.clipSource == nil, let photo = layer.photo, photo.mesh == nil,
+               snapshot.pixels[layer.id]?.isEmpty != false, let image = sourceImage ?? photo.source?.image {
+                context.saveGState()
+                context.clip(to: visible)
+                context.concatenate(photo.transform)
+                context.interpolationQuality = photo.filtered == false ? .none : .medium
+                draw(image, in: context, rect: photo.sourceBounds)
+                context.restoreGState()
+                continue
+            }
             for key in TileKey.intersecting(visible, width: snapshot.record.width, height: snapshot.record.height) {
                 if let image = try layerTile(snapshot, id: layer.id, key: key, sourceImage: sourceImage) { draw(image, in: context, rect: key.rect) }
             }

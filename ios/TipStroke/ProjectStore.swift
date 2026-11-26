@@ -143,8 +143,12 @@ final class ProjectStore {
         if !sources.isEmpty {
             let photos = staging.appendingPathComponent("photos", isDirectory: true)
             try fm.createDirectory(at: photos, withIntermediateDirectories: false)
+            let previousPhotos = (try? revision(snapshot.record.id))?.appendingPathComponent("photos")
             for (id, source) in sources {
-                try source.encoded.write(to: photos.appendingPathComponent(id.uuidString + ".png"))
+                let name = id.uuidString + ".png"
+                let target = photos.appendingPathComponent(name)
+                if let previousPhotos, (try? fm.linkItem(at: previousPhotos.appendingPathComponent(name), to: target)) != nil { continue }
+                try source.encoded.write(to: target)
             }
         }
         guard snapshot.record.layers.allSatisfy({ $0.photo == nil || $0.photo?.source != nil }) else {
