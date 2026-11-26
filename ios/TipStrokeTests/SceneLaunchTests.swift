@@ -4,11 +4,12 @@ import XCTest
 
 final class SceneLaunchTests: XCTestCase {
     @MainActor
-    func testGalleryWaitsForDocumentRecordsBeforeShowingSavedRows() {
+    func testGalleryWaitsForDocumentRecordsBeforeShowingSavedItems() {
         let gallery = GalleryController()
         let id = UUID()
         gallery.layout = GalleryStacks(order: [id])
-        XCTAssertEqual(gallery.tableView(gallery.tableView, numberOfRowsInSection: 0), 0)
+        gallery.loadViewIfNeeded()
+        XCTAssertEqual(gallery.collectionView(gallery.collectionView, numberOfItemsInSection: 0), 0)
     }
 
     @MainActor
