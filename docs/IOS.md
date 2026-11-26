@@ -77,7 +77,7 @@ into permanent tiles. On supported iPads, Pencil hover outlines the brush footpr
 roll rotates the stamp tip. Squeeze can open drawing tools, show colors or toggle
 the eraser according to the system Pencil preference.
 
-The editor shares the Android color theme for brush, palette and blend panels. More canvas actions opens resize, animation, preview and export. The top strip holds gallery, undo, redo, finger mode, current color, layers and more actions. The bottom dock holds tip previews, drawing tools, moving tools and the size/opacity toggle. The sliders start closed. More actions includes Fit canvas, Brush settings and Quick colors. Drag either
+The editor shares the Android color theme for brush, palette and blend panels. More canvas actions opens resize, animation, preview and export. Gallery, undo, redo and Fit stay at the upper left in both orientations. Finger mode, color, layers and More stay at the upper right. Wide windows also show export, resize and animation shortcuts. Quick colors opens beneath the right group. The bottom dock holds tip previews, drawing tools, moving tools and the size/opacity toggle. The sliders start closed. More actions includes Fit canvas, Brush settings and Quick colors. Drag either
 track to preview the colored footprint at the current zoom. Use the visible minus and plus buttons for single-unit adjustments. Landscape places
 the two vertical tracks side by side. The default editor uses dark solid panels and a coral accent. Size can use document pixels or screen
 points for regular brushes and erasers. The eraser keeps its own tuning. Hold a swatch to open its tip picker. The picker, library, dock and brush settings show

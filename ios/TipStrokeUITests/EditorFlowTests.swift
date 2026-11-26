@@ -21,7 +21,6 @@ final class EditorFlowTests: XCTestCase {
         finger.press(forDuration: 0.1, thenDragTo: finger.withOffset(CGVector(dx: 60, dy: 0)))
         XCTAssertGreaterThan(canvas.frame.midX, before + 10)
         XCTAssertFalse(app.buttons["Undo"].isEnabled)
-        app.buttons["More canvas actions"].tap()
         app.buttons["Fit canvas"].tap()
         fingerMode.tap()
         XCTAssertEqual(fingerMode.value as? String, "Draw")
@@ -123,6 +122,12 @@ final class EditorFlowTests: XCTestCase {
         XCTAssertTrue(wheel.waitForExistence(timeout: 10), app.debugDescription)
         app.navigationBars.buttons["Done"].tap()
         XCUIDevice.shared.orientation = .landscapeLeft
+        for label in ["Gallery", "Undo", "Redo", "Fit canvas", "Brush color", "Layers", "More canvas actions"] {
+            let frame = app.buttons[label].frame
+            XCTAssertEqual(frame.midY, gallery.frame.midY, accuracy: 2, label)
+            XCTAssertLessThan(frame.midY, app.frame.minY + app.frame.height * 0.25, label)
+        }
+        XCTAssertLessThan(app.buttons["Fit canvas"].frame.maxX, app.buttons["Brush color"].frame.minX)
         XCTAssertTrue(app.buttons["Layers"].isHittable)
         app.buttons["Layers"].tap()
         XCTAssertTrue(app.buttons["Import image"].exists)

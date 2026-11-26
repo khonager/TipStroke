@@ -30,7 +30,8 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private var palette: ToolPalette?
     private var portraitLayout: [NSLayoutConstraint] = []
     private var landscapeLayout: [NSLayoutConstraint] = []
-    private weak var actionStack: UIStackView?
+    private var topButtonWidths: [NSLayoutConstraint] = []
+    private var wideActions: [UIButton] = []
     private var navigator: CanvasNavigator?
     private var panels: [UIVisualEffectView] = []
     private var sideDock = false
@@ -143,18 +144,22 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             if enable && FingerBinding.drag.command == .navigate { FingerBinding.drag.set(.draw) }
             self.sharedControls.setFingerDrawing(enabled: enable)
         }
-        let top = UIStackView(arrangedSubviews: [back, undoButton, redoButton, fingerMode, color, layers, share])
-        actionStack = top
-        let commandScroll = UIScrollView()
-        commandScroll.showsHorizontalScrollIndicator = false
-        commandScroll.showsVerticalScrollIndicator = false
-        top.translatesAutoresizingMaskIntoConstraints = false
-        commandScroll.addSubview(top)
-        let content = commandScroll.contentLayoutGuide
-        NSLayoutConstraint.activate([top.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            top.trailingAnchor.constraint(equalTo: content.trailingAnchor), top.topAnchor.constraint(equalTo: content.topAnchor),
-            top.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
-        let topPanel = panel(UIStackView(arrangedSubviews: [commandScroll]))
+        let fit = button("Fit canvas", symbol: "scope") { [weak self] in self?.viewport.fit() }
+        let export = button("Export image", symbol: "square.and.arrow.up") { [weak self] in self?.showImageExport() }
+        let resize = button("Resize canvas", symbol: "crop") { [weak self] in self?.resizeCanvas() }
+        let animate = button("Animate", symbol: "film") { [weak self] in self?.showTimeline() }
+        wideActions = [export, resize, animate]
+        for item in wideActions { item.isHidden = true }
+        let history = [back, undoButton, redoButton, fit]
+        let actions = [fingerMode, color, layers, export, resize, animate, share]
+        for item in history + actions {
+            let width = item.widthAnchor.constraint(equalToConstant: 44)
+            width.priority = .defaultHigh
+            width.isActive = true
+            topButtonWidths.append(width)
+        }
+        let historyPanel = panel(UIStackView(arrangedSubviews: history))
+        let actionsPanel = panel(UIStackView(arrangedSubviews: actions))
         let quickPanel = panel(UIStackView(arrangedSubviews: [quickColors.view!]))
         quickPanel.isHidden = true
         self.quickPanel = quickPanel
@@ -204,44 +209,38 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
 
         let bottomPanel = panel(bottom)
         let safe = view.safeAreaLayoutGuide
-        portraitLayout = [
+        NSLayoutConstraint.activate([
             viewport.leadingAnchor.constraint(equalTo: view.leadingAnchor), viewport.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             viewport.topAnchor.constraint(equalTo: view.topAnchor), viewport.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            topPanel.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4), topPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
-            topPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 380), topPanel.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 8),
-            topPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -8),
-            commandScroll.heightAnchor.constraint(equalToConstant: 44),
-            top.heightAnchor.constraint(equalTo: commandScroll.frameLayoutGuide.heightAnchor),
-            commandScroll.widthAnchor.constraint(equalTo: top.widthAnchor).withPriority(.defaultHigh),
+            historyPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 4),
+            historyPanel.topAnchor.constraint(equalTo: safe.topAnchor, constant: 4),
+            actionsPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4),
+            actionsPanel.topAnchor.constraint(equalTo: historyPanel.topAnchor),
+            historyPanel.trailingAnchor.constraint(lessThanOrEqualTo: actionsPanel.leadingAnchor, constant: -4),
+            quickPanel.trailingAnchor.constraint(equalTo: actionsPanel.trailingAnchor),
+            quickPanel.topAnchor.constraint(equalTo: actionsPanel.bottomAnchor, constant: 4),
+        ])
+        portraitLayout = [
             dock.heightAnchor.constraint(equalToConstant: 44),
-            quickPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
-            quickPanel.topAnchor.constraint(equalTo: topPanel.bottomAnchor, constant: 4),
             bottomPanel.centerXAnchor.constraint(equalTo: safe.centerXAnchor), bottomPanel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -4),
             bottomPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 480), bottomPanel.leadingAnchor.constraint(greaterThanOrEqualTo: safe.leadingAnchor, constant: 4),
             bottomPanel.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -4),
             bottomPanel.widthAnchor.constraint(equalTo: safe.widthAnchor, constant: -12).withPriority(.defaultHigh),
         ]
         landscapeLayout = [
-            viewport.leadingAnchor.constraint(equalTo: view.leadingAnchor), viewport.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            viewport.topAnchor.constraint(equalTo: view.topAnchor), viewport.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            topPanel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 4), topPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
-            bottomPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4), bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
-            commandScroll.widthAnchor.constraint(equalToConstant: 44),
-            top.widthAnchor.constraint(equalTo: commandScroll.frameLayoutGuide.widthAnchor),
-            commandScroll.heightAnchor.constraint(equalTo: top.heightAnchor).withPriority(.defaultHigh),
-            topPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -8),
+            bottomPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -4),
+            bottomPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor, constant: 24),
             adjustments.widthAnchor.constraint(equalToConstant: 112).withPriority(.defaultHigh),
             dock.widthAnchor.constraint(equalToConstant: 44),
             bottomPanel.heightAnchor.constraint(lessThanOrEqualToConstant: 480),
-            bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -8),
-            bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -8).withPriority(.defaultHigh),
-            quickPanel.leadingAnchor.constraint(equalTo: topPanel.trailingAnchor, constant: 4),
-            quickPanel.centerYAnchor.constraint(equalTo: safe.centerYAnchor),
+            bottomPanel.heightAnchor.constraint(lessThanOrEqualTo: safe.heightAnchor, constant: -60),
+            bottomPanel.heightAnchor.constraint(equalTo: safe.heightAnchor, constant: -60).withPriority(.defaultHigh),
         ]
         for action in [tools, movingTools, adjustButton] {
             portraitLayout.append(action.widthAnchor.constraint(equalToConstant: 44))
             landscapeLayout.append(action.heightAnchor.constraint(equalToConstant: 44))
         }
+        view.bringSubviewToFront(quickPanel)
         NSLayoutConstraint.activate(portraitLayout)
         quickPanel.widthAnchor.constraint(equalToConstant: 208).isActive = true
         let hint = UIButton(type: .system)
@@ -303,6 +302,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
         let safe = view.safeAreaLayoutGuide.layoutFrame
+        // Keep both command groups on screen in narrow split views as well.
+        let buttonWidth = min(44, max(1, (safe.width - 44) / 8))
+        for width in topButtonWidths where width.constant != buttonWidth { width.constant = buttonWidth }
+        for action in wideActions { action.isHidden = safe.width < 600 }
         let useSideDock = safe.width > safe.height && safe.width >= 560 && safe.height >= 280
         guard useSideDock != sideDock else { return }
         NSLayoutConstraint.deactivate(sideDock ? landscapeLayout : portraitLayout)
@@ -310,7 +313,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         sizeControl.setVertical(useSideDock)
         opacityControl.setVertical(useSideDock)
         adjustments.spacing = useSideDock ? 0 : 8
-        actionStack?.axis = useSideDock ? .vertical : .horizontal
         dock.axis = useSideDock ? .vertical : .horizontal
         bottom.axis = useSideDock ? .horizontal : .vertical
         sharedControls.updateDockAxis(vertical: useSideDock)
@@ -442,7 +444,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         button.setImage(UIImage(systemName: symbol), for: .normal); button.accessibilityLabel = label
         button.addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hoverControl(_:))))
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
     }
     @objc private func hoverControl(_ gesture: UIHoverGestureRecognizer) {
