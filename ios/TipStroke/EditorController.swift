@@ -790,13 +790,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
                 } catch { self.showError(error) }
             }
         }
-        palette.add("Reselect previous area", "arrow.uturn.backward.circle") { [weak self] in
-            guard let self else { return }
-            guard self.document.restoreSelection() else { self.showError(DrawingError.message("Make a selection in this drawing first.")); return }
-            self.activateMode(.lasso)
-            self.viewport.canvas.refreshSelection()
-        }
-        palette.add("Transform", "perspective") { [weak self] in self?.showTransformEditor() }
         palette.add("Selection actions", "ellipsis") { [weak self] in self?.selectionActions() }
         palette.add(navigator == nil ? "Canvas preview" : "Hide canvas preview", "picture.in.picture") { [weak self] in self?.toggleCanvasPreview() }
         palette.add("Fit canvas", "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit() }

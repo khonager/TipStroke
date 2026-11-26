@@ -179,7 +179,7 @@ replaces size/opacity controls with an icon palette in the same area. Lasso,
 rectangle and ellipse sit above New/Add/Subtract/Intersect; active choices are
 highlighted. Each icon has an accessibility label and a hover/hold explanation. Choosing a drawing tool restores tip controls without
 clearing an existing selection or Reference strokes. There is no permanent
-selection banner over the canvas. Select all, Invert, Deselect, Move, Transform,
+selection banner over the canvas. Select all, Invert, Deselect, Move,
 Erase selected pixels, Copy to layer and Cut to layer are direct actions.
 Deselect removes only the boundary; Erase selected pixels removes artwork and
 supports Undo. Selecting Select clears the eraser state, keeping the active icon
@@ -190,9 +190,9 @@ icon grid, slide onto a tool, and lift to choose it. The name appears immediatel
 shows the active tool icon and returns to the eraser icon when a tip is selected. Lift outside the grid to cancel. In Settings, turn off **Hold for
 drawing tools** to open the grid with a tap instead.
 
-While painting with a selection, tap **Deselect** or press Android Back to clear its boundary. In the selection panel, tap **Repeat last selection** to restore it.
+While painting with a selection, tap **Deselect** or press Android Back to clear its boundary. In the selection panel, tap **Reselect previous area** to restore it.
 
-Choose **Reselect previous area** in the grid or hold a selection shape icon to recall the last area, including after deselecting and switching to
+Hold a selection shape icon to recall the last area, including after deselecting and switching to
 a new layer. One document-space region is retained; changing documents or
 resizing the canvas resets recall. A normal brush/eraser switch keeps the current
 selection boundary.
@@ -292,9 +292,7 @@ Tap a swatch to equip it. Tap the active swatch or hold any swatch to open the t
 picker for its slot. A selection updates the preview in place. The dock shows as
 many slots as fit along its measured axis and remembers hidden slots across layout
 changes. The picker opens the full library for creation, import and editing.
-Tap Moving tools for selection, selection recall, transform, and
-Fit canvas. Transform opens the image controls for an active image layer, or
-opens the raster transform for a selected area. Drawing tools contains erasing,
+Tap Moving tools for Select or Fit canvas. Inside Select, Move selected pixels opens the transform controls for a paint selection. An image layer offers Transform image. Drawing tools contains erasing,
 smudging, eligible pixel tools, and Tip Studio. Adjust retains the compact phone's
 size/opacity toggle; custom-tip studio adjustment opens its saved definition.
 

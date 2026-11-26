@@ -425,17 +425,8 @@ fun CanvasScreen(
         selectionTransformOpen = true
         return true
     }
-    fun transformFromDock() {
-        if (selectionTransformOpen) return
-        if (layers.any { it.id == selectedLayerId && it.kind == LayerKind.IMAGE }) {
-            openImageTransform()
-            return
-        }
-        selectSelectionTool()
-        if (!beginSelectionTransform()) message = "Select an area on a paint layer to transform it."
-    }
     val activeDockTool = when {
-        imageTransforming || selectionTransformOpen -> "Transform"
+        imageTransforming || selectionTransformOpen -> "Select"
         selectToolActive -> "Select"
         colorPushing -> "Color push"
         lassoFill -> "Lasso fill"
@@ -797,8 +788,7 @@ fun CanvasScreen(
                 brushActive = activeDockTool == null || activeDockTool == pixelTool?.displayName, toolLabel = activeDockTool,
                 onLibrary = { pickerSlot = it; pickingEraser = false },
                 onBrush = ::selectDrawingTip, onSelect = ::selectSelectionTool,
-                onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
-                onTransform = ::transformFromDock, onFitCanvas = { surface?.resetView() },
+                onFitCanvas = { surface?.resetView() },
                 onEraser = { if (erasing) pickingEraser = true else toggleEraser() }, onSmudge = ::selectSmudge,
                 perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                     onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
@@ -874,8 +864,7 @@ fun CanvasScreen(
                     brushActive = activeDockTool == null || activeDockTool == pixelTool?.displayName, toolLabel = activeDockTool,
                     onLibrary = { pickerSlot = it; pickingEraser = false },
                     onBrush = ::selectDrawingTip, onSelect = ::selectSelectionTool,
-                    onReselect = { selectSelectionTool(); if (surface?.restoreSelection() != true) message = "Make a selection first, then choose Reselect previous area." },
-                    onTransform = ::transformFromDock, onFitCanvas = { surface?.resetView() },
+                    onFitCanvas = { surface?.resetView() },
                     onEraser = { if (erasing) pickingEraser = true else toggleEraser() }, onSmudge = ::selectSmudge,
                     perspectiveMode = perspectiveMode, onPerspectiveMode = { perspectiveMode=it; surface?.setPerspectiveMode(it) },
                 onVanishingPoint = { surface?.placeVanishingPoint(it); message="Tap to place the vanishing point. Pan or zoom out to place it beyond the canvas." },
@@ -978,8 +967,7 @@ fun CanvasScreen(
             onSelectAll = { surface?.selectAll() },
             onReselect = { selectSelectionTool(); surface?.restoreSelection() },
             onDuplicate = { surface?.duplicateSelection() },
-            canTransform = selectedLayerIds.isNotEmpty() && selectedLayerIds.all { id -> layers.any { it.id == id && it.kind == LayerKind.RASTER } },
-            onTransform = { beginSelectionTransform() },
+            onImageTransform = if (layers.any { it.id == selectedLayerId && it.kind == LayerKind.IMAGE }) ::openImageTransform else null,
             onClear = { movingSelection = false; selectionMode = true; surface?.clearSelection() },
             modifier = if (compactPhone) Modifier.align(if (landscapeDock) tipEdge else Alignment.BottomCenter)
                 .safeDrawingPadding().padding(start = if (landscapeDock) 64.dp else 8.dp, end = if (landscapeDock) 68.dp else 8.dp, top = 8.dp, bottom = if (landscapeDock) 8.dp else 82.dp + timelineClearance)

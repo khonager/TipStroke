@@ -55,7 +55,7 @@ internal fun BrushFavoritesDock(
     onStudio: () -> Unit, onTune: () -> Unit, tuneDescription: String,
     brushActive: Boolean, modifier: Modifier = Modifier, toolLabel: String? = null,
     showPixelTips: Boolean = false, reverseCells: Boolean = false,
-    onReselect: () -> Unit = {}, onTransform: () -> Unit = {}, onFitCanvas: () -> Unit = {},
+    onFitCanvas: () -> Unit = {},
     onAdjustments: () -> Unit = {}, onColorizeMask: () -> Unit = {},
     onLassoFill: () -> Unit = {}, onColorPush: () -> Unit = {},
     assists: dev.tipstroke.core.drawing.BrushAssists = dev.tipstroke.core.drawing.BrushAssists(),
@@ -130,8 +130,6 @@ internal fun BrushFavoritesDock(
                 }
                 val movingTools = listOf(
                     DockTool("Select", Icons.Outlined.SelectAll, onSelect),
-                    DockTool("Transform", Icons.Outlined.Transform, onTransform),
-                    DockTool("Reselect previous area", Icons.Outlined.History, onReselect),
                     DockTool("Fit canvas", Icons.Outlined.FitScreen, onFitCanvas),
                 )
                 val activeMovingTool = movingTools.find { !brushActive && it.label == toolLabel }

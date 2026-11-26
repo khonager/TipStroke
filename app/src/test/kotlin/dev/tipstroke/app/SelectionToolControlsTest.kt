@@ -57,7 +57,7 @@ class SelectionToolControlsTest {
         }
         compose.onNodeWithContentDescription("Select all").performClick()
         compose.onNodeWithContentDescription("Deselect").performClick().assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Repeat last selection").performClick()
+        compose.onNodeWithContentDescription("Reselect previous area").performClick()
         compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
         repeat(2) {
             choose("Drawing tools", "Eraser"); toolIs("Drawing tools", "Eraser")
@@ -66,9 +66,9 @@ class SelectionToolControlsTest {
             compose.onNodeWithContentDescription("Select all").assertIsDisplayed()
         }
         compose.onNodeWithContentDescription("Deselect").performClick()
-        choose("Moving tools", "Reselect previous area")
+        compose.onNodeWithContentDescription("Reselect previous area").performClick()
         compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
-        choose("Moving tools", "Transform")
+        compose.onNodeWithContentDescription("Move selected pixels").performClick()
         compose.onNodeWithContentDescription("Cancel transform").assertIsDisplayed()
     }
     @Test fun transformPanelExposesMeshAndSharedActions() {
@@ -101,34 +101,31 @@ class SelectionToolControlsTest {
         org.junit.Assert.assertEquals(1.5f,scale.first,.001f)
         org.junit.Assert.assertEquals(1.5f,scale.second,.001f)
     }
-    @Test fun selectionMoveAndTransformBothOpenFullIconToolbar() {
+    @Test fun selectionMoveOpensFullTransformToolbar() {
         Robolectric.buildActivity(ComponentActivity::class.java).also { activity=it }.setup().get().setContent {
             MaterialTheme { CanvasScreen(initialSelectionOpen=true) }
         }
         compose.onNodeWithContentDescription("Select all").performClick()
-        for(entry in listOf("Move selected pixels","Transform selected pixels")) {
-            compose.onNodeWithContentDescription(entry).performClick()
-            compose.onNodeWithContentDescription("Uniform").assertIsDisplayed()
-            compose.onNodeWithContentDescription("Freeform").assertIsDisplayed()
-            compose.onNodeWithContentDescription("Distort").assertIsDisplayed()
-            compose.onNodeWithContentDescription("Warp").performClick()
-            compose.onNodeWithText("4 × 4").assertIsDisplayed()
-            if(entry=="Move selected pixels") {
-                val screenshot=java.io.File("build/reports/selection-transform-toolbar.png")
-                screenshot.parentFile.mkdirs()
-                compose.runOnIdle {
-                    val decor=requireNotNull(activity).get().window.decorView
-                    val bitmap=android.graphics.Bitmap.createBitmap(decor.width,decor.height,android.graphics.Bitmap.Config.ARGB_8888)
-                    decor.draw(android.graphics.Canvas(bitmap))
-                    screenshot.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
-                    bitmap.recycle()
-                }
-            }
-            compose.onNodeWithContentDescription("Flip horizontal").assertIsDisplayed()
-            compose.onNodeWithContentDescription("Move selected pixels").assertDoesNotExist()
-            compose.onNodeWithContentDescription("Cancel transform").performClick()
-            compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
+        compose.onNodeWithContentDescription("Transform selected pixels").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Move selected pixels").performClick()
+        compose.onNodeWithContentDescription("Uniform").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Freeform").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Distort").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Warp").performClick()
+        compose.onNodeWithText("4 × 4").assertIsDisplayed()
+        val screenshot=java.io.File("build/reports/selection-transform-toolbar.png")
+        screenshot.parentFile.mkdirs()
+        compose.runOnIdle {
+            val decor=requireNotNull(activity).get().window.decorView
+            val bitmap=android.graphics.Bitmap.createBitmap(decor.width,decor.height,android.graphics.Bitmap.Config.ARGB_8888)
+            decor.draw(android.graphics.Canvas(bitmap))
+            screenshot.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
+            bitmap.recycle()
         }
+        compose.onNodeWithContentDescription("Flip horizontal").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Move selected pixels").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Cancel transform").performClick()
+        compose.onNodeWithContentDescription("Deselect").assertIsEnabled()
         compose.onNodeWithContentDescription("Move selected pixels").performClick()
         compose.onNodeWithContentDescription("Rotate 45°").performClick()
         compose.onNodeWithContentDescription("Apply transform").performClick()

@@ -30,7 +30,7 @@ internal fun SelectionControls(
     onInvert: () -> Unit, onCut: () -> Unit, onDelete: () -> Unit,
     hasSelection: Boolean, tool: SelectionTool, moving: Boolean, canMove: Boolean, canDuplicate: Boolean,
     onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit,
-    onDuplicate: () -> Unit, onClear: () -> Unit, canTransform: Boolean, onTransform: () -> Unit,
+    onDuplicate: () -> Unit, onClear: () -> Unit, onImageTransform: (() -> Unit)? = null,
     onReselect: () -> Unit, modifier: Modifier = Modifier,
     onCropImage: (() -> Unit)? = null,
     onShadowPull: () -> Unit = {}, shadowPullActive: Boolean = false,
@@ -68,11 +68,11 @@ internal fun SelectionControls(
                     horizontalArrangement = Arrangement.Center) {
                     if (onCropImage != null) SelectionAction("Crop image", Icons.Outlined.Crop, enabled = hasSelection, onClick = onCropImage)
                     SelectionAction("Select all", Icons.Outlined.SelectAll, onLongClick = onReselect, onClick = onSelectAll)
-                    SelectionAction("Repeat last selection", Icons.Outlined.History, onClick = onReselect)
+                    SelectionAction("Reselect previous area", Icons.Outlined.History, onClick = onReselect)
                     SelectionAction("Invert selection", Icons.Outlined.FlipToBack, onClick = onInvert)
                     SelectionAction("Deselect", Icons.Outlined.Deselect, enabled = hasSelection, onClick = onClear)
                     SelectionAction("Move selected pixels", Icons.Outlined.OpenWith, moving, hasSelection && canMove, onClick = onMove)
-                    SelectionAction("Transform selected pixels", Icons.Outlined.Transform, enabled = hasSelection && canTransform, onClick = onTransform)
+                    if (onImageTransform != null) SelectionAction("Transform image", Icons.Outlined.Transform, onClick = onImageTransform)
                     SelectionAction("Shadow pull", Icons.Outlined.Tonality, active = shadowPullActive, enabled = hasSelection && canDuplicate, onClick = onShadowPull)
                     SelectionAction("Erase selected pixels", Icons.Outlined.DeleteOutline, enabled = hasSelection && canDuplicate, onClick = onDelete)
                     SelectionAction("Copy selection to new layer", Icons.Outlined.ContentCopy, enabled = hasSelection && canDuplicate, onClick = onDuplicate)
