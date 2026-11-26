@@ -617,3 +617,5 @@ the editor overlay. Committed drawing changes refresh the visible thumbnail.
 Landscape phone size and opacity controls share a pair of vertical tracks along the tip rail. Portrait keeps paired horizontal tracks above the tips.
 
 The gallery remembers Compact, Medium or Large preview size. Pinch outward on a drawing to inspect it. Release below half the fitted preview size to return to the grid. Beyond that threshold the preview fills the screen and accepts further zoom. Pinching below half size again or closing the preview returns to the same gallery position.
+
+A quick two-finger pinch inward fits the canvas on release. Close the span by roughly a third within 280 milliseconds and lift while still moving inward. A slower pinch, a pause, or reversing direction keeps manual zoom. The Fit command uses the same 220 ms eased return to center, scale and upright rotation. New input interrupts the transition.

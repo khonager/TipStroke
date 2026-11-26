@@ -188,6 +188,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private var activeDrawingPointerId: Int? = null
     private var activeMousePan = false
     private var lastMousePan = android.graphics.PointF()
+    private val fitPinch = dev.tipstroke.core.model.QuickFitPinch()
     private var gestureStart = emptyMap<Int, android.graphics.PointF>()
     private var lastGestureCentroid = android.graphics.PointF()
     private var lastGestureSpan = 0f
@@ -892,7 +893,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
 
     fun undo() { if (shadowPullArmed) { cancelShadowPull(); return }; if (reducingResolution) return; if (fillRequest != null) { cancelFill(); return }; cancelFill(); layerStack.selectedStore()?.history?.let { if (it.undo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
     fun redo() { if (reducingResolution) return; cancelFill(); layerStack.selectedStore()?.history?.let { if (it.redo()) { rasterView.invalidate(); notifyHistory(); notifyVisiblePalette(); notifyLayers() } } }
-    fun resetView() = rasterView.fitCanvas()
+    fun resetView(animated: Boolean = false) = rasterView.fitCanvas(animated = animated)
     val canvasWidthPx: Int get() = layerStack.canvasWidth
     val canvasHeightPx: Int get() = layerStack.canvasHeight
     val hasCanvasResizeChanges: Boolean get() = resizeOverlay?.hasChanges == true
@@ -2085,6 +2086,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) rasterView.stopFitting()
         if (adjustmentJob != null || rasterView.adjustmentPreview != null) return true
         if (!isEnabled || importingClip || pendingAnimationFrame != null) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !mediaSeeking && mediaCelLoading == null &&
@@ -2567,6 +2569,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     editPhoto(document.x - singleLastDocument.x, document.y - singleLastDocument.y)
                 } else when (settings.gestures.oneFingerDrag) {
                     FingerAction.NAVIGATE -> if (gestureMoved) {
+                        rasterView.stopFitting()
                         val old = rasterView.transform
                         rasterView.updateTransform(old.panX + event.x - singleLast.x, old.panY + event.y - singleLast.y, old.scale, old.rotationDegrees)
                     }
@@ -2594,6 +2597,7 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
                     return true
                 }
                 if (event.actionMasked == MotionEvent.ACTION_POINTER_UP && (isTransformingImage() || gestureMoved)) {
+                    if (!isTransformingImage() && event.pointerCount == 2 && fitPinch.finish(event.eventTime)) resetView(animated = true)
                     rebaseToRemainingPointer(event)
                     if (isTransformingImage()) notifyLayers()
                     notifyHistory()
@@ -2939,12 +2943,15 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
     private fun beginGesture(event: MotionEvent) {
         gestureStart = (0 until event.pointerCount).associate { event.getPointerId(it) to android.graphics.PointF(event.getX(it), event.getY(it)) }
         lastGestureCentroid = centroid(event); lastGestureSpan = span(event); lastGestureAngle = angle(event)
+        val fingers = event.pointerCount == 2 && (0..1).all { event.getToolType(it) == MotionEvent.TOOL_TYPE_FINGER }
+        fitPinch.begin(if (fingers && !isTransformingImage()) lastGestureSpan else 0f, event.eventTime)
         gestureMoved = false; gestureDownAt = SystemClock.uptimeMillis()
     }
 
     private fun updateGesture(event: MotionEvent) {
         val center = centroid(event); val newSpan = span(event); val newAngle = angle(event)
         val dx = center.x - lastGestureCentroid.x; val dy = center.y - lastGestureCentroid.y
+        fitPinch.update(newSpan, event.eventTime)
         val scaleFactor = if (lastGestureSpan > 0f) newSpan / lastGestureSpan else 1f
         val rawAngleDelta = normalizedAngle(newAngle - lastGestureAngle)
         val angleDelta = if (settings.gestures.rotationLocked) 0f else rawAngleDelta

@@ -150,7 +150,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             if enable && FingerBinding.drag.command == .navigate { FingerBinding.drag.set(.draw) }
             self.sharedControls.setFingerDrawing(enabled: enable)
         }
-        let fit = button("Fit canvas", symbol: "scope") { [weak self] in self?.viewport.fit() }
+        let fit = button("Fit canvas", symbol: "scope") { [weak self] in self?.viewport.fit(animated: true) }
         let export = button("Export image", symbol: "square.and.arrow.down") { [weak self] in self?.openExportActions() }
         let resize = button("Resize canvas", symbol: "crop") { [weak self] in self?.resizeCanvas() }
         let animate = button("Animate", symbol: "film") { [weak self] in self?.showTimeline() }
@@ -792,7 +792,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         }
         palette.add("Selection actions", "ellipsis") { [weak self] in self?.selectionActions() }
         palette.add(navigator == nil ? "Canvas preview" : "Hide canvas preview", "picture.in.picture") { [weak self] in self?.toggleCanvasPreview() }
-        palette.add("Fit canvas", "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit() }
+        palette.add("Fit canvas", "arrow.up.left.and.arrow.down.right") { [weak self] in self?.viewport.fit(animated: true) }
     }
 
     func activateMode(_ mode: CanvasMode) {
@@ -1076,7 +1076,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     }
     @objc private func keyUndo() { finishCanvasInteraction(); document.undo(); changed() }
     @objc private func keyRedo() { finishCanvasInteraction(); document.redo(); changed() }
-    @objc private func keyFit() { viewport.fit() }
+    @objc private func keyFit() { viewport.fit(animated: true) }
 
 }
 

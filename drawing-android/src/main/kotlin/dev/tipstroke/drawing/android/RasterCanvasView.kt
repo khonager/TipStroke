@@ -178,7 +178,11 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         updateTransform(screenX - anchor[0], screenY - anchor[1], scale, rotation)
     }
 
-    fun fitCanvas(rotationDegrees: Float = 0f) {
+    private var fitAnimator: android.animation.ValueAnimator? = null
+    fun stopFitting() { fitAnimator?.cancel(); fitAnimator = null }
+
+    fun fitCanvas(rotationDegrees: Float = 0f, animated: Boolean = false) {
+        stopFitting()
         if (width == 0 || height == 0) return
         val radians = Math.toRadians(rotationDegrees.toDouble())
         val rotatedWidth = kotlin.math.abs(kotlin.math.cos(radians)) * layerStack.canvasWidth +
@@ -186,7 +190,26 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
         val rotatedHeight = kotlin.math.abs(kotlin.math.sin(radians)) * layerStack.canvasWidth +
             kotlin.math.abs(kotlin.math.cos(radians)) * layerStack.canvasHeight
         val scale = minOf(width * .76f / rotatedWidth.toFloat(), height * .83f / rotatedHeight.toFloat())
-        updateTransform(width / 2f, height / 2f, scale, rotationDegrees)
+        val cx = width / 2f
+        val cy = height / 2f
+        if (!animated || !android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            updateTransform(cx, cy, scale, rotationDegrees)
+            return
+        }
+        val start = transform
+        val anchor = screenToDocument(cx, cy)
+        val turn = ((rotationDegrees - start.rotationDegrees) % 360f + 540f) % 360f - 180f
+        fitAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 220
+            interpolator = android.view.animation.DecelerateInterpolator(1.6f)
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                val zoom = start.scale * kotlin.math.exp(kotlin.math.ln(scale / start.scale) * t)
+                updateTransformAround(anchor.x + (layerStack.canvasWidth / 2f - anchor.x) * t,
+                    anchor.y + (layerStack.canvasHeight / 2f - anchor.y) * t, cx, cy, zoom, start.rotationDegrees + turn * t)
+            }
+            start()
+        }
     }
 
     private fun rebuildMatrix() {
@@ -227,6 +250,7 @@ internal class RasterCanvasView(context: Context, var layerStack: LayerStack) : 
     }
 
     override fun onDetachedFromWindow() {
+        stopFitting()
         airbrushPreview.close()
         super.onDetachedFromWindow()
     }

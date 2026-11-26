@@ -416,6 +416,7 @@ final class CanvasView: UIView, UIGestureRecognizerDelegate {
     }
     func updateVisibleTiles() { refresh(.null) }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        viewport?.stopFitting()
         finishFillReveal()
         hoverLayer.path = nil
         let all = event?.allTouches?.filter { $0.phase != .ended && $0.phase != .cancelled } ?? []
@@ -741,6 +742,12 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
     }
     let canvas: CanvasView
     private var fittedSize = CGSize.zero
+    private let quickFit = QuickFitPinch()
+    private var fitLink: CADisplayLink?
+    private var fitStart: CFTimeInterval = 0
+    private var fitStartAngle: CGFloat = 0
+    private var fitStartScale: CGFloat = 1
+    private var fitStartCenter = CGPoint.zero
     init(document: RasterDocument) {
         canvas = CanvasView(document: document)
         super.init(frame: .zero)
@@ -800,16 +807,43 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
         layoutNavigationArea()
         canvas.updateVisibleTiles()
     }
-    func fit() {
+    func stopFitting() { fitLink?.invalidate(); fitLink = nil }
+    override func didMoveToWindow() { super.didMoveToWindow(); if window == nil { stopFitting() } }
+    private var fitScale: CGFloat { min(0.76 * bounds.width / canvas.bounds.width, 0.83 * bounds.height / canvas.bounds.height) }
+    func fit(animated: Bool = false) {
+        stopFitting()
         canvas.cancelStroke()
+        if animated && !UIAccessibility.isReduceMotionEnabled && window != nil {
+            fitStart = CACurrentMediaTime()
+            fitStartAngle = atan2(sin(angle), cos(angle))
+            fitStartScale = zoomScale
+            fitStartCenter = canvas.convert(CGPoint(x: bounds.midX, y: bounds.midY), from: self)
+            let link = CADisplayLink(target: self, selector: #selector(advanceFit))
+            fitLink = link
+            link.add(to: .main, forMode: .common)
+            return
+        }
         angle = 0; layoutPage()
-        let scale = min(0.76 * bounds.width / canvas.bounds.width, 0.83 * bounds.height / canvas.bounds.height)
+        let scale = fitScale
         maximumZoomScale = max(256, scale)
         minimumZoomScale = min(scale / 4, 1)
         setZoomScale(scale, animated: false)
         layoutNavigationArea()
         contentOffset = CGPoint(x: (contentSize.width - bounds.width) / 2,
                                 y: (contentSize.height - bounds.height) / 2)
+    }
+    @objc private func advanceFit() {
+        let elapsed = min(1, (CACurrentMediaTime() - fitStart) / 0.22)
+        if elapsed >= 1 { fit(); return }
+        let t = CGFloat(1 - pow(1 - elapsed, 3.2))
+        angle = fitStartAngle * (1 - t)
+        layoutPage()
+        setZoomScale(fitStartScale * exp(log(fitScale / fitStartScale) * t), animated: false)
+        layoutNavigationArea()
+        let center = CGPoint(x: fitStartCenter.x + (canvas.bounds.midX - fitStartCenter.x) * t,
+                             y: fitStartCenter.y + (canvas.bounds.midY - fitStartCenter.y) * t)
+        let point = canvas.convert(center, to: self)
+        contentOffset = CGPoint(x: point.x - bounds.width / 2, y: point.y - bounds.height / 2)
     }
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         layoutNavigationArea()
@@ -825,6 +859,19 @@ final class CanvasViewport: UIScrollView, UIScrollViewDelegate, UIGestureRecogni
         if contentInset != margin { contentInset = margin }
     }
     @objc private func navigationStarted(_ gesture: UIGestureRecognizer) {
-        if gesture.state == .began { canvas.cancelFingerStroke() }
+        if gesture.state == .began { stopFitting(); canvas.cancelFingerStroke() }
+        guard let pinch = gesture as? UIPinchGestureRecognizer else { return }
+        let time = Int64(CACurrentMediaTime() * 1000)
+        switch pinch.state {
+        case .began, .changed:
+            guard pinch.numberOfTouches == 2 else { quickFit.begin(span: 0, millis: time); return }
+            let a = pinch.location(ofTouch: 0, in: window), b = pinch.location(ofTouch: 1, in: window)
+            let span = Float(hypot(a.x - b.x, a.y - b.y))
+            if pinch.state == .began { quickFit.begin(span: span, millis: time) }
+            else { quickFit.update(span: span, millis: time) }
+        case .ended:
+            if quickFit.finish(millis: time) { fit(animated: true) }
+        default: break
+        }
     }
 }
