@@ -72,8 +72,12 @@ struct DocumentRecord: Codable, Identifiable, Equatable {
     var backgroundARGB: UInt32?
     var backgroundOpacity: Double?
 
+    var hasPhotoCrop: Bool {
+        layers.contains { $0.photo?.crop != nil } ||
+            animation?.frames.contains { $0.photoCels?.values.contains { $0.crop != nil } == true } == true
+    }
     func validate() throws {
-        guard format == "dev.tipstroke.ios.raster", (1...7).contains(schemaVersion) else {
+        guard format == "dev.tipstroke.ios.raster", (1...8).contains(schemaVersion) else {
             throw DrawingError.message("This drawing uses an unsupported project format.")
         }
         guard (16...8192).contains(width), (16...8192).contains(height),

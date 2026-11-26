@@ -31,6 +31,24 @@ internal fun ImageTransform.photoBounds(width: Int,height: Int): RectF {
 internal fun Canvas.drawPhoto(bitmap: Bitmap,width: Int,height: Int,transform: ImageTransform,paint: Paint,
     masks: Map<TileCoordinate,Bitmap> = emptyMap(),
     visitMasks: (((TileCoordinate,Bitmap) -> Unit) -> Unit)? = null) {
+    val checkpoint = save()
+    try {
+        transform.crop?.let { crop ->
+            val placement = transform.copy(warp = null)
+            val path = Path()
+            crop.corners.forEachIndexed { index, corner ->
+                val p = placement.documentPoint(corner.x, corner.y, width, height)
+                if (index == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+            }
+            path.close()
+            clipPath(path)
+        }
+        drawPhotoContents(bitmap, width, height, transform, paint, masks, visitMasks)
+    } finally { restoreToCount(checkpoint) }
+}
+
+private fun Canvas.drawPhotoContents(bitmap: Bitmap, width: Int, height: Int, transform: ImageTransform, paint: Paint,
+    masks: Map<TileCoordinate, Bitmap>, visitMasks: (((TileCoordinate, Bitmap) -> Unit) -> Unit)?) {
     val paint = Paint(paint).apply { isFilterBitmap = transform.filtered }
     fun drawPart(source: Bitmap,left: Float,top: Float,w: Float,h: Float,partPaint: Paint) {
         val cells=if(transform.warp==null) 1 else PhotoWarp.CELLS
@@ -109,6 +127,7 @@ private fun Canvas.drawWarpedMask(tile: Bitmap, left: Float, top: Float, width: 
 
 internal fun JSONObject.putPhotoTransform(t: ImageTransform): JSONObject = apply {
     put("filtered",t.filtered); put("stretchX",t.stretchX); put("stretchY",t.stretchY)
+    t.crop?.let { crop -> put("crop", JSONArray().apply { crop.corners.forEach { put(it.x); put(it.y) } }) }
     t.warp?.let { mesh -> put("warp",JSONArray().apply { mesh.points.forEach { put(it.x);put(it.y) } }) }
 }
 internal fun JSONObject.readPhotoTransform(base: ImageTransform): ImageTransform {
@@ -117,5 +136,9 @@ internal fun JSONObject.readPhotoTransform(base: ImageTransform): ImageTransform
         require(it.length()==(PhotoWarp.CELLS+1)*(PhotoWarp.CELLS+1)*2) { "Invalid photo mesh" }
         PhotoWarp(List(it.length()/2) { i -> Point(it.getDouble(i*2).toFloat(),it.getDouble(i*2+1).toFloat()) })
     }
-    return base.copy(filtered=optBoolean("filtered",true),stretchX=optDouble("stretchX",1.0).toFloat(),stretchY=optDouble("stretchY",1.0).toFloat(),warp=mesh)
+    val crop = optJSONArray("crop")?.let { values ->
+        require(values.length() == 8)
+        PhotoCrop(List(4) { i -> Point(values.getDouble(i * 2).toFloat(), values.getDouble(i * 2 + 1).toFloat()) })
+    }
+    return base.copy(crop=crop,filtered=optBoolean("filtered",true),stretchX=optDouble("stretchX",1.0).toFloat(),stretchY=optDouble("stretchY",1.0).toFloat(),warp=mesh)
 }

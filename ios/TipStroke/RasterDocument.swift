@@ -177,6 +177,7 @@ final class RasterDocument {
             }
             saved.animation = animation
         }
+        if saved.hasPhotoCrop { saved.schemaVersion = 8 }
         return DocumentSnapshot(record: saved, pixels: pixels, frames: frames, coldFrames: coldFrames)
     }
 
@@ -753,6 +754,7 @@ final class RasterDocument {
                snapshot.pixels[layer.id]?.isEmpty != false, let image = sourceImage ?? photo.source?.image {
                 context.saveGState()
                 context.clip(to: visible)
+                photo.clipCrop(in: context)
                 context.concatenate(photo.transform)
                 context.interpolationQuality = photo.filtered == false ? .none : .medium
                 draw(image, in: context, rect: photo.sourceBounds)

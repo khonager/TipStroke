@@ -549,6 +549,11 @@ internal class LayerStack(
                 is RasterLayerRuntime -> layer.tiles.colorAt(x.roundToInt(), y.roundToInt())
                 is ImageLayerRuntime -> {
                     val bitmap = layer.source.bitmapOrRequest() ?: return android.graphics.Color.TRANSPARENT
+                    val crop = layer.transform.crop
+                    if (crop != null) {
+                        val local = layer.transform.copy(warp = null).sourcePoint(x, y, layer.source.width, layer.source.height)
+                        if (local == null || !crop.contains(local)) return android.graphics.Color.TRANSPARENT
+                    }
                     val point = layer.transform.sourcePoint(x,y,layer.source.width,layer.source.height)
                         ?: return android.graphics.Color.TRANSPARENT
                     val imageX = kotlin.math.floor(point.x * layer.source.width).toInt()

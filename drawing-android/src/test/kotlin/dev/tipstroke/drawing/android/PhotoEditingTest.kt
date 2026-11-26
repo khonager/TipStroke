@@ -38,7 +38,8 @@ class PhotoEditingTest {
         val bitmap=Bitmap.createBitmap(64,64,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         source.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) };bitmap.recycle()
         val t=ImageTransform(64f,64f,1f,20f,-1.4f,.7f,
-            PhotoWarp.identity().deform(PhotoEditTool.BULGE,Point(.5f,.5f),Point(.04f,0f),.6f,1f), filtered=false)
+            PhotoWarp.identity().deform(PhotoEditTool.BULGE,Point(.5f,.5f),Point(.04f,0f),.6f,1f), filtered=false,
+            crop=PhotoCrop(listOf(Point(.2f,.1f), Point(.8f,.1f), Point(.8f,.9f), Point(.2f,.9f))))
         val snapshot=DrawingSnapshot(128,128,layerId,listOf(SavedImageSnapshot(layerId,"Photo",true,1f,Uri.fromFile(source),64,64,t)))
         try {
             ProjectPersistence.save(context.contentResolver,library,id,"Warped",snapshot).getOrThrow()
@@ -47,6 +48,8 @@ class PhotoEditingTest {
             ProjectPersistence.export(context.contentResolver,Uri.fromFile(output),snapshot,ExportFormat.PNG,100,1f,transparent=true).getOrThrow()
             val exported=BitmapFactory.decodeFile(output.path)
             assertEquals(Color.RED,exported.getPixel(64,64))
+            val trimmed = t.documentPoint(.06f,.5f,64,64)
+            assertEquals(0, Color.alpha(exported.getPixel(trimmed.x.toInt(), trimmed.y.toInt())))
             assertEquals(0,Color.alpha(exported.getPixel(0,0)))
             exported.recycle()
         } finally { snapshot.recycle();library.delete(id);source.delete();output.delete() }

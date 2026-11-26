@@ -429,7 +429,7 @@ internal data class LoadedImage(
 ) : LoadedLayer
 
 internal object ProjectPersistence {
-    internal const val SCHEMA_VERSION = 12
+    internal const val SCHEMA_VERSION = 13
     private const val TILE_SIZE = 256
     val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "TipStroke-project-io").apply { isDaemon = true } }
     val mainHandler = Handler(Looper.getMainLooper())
@@ -542,8 +542,10 @@ internal object ProjectPersistence {
                     } })
             }
             val modifiedAt = System.currentTimeMillis()
+            val cropped = snapshot.layers.any { it is SavedImageSnapshot && it.transform.crop != null } ||
+                snapshot.animation?.imageCels?.values?.any { cels -> cels.values.any { it.crop != null } } == true
             JSONObject()
-                .put("schemaVersion", SCHEMA_VERSION).put("id", id).put("name", name)
+                .put("schemaVersion", if (cropped) SCHEMA_VERSION else 12).put("id", id).put("name", name)
                 .put("widthPx", snapshot.widthPx).put("heightPx", snapshot.heightPx)
                 .put("modifiedAtMillis", modifiedAt)
                 .put("selectedLayerId", snapshot.selectedId.value)

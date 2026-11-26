@@ -321,6 +321,21 @@ class DrawingSurface @JvmOverloads constructor(context: Context, attrs: android.
         }
         finishPhotoEdit()
     }
+    fun cropImageToSelection(): Boolean {
+        val image = layerStack.selectedImage() ?: return false
+        val bounds = selectionRegion?.bounds ?: return false
+        val placement = image.transform.copy(warp = null)
+        val corners = SelectionRegion.rectangle(bounds).points.map { point ->
+            placement.sourcePoint(point.x, point.y, image.source.width, image.source.height) ?: return false
+        }
+        finishPhotoEdit()
+        beginPhotoEdit()
+        image.transform = image.transform.copy(crop = PhotoCrop(corners))
+        finishPhotoEdit()
+        clearSelection()
+        return true
+    }
+
     fun photoBilinear() = layerStack.selectedImage()?.transform?.filtered ?: true
 
     fun selectionTransformAction(action: String) {

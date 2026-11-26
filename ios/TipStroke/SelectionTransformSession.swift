@@ -68,7 +68,7 @@ final class SelectionTransformSession {
                     }
                 }
                 if singlePhoto { drawPhoto(ctx) }
-                else { photo.geometry.render(in:ctx,visible:rect,draw:drawPhoto) }
+                else { photo.clipCrop(in: ctx); photo.geometry.render(in:ctx,visible:rect,draw:drawPhoto) }
             } else {
                 for (key,image) in allCuts[layer.id] ?? [:] { RasterDocument.draw(image,in:ctx,rect:key.rect) }
             }

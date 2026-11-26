@@ -55,8 +55,8 @@ and the editor saves the current drawing when that scene deactivates.
   not hide that layer or exclude it from exports.
 - Eyedropper, shared saved palettes, persistent recent colors and a quick-color row.
   Drawing colors are sampled from a bounded thumbnail after saves and on opening
-  the color picker. **Layers → Import image** adds a source-backed layer and opens
-  its transform controls. In the gallery, **Settings → Image import picker**
+  the color picker. **Layers → Import image** places the full source-backed layer directly on the canvas.
+  Moving tools → Crop image trims the selected photo to a rectangle. In the gallery, **Settings → Image import picker**
   selects Photos (default) or Files for layer images and brush shape/grain imports. Project packages,
   brush packages and timeline media clips use Files.
 - Animation supports per-frame holds, loop/ping-pong/once playback, onion skins,

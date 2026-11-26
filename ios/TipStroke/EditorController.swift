@@ -748,6 +748,23 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         for (mode, icon) in selectionModes {
             palette.add(mode.rawValue, icon) { [weak self] in self?.activateMode(mode) }
         }
+        if document.activePhoto != nil {
+            palette.add("Crop image", "crop") { [weak self] in
+                guard let self else { return }
+                guard let selection = self.document.selection, !selection.inverted else {
+                    self.activateMode(.rectangleSelection)
+                    self.viewport.canvas.onInteractionHint?("Drag a rectangle, then choose Crop image")
+                    return
+                }
+                do {
+                    try self.document.cropActivePhoto(to: selection.path.boundingBoxOfPath)
+                    self.document.selection = nil
+                    self.viewport.canvas.refreshSelection()
+                    self.viewport.canvas.onInteractionHint?(nil)
+                    self.changed()
+                } catch { self.showError(error) }
+            }
+        }
         palette.add("Reselect previous area", "arrow.uturn.backward.circle") { [weak self] in
             guard let self else { return }
             guard self.document.restoreSelection() else { self.showError(DrawingError.message("Make a selection in this drawing first.")); return }
@@ -932,7 +949,6 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
                 guard let self else { return }
                 try self.document.importPhoto(source, name: name)
                 self.changed()
-                self.showTransformEditor()
             }
         }
     }

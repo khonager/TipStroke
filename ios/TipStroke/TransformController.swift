@@ -187,7 +187,10 @@ private final class TransformPreviewView: UIView {
         ctx.concatenate(documentToView)
         ctx.setFillColor(UIColor.white.cgColor); ctx.fill(canvas); ctx.clip(to: canvas)
         let g = session.geometry
+        ctx.saveGState()
+        if session.singlePhoto { session.photos.values.first?.clipCrop(in: ctx, pose: g.pose) }
         g.render(in: ctx, visible: canvas) { RasterDocument.draw(session.preview, in: $0, rect: g.rect) }
+        ctx.restoreGState()
         let n = tool == .warp ? divisions : 1
         ctx.setStrokeColor(UIColor.systemOrange.cgColor); ctx.setLineWidth(1 / documentToView.a)
         for row in 0...n {

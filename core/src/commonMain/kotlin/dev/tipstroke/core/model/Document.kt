@@ -1,5 +1,7 @@
 package dev.tipstroke.core.model
 
+import dev.tipstroke.core.geometry.Point
+import dev.tipstroke.core.geometry.SelectionRegion
 import kotlin.jvm.JvmInline
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -32,6 +34,13 @@ data class RasterLayer(
     override val opacity: Float = 1f,
 ) : Layer
 
+/** Four crop corners in normalized photo coordinates after mesh deformation, before placement. */
+data class PhotoCrop(val corners: List<Point>) {
+    init { require(corners.size == 4 && corners.all { it.x.isFinite() && it.y.isFinite() }) }
+    private val region = SelectionRegion(corners)
+    fun contains(point: Point) = region.contains(point)
+}
+
 data class ImageTransform(
     val centerX: Float,
     val centerY: Float,
@@ -41,6 +50,7 @@ data class ImageTransform(
     val stretchY: Float = 1f,
     val warp: PhotoWarp? = null,
     val filtered: Boolean = true,
+    val crop: PhotoCrop? = null,
 ) {
     init { require(scale.isFinite() && scale > 0f && stretchX.isFinite() && kotlin.math.abs(stretchX) > 0f && stretchY.isFinite() && kotlin.math.abs(stretchY) > 0f) }
 

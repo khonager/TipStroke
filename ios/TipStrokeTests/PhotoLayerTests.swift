@@ -28,6 +28,31 @@ final class PhotoLayerTests: XCTestCase {
         XCTAssertTrue(doc.pixels[doc.activeLayer]?.isEmpty ?? true)
     }
 
+    func testCropPreservesPhotoPoseAndEraseMaskThroughUndo() throws {
+        let doc = RasterDocument(name: "Crop", width: 64, height: 64)
+        let source = try RasterDocument.context(width: 64, height: 64)
+        source.setFillColor(UIColor.red.cgColor); source.fill(doc.bounds)
+        try doc.importPhoto(PhotoSource(image: XCTUnwrap(source.makeImage())), name: "Image")
+        let at = CGPoint(x: 32, y: 32)
+        XCTAssertTrue(doc.beginStroke(photoErase: true))
+        _ = try doc.paint(from: at, to: at, radius: 3, color: .black, erasing: true)
+        doc.endStroke(cancelled: false)
+        let photo = try XCTUnwrap(doc.activePhoto)
+        let key = TileKey(x: 0, y: 0)
+        func alpha(_ x: Int) throws -> UInt32 {
+            let tile = try XCTUnwrap(RasterDocument.layerTile(doc.snapshot(), id: doc.activeLayer, key: key))
+            return try TilePixels([key: tile]).rgba(x, 32) & 255
+        }
+        try doc.cropActivePhoto(to: CGRect(x: 16, y: 0, width: 48, height: 64))
+        XCTAssertEqual(doc.activePhoto?.transform, photo.transform)
+        XCTAssertEqual(try alpha(8), 0)
+        XCTAssertEqual(try alpha(32), 0)
+        XCTAssertEqual(try alpha(48), 255)
+        doc.undo()
+        XCTAssertEqual(try alpha(8), 255)
+        XCTAssertEqual(try alpha(32), 0)
+    }
+
     func testTransformDraftIsolatedUntilApplyAndUndoRestoresPixels() throws {
         let doc = RasterDocument(name: "Selection", width: 256, height: 256)
         XCTAssertTrue(doc.beginStroke())

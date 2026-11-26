@@ -32,6 +32,7 @@ internal fun SelectionControls(
     onTool: (SelectionTool) -> Unit, onMove: () -> Unit, onSelectAll: () -> Unit,
     onDuplicate: () -> Unit, onClear: () -> Unit, canTransform: Boolean, onTransform: () -> Unit,
     onReselect: () -> Unit, modifier: Modifier = Modifier,
+    onCropImage: (() -> Unit)? = null,
     onShadowPull: () -> Unit = {}, shadowPullActive: Boolean = false,
 ) {
     var referencesOpen by remember { mutableStateOf(false) }
@@ -65,6 +66,7 @@ internal fun SelectionControls(
                 HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Color(0xFF55575D))
                 FlowRow(maxItemsInEachRow = if (wide) 5 else 3,
                     horizontalArrangement = Arrangement.Center) {
+                    if (onCropImage != null) SelectionAction("Crop image", Icons.Outlined.Crop, enabled = hasSelection, onClick = onCropImage)
                     SelectionAction("Select all", Icons.Outlined.SelectAll, onLongClick = onReselect, onClick = onSelectAll)
                     SelectionAction("Repeat last selection", Icons.Outlined.History, onClick = onReselect)
                     SelectionAction("Invert selection", Icons.Outlined.FlipToBack, onClick = onInvert)

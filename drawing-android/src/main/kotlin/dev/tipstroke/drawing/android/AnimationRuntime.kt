@@ -381,6 +381,7 @@ internal class AnimationRuntime(
                     (b.second.warp ?: dev.tipstroke.core.model.PhotoWarp.identity()).points) { p,q ->
                     dev.tipstroke.core.geometry.Point(lerp(p.x,q.x),lerp(p.y,q.y)) }),
             if (fraction < .5f) a.second.filtered else b.second.filtered,
+            if (fraction < .5f) a.second.crop else b.second.crop,
         )
     }
 

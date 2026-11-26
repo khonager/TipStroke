@@ -191,7 +191,7 @@ extension ProjectStore {
 
     private func importDrawing(_ directory: URL, original: String, gallery: JSONObject) throws -> UUID {
         let manifest = try PackageIO.json(directory.appendingPathComponent("manifest.json"))
-        guard let version = manifest["schemaVersion"] as? Int, (1...12).contains(version),
+        guard let version = manifest["schemaVersion"] as? Int, (1...13).contains(version),
               let w = manifest["widthPx"] as? Int, let h = manifest["heightPx"] as? Int,
               let name = manifest["name"] as? String, let layers = manifest["layers"] as? [JSONObject],
               (16...8192).contains(w), (16...8192).contains(h), (1...32).contains(layers.count) else {
@@ -382,7 +382,7 @@ extension ProjectStore {
                     guard let key = value["frameId"] as? String, let frameID = ids.frames[key], let index = frameIndices[frameID],
                           timeline.frames[index].photoCels?[id.uuidString] == nil else { throw PackageIO.invalid }
                     let pose = try Self.importPhoto(value, width: photo.width, height: photo.height, source: source)
-                    timeline.frames[index].photoCels?[id.uuidString] = PhotoCelRecord(transform: pose.transform, mesh: pose.mesh, filtered: pose.filtered)
+                    timeline.frames[index].photoCels?[id.uuidString] = PhotoCelRecord(photo: pose)
                 }
             }
             state.animation = timeline
@@ -485,7 +485,7 @@ extension ProjectStore {
             let dir = target.appendingPathComponent(path)
             if fm.fileExists(atPath: dir.path) { try fm.removeItem(at: dir) }
         }
-        manifest["schemaVersion"] = 12; manifest["id"] = state.id.uuidString
+        manifest["schemaVersion"] = state.hasPhotoCrop ? 13 : 12; manifest["id"] = state.id.uuidString
         manifest["name"] = state.name; manifest["widthPx"] = state.width; manifest["heightPx"] = state.height
         manifest["modifiedAtMillis"] = Int64(state.modified.timeIntervalSince1970 * 1000)
         manifest["selectedLayerId"] = state.selectedLayer.map(layerID)
@@ -544,7 +544,7 @@ extension ProjectStore {
                     var photo = original
                     if let cels = frame.photoCels {
                         guard let cel = cels[layer.id.uuidString] else { return nil }
-                        photo.transform = cel.transform; photo.mesh = cel.mesh; photo.filtered = cel.filtered
+                        photo = cel.applying(to: photo)
                     }
                     var value = Self.exportPhoto(photo); value["frameId"] = frameID(frame.id)
                     return value
@@ -713,6 +713,10 @@ extension ProjectStore {
         let transform = CGAffineTransform(translationX: x, y: y).rotated(by: angle)
             .scaledBy(x: sx, y: sy).translatedBy(x: -CGFloat(width) / 2, y: -CGFloat(height) / 2)
         var photo = PhotoLayerRecord(width: width, height: height, transform: transform, source: source)
+        if let crop = raw["crop"] {
+            guard let values = crop as? [Double], values.count == 8 else { throw PackageIO.invalid }
+            photo.crop = stride(from: 0, to: 8, by: 2).map { CGPoint(x: values[$0], y: values[$0 + 1]) }
+        }
         photo.filtered = raw["filtered"] as? Bool ?? true
         if let warp = raw["warp"] {
             guard let values = warp as? [Double], values.count == 578 else { throw PackageIO.invalid }
@@ -736,6 +740,14 @@ extension ProjectStore {
             raw["warp"] = (0..<289).flatMap { i -> [Double] in
                 let p = photo.geometry.vertex(i).applying(inverse)
                 return [Double(p.x), Double(p.y)]
+            }
+        }
+        if let crop = photo.crop {
+            let inverse = CGAffineTransform(translationX: center.x, y: center.y).rotated(by: angle)
+                .scaledBy(x: sx * width, y: sy * height).translatedBy(x: -0.5, y: -0.5).inverted()
+            raw["crop"] = crop.flatMap { corner -> [Double] in
+                let point = CGPoint(x: corner.x * width, y: corner.y * height).applying(t).applying(inverse)
+                return [Double(point.x), Double(point.y)]
             }
         }
         return raw

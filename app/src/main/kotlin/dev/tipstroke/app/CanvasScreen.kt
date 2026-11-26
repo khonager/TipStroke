@@ -253,10 +253,9 @@ fun CanvasScreen(
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             surface?.addImage(uri)?.fold(
-                onSuccess = { openImageTransform() },
+                onSuccess = { imageTransforming = false; layersOpen = false },
                 onFailure = { message = it.message ?: "This image could not be opened." },
             )
-            layersOpen = !imageTransforming
         }
     }
 
@@ -905,6 +904,9 @@ fun CanvasScreen(
             onReference = { surface?.setReferenceStrokes(it); selectDrawingTip() },
             operation = selectionOperation,
             onOperation = { selectionOperation = it; surface?.setSelectionOperation(it) },
+            onCropImage = if (layers.any { it.id == selectedLayerId && it.kind == LayerKind.IMAGE }) ({
+                if (surface?.cropImageToSelection() == true) openImageTransform()
+            }) else null,
             onInvert = { surface?.invertSelection() },
             onCut = { surface?.moveSelectionToNewLayer() },
             shadowPullActive = shadowPullActive,
@@ -948,6 +950,14 @@ fun CanvasScreen(
                 var bilinear by remember { mutableStateOf(surface?.photoBilinear() ?: true) }
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     Text("Transform image",Modifier.weight(1f),color=Color.White,style=MaterialTheme.typography.titleSmall)
+                    TransformIcon("Crop image", Icons.Outlined.Crop) {
+                        selectionTool = SelectionTool.RECTANGLE
+                        selectionOperation = dev.tipstroke.core.geometry.SelectionOperation.REPLACE
+                        surface?.clearSelection()
+                        surface?.setSelectionOperation(selectionOperation)
+                        selectSelectionTool()
+                        message = "Drag a rectangle, then tap Crop image."
+                    }
                     TipHint("Finish image transform") { IconButton(onClick={ imageTransforming=false }) { Icon(Icons.Outlined.Check,"Finish image transform",tint=Color.White) } }
                 }
                 TransformToolbar(photoTool,{ photoTool=it },bilinear,{ value ->

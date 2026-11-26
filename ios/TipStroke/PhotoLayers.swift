@@ -73,25 +73,41 @@ struct PhotoLayerRecord: Codable, Equatable {
     let height: Int
     var mesh: [CGPoint]?
     var filtered: Bool?
+    var crop: [CGPoint]?
     var transform: CGAffineTransform
     var source: PhotoSource?
-    private enum CodingKeys: String, CodingKey { case sourceID, width, height, transform, mesh, filtered }
+    private enum CodingKeys: String, CodingKey { case sourceID, width, height, transform, mesh, filtered, crop }
     static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.sourceID == rhs.sourceID && lhs.width == rhs.width && lhs.height == rhs.height && lhs.transform == rhs.transform && lhs.mesh == rhs.mesh && lhs.filtered == rhs.filtered
+        lhs.sourceID == rhs.sourceID && lhs.width == rhs.width && lhs.height == rhs.height && lhs.transform == rhs.transform && lhs.mesh == rhs.mesh && lhs.filtered == rhs.filtered && lhs.crop == rhs.crop
     }
     var sourceBounds: CGRect { CGRect(x: 0, y: 0, width: width, height: height) }
     var geometry: TransformGeometry { TransformGeometry(rect: sourceBounds, pose: transform, mesh: mesh, filtered: filtered ?? true) }
     var bounds: CGRect { geometry.bounds }
     func validate() throws {
+        if let crop, crop.count != 4 || !crop.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) {
+            throw DrawingError.message("Invalid photo crop.")
+        }
         let t = transform
         guard geometry.validated(), (1...PhotoSource.maximumDimension).contains(width), (1...PhotoSource.maximumDimension).contains(height),
               [t.a, t.b, t.c, t.d, t.tx, t.ty].allSatisfy({ $0.isFinite && abs($0) < 1_000_000 }),
               abs(t.a * t.d - t.b * t.c) > 0.00000001 else { throw DrawingError.message("Invalid photo geometry.") }
     }
+    func clipCrop(in context: CGContext, pose: CGAffineTransform? = nil) {
+        guard let crop else { return }
+        let placement = pose ?? transform
+        for (index, corner) in crop.enumerated() {
+            let point = CGPoint(x: corner.x * CGFloat(width), y: corner.y * CGFloat(height)).applying(placement)
+            if index == 0 { context.move(to: point) } else { context.addLine(to: point) }
+        }
+        context.closePath()
+        context.clip()
+    }
+
     func tile(_ key: TileKey, masks: [TileKey: CGImage], image sourceImage: CGImage? = nil) throws -> CGImage? {
         guard bounds.intersects(key.rect), let image = sourceImage ?? source?.image else { return nil }
         let context = try RasterDocument.context(width: 256, height: 256)
         context.translateBy(x: -key.rect.minX, y: -key.rect.minY)
+        clipCrop(in: context)
         geometry.render(in: context, visible: key.rect) { piece in
             RasterDocument.draw(image, in: piece, rect: sourceBounds)
             piece.setBlendMode(.destinationOut)
@@ -121,6 +137,22 @@ extension RasterDocument {
         try layer.photo?.validate()
         beginMetadataEdit(); record.layers.append(layer); record.selectedLayer = layer.id; endMetadataEdit()
     }
+    func cropActivePhoto(to rect: CGRect) throws {
+        guard !rect.isEmpty, let index = record.layers.firstIndex(where: { $0.id == activeLayer }),
+              !record.layers[index].locked, record.layers[index].photoCelActive,
+              var photo = record.layers[index].photo else { throw DrawingError.message("Select an unlocked image.") }
+        let inverse = photo.transform.inverted()
+        photo.crop = [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                      CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)].map {
+            let point = $0.applying(inverse)
+            return CGPoint(x: point.x / CGFloat(photo.width), y: point.y / CGFloat(photo.height))
+        }
+        try photo.validate()
+        beginMetadataEdit()
+        record.layers[index].photo = photo
+        endMetadataEdit()
+    }
+
     var activePhoto: PhotoLayerRecord? { record.layers.first { $0.id == activeLayer }?.photo }
     func transformPhoto(_ pose: CGAffineTransform) throws {
         guard let i = record.layers.firstIndex(where: { $0.id == activeLayer }), !record.layers[i].locked,
@@ -144,12 +176,13 @@ struct PhotoCelRecord: Codable, Equatable {
     var transform: CGAffineTransform
     var mesh: [CGPoint]?
     var filtered: Bool?
+    var crop: [CGPoint]?
     init(transform: CGAffineTransform, mesh: [CGPoint]? = nil, filtered: Bool? = nil) {
         self.transform = transform; self.mesh = mesh; self.filtered = filtered
     }
-    init(photo: PhotoLayerRecord) { self.init(transform: photo.transform, mesh: photo.mesh, filtered: photo.filtered) }
+    init(photo: PhotoLayerRecord) { self.init(transform: photo.transform, mesh: photo.mesh, filtered: photo.filtered); crop = photo.crop }
     func applying(to photo: PhotoLayerRecord) -> PhotoLayerRecord {
-        var copy = photo; copy.transform = transform; copy.mesh = mesh; copy.filtered = filtered
+        var copy = photo; copy.transform = transform; copy.mesh = mesh; copy.filtered = filtered; copy.crop = crop
         return copy
     }
 }
