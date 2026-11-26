@@ -25,6 +25,7 @@ data class ExportRequest(
     val scale: Float,
     val transparent: Boolean,
     val fileName: String,
+    val destination: ArtworkDestination = ArtworkDestination.PHOTOS,
 )
 
 data class AnimationExportRequest(
@@ -32,6 +33,7 @@ data class AnimationExportRequest(
     val scale: Float,
     val fileName: String,
     val timing: MediaExportTiming = MediaExportTiming.SMOOTH_VIDEO,
+    val destination: ArtworkDestination = ArtworkDestination.PHOTOS,
 )
 
 @Composable
@@ -97,11 +99,8 @@ fun AnimationExportDialog(
                 ExportLabel("Filename")
                 OutlinedTextField(fileName, { fileName = it }, Modifier.fillMaxWidth(), singleLine = true)
                 ActionIconButton(onClick = onStillImage, modifier = Modifier.padding(top = 8.dp), label = "Export current frame as an image", icon = Icons.Outlined.Image)
-                Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionIconButton(onDismiss, Modifier.weight(1f), label = "Cancel", icon = Icons.Outlined.Close)
-                    ActionIconButton(onClick = {
-                        onExport(AnimationExportRequest(format, scale, fileName.ifBlank { "TipStroke.${format.extension}" }, timing))
-                    }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A)), label = "Export", icon = Icons.Outlined.IosShare)
+                DestinationButtons(format != AnimationExportFormat.PNG_SEQUENCE, onDismiss) { destination ->
+                    onExport(AnimationExportRequest(format, scale, fileName.ifBlank { "TipStroke.${format.extension}" }, timing, destination))
                 }
             }
         }
@@ -161,13 +160,20 @@ internal fun ExportDrawingSheet(drawingName: String, canvasWidth: Int, canvasHei
                 ExportLabel("Filename")
                 OutlinedTextField(fileName, { fileName = it }, Modifier.fillMaxWidth(), singleLine = true)
                 HorizontalDivider(Modifier.padding(vertical = 18.dp), color = Color(0xFF414349))
-                Text("Save to device", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Text("Choose a folder after tapping Export.", color = Color(0xFF9EA0A6), fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 18.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionIconButton(onDismiss, Modifier.weight(1f), label = "Cancel", icon = Icons.Outlined.Close)
-                    ActionIconButton(onClick = { onExport(ExportRequest(format, quality.roundToInt(), scale, transparent, fileName.ifBlank { "TipStroke.${format.extension}" })) }, Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED6A5A)), label = "Export", icon = Icons.Outlined.IosShare)
+                DestinationButtons(true, onDismiss) { destination ->
+                    onExport(ExportRequest(format, quality.roundToInt(), scale, transparent, fileName.ifBlank { "TipStroke.${format.extension}" }, destination))
                 }
             }
+    }
+}
+
+@Composable
+private fun DestinationButtons(photos: Boolean, dismiss: () -> Unit, choose: (ArtworkDestination) -> Unit) {
+    if (photos) Button(onClick = { choose(ArtworkDestination.PHOTOS) }, modifier = Modifier.fillMaxWidth()) { Text("Save to Photos") }
+    Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+        TextButton(onClick = { choose(ArtworkDestination.SHARE) }) { Text("Share") }
+        TextButton(onClick = { choose(ArtworkDestination.FILE) }) { Text("Save to Files") }
+        TextButton(onClick = dismiss) { Text("Cancel") }
     }
 }
 

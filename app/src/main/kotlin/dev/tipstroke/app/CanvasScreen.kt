@@ -203,7 +203,6 @@ fun CanvasScreen(
     var exporting by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }
     var projectExportOpen by remember { mutableStateOf(false) }
-    var exportChoiceOpen by remember { mutableStateOf(false) }
     var processOpen by remember { mutableStateOf(false) }
     var pendingProcessExport by remember { mutableStateOf<AnimationExportFormat?>(null) }
     var stillExportOpen by remember { mutableStateOf(false) }
@@ -313,6 +312,23 @@ fun CanvasScreen(
         pendingExport = null
         pendingAnimationExport = null
         pendingProcessExport = null
+    }
+
+    fun exportProject() {
+        if (library == null || documentId == null) return
+        val active = surface ?: return
+        savesInFlight++
+        active.saveProject(library, documentId, documentName) { result ->
+            savesInFlight--
+            result.onSuccess { projectExportOpen = true }.onFailure { message = it.message ?: "Could not save drawing." }
+        }
+    }
+    fun deliver(destination: ArtworkDestination, name: String, mime: String, render: (android.net.Uri, (Result<Unit>) -> Unit) -> Unit) {
+        exporting = true
+        deliverArtwork(context, destination, name, mime, render) { result ->
+            exporting = false
+            message = result.fold({ if (destination == ArtworkDestination.PHOTOS) "Saved to Photos" else null }, { it.message ?: "Export failed" })
+        }
     }
 
     fun sync() {
@@ -726,7 +742,8 @@ fun CanvasScreen(
                 onColor = { color = it },
                 onOpenColorPicker = { layersOpen = false; colorPickerOpen = true },
                 onBack = if (onBackToGallery != null) leaveEditor else null,
-                onExport = { if (ready) exportChoiceOpen = true },
+                onExport = { if (ready) exportOpen = true },
+                onProject = ::exportProject, onReplay = { processOpen = true },
                 onResize = ::openCanvasResize,
                 animationOpen = animationOpen,
                 onAnimation = ::openAnimation,
@@ -754,7 +771,8 @@ fun CanvasScreen(
                 onColorPicker = { layersOpen = false; colorPickerOpen = true },
                 onLayers = { colorPickerOpen = false; layersOpen = !layersOpen },
                 onReset = { surface?.resetView() },
-                onExport = { if (ready) exportChoiceOpen = true },
+                onExport = { if (ready) exportOpen = true },
+                onProject = ::exportProject, onReplay = { processOpen = true },
                 onResize = ::openCanvasResize,
                 onAnimation = ::openAnimation,
                 onDebug = { debug = !debug },
@@ -1387,26 +1405,6 @@ fun CanvasScreen(
         onLibrary = { brushStudioOpen = false; brushLibraryOpen = true },
     )
 
-    if (exportChoiceOpen) AlertDialog(
-        onDismissRequest = { exportChoiceOpen = false },
-        title = { Text("Export or replay") },
-        text = {
-            Column {
-                Text("Save your artwork or look back on its drawing progress.")
-                if (library != null && documentId != null) ActionIconButton(onClick = {
-                    exportChoiceOpen = false
-                    savesInFlight++
-                    surface?.saveProject(library, documentId, documentName) { result ->
-                        savesInFlight--
-                        result.onSuccess { projectExportOpen = true }
-                            .onFailure { message = it.message ?: "Could not save drawing." }
-                    }
-                }, label = "Export editable TipStroke file", icon = Icons.Outlined.SaveAlt)
-            }
-        },
-        confirmButton = { ActionIconButton(onClick = { exportChoiceOpen = false; exportOpen = true }, label = "Export artwork", icon = Icons.Outlined.IosShare) },
-        dismissButton = { ActionIconButton(onClick = { exportChoiceOpen = false; processOpen = true }, label = "Drawing progress", icon = Icons.Outlined.History) },
-    )
     if (projectExportOpen && library != null && documentId != null) {
         GalleryTransfer(library, listOf(documentId), { projectExportOpen = false }, {})
     }
@@ -1429,6 +1427,13 @@ fun CanvasScreen(
         hasMedia = animationState?.hasMedia == true,
     ) { request ->
         exportOpen = false
+        val active = surface ?: return@AnimationExportDialog
+        if (request.destination != ArtworkDestination.FILE) {
+            deliver(request.destination, request.fileName, request.format.mimeType) { uri, done ->
+                active.exportAnimation(uri, request.format, request.scale, request.timing, done)
+            }
+            return@AnimationExportDialog
+        }
         pendingAnimationExport = request
         exportDestination.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -1441,6 +1446,13 @@ fun CanvasScreen(
     }) { request ->
         exportOpen = false
         stillExportOpen = false
+        val active = surface ?: return@ExportDrawingDialog
+        if (request.destination != ArtworkDestination.FILE) {
+            deliver(request.destination, request.fileName, request.format.mimeType) { uri, done ->
+                active.exportDrawing(uri, request.format, request.quality, request.scale, request.transparent, done)
+            }
+            return@ExportDrawingDialog
+        }
         pendingExport = request
         exportDestination.launch(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -1558,7 +1570,7 @@ private fun EditorChrome(
     onColor: (RgbaColor) -> Unit,
     onOpenColorPicker: () -> Unit,
     onBack: (() -> Unit)?,
-    onExport: () -> Unit,
+    onExport: () -> Unit, onProject: () -> Unit, onReplay: () -> Unit,
     onResize: () -> Unit,
     animationOpen: Boolean,
     onAnimation: () -> Unit,
@@ -1588,6 +1600,8 @@ private fun EditorChrome(
             Box {
                 IconAction("More canvas actions", true, { menuOpen = true }) { MoreIcon() }
                 DropdownMenu(menuOpen, { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text("Replay drawing progress") }, onClick = { menuOpen = false; onReplay() })
+                    DropdownMenuItem(text = { Text("Export editable project") }, onClick = { menuOpen = false; onProject() })
                     DropdownMenuItem(text = { Text(previewLabel) }, onClick = { menuOpen = false; onPreview() })
                     DropdownMenuItem(text = { Text(if (debug) "Hide diagnostics" else "Diagnostics") },
                         onClick = { menuOpen = false; onDebug() })
@@ -1614,7 +1628,7 @@ private fun PhoneEditorChrome(
     onColorPicker: () -> Unit,
     onLayers: () -> Unit,
     onReset: () -> Unit,
-    onExport: () -> Unit,
+    onExport: () -> Unit, onProject: () -> Unit, onReplay: () -> Unit,
     onResize: () -> Unit,
     onAnimation: () -> Unit,
     onDebug: () -> Unit,
@@ -1658,6 +1672,8 @@ private fun PhoneEditorChrome(
                     modifier = Modifier.size(38.dp).semantics { contentDescription = "More canvas actions" },
                 ) { MoreIcon() } }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { onMenuOpenChange(false) }) {
+                    DropdownMenuItem(text = { Text("Replay drawing progress") }, onClick = { onMenuOpenChange(false); onReplay() })
+                    DropdownMenuItem(text = { Text("Export editable project") }, onClick = { onMenuOpenChange(false); onProject() })
                     DropdownMenuItem(text = { Text("Fit canvas") }, onClick = { onMenuOpenChange(false); onReset() })
                     DropdownMenuItem(text = { Text(previewLabel) }, onClick = { onMenuOpenChange(false); onPreview() })
                     DropdownMenuItem(text = { Text("Export") }, onClick = { onMenuOpenChange(false); onExport() })

@@ -53,6 +53,43 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
             onDismiss()
         }
     }
+    fun sendSelection(photos: Boolean) {
+        val entries = drawings.filter { it.id in selected }
+        if (entries.isEmpty() || busy) return
+        val image = ExportFormat.entries.firstOrNull { it.name == format }
+        val animation = AnimationExportFormat.entries.firstOrNull { it.name == format }
+        val project = format == "TipStroke"
+        val zip = !project && !photos && entries.size > 1
+        val mime = when {
+            project -> ProjectTransfer.MIME
+            zip -> "application/zip"
+            else -> image?.mimeType ?: requireNotNull(animation).mimeType
+        }
+        val extension = when {
+            project -> "tipstroke"
+            zip -> "zip"
+            else -> image?.extension ?: requireNotNull(animation).extension
+        }
+        busy = true
+        fun send(index: Int) {
+            val ids = if (photos) listOf(entries[index].id) else entries.map { it.id }
+            val name = (if (ids.size == 1) entries[index].name else "TipStroke") + "." + extension
+            deliverArtwork(context, if (photos) ArtworkDestination.PHOTOS else ArtworkDestination.SHARE, name, mime,
+                render = { uri, done ->
+                    ExportWork.start(context, work = { progress -> runCatching {
+                        if (project) ProjectTransfer.exportProjects(library, ids, requireNotNull(context.contentResolver.openOutputStream(uri, "w")))
+                        else ProjectTransfer.exportMedia(context, library, ids, uri, image, animation, if (image != null) 1f else scale, timing, progress)
+                    } }, onComplete = done)
+                }, finished = { result ->
+                    result.onSuccess {
+                        if (photos) selected = selected - entries[index].id
+                        if (photos && index + 1 < entries.size) send(index + 1)
+                        else { busy = false; onDismiss() }
+                    }.onFailure { busy = false; message = it.message ?: "Export failed" }
+                })
+        }
+        send(0)
+    }
     val source = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             busy = true
@@ -95,8 +132,12 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
                             }
                         }
                     }
+                    val canSend = !busy && drawings.any { it.id in selected }
+                    if (format != "TipStroke" && format != AnimationExportFormat.PNG_SEQUENCE.name)
+                        Button(onClick = { sendSelection(true) }, enabled = canSend) { Text("Save to Photos") }
+                    OutlinedButton(onClick = { sendSelection(false) }, enabled = canSend) { Text("Share") }
                     Text(if (format == "TipStroke") "Preserves layers, animation, image sources, and drawing progress."
-                        else "Images export the selected frame. Animation formats require every selected drawing to have animation. Multiple files are saved together as a ZIP.")
+                        else "Images export the selected frame. Animation formats require every selected drawing to have animation. Sharing or saving multiple files to Files creates a ZIP.")
                 }
                 if (busy) { LinearProgressIndicator(); Text("Working…") }
                 message?.let { Text(it) }
@@ -117,7 +158,7 @@ internal fun GalleryTransfer(library: DrawingLibrary, initialIds: List<String>?,
                         putExtra(Intent.EXTRA_TITLE, "TipStroke.$extension")
                     })
                 }
-            }, label = if (initialIds == null) "Import project" else "Export drawings", icon = if (initialIds == null) Icons.Outlined.FileOpen else Icons.Outlined.IosShare)
+            }, label = if (initialIds == null) "Import project" else "Save to Files", icon = if (initialIds == null) Icons.Outlined.FileOpen else Icons.Outlined.FileDownload)
         },
         dismissButton = { ActionIconButton(onClick = onDismiss, enabled = !busy, label = "Close", icon = Icons.Outlined.Close) },
     )

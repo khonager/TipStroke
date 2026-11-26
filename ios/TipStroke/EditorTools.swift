@@ -103,22 +103,24 @@ extension EditorController {
         menu.addAction(UIAlertAction(title: "Smooth video", style: .default) { _ in action(true) })
         menu.addAction(UIAlertAction(title: "Cancel", style: .cancel)); anchor(menu); present(menu, animated: true)
     }
-    func exportAnimationVideo(smooth: Bool = false) {
+    func chooseMediaDestination(_ perform: @escaping (Bool) -> Void) {
+        let menu = UIAlertController(title: "Export animation", message: nil, preferredStyle: .actionSheet)
+        menu.addAction(UIAlertAction(title: "Save to Photos", style: .default) { _ in perform(true) })
+        menu.addAction(UIAlertAction(title: "Share", style: .default) { _ in perform(false) })
+        menu.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        anchor(menu); present(menu, animated: true)
+    }
+    func exportAnimationVideo(smooth: Bool = false, photos: Bool = false) {
         guard !exporting else { return }; exporting = true
         viewport.canvas.cancelStroke()
         ProjectStore.shared.exportMP4(document.snapshot(), smooth: smooth) { result in
             DispatchQueue.main.async {
                 self.exporting = false
-                do {
-                    let sheet = UIActivityViewController(activityItems: [try result.get()], applicationActivities: nil)
-                    sheet.popoverPresentationController?.sourceView = self.view
-                    sheet.popoverPresentationController?.sourceRect = CGRect(x: self.view.bounds.midX, y: 60, width: 1, height: 1)
-                    self.present(sheet, animated: true)
-                } catch { self.showError(error) }
+                do { self.deliverArtwork([try result.get()], photos: photos) } catch { self.showError(error) }
             }
         }
     }
-    func exportAnimation(pngSequence: Bool = false, smooth: Bool = false) {
+    func exportAnimation(pngSequence: Bool = false, smooth: Bool = false, photos: Bool = false) {
         guard !exporting else { return }; exporting = true
         viewport.canvas.cancelStroke(); let snapshot = document.snapshot()
         ProjectStore.shared.queue.async {
@@ -127,14 +129,7 @@ extension EditorController {
             }
             DispatchQueue.main.async {
                 self.exporting = false
-                do {
-                    let url = try result.get()
-                    let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                    sheet.completionWithItemsHandler = { _, _, _, _ in try? FileManager.default.removeItem(at: url) }
-                    sheet.popoverPresentationController?.sourceView = self.view
-                    sheet.popoverPresentationController?.sourceRect = CGRect(x: self.view.bounds.midX, y: 60, width: 1, height: 1)
-                    self.present(sheet, animated: true)
-                } catch { self.showError(error) }
+                do { self.deliverArtwork([try result.get()], photos: photos) } catch { self.showError(error) }
             }
         }
     }

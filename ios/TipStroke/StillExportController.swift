@@ -11,7 +11,7 @@ struct StillExport {
 
 final class StillExportController: UIViewController {
     private let record: DocumentRecord
-    var onExport: ((StillExport) -> Void)?
+    var onExport: ((StillExport, Bool) -> Void)?
     private let format = UISegmentedControl(items: ["PNG","JPEG","WebP"])
     private let scale = UISegmentedControl(items: ["100%", "50%", "25%"])
     private let quality = UISlider()
@@ -38,10 +38,14 @@ final class StillExportController: UIViewController {
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -16)])
         for control: UIControl in [format, scale, quality] { control.addAction(UIAction { [weak self] _ in self?.refresh() }, for: .valueChanged) }
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Export", primaryAction: UIAction { [weak self] _ in
-            guard let self else { return }; let options = self.options, callback = self.onExport
-            self.dismiss(animated: true) { callback?(options) }
-        })
+        for (title, photos) in [("Save to Photos", true), ("Share", false)] {
+            let button = UIButton(configuration: .tinted(), primaryAction: UIAction(title: title) { [weak self] _ in
+                guard let self else { return }
+                let options = self.options, callback = self.onExport
+                self.dismiss(animated: true) { callback?(options, photos) }
+            })
+            stack.addArrangedSubview(button)
+        }
         refresh()
     }
     private var options: StillExport {

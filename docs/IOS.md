@@ -298,3 +298,5 @@ Layers opens over the canvas. Animation uses a bottom overlay with a horizontall
 The editor groups still and animated output under Export, brush settings under Adjust tip, and uses opaque palettes for canvas commands.
 
 Gallery Settings stores finger actions, hold-for-tools and the Photos/Files preference. Both New drawing → From image and Layers → Import image use the selected picker. Project and media imports use Files.
+
+Gallery and editor exports offer Save to Photos and Share. Saving requests add-only photo library access. Sharing uses temporary files and releases them when the share sheet finishes. Drawing progress replay lives in Canvas actions.

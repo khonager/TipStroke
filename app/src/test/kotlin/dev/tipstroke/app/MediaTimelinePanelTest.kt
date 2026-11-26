@@ -77,7 +77,7 @@ class MediaTimelinePanelTest {
         content { AnimationExportDialog("Video", 640, 480, {}, {}, hasMedia = true) { request = it } }
         compose.onNodeWithText("Smooth video + held drawings").assertIsDisplayed()
         compose.onNodeWithText("Video at drawing FPS").performClick()
-        compose.onNodeWithContentDescription("Export", useUnmergedTree = true).performScrollTo().performClick()
+        compose.onNodeWithText("Save to Photos").performScrollTo().performClick()
         assertEquals(MediaExportTiming.DRAWING_FPS, request?.timing)
     }
     @Test fun splitAndKeyframeControlsUpdateOneTrack() {

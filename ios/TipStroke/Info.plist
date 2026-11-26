@@ -16,6 +16,7 @@
         <key>UTTypeConformsTo</key><array><string>public.zip-archive</string></array>
         <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>tipstroke</string></array></dict>
     </dict></array>
+    <key>NSPhotoLibraryAddUsageDescription</key><string>Save exported drawings and animations to Photos.</string>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>UIApplicationSceneManifest</key>
     <dict>

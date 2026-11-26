@@ -141,6 +141,7 @@ final class GalleryController: UICollectionViewController, UICollectionViewDeleg
         if pickingExports {
             navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in self?.setPicking(false) })
             let share = UIBarButtonItem(image: UIImage(systemName: "ellipsis.circle"), menu: UIMenu(children: [
+                UIAction(title: "Save PNG to Photos") { [weak self] _ in self?.shareSelected(photos: true) },
                 UIAction(title: "Share PNG") { [weak self] _ in self?.shareSelected() },
                 UIAction(title: "Share TipStroke project") { [weak self] _ in self?.shareSelected(asProject: true) },
                 UIAction(title: "Duplicate") { [weak self] _ in self?.changeSelected(delete: false) },
@@ -233,8 +234,8 @@ final class GalleryController: UICollectionViewController, UICollectionViewDeleg
             present(alert, animated: true)
         } else { perform() }
     }
-    private func shareSelected(asProject: Bool = false) {
-        let ids = selectedDrawingIDs
+    private func shareSelected(asProject: Bool = false, photos: Bool = false, drawingIDs: [UUID]? = nil) {
+        let ids = drawingIDs ?? selectedDrawingIDs
         guard !ids.isEmpty, !exportingDrawings else { return }
         let selectedLayout = layout
         exportingDrawings = true; updateGalleryActions()
@@ -248,10 +249,7 @@ final class GalleryController: UICollectionViewController, UICollectionViewDeleg
                 let files = urls
                 DispatchQueue.main.async {
                     self.exportingDrawings = false; self.setPicking(false)
-                    let sheet = UIActivityViewController(activityItems: files, applicationActivities: nil)
-                    sheet.popoverPresentationController?.barButtonItem = self.navigationItem.rightBarButtonItems?.last
-                    sheet.completionWithItemsHandler = { _, _, _, _ in files.forEach { try? FileManager.default.removeItem(at: $0) } }
-                    self.present(sheet, animated: true)
+                    self.deliverArtwork(files, photos: photos)
                 }
             } catch {
                 urls.forEach { try? FileManager.default.removeItem(at: $0) }
@@ -393,6 +391,8 @@ final class GalleryController: UICollectionViewController, UICollectionViewDeleg
         }
         guard let drawing = records[id] else { return [] }
         var actions = [
+            UIAction(title: "Save PNG to Photos") { _ in self.shareSelected(photos: true, drawingIDs: [id]) },
+            UIAction(title: "Share PNG") { _ in self.shareSelected(drawingIDs: [id]) },
             UIAction(title: "Rename") { _ in self.promptName(drawing.name) { name in self.changeDrawing { try self.store.rename(id, name: name) } } },
             UIAction(title: "Duplicate") { _ in self.changeDrawing { try self.store.duplicate(id) } },
             UIAction(title: "Delete", attributes: .destructive) { _ in

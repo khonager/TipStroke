@@ -151,7 +151,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
             self.sharedControls.setFingerDrawing(enabled: enable)
         }
         let fit = button("Fit canvas", symbol: "scope") { [weak self] in self?.viewport.fit() }
-        let export = button("Export image", symbol: "square.and.arrow.up") { [weak self] in self?.openExportActions() }
+        let export = button("Export image", symbol: "square.and.arrow.down") { [weak self] in self?.openExportActions() }
         let resize = button("Resize canvas", symbol: "crop") { [weak self] in self?.resizeCanvas() }
         let animate = button("Animate", symbol: "film") { [weak self] in self?.showTimeline() }
         wideActions = [export, resize, animate]
@@ -698,8 +698,13 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
         let panel = actionPanel("Canvas actions", anchor: moreButton)
         panel.add(navigator == nil ? "Canvas preview" : "Hide preview", "picture.in.picture") { [weak self] in self?.toggleCanvasPreview() }
         panel.add("Quick colors", "paintpalette") { [weak self] in self?.quickPanel?.isHidden.toggle() }
+        panel.add("Replay drawing progress", "play.rectangle") { [weak self] in
+            guard let self else { return }
+            self.finishCanvasInteraction()
+            self.present(EditorSheetNavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
+        }
         if compactCommands {
-            panel.add("Export", "square.and.arrow.up") { [weak self] in self?.openExportActions() }
+            panel.add("Export", "square.and.arrow.down") { [weak self] in self?.openExportActions() }
             panel.add("Resize canvas", "crop") { [weak self] in self?.resizeCanvas() }
             panel.add("Animate", "film") { [weak self] in self?.showTimeline() }
         }
@@ -707,15 +712,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private func openExportActions() {
         let panel = actionPanel("Export", anchor: compactCommands ? moreButton : wideActions.first)
         panel.add("Image…", "photo") { [weak self] in self?.showImageExport() }
-        panel.add("Transparent PNG", "square.dashed") { [weak self] in self?.export(transparent: true) }
-        panel.add("Animation MP4", "film") { [weak self] in self?.chooseExportTiming { self?.exportAnimationVideo(smooth: $0) } }
+        panel.add("Animation MP4", "film") { [weak self] in self?.chooseMediaDestination { photos in self?.chooseExportTiming { self?.exportAnimationVideo(smooth: $0, photos: photos) } } }
         panel.add("PNG sequence", "square.stack") { [weak self] in self?.chooseExportTiming { self?.exportAnimation(pngSequence: true, smooth: $0) } }
-        panel.add("Animation GIF", "film.stack") { [weak self] in self?.chooseExportTiming { self?.exportAnimation(smooth: $0) } }
-        panel.add("Drawing progress", "play.rectangle") { [weak self] in
-            guard let self else { return }
-            self.finishCanvasInteraction()
-            self.present(EditorSheetNavigationController(rootViewController: ProcessReplayController(folder: self.store.replayFolder(self.document.record.id))), animated: true)
-        }
+        panel.add("Animation GIF", "film.stack") { [weak self] in self?.chooseMediaDestination { photos in self?.chooseExportTiming { self?.exportAnimation(smooth: $0, photos: photos) } } }
+
     }
     private weak var toolsButton: UIButton?
     private weak var movingToolsButton: UIButton?
@@ -917,11 +917,10 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
     private func showImageExport() {
         finishCanvasInteraction()
         let options = StillExportController(record: document.record)
-        options.onExport = { [weak self] in self?.export(options: $0) }
+        options.onExport = { [weak self] options, photos in self?.export(options: options, photos: photos) }
         present(EditorSheetNavigationController(rootViewController: options), animated: true)
     }
-    private func export(transparent: Bool = false) { export(options: StillExport(transparent: transparent)) }
-    private func export(options: StillExport) {
+    private func export(options: StillExport, photos: Bool) {
         finishCanvasInteraction()
         let snapshot = document.snapshot()
         store.queue.async {
@@ -930,10 +929,7 @@ final class EditorController: UIViewController, UIPencilInteractionDelegate, UID
                 switch result {
                 case .failure(let error): self.showError(error)
                 case .success(let url):
-                    let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-                    sheet.popoverPresentationController?.sourceView = self.view
-                    sheet.popoverPresentationController?.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.safeAreaInsets.top + 30, width: 1, height: 1)
-                    self.present(sheet, animated: true)
+                    self.deliverArtwork([url], photos: photos)
                 }
             }
         }
